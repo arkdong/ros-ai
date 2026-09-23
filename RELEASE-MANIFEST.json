@@ -1,9 +1,9 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T11:07:17.380325+00:00",
+  "refreshedAt": "2026-09-23T12:02:26.173729+00:00",
   "scenarioData": "banking only",
-  "fileCount": 101,
+  "fileCount": 105,
   "files": [
     {
       "path": ".dockerignore",
@@ -22,8 +22,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 2999,
-      "sha256": "0298c08f7be130bb9486bc777956927f5f0ccc5b1a11d33b920351122077c2c0"
+      "bytes": 3923,
+      "sha256": "222ec3b1b1ab92162eb0d4d153a9cb7f4f0d6599b56e98fcccc35cf56cd7b004"
     },
     {
       "path": "examples/dutch-ai-adoption/analysis.py",
@@ -77,8 +77,8 @@
     },
     {
       "path": "src/client/App.tsx",
-      "bytes": 46423,
-      "sha256": "91c6b3183c58eff9f6c63cafc7e913db03284c5af9cc25ad8bfacdf61a1d638e"
+      "bytes": 46509,
+      "sha256": "77250e4794f28ac8261ec7e9c7c0d7cd1b5081ad86d1665b6d2286dcccd3b032"
     },
     {
       "path": "src/client/AssistantPanel.tsx",
@@ -117,8 +117,8 @@
     },
     {
       "path": "src/client/DemoOnboarding.tsx",
-      "bytes": 3155,
-      "sha256": "b07999ed14c88d3bb7bba8c5de341d5068b47c92fa236bd8e4b6228ceac23b39"
+      "bytes": 3270,
+      "sha256": "74049b8194f94cedba6e1eced7e554c96c58bffbf37dc21304ed254fc431c99a"
     },
     {
       "path": "src/client/DemoTour.css",
@@ -176,6 +176,11 @@
       "sha256": "3f71eb53d1793ccd3a6235919b992d97997a754dbaf8ff619d9952d64e45fd2d"
     },
     {
+      "path": "src/client/Waitlist.tsx",
+      "bytes": 5449,
+      "sha256": "28a61e2a0a20e7dc9c236d46bd5bdcabff0d079f08f748fbfe1a19a9f8e4cd6a"
+    },
+    {
       "path": "src/client/aggregate-relationships.css",
       "bytes": 1637,
       "sha256": "b118e630e4cc06beb358f114d9723e141f8656c8c7ba6e6c62db007f2d429d68"
@@ -217,8 +222,8 @@
     },
     {
       "path": "src/client/main.tsx",
-      "bytes": 265,
-      "sha256": "bd8c76579dd7e90f74061376377fb48fba30e50df197c548c83c2265315777a6"
+      "bytes": 474,
+      "sha256": "7e5d9b6ed42ccf46fe2860bc0900ec0d780c90abc0e0623d215344bd0a00c0ec"
     },
     {
       "path": "src/client/model-settings.css",
@@ -246,9 +251,14 @@
       "sha256": "59e49c47b64d53d6c8eadfbae6821e165687d1cf3dcf0f598d91c598e49579f5"
     },
     {
+      "path": "src/client/waitlist.css",
+      "bytes": 5403,
+      "sha256": "6c50b812758e75921b4250825d84f50e6e66813d5864a84b170b613ad21d36a8"
+    },
+    {
       "path": "src/server/app.ts",
-      "bytes": 12272,
-      "sha256": "ad0773258671beb5b376229f39986a04e9850359b2349e76c0396fd649230ad3"
+      "bytes": 12429,
+      "sha256": "74e9bf5c5bb43da0f5fc5c6904cd9efa60229160c6d7511437fd44d143c6775f"
     },
     {
       "path": "src/server/assistant.ts",
@@ -297,8 +307,8 @@
     },
     {
       "path": "src/server/index.ts",
-      "bytes": 4609,
-      "sha256": "4af0d2658b1a466d3e49006c12acf431ce9a326b607cee2db2e6136c5f12b2ec"
+      "bytes": 4761,
+      "sha256": "92c2a042ae0c92b92fd8e8b832f5383b161605d1a32645717ef55db0be7976da"
     },
     {
       "path": "src/server/lock.ts",
@@ -332,8 +342,8 @@
     },
     {
       "path": "src/server/public-demo.ts",
-      "bytes": 9469,
-      "sha256": "364a841d3b9964640cd491ac50b7912b9e9aac88cd369d7ab2cd26f083eb8ecd"
+      "bytes": 9653,
+      "sha256": "388ce509bb27ee2d301928bca8f15ce06a161023e78fda4aeef8d228a57afd6f"
     },
     {
       "path": "src/server/research.ts",
@@ -344,6 +354,16 @@
       "path": "src/server/review-code.ts",
       "bytes": 21381,
       "sha256": "327aa87b3720dcda5b1f85c9263273882ddff2ee27403bc535febc610a0e964a"
+    },
+    {
+      "path": "src/server/sandbox-budget.ts",
+      "bytes": 5203,
+      "sha256": "47502e044cc2fc7711536dcd4c5c7de85a797afe3ca0a6c780392f709e515c0f"
+    },
+    {
+      "path": "src/server/sandbox.ts",
+      "bytes": 14831,
+      "sha256": "da0a7de1fb070679e21e41d1292015f7a7dafc03be5a25fff9bdad168014b6c0"
     },
     {
       "path": "src/server/sandbox/Dockerfile",
@@ -361,16 +381,6 @@
       "sha256": "f8e6e832c9d7276aa45569f0aba6e9ff5ca743c168a3ab7412ce819615ce7468"
     },
     {
-      "path": "src/server/sandbox-budget.ts",
-      "bytes": 5203,
-      "sha256": "47502e044cc2fc7711536dcd4c5c7de85a797afe3ca0a6c780392f709e515c0f"
-    },
-    {
-      "path": "src/server/sandbox.ts",
-      "bytes": 14831,
-      "sha256": "da0a7de1fb070679e21e41d1292015f7a7dafc03be5a25fff9bdad168014b6c0"
-    },
-    {
       "path": "src/server/store.ts",
       "bytes": 35979,
       "sha256": "4e17d32583fe62d0580d853846ed7fb76000c0efbafe699343f45584c373f03a"
@@ -384,6 +394,11 @@
       "path": "src/server/tutorial.ts",
       "bytes": 20493,
       "sha256": "9356d2fb9dcd6fa0f61b8c447c0b39c4156aa971a1a75308b458d8ab1b98abaf"
+    },
+    {
+      "path": "src/server/waitlist.ts",
+      "bytes": 4317,
+      "sha256": "e9a0b70dda6a7bba697b839fc3614d1451b5e8eef3302b417c53f2afbb686d54"
     },
     {
       "path": "src/shared/aggregate-relationships.ts",
@@ -499,6 +514,11 @@
       "path": "src/shared/types.ts",
       "bytes": 3234,
       "sha256": "ac1788517c8f904eaa3fa9ec67967c73aa7048c12bb2bc9b1367a12827b8774f"
+    },
+    {
+      "path": "src/shared/waitlist.ts",
+      "bytes": 196,
+      "sha256": "0ad0fa6219683e548a08045a528b3eaee2c25f858551206d837b712640f2f264"
     },
     {
       "path": "tsconfig.json",

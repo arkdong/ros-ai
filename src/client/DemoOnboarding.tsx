@@ -26,5 +26,6 @@ export function DemoOnboarding({ onCreated, onSkip }: { onCreated: (session: Tut
     <p className="demo-provenance-note">The tutorial reuses genuine saved research and labels it clearly. Optional code reruns are separate, reviewed actions. Starting a demo makes no paid model or search requests.</p>
     {error && <p className="inline-error" role="alert">{error}</p>}
     <div className="modal-actions"><button className="secondary" onClick={onSkip} disabled={busy}>Continue without demo</button><button className="primary" disabled={!catalog || busy || catalog.scenarios.find(item => item.id === scenario)?.available === false} onClick={() => void create()}>{busy ? <LoaderCircle size={15} className="spin"/> : <ArrowRight size={15}/>} {busy ? 'Creating your workspace…' : 'Start demo'}</button></div>
+    <a className="waitlist-onboarding-link" href="/waitlist">Interested in early access? Join the waitlist →</a>
   </div>;
 }

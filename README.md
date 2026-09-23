@@ -19,3 +19,11 @@ A disposable container runtime smoke passed on localhost:4312: health returned p
 3. Generate a public domain in the service's Networking settings. The application reads `RAILWAY_PUBLIC_DOMAIN` automatically; alternatively set `ROS_PUBLIC_ORIGIN` to that exact HTTPS origin. If the first start preceded domain creation, redeploy after the domain is available.
 4. Use healthcheck `/api/health`. The Dockerfile supplies the start command and `ROS_PUBLIC_DEMO=1`; no API keys or local data uploads are needed.
 5. Open the generated URL and choose **Start demo**. This deployment serves the saved-results banking tutorial. Fresh model calls and Python execution are unavailable in this public release.
+
+## Waitlist and pitch count
+
+Share `/waitlist` on your deployed domain for a simple email signup. Open `/waitlist/pitch` while presenting for a large signup count that refreshes every five seconds. Links are also available from the app header and demo chooser.
+
+The count is unique normalized email submissions, not verified users; duplicate addresses do not increase it. Only the aggregate count is public. The app stores email addresses privately on the server and does not send email or expose a public email list.
+
+Signups are shared across visitors and stored separately from demo workspaces in `ROS_DATA_DIR/waitlist.sqlite`. Keep the existing `/data` persistent volume and one replica so the list survives Railway redeployments. Each installation has its own count; the local development count is separate from Railway. Test signups were confined to a disposable local database and are not included in this release.

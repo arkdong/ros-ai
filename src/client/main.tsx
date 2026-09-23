@@ -3,5 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
 import { App } from './App';
+import { Waitlist } from './Waitlist';
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+const waitlist = /^\/waitlist(?:\/pitch)?\/?$/.test(window.location.pathname);
+createRoot(document.getElementById('root')!).render(<React.StrictMode>{waitlist ? <Waitlist pitch={/^\/waitlist\/pitch\/?$/.test(window.location.pathname)}/> : <App />}</React.StrictMode>);

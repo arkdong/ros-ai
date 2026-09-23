@@ -8,6 +8,7 @@ import { Store, StoreError } from './store.js';
 import { createApp } from './app.js';
 import { ModelSettings } from './model-settings.js';
 import { TutorialService } from './tutorial.js';
+import { attachWaitlistRoutes, type Waitlist } from './waitlist.js';
 
 const disabledReason = 'This public demo uses saved evidence. Fresh execution and paid model/search calls require a separately configured and authorized research server.';
 const cookieName = 'ros_ai_demo';
@@ -74,7 +75,7 @@ function visitorApp(store:Store):Express {
   return app;
 }
 
-export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSessions?:number}) {
+export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSessions?:number;waitlist?:Waitlist}) {
   const origin = new URL(options.origin);
   const loopback = ['localhost','127.0.0.1','[::1]'].includes(origin.hostname);
   if (origin.protocol !== 'https:' && !(loopback && origin.protocol === 'http:')) throw new Error('Public demo origin must use HTTPS, except local preview.');
@@ -109,6 +110,7 @@ export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSes
     res.setHeader('X-Frame-Options','DENY');
     next();
   });
+  if (options.waitlist) attachWaitlistRoutes(app, options.waitlist, { origin: origin.origin });
   // Establish the browser identity with the document, before its JavaScript
   // starts parallel catalog/project requests without an existing cookie.
   app.get('/',(req,res,next) => { if (ensureVisitor(req,res)) next(); });
