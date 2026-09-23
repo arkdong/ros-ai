@@ -1,9 +1,9 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T12:02:26.173729+00:00",
+  "refreshedAt": "2026-09-23T12:43:01.178688+00:00",
   "scenarioData": "banking only",
-  "fileCount": 105,
+  "fileCount": 116,
   "files": [
     {
       "path": ".dockerignore",
@@ -74,6 +74,61 @@
       "path": "public/brand/ros-ai-wordmark.png",
       "bytes": 260717,
       "sha256": "133dcd7423cb73df24c473391cd295e175462cca7bcacd6df32b0d4f855c695f"
+    },
+    {
+      "path": "public/deck/assets/abn-amro-logo.svg",
+      "bytes": 2678,
+      "sha256": "ac6abc2df89e3ee7caea79186742c2a6114105b22f05490534da9c77aff0ca0a"
+    },
+    {
+      "path": "public/deck/assets/ai4fintech-logo.jpg",
+      "bytes": 64842,
+      "sha256": "4d119135cac630a3f2185db2865050c9460501265315d95d774f6b15ad219d8c"
+    },
+    {
+      "path": "public/deck/assets/aiso-logo.png",
+      "bytes": 22470,
+      "sha256": "b6f27806cb1ae1b3b3730e50283da7b5d5f69e2ac10f945ab2d3195fe4c6ff0f"
+    },
+    {
+      "path": "public/deck/assets/cover.png",
+      "bytes": 1088064,
+      "sha256": "e7918258183dbc15119b0e0ed68f695c30c88c0e25ccdaa5b56a6b8a3270f6e2"
+    },
+    {
+      "path": "public/deck/assets/earthian-logo.png",
+      "bytes": 100568,
+      "sha256": "3fb300f0ce8ae8421e4b1b521a1e3bf283a65bd138b5ed14ebe107745b1a12c7"
+    },
+    {
+      "path": "public/deck/assets/nebius-logo.svg",
+      "bytes": 2757,
+      "sha256": "35a8a56d0a07e7acb3813839126cf425e012a3f70307d405ede58aa784162374"
+    },
+    {
+      "path": "public/deck/assets/nebius-tavily.png",
+      "bytes": 17264,
+      "sha256": "cb25fd504f7caa871407b7ff75e93f2bb34f546c3270399ade9e02ab33903f49"
+    },
+    {
+      "path": "public/deck/assets/nvidia-logo.svg",
+      "bytes": 2783,
+      "sha256": "4325ea0c4078941bce84b2b1c6f045c3daf36de44cfc4c89ac5c49186f4874e8"
+    },
+    {
+      "path": "public/deck/assets/uva-logo.svg",
+      "bytes": 15732,
+      "sha256": "462a0fb22448f754b2efb22f14b895a657615806a4a1b7f135870682f21c6c27"
+    },
+    {
+      "path": "public/deck/comparison-evidence.html",
+      "bytes": 5751,
+      "sha256": "e4f36cc6edca119451347f9e61cc6109d3bda12240f31bb7b0f8a05a55702fd6"
+    },
+    {
+      "path": "public/deck/index.html",
+      "bytes": 52647,
+      "sha256": "f2bbe0cdd5ee75553200a0c2c96e910d4f4c22813baa1c51d2a8bf8e2a1889e3"
     },
     {
       "path": "src/client/App.tsx",
@@ -177,8 +232,8 @@
     },
     {
       "path": "src/client/Waitlist.tsx",
-      "bytes": 5449,
-      "sha256": "28a61e2a0a20e7dc9c236d46bd5bdcabff0d079f08f748fbfe1a19a9f8e4cd6a"
+      "bytes": 5441,
+      "sha256": "36af96cadbab455556b002cdfad76b142a52a91172230f6abec7708c527cd1a1"
     },
     {
       "path": "src/client/aggregate-relationships.css",
@@ -342,8 +397,8 @@
     },
     {
       "path": "src/server/public-demo.ts",
-      "bytes": 9653,
-      "sha256": "388ce509bb27ee2d301928bca8f15ce06a161023e78fda4aeef8d228a57afd6f"
+      "bytes": 9799,
+      "sha256": "b6a6de2559cb7dbe93859f242a47b113ee946021237d2de388c1356963b5e994"
     },
     {
       "path": "src/server/research.ts",
