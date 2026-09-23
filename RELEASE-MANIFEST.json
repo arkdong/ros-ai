@@ -1,9 +1,9 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T12:43:01.178688+00:00",
+  "refreshedAt": "2026-09-23T12:58:50.395749+00:00",
   "scenarioData": "banking only",
-  "fileCount": 116,
+  "fileCount": 118,
   "files": [
     {
       "path": ".dockerignore",
@@ -122,13 +122,23 @@
     },
     {
       "path": "public/deck/comparison-evidence.html",
-      "bytes": 5751,
-      "sha256": "e4f36cc6edca119451347f9e61cc6109d3bda12240f31bb7b0f8a05a55702fd6"
+      "bytes": 12757,
+      "sha256": "deae87b1c5480ae22b8a4e40b43e8d2598159d8a28b058e9f0611475d6769eb4"
+    },
+    {
+      "path": "public/deck/comparison-rerun-results.json",
+      "bytes": 6001,
+      "sha256": "3ca05e3ac558637cd3600638962650dd6727abbb1b7b71692381ef0768e4fc1a"
+    },
+    {
+      "path": "public/deck/comparison-results.json",
+      "bytes": 9444,
+      "sha256": "76cf134824424cc6132e906a9363b60e7abe980fa3017b6f32981b31adce7dbe"
     },
     {
       "path": "public/deck/index.html",
-      "bytes": 52647,
-      "sha256": "f2bbe0cdd5ee75553200a0c2c96e910d4f4c22813baa1c51d2a8bf8e2a1889e3"
+      "bytes": 52636,
+      "sha256": "c5b957ae4920991bb9fb2a514c80b2ce509458fb0a6828058ac2b74ae16d6ac3"
     },
     {
       "path": "src/client/App.tsx",
