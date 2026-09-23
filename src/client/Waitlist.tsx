@@ -53,10 +53,10 @@ export function Waitlist({ pitch = false }: { pitch?: boolean }) {
 
   return <div className={`waitlist-page ${pitch ? 'waitlist-pitch' : ''}`}>
     <header className="waitlist-header">
-      <a href="/" aria-label="ros.ai research workspace"><Wordmark/></a>
+      <a href="/" aria-label="ros.ai home"><Wordmark/></a>
       <nav aria-label="Waitlist navigation">
         <a href={pitch ? '/waitlist' : '/waitlist/pitch'}>{pitch ? 'Join the waitlist' : <><Maximize2 size={15}/> Pitch view</>}</a>
-        <a href="/">Explore the demo <ArrowRight size={15}/></a>
+        <a href="/app">Explore the demo <ArrowRight size={15}/></a>
       </nav>
     </header>
     {pitch ? <main className="waitlist-pitch-main">
@@ -76,7 +76,7 @@ export function Waitlist({ pitch = false }: { pitch?: boolean }) {
           <span className="waitlist-success-icon"><Check size={25}/></span>
           <h2 id="waitlist-form-heading">You’re on the list.</h2>
           <p>Thanks for your interest in ros.ai. We’ll use your email to contact you about early access.</p>
-          <a className="waitlist-primary" href="/">Explore the demo <ArrowRight size={17}/></a>
+          <a className="waitlist-primary" href="/app">Explore the demo <ArrowRight size={17}/></a>
         </div> : <>
           <span className="waitlist-form-kicker">Build research that stays with you.</span>
           <h2 id="waitlist-form-heading">Join the waitlist</h2>
