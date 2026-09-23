@@ -91,6 +91,24 @@ export function createCanvasReflowPlan(canvas: Canvas, sizes: Record<string, Can
   return plan;
 }
 
+/** New notes do not turn earlier automatic displacement into deliberate space.
+ * Capture their relationships against the last displayed sizes, retaining the
+ * established anchors/gaps for surviving neighbours. Manual moves start a new
+ * plan instead, so the user's own spacing remains authoritative.
+ */
+export function extendCanvasReflowPlan(canvas: Canvas, sizes: Record<string, CanvasSize>, previous: CanvasReflowPlan): CanvasReflowPlan {
+  const next = createCanvasReflowPlan(canvas, sizes);
+  const key = (edge: Separation) => `${edge.before}\u0000${edge.after}\u0000${edge.axis}`;
+  for (const [scope, current] of Object.entries(next)) {
+    const saved = previous[scope];
+    if (!saved) continue;
+    for (const id of Object.keys(current.anchors)) if (saved.anchors[id]) current.anchors[id] = saved.anchors[id];
+    const gaps = new Map(saved.separations.map(edge => [key(edge), edge.gap]));
+    for (const edge of current.separations) edge.gap = gaps.get(key(edge)) ?? edge.gap;
+  }
+  return next;
+}
+
 /** Settle children before ancestors using measured collapsed frames and the
  * same visible result footprint as the renderer. No viewport or content changes.
  */

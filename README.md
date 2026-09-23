@@ -20,10 +20,8 @@ A disposable container runtime smoke passed on localhost:4312: health returned p
 4. Use healthcheck `/api/health`. The Dockerfile supplies the start command and `ROS_PUBLIC_DEMO=1`; no API keys or local data uploads are needed.
 5. Open the generated URL and choose **Start demo**. This deployment serves the saved-results banking tutorial. Fresh model calls and Python execution are unavailable in this public release.
 
-## Waitlist and pitch count
+## Demo entry and tutorial
 
-Share `/waitlist` on your deployed domain for a simple email signup. Open `/waitlist/pitch` while presenting for a large signup count that refreshes every five seconds. Links are also available from the app header and demo chooser.
+The homepage opens `/app`. Former `/waitlist` and `/waitlist/pitch` URLs redirect to the demo; signup and count endpoints are retired. Keep any existing `ROS_DATA_DIR/waitlist.sqlite` on the persistent volume: this release does not open, migrate or delete it.
 
-The count is unique normalized email submissions, not verified users; duplicate addresses do not increase it. Only the aggregate count is public. The app stores email addresses privately on the server and does not send email or expose a public email list.
-
-Signups are shared across visitors and stored separately from demo workspaces in `ROS_DATA_DIR/waitlist.sqlite`. Keep the existing `/data` persistent volume and one replica so the list survives Railway redeployments. Each installation has its own count; the local development count is separate from Railway. Test signups were confined to a disposable local database and are not included in this release.
+The assistant opens on the first demo visit and remembers later panel choices. A labeled Research assistant button reopens it. Tutorial sections distinguish guidance, saved outcomes and captured evidence. New demo notes use compact placement; manual layouts remain preserved, with Arrange available for a deliberate new arrangement.

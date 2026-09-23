@@ -59,9 +59,12 @@ export function DemoTour({ detail, modelAvailable, onArtifact, onResources, onSt
     {rect && <div className="demo-tour-highlight" aria-hidden="true" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}/>}
     <section className="demo-tour" aria-label="Guided demo" aria-live="polite">
       <header><span><BookOpen size={14}/> Research tour · {step + 1} / {stages.length}</span><button className="icon-button" aria-label="Exit guided demo" onClick={onExit}><X size={16}/></button></header>
-      <h2>{current.title}</h2><p>{descriptions[step]}</p>
-      <p className="demo-tour-output"><strong>Output</strong> · {current.output}</p>
+      <h2>{current.title}</h2>
+      <section className="demo-tour-guidance" aria-label="Stage guidance"><span className="demo-tour-label">What to explore</span><p>{descriptions[step]}</p></section>
+      <section className="demo-tour-output" aria-label="Stage outcome"><span className="demo-tour-label">{step === 0 ? 'Prepared starting point' : step === 1 ? 'Captured evidence' : step === 2 ? 'Saved findings' : 'Saved research draft'}</span><strong>{current.output}</strong></section>
       {missing && <p className="demo-tour-notice" role="status">{missing}</p>}
+      <h3 className="demo-tour-research-heading">Explore the saved research</h3>
+      <p className="demo-tour-provenance">Open earlier evidence and prepared writing. This tour does not run new research.</p>
       <div className="demo-tour-actions">
         <button className="secondary small" onClick={() => showStage(step)}>Show stage</button>
         {step === 0 && <button className="secondary small" onClick={() => onNote(focusedId)}>Open focused question</button>}

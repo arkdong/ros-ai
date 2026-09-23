@@ -1,9 +1,9 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T14:37:06.079267+00:00",
+  "refreshedAt": "2026-09-23T18:12:00.916496+00:00",
   "scenarioData": "banking only",
-  "fileCount": 118,
+  "fileCount": 115,
   "files": [
     {
       "path": ".dockerignore",
@@ -22,8 +22,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3923,
-      "sha256": "222ec3b1b1ab92162eb0d4d153a9cb7f4f0d6599b56e98fcccc35cf56cd7b004"
+      "bytes": 3622,
+      "sha256": "945970cd6b15c1eb8bd377506179c9a187f9aaca47e0c612ecfe1c8ecdc67712"
     },
     {
       "path": "examples/dutch-ai-adoption/analysis.py",
@@ -142,8 +142,8 @@
     },
     {
       "path": "src/client/App.tsx",
-      "bytes": 46509,
-      "sha256": "77250e4794f28ac8261ec7e9c7c0d7cd1b5081ad86d1665b6d2286dcccd3b032"
+      "bytes": 47560,
+      "sha256": "802538d865ebe4db4dbec1c1e49baedf60847a53daf038ce8cb7a22964895bb6"
     },
     {
       "path": "src/client/AssistantPanel.tsx",
@@ -167,8 +167,8 @@
     },
     {
       "path": "src/client/Canvas.tsx",
-      "bytes": 57983,
-      "sha256": "f721b0311651e0429911c1902a357efbc206a8b55cefb2da5867c7ba9cbe872d"
+      "bytes": 58683,
+      "sha256": "cc1e2870a4d38b8f58306646fac88dbc91451c60a9610b6401bd5129bbeddab4"
     },
     {
       "path": "src/client/CanvasHistory.tsx",
@@ -182,23 +182,23 @@
     },
     {
       "path": "src/client/DemoOnboarding.tsx",
-      "bytes": 3270,
-      "sha256": "74049b8194f94cedba6e1eced7e554c96c58bffbf37dc21304ed254fc431c99a"
+      "bytes": 3155,
+      "sha256": "b07999ed14c88d3bb7bba8c5de341d5068b47c92fa236bd8e4b6228ceac23b39"
     },
     {
       "path": "src/client/DemoTour.css",
-      "bytes": 1864,
-      "sha256": "f787e725fd1b9603a3ea67ee3ebc2995649178ba047045fde4d81245ee9f407a"
+      "bytes": 2485,
+      "sha256": "f30076ff136abb4a80b5ee10f62a1f1398876dba7c45c453de8679f691ca6f34"
     },
     {
       "path": "src/client/DemoTour.tsx",
-      "bytes": 8206,
-      "sha256": "b3f6e2d59440f748cbb1b95ce5039db6bc49067a62b80b2521d23041eeae9b2f"
+      "bytes": 8757,
+      "sha256": "7ea67f03992d62814c3b187a0a6808c46ac99495414e785b146143e9d2618111"
     },
     {
       "path": "src/client/ExecutableDemo.tsx",
-      "bytes": 8612,
-      "sha256": "c6991f98557b6483909fdb7e544aac4f02e5f79dba4a2ad6b60390ec7b811cf0"
+      "bytes": 12683,
+      "sha256": "8f0a2d077525fc98f6aea9762411ecaa264b87f0b496d386585bdef1240f78d6"
     },
     {
       "path": "src/client/Experiment.tsx",
@@ -241,11 +241,6 @@
       "sha256": "3f71eb53d1793ccd3a6235919b992d97997a754dbaf8ff619d9952d64e45fd2d"
     },
     {
-      "path": "src/client/Waitlist.tsx",
-      "bytes": 5441,
-      "sha256": "36af96cadbab455556b002cdfad76b142a52a91172230f6abec7708c527cd1a1"
-    },
-    {
       "path": "src/client/aggregate-relationships.css",
       "bytes": 1637,
       "sha256": "b118e630e4cc06beb358f114d9723e141f8656c8c7ba6e6c62db007f2d429d68"
@@ -276,19 +271,24 @@
       "sha256": "82263a30a4fdf2e9535bd11a72caf57c50ae894422df576ced16048081be391e"
     },
     {
+      "path": "src/client/demo-polish.css",
+      "bytes": 2568,
+      "sha256": "9eb67f4c4685ce6cff0c87b4de77d13331fa9a206171f261caacbcd2177291ec"
+    },
+    {
       "path": "src/client/detail-polish.css",
       "bytes": 9721,
       "sha256": "486bee27310560df1a1db6318ff6c7470fbf86f719b6a1173ed2b31e92e59f61"
     },
     {
       "path": "src/client/executable-demo.css",
-      "bytes": 5754,
-      "sha256": "1815b936b15f749755e2329eb1f317452d0984561d1a71d53e283b0be4939385"
+      "bytes": 9026,
+      "sha256": "68f778f2a4a4ee1c1fbaff942a756f1f2435f92687233c1e015d2fcce0d034f1"
     },
     {
       "path": "src/client/main.tsx",
-      "bytes": 474,
-      "sha256": "7e5d9b6ed42ccf46fe2860bc0900ec0d780c90abc0e0623d215344bd0a00c0ec"
+      "bytes": 381,
+      "sha256": "9dc1fe70a8ededbb9c33cb260699111f936ce783bcec9d2f9ce4df2f10b4a08b"
     },
     {
       "path": "src/client/model-settings.css",
@@ -316,14 +316,9 @@
       "sha256": "59e49c47b64d53d6c8eadfbae6821e165687d1cf3dcf0f598d91c598e49579f5"
     },
     {
-      "path": "src/client/waitlist.css",
-      "bytes": 5403,
-      "sha256": "6c50b812758e75921b4250825d84f50e6e66813d5864a84b170b613ad21d36a8"
-    },
-    {
       "path": "src/server/app.ts",
-      "bytes": 12429,
-      "sha256": "74e9bf5c5bb43da0f5fc5c6904cd9efa60229160c6d7511437fd44d143c6775f"
+      "bytes": 12474,
+      "sha256": "6e3b0014311a87113ceda1bf362061e24be8184b9fa208d634258a174774276f"
     },
     {
       "path": "src/server/assistant.ts",
@@ -372,8 +367,8 @@
     },
     {
       "path": "src/server/index.ts",
-      "bytes": 4761,
-      "sha256": "92c2a042ae0c92b92fd8e8b832f5383b161605d1a32645717ef55db0be7976da"
+      "bytes": 4609,
+      "sha256": "4af0d2658b1a466d3e49006c12acf431ce9a326b607cee2db2e6136c5f12b2ec"
     },
     {
       "path": "src/server/lock.ts",
@@ -407,8 +402,8 @@
     },
     {
       "path": "src/server/public-demo.ts",
-      "bytes": 9788,
-      "sha256": "ab714ad6093c0c553a14923bd6b54e129152e512e9feed6486b8854e0ef3252c"
+      "bytes": 9768,
+      "sha256": "6743e6a2e866763f0d5dcf49d3c44dea2e0bcb8b712e8d2f005206a80a4f319c"
     },
     {
       "path": "src/server/research.ts",
@@ -457,13 +452,8 @@
     },
     {
       "path": "src/server/tutorial.ts",
-      "bytes": 20493,
-      "sha256": "9356d2fb9dcd6fa0f61b8c447c0b39c4156aa971a1a75308b458d8ab1b98abaf"
-    },
-    {
-      "path": "src/server/waitlist.ts",
-      "bytes": 4317,
-      "sha256": "e9a0b70dda6a7bba697b839fc3614d1451b5e8eef3302b417c53f2afbb686d54"
+      "bytes": 21158,
+      "sha256": "4e52d38b73da38d9a03d570317946896607dc2db200bead8e66d3838c0ec7b6c"
     },
     {
       "path": "src/shared/aggregate-relationships.ts",
@@ -487,8 +477,8 @@
     },
     {
       "path": "src/shared/canvas-reflow.ts",
-      "bytes": 9344,
-      "sha256": "a81591253e43323b3edf1039db572ead742feff88f0a6090595829c976095f9d"
+      "bytes": 10358,
+      "sha256": "aec8cff5b78d896beacc5708066f268bad4d45da15a86e7472c4d2aa464aad29"
     },
     {
       "path": "src/shared/card-outcome.ts",
@@ -579,11 +569,6 @@
       "path": "src/shared/types.ts",
       "bytes": 3234,
       "sha256": "ac1788517c8f904eaa3fa9ec67967c73aa7048c12bb2bc9b1367a12827b8774f"
-    },
-    {
-      "path": "src/shared/waitlist.ts",
-      "bytes": 196,
-      "sha256": "0ad0fa6219683e548a08045a528b3eaee2c25f858551206d837b712640f2f264"
     },
     {
       "path": "tsconfig.json",

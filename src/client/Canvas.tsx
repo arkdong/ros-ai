@@ -9,7 +9,7 @@ import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '
 import { resolveModelSetting, type ModelSettingsResponse } from '../shared/model-settings';
 import { CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardWidth, initialCardSize } from '../shared/card-size';
 import { savedCanvasPosition } from '../shared/canvas-position';
-import { createCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
+import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
 import { aggregateTopLevelRelationships } from '../shared/aggregate-relationships';
 import { routeRelationship, type RelationshipRoute, type RouteNode } from '../shared/routing';
@@ -155,7 +155,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
     load();window.addEventListener('ros-ai-model-settings',load);
     return()=>{active=false;window.removeEventListener('ros-ai-model-settings',load);};
   },[detail.project.id,detail.project.revision]);
-  const reflowState = useRef<{ plan: CanvasReflowPlan; positions: string; dimensions: string; structure: string; shape: string; ready: boolean } | null>(null);
+  const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean } | null>(null);
   const reflowWriting = useRef(false);
   const [cardMeasurements, setCardMeasurements] = useState<Record<string, CanvasSize>>({}), [draftWidths, setDraftWidths] = useState<Record<string, number>>({});
   const resizeCommits = useRef(new Set<string>());
@@ -325,9 +325,9 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
   const liveNodes = useRef(nodes); liveNodes.current = nodes;
   const extraContent = useMemo(() => Object.fromEntries(expandedIds.flatMap(parentId => {
     const page = resultPages[parentId]; if (!page?.items.length) return [];
-    const packed = packArtifactCards(page.items, parentId, highlights.filter(highlight => highlight.nodeId === parentId), page.size !== 'all');
+    const packed = packArtifactCards(page.items, parentId, highlights.filter(highlight => highlight.nodeId === parentId || descendantIds[parentId]?.has(highlight.nodeId)), page.size !== 'all');
     return [[parentId, { width: packed.width, height: packed.height, minY: packed.minY }]];
-  })), [expandedIds, resultPages, highlights, artifactPlacementRevision]);
+  })), [expandedIds, resultPages, highlights, descendantIds, artifactPlacementRevision]);
   useEffect(() => {
     if (readonly) { reflowState.current = null; return; }
     // Pointer drags/width previews are live UI only. Settle once their saved state
@@ -343,20 +343,27 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
     const shape = JSON.stringify([structure, [...expandedIds].sort()]);
     let state = reflowState.current;
     if (!state) {
-      state = { plan: createCanvasReflowPlan(source, actualSizes), positions, dimensions, structure, shape, ready: false };
+      state = { plan: createCanvasReflowPlan(source, actualSizes), canvas: source, sizes: actualSizes, positions, dimensions, structure, shape, ready: false };
       reflowState.current = state;
     }
     const shapeChanged = state.shape !== shape, sizeChanged = state.dimensions !== dimensions;
-    if (state.positions !== positions) {
-      // A manual move, undo/content edit or explicit Arrange establishes a new
-      // spatial plan. Our own settled batch already recorded its expected key.
-      state.plan = createCanvasReflowPlan(source, actualSizes); state.positions = positions;
+    const previousNodes = new Map(state.canvas.nodes.map(node => [node.id, node]));
+    const moved = source.nodes.some(node => {
+      const previous = previousNodes.get(node.id);
+      return previous && (previous.parentId !== node.parentId || previous.x !== node.x || previous.y !== node.y);
+    });
+    if (state.positions !== positions && moved) {
+      // A user's move or an explicit Arrange establishes a new spatial plan.
+      // Newly generated notes alone retain the spacing of existing neighbours.
+      state.plan = createCanvasReflowPlan(source, actualSizes);
+    } else if (state.structure !== structure) {
+      state.plan = extendCanvasReflowPlan(source, { ...actualSizes, ...state.sizes }, state.plan);
     }
-    if (state.structure !== structure) { state.plan = createCanvasReflowPlan(source, actualSizes); state.structure = structure; }
+    state.positions = positions; state.canvas = source; state.structure = structure;
     if (!state.ready && !shapeChanged) {
       // Initial font/card measurements establish the baseline. Reopening a
       // project never becomes an implicit Arrange or a layout persistence loop.
-      state.plan = createCanvasReflowPlan(source, actualSizes); state.dimensions = dimensions;
+      state.plan = createCanvasReflowPlan(source, actualSizes); state.dimensions = dimensions; state.sizes = actualSizes;
       const timer = setTimeout(() => { if (reflowState.current === state) state.ready = true; }, 180);
       return () => clearTimeout(timer);
     }
@@ -369,11 +376,12 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
         return before.x === node.x && before.y === node.y ? [] : [{ type: 'updateNode' as const, id: node.id, patch: { x: node.x, y: node.y } }];
       });
       state.ready = true; state.shape = shape; state.dimensions = sizeKey(result.sizes); state.positions = positionKey(result.canvas);
+      state.canvas = result.canvas; state.sizes = result.sizes;
       if (!operations.length) return;
       reflowWriting.current = true;
       animateNextLayout.current = new Map(result.canvas.nodes.map(node => [node.id, { x: node.x, y: node.y }]));
       const failed = () => {
-        animateNextLayout.current = null; state.positions = positions; state.dimensions = dimensions;
+        animateNextLayout.current = null; state.positions = positions; state.dimensions = dimensions; state.canvas = source; state.sizes = actualSizes;
         setMessage('Automatic spacing could not be saved. Arrange can retry.');
       };
       void mutate(operations, 'Adjust canvas spacing').then(saved => {

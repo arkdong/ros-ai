@@ -7,6 +7,8 @@ import type { ExperimentService } from './experiments.js';
 import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
 import { loadTutorialContent } from './tutorial-content.js';
+import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
+import { LAYOUT_GAP } from '../shared/layout.js';
 
 type SavedSession = {
   projectId:string; scenario:TutorialScenarioId; step:number; createdAt:string;
@@ -99,7 +101,7 @@ export class TutorialService {
     const content = loadTutorialContent(scenario);
     if (this.options.publicDemo && !content.publicDataReady) throw new StoreError(content.publicDataStatus,403);
     return this.store.atomic(() => {
-      const project = this.store.createProject(`Demo · ${content.title}`);
+      const project = this.store.createProject(scenario === 'banking' ? 'Dutch AI adoption' : 'Historical market risk');
       const saved:SavedSession = { projectId:project.id, scenario, step:0, createdAt:now(),
         stageNodeIds:[], questionArtifactId:'', sourceArtifactIds:[], outputArtifactIds:[] };
       const stage = this.addStage(saved,0,content.stages[0].description);
@@ -220,8 +222,11 @@ export class TutorialService {
 
   private addStage(saved:SavedSession,index:number,summary:string):CanvasNode {
     const content = loadTutorialContent(saved.scenario);
+    const roots = this.store.getProject(saved.projectId).canvas.nodes.filter(node => !node.parentId);
+    const previous = roots.find(node => node.id === saved.stageNodeIds.at(-1));
     const node:CanvasNode = {id:randomUUID(),title:content.stages[index].title,
-      description:summary,kind:'topic',parentId:null,x:0,y:index*500,width:480};
+      description:summary,kind:'topic',parentId:null,x:previous?.x ?? 0,
+      y:roots.length ? Math.max(...roots.map(node => node.y)) + CARD_MAX_HEIGHT + LAYOUT_GAP : 0,width:480};
     const operations:Mutation[] = [{type:'addNode',node}];
     if (index) operations.push({type:'addConnection',connection:{id:randomUUID(),source:saved.stageNodeIds[index-1],target:node.id,
       label:['','Question guides evidence','Evidence supports the analysis','Findings support the draft'][index]}});
@@ -236,7 +241,10 @@ export class TutorialService {
   }
 
   private addNote(projectId:string,parentId:string,title:string,description:string,index:number,kind:CanvasNode['kind']='topic') {
-    const node:CanvasNode = {id:randomUUID(),title,description,kind,parentId,x:32,y:104+index*300,width:408};
+    // Positions are relative to the group's content area: the renderer already
+    // supplies the header and side padding. Keep the generated notes in a row.
+    const node:CanvasNode = {id:randomUUID(),title,description,kind,parentId,
+      x:index * (CARD_DEFAULT_WIDTH + LAYOUT_GAP),y:0,width:CARD_DEFAULT_WIDTH};
     this.store.mutate(projectId,[{type:'addNode',node}],`Demo: add ${title}`);
     return node;
   }

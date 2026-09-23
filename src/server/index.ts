@@ -14,7 +14,6 @@ import { SandboxBudget } from './sandbox-budget.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
-import { Waitlist } from './waitlist.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -30,7 +29,6 @@ let experiments: ExperimentService | undefined;
 let research:ResearchService|undefined;
 let assistant:AssistantService|undefined;
 let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
-let waitlist:Waitlist|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
 const server = createServer();
@@ -44,18 +42,16 @@ async function shutdown() {
   server.close();
   await vite?.close();
   publicDemo?.close();
-  waitlist?.close();
   store?.close();
   releaseLock();
 }
 try {
-  waitlist = new Waitlist(dataDir);
   let app:express.Express;
   if (publicMode) {
     if (process.env.ROS_DEV === '1') throw new Error('Public demo mode serves a production frontend build. Build it first and leave ROS_DEV unset.');
     const origin = process.env.ROS_PUBLIC_ORIGIN || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
     if (!origin) throw new Error('Set ROS_PUBLIC_ORIGIN or RAILWAY_PUBLIC_DOMAIN before starting public demo mode.');
-    publicDemo = createPublicDemoApp({dataDir,origin,maxSessions:Number(process.env.ROS_PUBLIC_MAX_SESSIONS || 500),waitlist});
+    publicDemo = createPublicDemoApp({dataDir,origin,maxSessions:Number(process.env.ROS_PUBLIC_MAX_SESSIONS || 500)});
     app = publicDemo.app;
   } else {
     store = new Store(dataDir);
@@ -64,7 +60,7 @@ try {
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
     assistant=new AssistantService(store,execution,experiments);
-    app = createApp(store, execution, experiments,research,assistant,{waitlist});
+    app = createApp(store, execution, experiments,research,assistant);
   }
   if (process.env.ROS_DEV !== '1') {
     if (!existsSync(resolve(root, 'dist/client/index.html'))) {
