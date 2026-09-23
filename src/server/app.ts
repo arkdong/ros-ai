@@ -1,0 +1,142 @@
+import express, { type ErrorRequestHandler } from 'express';
+import { z, ZodError } from 'zod';
+import { StoreError, type Store } from './store.js';
+import type { ExecutionService } from './execution.js';
+import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
+import { LocalConnections, Highlights } from './connections.js';
+import { Authority, modeSchema } from './authority.js';
+import type { ResearchService } from './research.js';
+import { attachAssistantRoutes, type AssistantService } from './assistant.js';
+import { seedDemo } from './demo.js';
+import { projectBudgetReport } from './budget-report.js';
+import { ModelSettings } from './model-settings.js';
+import { ProviderUsage } from './provider-usage.js';
+import { attachTutorialRoutes, TutorialService } from './tutorial.js';
+
+const identifier = z.string().min(1).max(120);
+const routeId = (value: unknown) => identifier.parse(value);
+
+/** The HTTP boundary has no provider credentials or arbitrary filesystem access. */
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'>>;
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean}={}) {
+  const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
+  const app = express();
+  const providerUsage = new ProviderUsage(store);
+  const modelSettings = new ModelSettings(store);
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    const host = req.headers.host ?? '';
+    if (!options.publicDemo && !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) {
+      return res.status(403).json({ error: 'ros.ai accepts only local host requests.' });
+    }
+    const origin = req.headers.origin;
+    if (!options.publicDemo && origin && origin !== `http://${host}`) {
+      return res.status(403).json({ error: 'Cross-origin requests are not permitted.' });
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+  app.use(express.json({ limit: '1mb' }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
+  attachTutorialRoutes(app,new TutorialService(store,experiments,options));
+  app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
+  app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
+  app.post('/api/projects', (req, res) => {
+    const { title,start } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional() }).strict().parse(req.body);
+    const project=store.createProject(title);
+    res.status(201).json(start==='demo'?seedDemo(store,project.id):project);
+  });
+  app.post('/api/projects/:id/trash',(req,res)=>res.json(store.trashProject(routeId(req.params.id))));
+  app.post('/api/projects/:id/restore',(req,res)=>res.json(store.restoreProject(routeId(req.params.id))));
+  app.get('/api/projects/:id/models', (req,res)=>res.json(modelSettings.read(routeId(req.params.id))));
+  app.patch('/api/projects/:id/models', (req,res)=>res.json(modelSettings.update(routeId(req.params.id),req.body)));
+  app.get('/api/projects/:id', (req, res) => res.json(store.detail(routeId(req.params.id))));
+  app.post('/api/projects/:id/mutations', (req, res) => {
+    const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
+    res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));
+  });
+  app.post('/api/projects/:id/undo', (req, res) => res.json(store.undo(routeId(req.params.id))));
+  app.post('/api/projects/:id/redo', (req, res) => res.json(store.redo(routeId(req.params.id))));
+  app.post('/api/projects/:id/chat', async (req, res) => {
+    const { message } = z.object({ message: z.string().trim().min(1).max(12000) }).strict().parse(req.body);
+    res.json(await execution.chat(routeId(req.params.id), message));
+  });
+  app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId));});
+  app.post('/api/projects/:id/proposals/:proposalId/dismiss', (req, res) => res.json(store.dismissProposal(routeId(req.params.id), routeId(req.params.proposalId))));
+  app.post('/api/projects/:id/runs', (req, res) => {
+    const { nodeId, ...options } = z.object({ nodeId: identifier, request: z.string().trim().min(1).max(12000), useSearch: z.boolean().default(false) }).strict().parse(req.body);
+    res.status(201).json(execution.startRun(routeId(req.params.id), nodeId, options));
+  });
+  app.post('/api/projects/:id/nodes/:nodeId/experiment-plan', (req, res) => {
+    const body = z.object({ request: z.string().trim().min(1).max(12000), datasetArtifactId: identifier, backend: z.enum(['bounded','docker-python','nebius-sandbox']).default('bounded') }).strict().parse(req.body);
+    if (!execution.startExperimentPlan) throw new StoreError('Model experiment planning is unavailable', 503);
+    res.status(201).json(execution.startExperimentPlan(routeId(req.params.id), routeId(req.params.nodeId), body));
+  });
+  app.post('/api/runs/:id/cancel', (req, res) => {
+    const id = routeId(req.params.id);
+    res.json(experiments?.owns(id) ? experiments.cancel(id) : execution.cancelRun(id));
+  });
+  app.post('/api/runs/:id/retry', (req, res) => {
+    const id = routeId(req.params.id);
+    res.status(201).json(experiments?.owns(id) ? experiments.retry(id).run : execution.retryRun(id));
+  });
+  app.post('/api/projects/:id/inputs', (req, res) => {
+    const body = z.object({ nodeId: identifier, artifactId: identifier, excerpt: z.string().max(200000).optional() }).strict().parse(req.body);
+    res.status(201).json(store.addInput(routeId(req.params.id), body.nodeId, body.artifactId, body.excerpt));
+  });
+  app.delete('/api/projects/:id/inputs/:inputId', (req, res) => {
+    store.removeInput(routeId(req.params.id), routeId(req.params.inputId));
+    res.json({ ok: true });
+  });
+  app.get('/api/connections', (_req, res) => res.json(execution.connectionStatuses()));
+  app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
+  app.get('/api/projects/:id/budget', async (req, res) => {
+    const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
+    res.json({ ...report, providerAccounts: await providerUsage.read() });
+  });
+  app.get('/api/projects/:id/policy',(req,res)=>res.json(authority.policy(routeId(req.params.id))));
+  app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
+  app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
+  app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));
+  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);if(research)res.json(research.stopProject(id));else{authority.setStopped(id,true);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));}});
+  app.get('/api/projects/:id/reviews',(req,res)=>res.json(store.records('review',routeId(req.params.id))));
+  app.get('/api/projects/:id/local-connections',(req,res)=>res.json(connections.list(routeId(req.params.id))));
+  app.get('/api/projects/:id/resources',(req,res)=>res.json(connections.resources(routeId(req.params.id))));
+  app.post('/api/projects/:id/resources',(req,res)=>res.status(201).json(connections.addResource(routeId(req.params.id),req.body)));
+  app.get('/api/projects/:id/resources/:resourceId',(req,res)=>res.json(connections.previewResource(routeId(req.params.id),routeId(req.params.resourceId))));
+  app.post('/api/projects/:id/resources/:resourceId/use',(req,res)=>{const {nodeId}=z.object({nodeId:identifier}).strict().parse(req.body);res.status(201).json(connections.useResource(routeId(req.params.id),routeId(req.params.resourceId),nodeId));});
+  app.post('/api/projects/:id/local-connections',(req,res)=>res.status(201).json(connections.add(routeId(req.params.id),req.body)));
+  app.patch('/api/projects/:id/local-connections/:connectionId',(req,res)=>{const {writable}=z.object({writable:z.boolean()}).strict().parse(req.body);res.json(connections.setWritable(routeId(req.params.id),routeId(req.params.connectionId),writable));});
+  app.post('/api/projects/:id/local-connections/:connectionId/import',(req,res)=>{const {nodeId}=z.object({nodeId:identifier}).strict().parse(req.body);res.status(201).json(connections.import(routeId(req.params.id),routeId(req.params.connectionId),nodeId));});
+  app.post('/api/projects/:id/local-connections/:connectionId/export',(req,res)=>{const {artifactIds}=z.object({artifactIds:z.array(identifier).min(1).max(50)}).strict().parse(req.body);res.json(connections.export(routeId(req.params.id),routeId(req.params.connectionId),artifactIds));});
+  app.post('/api/projects/:id/local-connections/:connectionId/write',(req,res)=>{const body=z.object({expectedHash:z.string().regex(/^[a-f0-9]{64}$/),content:z.string().min(1).max(500000)}).strict().parse(req.body);res.json(connections.replace(routeId(req.params.id),routeId(req.params.connectionId),body.expectedHash,body.content));});
+  app.post('/api/projects/:id/highlights',(req,res)=>res.status(201).json(highlights.save(routeId(req.params.id),req.body)));
+  app.patch('/api/projects/:id/highlights/:highlightId',(req,res)=>res.json(highlights.save(routeId(req.params.id),req.body,routeId(req.params.highlightId))));
+  app.delete('/api/projects/:id/highlights/:highlightId',(req,res)=>{highlights.remove(routeId(req.params.id),routeId(req.params.highlightId));res.json({ok:true});});
+  if(research){
+    app.get('/api/projects/:id/research',(req,res)=>res.json(research.list(routeId(req.params.id))));
+    app.post('/api/projects/:id/research',(req,res)=>res.status(201).json(research.start(routeId(req.params.id),req.body)));
+    app.post('/api/research/:id/continue',(req,res)=>{const {message}=z.object({message:z.string().trim().min(1).max(12000).optional()}).strict().parse(req.body);res.json(research.continue(routeId(req.params.id),message));});
+    app.post('/api/research/:id/stop',(req,res)=>res.json(research.stop(routeId(req.params.id))));
+  }
+  if (assistant) attachAssistantRoutes(app,assistant);
+  if (experiments) attachExperimentRoutes(app, experiments);
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
+  return app;
+}
+
+export const apiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (error instanceof ZodError) {
+    res.status(400).json({ error: error.issues.map(issue => `${issue.path.join('.') || 'request'}: ${issue.message}`).join('; ') });
+    return;
+  }
+  const message = error instanceof Error ? error.message : 'The request could not be completed.';
+  // Provider adapters return curated errors, never upstream authorization/body details.
+  const status = error instanceof StoreError ? error.status : /not found|does not exist/i.test(message) ? 404
+    : /stale|revision|already|concurren|busy|running|conflict/i.test(message) ? 409
+    : /budget|credential|configured|unavailable/i.test(message) ? 503 : 400;
+  res.status(status).json({ error: message });
+};

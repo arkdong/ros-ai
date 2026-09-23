@@ -1,0 +1,14 @@
+.model-settings { margin: 12px 0 2px; padding: 11px 12px; background: #f7f8f7; border: 1px solid #e3e7e3; border-radius: 9px; min-width: 0; }
+.model-settings-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; margin-bottom: 8px; font-size: 12px; }
+.model-settings-heading strong { color: #344238; font-size: 12px; font-weight: 600; }
+.model-settings-heading > span { min-width: 0; color: #737b76; overflow-wrap: anywhere; }
+.model-settings-selects { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.2fr); gap: 9px; }
+.model-settings-selects label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 11px; color: #677068; }
+.model-settings-selects select { width: 100%; min-width: 0; height: 33px; margin: 0; padding: 5px 7px; background-color: #fff; font-size: 12px; color: #27352c; border-color: #d5dbd6; }
+.model-settings-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px 10px; margin-top: 7px; color: #737b76; font-size: 11px; }
+.model-settings-foot .text-button { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.assistant-panel > .model-settings { flex: 0 0 auto; margin: 0 14px 10px; }
+.assistant-panel .model-settings-heading { margin-bottom: 6px; }
+.assistant-panel .model-settings-selects { grid-template-columns: minmax(120px, 1fr) minmax(130px, 1.2fr); }
+.research-panel > .model-settings { margin: 0 0 16px; }
+@media (max-width: 440px) { .model-settings-selects { grid-template-columns: 1fr; } }

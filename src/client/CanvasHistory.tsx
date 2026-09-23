@@ -1,0 +1,8 @@
+import { X } from 'lucide-react';
+import type { Artifact, Change, ProjectDetail } from '../shared/types';
+import { contentTimeline } from '../shared/content-timeline';
+import { date } from './Content';
+
+export function CanvasHistory({detail,historical,onClose,onCanvas,onEvidence}:{detail:ProjectDetail;historical:Change|null;onClose:()=>void;onCanvas:(change:Change|null)=>void;onEvidence:(artifact:Artifact)=>void}){
+  return <section className="history-panel" aria-label="Canvas content history"><div className="section-heading"><h3>Canvas history</h3><button className="icon-button" aria-label="Close history" onClick={onClose}><X size={15}/></button></div><p className="subtle">Content edits and saved evidence. Layout changes stay out of history. Undo and Redo apply to canvas content; saved research is retained.</p><button className={`history-entry ${!historical?'active':''}`} onClick={()=>onCanvas(null)}><strong>Current canvas</strong></button>{contentTimeline(detail).map(entry=>entry.kind==='canvas'?<button className={`history-entry ${historical?.id===entry.change.id?'active':''}`} key={entry.id} onClick={()=>onCanvas(entry.change)}><span className="history-timeline-dot"/><div><strong>{entry.change.label}</strong><small>{date(entry.createdAt)}</small></div></button>:<details className="history-evidence" key={entry.id}><summary><strong>Saved evidence · {entry.title}</strong><small>{entry.artifacts.length} saved {entry.artifacts.length===1?'version':'versions'} · {date(entry.createdAt)}</small></summary><div>{entry.artifacts.map(artifact=><button className="history-evidence-link" key={artifact.id} onClick={()=>onEvidence(artifact)}>{artifact.title}<small>{artifact.kind} · {artifact.hash.slice(0,8)}</small></button>)}</div></details>)}</section>;
+}

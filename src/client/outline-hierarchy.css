@@ -1,0 +1,251 @@
+.assistant-outline.outline-hierarchy {
+  --outline-ink: #171717;
+  --outline-muted: #6b6b6b;
+  --outline-rule: #e1e3e0;
+  --outline-evidence: #647568;
+  padding: 22px 20px;
+}
+
+.outline-hierarchy .outline-question {
+  border-bottom: 0;
+  border-left: 3px solid #c8cec8;
+  padding: 0 0 0 14px;
+  margin: 2px 0 25px;
+}
+
+.outline-hierarchy .outline-question .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .055em;
+  color: var(--outline-muted);
+}
+
+.outline-hierarchy .outline-question > p {
+  margin: 9px 0 0;
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: 550;
+  letter-spacing: -.15px;
+  overflow-wrap: anywhere;
+}
+
+.outline-hierarchy .outline-question > p.outline-placeholder {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--outline-muted);
+}
+
+.outline-hierarchy .outline-hierarchy-section {
+  border-top: 1px solid var(--outline-rule);
+  padding: 14px 0 16px;
+}
+
+.outline-hierarchy .outline-section-toggle,
+.outline-hierarchy .outline-direction-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--outline-ink);
+}
+
+.outline-hierarchy .outline-section-toggle::-webkit-details-marker,
+.outline-hierarchy .outline-direction-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.outline-hierarchy .outline-section-toggle {
+  align-items: center;
+  min-height: 30px;
+}
+
+.outline-hierarchy .outline-section-toggle h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.outline-hierarchy .outline-item-count {
+  min-width: 22px;
+  text-align: right;
+  color: var(--outline-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.outline-hierarchy .outline-disclosure-icon {
+  flex-shrink: 0;
+  color: #878c87;
+  transition: transform 120ms ease;
+}
+
+.outline-hierarchy details[open] > summary > .outline-disclosure-icon {
+  transform: rotate(90deg);
+}
+
+.outline-hierarchy .outline-section-content {
+  padding: 13px 0 0 1px;
+}
+
+.outline-hierarchy .outline-direction-branch + .outline-direction-branch {
+  margin-top: 15px;
+}
+
+.outline-hierarchy .outline-direction-toggle {
+  padding: 4px 0;
+}
+
+.outline-hierarchy .outline-direction-toggle > .outline-disclosure-icon {
+  margin-top: 4px;
+}
+
+.outline-hierarchy .outline-direction-toggle > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.outline-hierarchy .outline-direction-toggle strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -.12px;
+  overflow-wrap: anywhere;
+}
+
+.outline-hierarchy .outline-collapsed-summary {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--outline-muted);
+  overflow-wrap: anywhere;
+}
+
+.outline-hierarchy .outline-direction-branch[open] > .outline-direction-toggle .outline-collapsed-summary {
+  display: none;
+}
+
+.outline-hierarchy .outline-branch-meta {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--outline-muted);
+}
+
+.outline-hierarchy .outline-direction-content {
+  margin: 10px 0 0 6px;
+  border-left: 1px solid var(--outline-rule);
+  padding: 0 0 5px 15px;
+}
+
+.outline-hierarchy .outline-entry {
+  padding: 13px 0;
+  border-top: 1px solid var(--outline-rule);
+}
+
+.outline-hierarchy .outline-entry:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.outline-hierarchy .outline-direction-context {
+  padding-bottom: 13px;
+}
+
+.outline-hierarchy .outline-entry > p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.outline-hierarchy .outline-entry > p.outline-main-summary {
+  font-size: 14px;
+  color: var(--outline-ink);
+}
+
+.outline-hierarchy .outline-open-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 1px 0;
+  min-height: 22px;
+  color: var(--outline-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.outline-hierarchy .outline-linked-findings {
+  border-left: 2px solid #c8d3ca;
+  margin: 4px 0 4px 0;
+  padding: 1px 0 0 12px;
+}
+
+.outline-hierarchy .outline-linked-findings > h4,
+.outline-hierarchy .outline-nested-directions > h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 13px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: .015em;
+  color: var(--outline-evidence);
+}
+
+.outline-hierarchy .outline-linked-findings > h4 > span {
+  margin-left: auto;
+  color: var(--outline-muted);
+  font-weight: 400;
+}
+
+.outline-hierarchy .outline-nested-directions {
+  margin-top: 17px;
+}
+
+.outline-hierarchy .outline-nested-directions > h4 {
+  color: var(--outline-muted);
+  margin-bottom: 10px;
+}
+
+.outline-hierarchy .outline-section-caption {
+  color: var(--outline-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0 0 16px;
+}
+
+.outline-hierarchy .outline-linked-findings .outline-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.outline-hierarchy .outline-entry .assistant-references {
+  gap: 5px;
+}
+
+.outline-hierarchy .outline-entry .assistant-references button {
+  max-width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.outline-hierarchy .outline-footer {
+  margin-top: 12px;
+  text-align: left;
+  line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outline-hierarchy .outline-disclosure-icon { transition: none; }
+}

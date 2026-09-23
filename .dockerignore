@@ -1,0 +1,30 @@
+# Allow only the source and curated banking material needed by Dockerfile.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!index.html
+!vite.config.ts
+!tsconfig.json
+!src/
+!src/**
+!public/
+!public/**
+!examples/
+!examples/dutch-ai-adoption/
+!examples/dutch-ai-adoption/analysis.py
+!examples/dutch-ai-adoption/cbs-ai-size-2024.csv
+!examples/dutch-ai-adoption/article.md
+!examples/tutorial-results/
+!examples/tutorial-results/banking.json
+
+# Explicit exclusions also apply inside otherwise allowed source folders.
+**/.env*
+**/.ros-ai*
+**/.git
+**/node_modules
+**/__pycache__
+**/.DS_Store
+examples/demo-market-risk/**
+examples/tutorial-results/market.json
