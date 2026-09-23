@@ -1,7 +1,7 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T13:31:10.291147+00:00",
+  "refreshedAt": "2026-09-23T13:35:48.755570+00:00",
   "scenarioData": "banking only",
   "fileCount": 118,
   "files": [
@@ -137,8 +137,8 @@
     },
     {
       "path": "public/deck/index.html",
-      "bytes": 52803,
-      "sha256": "23d82d64bd38b803f90bd3e665697d573077bb2e470aa4e433192f1bf9f34b5a"
+      "bytes": 53816,
+      "sha256": "fc681396c02e3820d471bbbd2b3cd53bc40750be09344750f3c40875969c2b52"
     },
     {
       "path": "src/client/App.tsx",
