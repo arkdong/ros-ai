@@ -111,8 +111,8 @@ export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSes
     next();
   });
   if (options.waitlist) attachWaitlistRoutes(app, options.waitlist, { origin: origin.origin });
-  // Public visitors see early access first; the research demo has its own entry.
-  app.get('/',(_req,res) => res.redirect(302, '/waitlist'));
+  // Public visitors enter the demo; signup remains available at /waitlist.
+  app.get('/',(_req,res) => res.redirect(302, '/app'));
   // Establish the browser identity with the document, before its JavaScript
   // starts parallel catalog/project requests without an existing cookie.
   app.get('/app',(req,res,next) => { if (ensureVisitor(req,res)) next(); });
