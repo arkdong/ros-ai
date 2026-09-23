@@ -1,7 +1,7 @@
 {
   "release": "ros-ai-public-demo-20260923",
   "createdAt": "2026-09-23T11:03:39.632387+00:00",
-  "refreshedAt": "2026-09-23T12:58:50.395749+00:00",
+  "refreshedAt": "2026-09-23T13:31:10.291147+00:00",
   "scenarioData": "banking only",
   "fileCount": 118,
   "files": [
@@ -122,8 +122,8 @@
     },
     {
       "path": "public/deck/comparison-evidence.html",
-      "bytes": 12757,
-      "sha256": "deae87b1c5480ae22b8a4e40b43e8d2598159d8a28b058e9f0611475d6769eb4"
+      "bytes": 16454,
+      "sha256": "3e74e4e1dd84f194d6ea2b9f99038d98dd0c94da8cf60d22c23077f3d2f0a6ba"
     },
     {
       "path": "public/deck/comparison-rerun-results.json",
@@ -137,8 +137,8 @@
     },
     {
       "path": "public/deck/index.html",
-      "bytes": 52636,
-      "sha256": "c5b957ae4920991bb9fb2a514c80b2ce509458fb0a6828058ac2b74ae16d6ac3"
+      "bytes": 52803,
+      "sha256": "23d82d64bd38b803f90bd3e665697d573077bb2e470aa4e433192f1bf9f34b5a"
     },
     {
       "path": "src/client/App.tsx",
