@@ -1,0 +1,26 @@
+{
+  "status": "real weather prerequisite only; bicycle counts not acquired",
+  "sourceSha256": "1715da0bf335cd3376a5b35fa0b3442c6073a6fde2682b74b0beccddef39e2f0",
+  "preparedCsvSha256": "52ab235da9f5c4581d483d23c7404baa08cffe1ada87b1945c90ba7f7640df1a",
+  "sourceRows": 8856,
+  "retainedHourlyRows": 8784,
+  "dailyRows": 366,
+  "startLocalDate": "2024-01-01",
+  "endLocalDateInclusive": "2024-12-31",
+  "timezone": "Europe/Amsterdam",
+  "duplicateHours": 0,
+  "missingIntervals": 0,
+  "missingValues": {
+    "rain": 0,
+    "temperature": 0,
+    "wind": 0
+  },
+  "dstDayHours": {
+    "2024-03-31": 23,
+    "2024-10-27": 25
+  },
+  "traceHours": 843,
+  "traceConvention": "rain_mm assigns RH=-1 a zero contribution; actual trace is <0.05 mm per trace hour. trace_max_additional_mm bounds only omitted trace (exclusive when trace count is positive), not total measurement uncertainty.",
+  "bicycleCountRows": 0,
+  "modelAnalysisPerformed": false
+}

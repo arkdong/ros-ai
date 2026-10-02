@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 import type { RemoteExecutionState } from '../shared/experiments.js';
 export type { RemoteExecutionState } from '../shared/experiments.js';
-export type SandboxInput = { code: string; csv: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
+export type SandboxInput = { code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
 export type SandboxOutput = { kind: 'table' | 'metric' | 'plot' | 'result' | 'dataset'; title: string; content: string; mediaType: string; metadata?: Record<string, unknown> };
 export type SandboxCapabilities = {
   available: boolean; backend: 'docker-python' | 'nebius-sandbox'; policy: string; runtime: string | null;
@@ -81,7 +81,7 @@ export class DockerPythonBackend implements ExecutionBackend {
       timeoutMs, maxMemoryMb: 512, maxOutputBytes,
       enforcement: [
         'Linux container: network none; read-only root; non-root UID; all capabilities dropped; no-new-privileges and Docker default seccomp.',
-        'Only copied, immutable per-run CSV/code/parameters mounted read-only. No original files, host folders, credentials, or Docker socket are mounted.',
+        'Only copied, immutable per-run code/parameters and an optional explicit CSV mounted read-only. No original files, host folders, credentials, or Docker socket are mounted.',
         '512 MB memory with no additional swap, 1 CPU quota, 32 processes, CPU 25 s, wall time at most 30 s; stop kills the whole container including child processes.',
         'Private /work and /tmp each limited to 64 MB. Per-file 16 MB, stdout 2 MB, stderr 100 KB, 20 captured outputs of at most 500 KB each.',
       ],
@@ -101,14 +101,16 @@ export class DockerPythonBackend implements ExecutionBackend {
   start(input: SandboxInput): SandboxHandle {
     if (!this.value.available || !this.value.imageId) throw new Error('Isolated Python is unavailable. ' + this.value.limitations[0]);
     if (typeof input.code !== 'string' || !input.code.trim() || Buffer.byteLength(input.code) > 100_000) throw new Error('Sandbox code must be 1-100 KB.');
-    if (typeof input.csv !== 'string' || Buffer.byteLength(input.csv) > 2_000_000) throw new Error('Sandbox CSV exceeds 2 MB.');
+    if (input.csv !== undefined && (typeof input.csv !== 'string' || !input.csv.trim() || Buffer.byteLength(input.csv) > 2_000_000)) throw new Error('An explicitly supplied sandbox CSV must be nonempty and at most 2 MB.');
     const parameters = z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).parse(input.parameters);
     const timeoutMs = Math.min(this.value.timeoutMs, Math.max(100, input.timeoutMs ?? this.value.timeoutMs));
     const startedAt = new Date().toISOString(), name = `ros-ai-${randomUUID()}`;
     const temporary = mkdtempSync(join(tmpdir(), 'ros-ai-sandbox-'));
     const inputs = join(temporary, 'input');
     mkdirSync(inputs, { mode: 0o755 });
-    for (const [filename, content] of [['dataset.csv', input.csv], ['program.py', input.code], ['parameters.json', JSON.stringify(parameters)]]) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
+    const files = [['program.py', input.code], ['parameters.json', JSON.stringify(parameters)]];
+    if (input.csv !== undefined) files.push(['dataset.csv', input.csv]);
+    for (const [filename, content] of files) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
     chmodSync(inputs, 0o555);
     let stopped: string | undefined, timedOut = false, overflow = false, cleanupUnconfirmed = false;
     let killClientTimer: ReturnType<typeof setTimeout> | undefined;
@@ -160,14 +162,17 @@ export class DockerPythonBackend implements ExecutionBackend {
         const result: SandboxResult = { status: stopped ? 'cancelled' : 'failed', outputs: [], stdout: '', stderr: dockerStderr, exitCode, signal, runtime: this.value.runtime, startedAt, endedAt: new Date().toISOString(), enforcement: [...this.value.enforcement] };
         if (cleanupUnconfirmed) result.stderr += '\nDocker did not confirm stop within 6 seconds. The client was killed; container cleanup is uncertain and the separate watchdog will retry.';
         try {
-          if (stopped || timedOut || overflow) throw new Error(stopped ?? errorMessage);
-          let decoded: z.infer<typeof resultSchema>;
+          let decoded: z.infer<typeof resultSchema> | undefined;
           try { decoded = resultSchema.parse(JSON.parse(wire)); }
-          catch { throw new Error(errorMessage ?? `Container exited ${exitCode ?? signal ?? 'unknown'} without a valid bounded capture. ${dockerStderr.slice(-2000)}`); }
-          result.outputs = decoded.outputs;
-          result.stdout = decoded.stdout;
-          result.stderr += decoded.stderr;
-          result.runtime = decoded.runtime;
+          catch { /* An interrupted worker may never emit its final bounded capture. */ }
+          if (decoded) {
+            result.outputs = decoded.outputs;
+            result.stdout = decoded.stdout;
+            result.stderr += decoded.stderr;
+            result.runtime = decoded.runtime;
+          }
+          if (stopped || timedOut || overflow) throw new Error(stopped ?? errorMessage);
+          if (!decoded) throw new Error(errorMessage ?? `Container exited ${exitCode ?? signal ?? 'unknown'} without a valid bounded capture. ${dockerStderr.slice(-2000)}`);
           if (!decoded.ok || exitCode !== 0) throw new Error(decoded.error ?? errorMessage ?? `Container exited ${exitCode}.`);
           result.status = 'completed';
         } catch (error) { result.error = error instanceof Error ? error.message.slice(0, 2000) : 'Isolated experiment failed.'; }

@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { ModelAdapter, ModelInfo, ModelRequest, ModelResponse } from './providers.js';
+import {captureChatCompletion} from './response-normalization.js';
 
 export const OPENAI_MODELS = [
   { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini', inputUsdPerToken: 0.75 / 1_000_000, outputUsdPerToken: 4.5 / 1_000_000 },
@@ -37,11 +38,7 @@ export class OpenAIAdapter implements ModelAdapter {
     const client = new OpenAI({ apiKey: this.key, maxRetries: 0 });
     try {
       const result = await client.chat.completions.create(body as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, { signal });
-      const content = result.choices[0]?.message.content;
-      if (!content?.trim()) throw new Error('OpenAI returned no text response.');
-      if (content.length > 100000) throw new Error('OpenAI response exceeds the bounded contract.');
-      return { content, model: result.model, modelVersion: result.model, usage: result.usage ? { inputTokens: result.usage.prompt_tokens, outputTokens: result.usage.completion_tokens } : null,
-        metadata: { provider: this.provider, requestId: result.id, finishReason: result.choices[0]?.finish_reason ?? null, providerUsage: result.usage ?? null, responseContract: request.schema ? 'application-validated-json' : 'text', wireRequest: body } };
+      return captureChatCompletion(result,{provider:this.provider,requestedModel:this.model,modelVersion:true,responseContract:request.schema?'application-validated-json':'text',wireRequest:body});
     } catch (error) {
       if (error instanceof OpenAI.APIError) throw new Error(`OpenAI returned ${error.status ? `HTTP ${error.status}` : 'a connection error'}. No automatic retry was attempted.`);
       throw error;

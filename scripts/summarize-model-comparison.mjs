@@ -1,0 +1,23 @@
+/** Summarize recorded native runs only. No network or inference. */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+const dir = 'examples/model-comparison-2026-09-23';
+const read = path => JSON.parse(readFileSync(`${dir}/${path}`, 'utf8'));
+const expected = {'Adoption gap, largest minus smallest (pp)':41.4,'Largest-group turnover minus enterprise share (pp)':20.3,'Groups where turnover share is below enterprise share':2,'Aggregate size groups':6};
+const assessment = read('assessment.json');
+const models = ['openai','nemotron','kimi'].map(key => {
+  const receipt = read(`${key}/receipt.json`), detail = read(`${key}/project-evidence.json`), usage = read(`${key}/usage.json`);
+  if (usage.length !== 2) throw Error(`${key}: expected exactly two paid requests`);
+  const execution = detail.runs.find(run => run.id === receipt.execute.runId);
+  const code = read(`${key}/plan.json`).code;
+  if (execution.configuration.code !== code) throw Error(`${key}: execution changed proposed code`);
+  const metrics = detail.artifacts.filter(a => a.runId === execution.id && a.kind === 'metric');
+  const checks = Object.entries(expected).map(([title,value]) => ({title,expected:value,actual:JSON.parse(metrics.find(a=>a.title===title).content).value}));
+  if (execution.status !== 'completed' || checks.some(c=>Math.abs(c.actual-c.expected)>1e-8)) throw Error(`${key}: numerical check failed`);
+  const calls = usage.map(u => ({runId:u.runId,status:u.status,estimatedUsd:u.estimatedUsd,reservedUsd:u.reservedUsd,inputTokens:u.reportedUsage?.response?.usage?.inputTokens??null,outputTokens:u.reportedUsage?.response?.usage?.outputTokens??null,reasoningTokens:u.reportedUsage?.response?.metadata?.providerUsage?.completion_tokens_details?.reasoning_tokens??null,modelMs:u.reportedUsage?.response?.metadata?.latencyMs??u.reportedUsage?.failure?.latencyMs??null,finishReason:u.reportedUsage?.response?.metadata?.finishReason??null,error:u.reportedUsage?.failure?.message??null}));
+  return {key,label:receipt.configuration.label,model:receipt.configuration.model,projectId:receipt.projectId,providerRequests:usage.length,calls,modelTimeMs:calls.reduce((n,c)=>n+c.modelMs,0),inputTokensKnown:calls.reduce((n,c)=>n+(c.inputTokens??0),0),outputTokensKnown:calls.reduce((n,c)=>n+(c.outputTokens??0),0),tokenUsageComplete:calls.every(c=>c.inputTokens!==null&&c.outputTokens!==null),estimatedUsdKnown:calls.reduce((n,c)=>n+(c.estimatedUsd??0),0),costEstimateComplete:calls.every(c=>c.estimatedUsd!==null),reservedUsd:calls.reduce((n,c)=>n+Math.max(c.reservedUsd,c.estimatedUsd??0),0),pythonRunMs:Date.parse(execution.endedAt)-Date.parse(execution.startedAt),codeUnedited:true,codeSha256:createHash('sha256').update(code).digest('hex'),numericalChecks:checks,draftStatus:key==='openai'?'Complete':key==='nemotron'?'Truncated at output cap':'No text returned',integrationRecovery:receipt.recoveredPlan??null};
+});
+const summary = {generatedAt:new Date().toISOString(),scenario:'Identical captured CBS 2024 aggregate enterprise-size data',date:'2026-09-23',workflowsPerModel:1,maxOutputTokensPerRequest:1400,models,totals:{authorizedCapUsd:40,providerRequests:models.reduce((n,m)=>n+m.providerRequests,0),estimatedUsdKnown:models.reduce((n,m)=>n+m.estimatedUsdKnown,0),uncertainRequests:models.flatMap(m=>m.calls).filter(c=>c.estimatedUsd===null).length,reservedUsd:models.reduce((n,m)=>n+m.reservedUsd,0),numericalChecksPassed:12,numericalChecksTotal:12},limitations:['n=1 per configuration; no general performance ranking','App-observed API time sums plan and interpretation, including the failed Kimi response wait; excludes code review, catalogue admission and Python','Output token usage includes reasoning; GPT reasoning was none while Nebius models used provider defaults','Kimi final response had no text and its token usage/charge were not retained by the adapter; complete token/cost totals are unknown','GPT proposal response was recovered from captured usage after a local model-version persistence failure; no additional inference or code changes','Known costs are token-price estimates, not account invoices; retained conservative reservations are separate'],assessment};
+if(summary.totals.reservedUsd>40)throw Error('Comparison exceeded cap');
+writeFileSync(`${dir}/summary.json`,JSON.stringify(summary,null,2)+'\n');
+console.log(JSON.stringify({models:models.map(({key,modelTimeMs,inputTokensKnown,outputTokensKnown,estimatedUsdKnown,reservedUsd,draftStatus,pythonRunMs})=>({key,modelTimeMs,inputTokensKnown,outputTokensKnown,estimatedUsdKnown,reservedUsd,draftStatus,pythonRunMs})),totals:summary.totals},null,2));

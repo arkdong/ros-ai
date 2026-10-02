@@ -1,9 +1,38 @@
-node_modules/
-dist/
+.DS_Store
 .env
 .env.*
+!.env.example
+.idea/
+.vscode/
+
+# Common dependency and build outputs; remove entries that do not fit the chosen stack.
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules
+coverage/
+dist/
+build/
+
+# Local research data and test/browser state
 .ros-ai/
-*.sqlite
-*.sqlite-*
-*.log
-.DS_Store
+.playwright/
+test-results/
+
+# Private pre-upgrade recovery copies
+.ros-ai-backups/
+
+# Local verification captures and generated presentation exports stay on this Mac.
+/evidence/
+/outputs/
+.build/
+
+# Restricted market captures and historical provider-response bundles are local.
+/examples/demo-market-risk/*
+!/examples/demo-market-risk/README.md
+!/examples/demo-market-risk/*.py
+!/examples/demo-market-risk/research-v2/
+/examples/demo-market-risk/research-v2/*
+!/examples/demo-market-risk/research-v2/*.py
+/examples/tutorial-results/market.json
+/examples/model-comparison-*/

@@ -1,0 +1,16 @@
+{
+  "retrievedAt": "2026-09-21T21:25:36.634482+00:00",
+  "url": "https://dexter.ndw.nu/api/gis/bicycle-data/complete",
+  "status": 200,
+  "method": "GET",
+  "sourceResponseSha256": "1b129c9f0b8a2ef0bae84148b42455c1dc6a33a7201040d7b6bc4850802881bb",
+  "sourceResponseBytes": 4785365,
+  "sourceFeatures": 10929,
+  "selection": [
+    "PNH08_11_5",
+    "PNH08_11_8",
+    "PNH08_11_9"
+  ],
+  "savedSubsetSha256": "ba55fbd8ea769f4ffc25b2bd09ff744cead15ec5901e0c2bc9c7d7704ede25eb",
+  "warning": "Metadata only; validFrom is configuration validity, not proof of count-data coverage."
+}

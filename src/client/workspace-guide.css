@@ -1,0 +1,57 @@
+.workspace-guide-modal { width:min(740px,95vw); }
+.workspace-guide { color:#354330; font-size:13px; }
+.workspace-guide .guide-intro { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; }
+.workspace-guide p { margin:7px 0; line-height:1.55; }
+.workspace-guide small { color:#75806e; font-size:11px; line-height:1.5; }
+.workspace-guide .guide-intro p { color:#738069; margin:4px 0 14px; }
+.workspace-guide .guide-destination { display:flex; flex-wrap:wrap; gap:5px 12px; align-items:center; padding:9px 11px; border:1px solid #e2e8dc; border-radius:7px; background:#f7f9f4; font-size:12px; }
+.workspace-guide .guide-destination span { color:#75816e; }
+.workspace-guide .guide-intents { display:flex; gap:4px; margin:15px 0; }
+.workspace-guide .guide-intents button { flex:1; border:1px solid #e3e8de; border-radius:6px; padding:9px 6px; background:#fff; color:#6c7863; font-size:12px; }
+.workspace-guide .guide-intents button.active { color:#42602e; background:#edf3e7; border-color:#cadab9; }
+.workspace-guide .guide-context { border:1px solid #e7e9e4; border-radius:8px; padding:12px; }
+.workspace-guide summary { cursor:pointer; font-size:12px; color:#617456; }
+.workspace-guide .guide-context > details { margin-top:11px; }
+.workspace-guide fieldset { border:0; border-top:1px solid #eceee7; padding:13px 0 4px; margin:14px 0 0; min-width:0; }
+.workspace-guide legend { font-weight:600; font-size:12px; padding:0 5px 0 0; }
+.workspace-guide fieldset > p { font-size:11px; color:#7b8574; margin:0 0 9px; }
+.workspace-guide .guide-selection-list { max-height:185px; overflow:auto; display:grid; gap:3px; }
+.workspace-guide .guide-selection-list label,.workspace-guide .guide-check { display:flex; gap:8px; align-items:flex-start; font-size:12px; padding:4px 0; }
+.workspace-guide input[type=checkbox] { width:14px; height:14px; margin:2px 0 0; flex-shrink:0; }
+.workspace-guide .guide-selection-list span,.workspace-guide .guide-check span { min-width:0; overflow-wrap:anywhere; }
+.workspace-guide .guide-selection-list small,.workspace-guide .guide-check small { display:block; }
+.workspace-guide .guide-evidence-list { max-height:360px; overflow:auto; }
+.workspace-guide .guide-evidence-list > div { border-bottom:1px solid #eceee7; padding:5px 0; }
+.workspace-guide .guide-evidence-list details { margin:5px 0 9px 22px; }
+.workspace-guide pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; max-height:220px; overflow:auto; background:#f6f7f3; border-radius:5px; padding:9px; }
+.workspace-guide code { font-size:10px; color:#7d8675; display:block; overflow-wrap:anywhere; }
+.workspace-guide .guide-excerpt { display:block; margin:8px 0 8px 22px; font-size:11px; color:#75806d; }
+.workspace-guide textarea { width:100%; margin-top:5px; font-size:13px; }
+.workspace-guide .guide-message { display:block; margin-top:16px; font-size:12px; font-weight:500; }
+.workspace-guide .guide-message > span { font-size:11px; color:#86907d; font-weight:400; }
+.workspace-guide .guide-help { font-size:12px; color:#9b7048; }
+.workspace-guide .guide-consent { display:flex; align-items:flex-start; gap:8px; font-size:12px; color:#6c7a60; line-height:1.5; margin:13px 0; }
+.workspace-guide .guide-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.workspace-guide .guide-blocker { padding:9px 11px; background:#f8f5eb; border:1px solid #eee6ce; border-radius:6px; margin-top:10px; font-size:12px; }
+.workspace-guide .guide-blocker button { margin-right:12px; }
+.workspace-guide .guide-settings { background:#f7f9f4; border:1px solid #e3e9dc; border-radius:8px; padding:13px; margin-bottom:14px; }
+.workspace-guide h3 { font-size:13px; margin:0 0 9px; }
+.workspace-guide .guide-settings > p { font-size:12px; color:#75816b; }
+.workspace-guide .guide-settings label { display:block; margin:10px 0; font-size:12px; }
+.workspace-guide select { width:100%; display:block; margin-top:5px; font-size:12px; }
+.workspace-guide .guide-settings > details { margin-top:12px; }
+.workspace-guide .guide-notice { display:flex; align-items:center; gap:6px; color:#4f7040; font-size:12px; }
+.workspace-guide .guide-history { border-top:1px solid #e8ebe2; margin-top:22px; padding-top:16px; }
+.workspace-guide .guide-review { border:1px solid #e6e9df; border-radius:8px; padding:13px; margin:10px 0; }
+.workspace-guide .guide-review-heading { display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; }
+.workspace-guide .guide-review-heading span { color:#8a9281; font-size:10px; }
+.workspace-guide .guide-review .rich-text { margin-top:12px; }
+.workspace-guide .guide-interpretation { font-size:10px; color:#859079; }
+.workspace-guide .guide-review-error { margin:8px 0; color:#9f6a4b; }
+.workspace-guide .guide-input-suggestion { display:flex; align-items:center; gap:10px; justify-content:space-between; padding:10px 0; font-size:12px; }
+.workspace-guide .guide-input-suggestion small { display:block; }
+.workspace-guide .guide-manifest { border-top:1px solid #eceee7; margin-top:12px; padding-top:10px; }
+.workspace-guide .guide-manifest p { font-size:11px; }
+.workspace-guide .guide-manifest > div { margin-top:8px; }
+.assistant-model-row .review-workspace-trigger { border:0; background:transparent; color:#668352; display:flex; align-items:center; gap:5px; margin-top:5px; padding:4px 2px; font-size:11px; cursor:pointer; }
+@media (max-width:600px) { .workspace-guide .guide-review-heading { flex-direction:column; } .workspace-guide .guide-intents button { font-size:11px; } }

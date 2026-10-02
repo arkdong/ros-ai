@@ -7,6 +7,8 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { ResearchSession } from '../shared/research.js';
 import type { ModelMessage, Run } from '../shared/types.js';
+import { cardWidth } from '../shared/card-size.js';
+import { LAYOUT_GAP } from '../shared/layout.js';
 
 const parameters=z.record(z.string().max(80),z.union([z.string().max(1000),z.number().finite(),z.boolean()]));
 const stepSchema=z.discriminatedUnion('type',[
@@ -160,7 +162,13 @@ Actual latest experiment outputs and errors (capture IDs support claims; do not 
       if(step.type==='conclusion'){s.status='completed';s.phase='done';s.suggestions=step.suggestions;s.processedModelRunIds=[...(s.processedModelRunIds??[]),finished.id];this.save(s);return;}
       if(step.type==='action'){
         const proposal=this.store.atomic(()=>{
-          const p=this.store.createProposal(s.projectId,this.store.getProject(s.projectId).revision,`${step.title}: ${step.relation}`,[{type:'addNode',node:{id:randomUUID(),title:step.title,description:`${step.description}\n\nRelation to research: ${step.relation}`,kind:'activity',parentId:s.nodeId,x:0,y:0}}]);
+          const project=this.store.getProject(s.projectId),source=project.canvas.nodes.find(node=>node.id===s.nodeId);
+          if(!source)throw new StoreError('The originating research block is no longer on the canvas.');
+          const actionId=randomUUID(), parentId=source.kind==='group'?source.id:source.parentId??null;
+          const p=this.store.createProposal(s.projectId,project.revision,`${step.title}: ${step.relation}`,[
+            {type:'addNode',node:{id:actionId,title:step.title,description:`${step.description}\n\nRelation to research: ${step.relation}`,kind:'activity',parentId,x:source.kind==='group'?0:source.x+cardWidth(source)+LAYOUT_GAP,y:source.kind==='group'?0:source.y}},
+            {type:'addConnection',connection:{id:randomUUID(),source:source.id,target:actionId,label:step.relation.slice(0,200)}},
+          ]);
           s.pendingProposalId=p.id;s.pendingAction=step;s.phase='proposal';s.status='waiting';s.processedModelRunIds=[...(s.processedModelRunIds??[]),finished.id];this.save(s);return p;
         });
         const decision=this.authority.review(s.projectId,{kind:'create-action',nodeId:s.nodeId,fingerprint:proposal.id,relation:step.relation});this.event(id,decision.reason);

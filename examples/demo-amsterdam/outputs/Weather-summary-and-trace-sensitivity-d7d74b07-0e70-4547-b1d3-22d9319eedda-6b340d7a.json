@@ -1,0 +1,14 @@
+[
+  {
+    "observed_days":366,
+    "missing_days":0,
+    "total_mm":1047.0,
+    "mean_mm_per_day":2.8607,
+    "median_mm_per_day":0.35,
+    "max_daily_mm":36.5,
+    "wet_days_ge_1mm":155,
+    "trace_hours":843,
+    "trace_omission_upper_bound_mm_exclusive":42.15,
+    "wet_days_trace_midpoint_scenario":158
+  }
+]

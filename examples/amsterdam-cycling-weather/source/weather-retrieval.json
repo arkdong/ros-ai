@@ -1,0 +1,14 @@
+{
+  "retrievedAt": "2026-09-21T21:25:14.138635+00:00",
+  "url": "https://www.daggegevens.knmi.nl/klimatologie/uurgegevens",
+  "method": "POST",
+  "parameters": {
+    "stns": "240",
+    "vars": "T:FH:RH",
+    "start": "2023123101",
+    "end": "2025010124"
+  },
+  "status": 200,
+  "sha256": "1715da0bf335cd3376a5b35fa0b3442c6073a6fde2682b74b0beccddef39e2f0",
+  "bytes": 347170
+}

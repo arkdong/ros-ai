@@ -5,11 +5,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MAX_HEIGHT, cardWidth } from '../shared/card-size.js';
+import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
+import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified']).optional(), parentId: identifier.nullable().optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report']).optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const nodeSchema = z.object({ id: identifier, ...nodeFields }).strict();
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 export const mutationSchema = z.discriminatedUnion('type', [
@@ -104,6 +106,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS inputs (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), node_id TEXT NOT NULL, artifact_id TEXT NOT NULL REFERENCES artifacts(id), data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workspace_records (namespace TEXT NOT NULL, id TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id), data TEXT NOT NULL, PRIMARY KEY(namespace,id));
+      CREATE TABLE IF NOT EXISTS global_records (namespace TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(namespace,id));
       CREATE INDEX IF NOT EXISTS messages_scope ON messages(project_id, node_id);
       CREATE INDEX IF NOT EXISTS runs_project ON runs(project_id);
       CREATE INDEX IF NOT EXISTS artifacts_project ON artifacts(project_id);
@@ -137,6 +140,15 @@ export class Store {
   }
 
   close(): void { this.db.close(); }
+
+  globalRecord<T>(namespace:string,id:string):T|undefined {
+    const row=this.db.prepare('SELECT data FROM global_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
+    return row ? JSON.parse(row.data) as T : undefined;
+  }
+  saveGlobalRecord<T>(namespace:string,id:string,value:T):T {
+    this.db.prepare('INSERT INTO global_records(namespace,id,data) VALUES (?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,JSON.stringify(value));
+    return clone(value);
+  }
 
   record<T>(namespace:string,id:string):T|undefined {
     const row=this.db.prepare('SELECT data FROM workspace_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
@@ -174,7 +186,7 @@ export class Store {
   listTrashedProjects():Project[] { return this.all<Project>('SELECT data FROM projects WHERE id IN (SELECT project_id FROM project_trash) ORDER BY rowid DESC'); }
   trashProject(id:string):Project {
     const project=this.getProject(id);
-    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running')||this.records<{status:string}>('research',id).some(session=>session.status==='running'))throw new StoreError('Stop active research and pending experiments before moving this project to Trash.',409);
+    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running')||this.records<{status:string}>('research',id).some(session=>session.status==='running')||this.records<{status:string}>('workspace-guide-review',id).some(review=>['queued','running'].includes(review.status)))throw new StoreError('Stop active research and pending experiments before moving this project to Trash.',409);
     this.db.prepare('INSERT INTO project_trash(project_id,deleted_at) VALUES (?,?)').run(id,now());
     return project;
   }
@@ -196,7 +208,37 @@ export class Store {
 
   getProject(id: string): Project {
     if(this.db.prepare('SELECT 1 FROM project_trash WHERE project_id = ?').get(id))throw new StoreError('This project is in Trash. Restore it before opening or changing it.',410);
-    return this.one<Project>('SELECT data FROM projects WHERE id = ?', id, 'Project');
+    const project = this.one<Project>('SELECT data FROM projects WHERE id = ?', id, 'Project');
+    const canvas = convertLegacyGroups(project.canvas);
+    if (JSON.stringify(canvas) === JSON.stringify(project.canvas)) return project;
+    // A compatibility conversion is persisted, including history, without a new
+    // content revision or rewriting immutable runs/evidence/pending approvals.
+    return this.transaction(() => {
+      const history = this.getHistory(id);
+      history.stack = history.stack.map(convertLegacyGroups);
+      const updated = { ...project, canvas };
+      this.db.prepare('UPDATE projects SET data=?, history=? WHERE id=?').run(JSON.stringify(updated), JSON.stringify(history), id);
+      this.preserveModels(project, canvas, true);
+      this.saveRecord('group-conversion', id, id, { at:now(), nodes:canvas.nodes.filter(node => node.legacyKind).map(node => ({id:node.id,legacyKind:node.legacyKind})), detail:'Research identity, overview, versions, conversations, execution records and effective models retained.' });
+      return updated;
+    });
+  }
+
+  private preserveModels(before: Project, after: Canvas, freezeAll = false) {
+    const settings = this.record<ProjectModelSettings>('model-settings', before.id) ?? { default:{provider:'nebius' as const,model:process.env.ROS_NEBIUS_MODEL ?? 'nvidia/Nemotron-3-Ultra-550b-a55b'}, overrides:{} };
+    const changes: {id:string;model:string}[] = [];
+    for (const node of before.canvas.nodes) {
+      if (!after.nodes.some(item => item.id === node.id)) continue;
+      const prior = resolveModelSetting(settings, before.canvas.nodes, node.id).selection;
+      const next = resolveModelSetting(settings, after.nodes, node.id).selection;
+      if (freezeAll || prior.provider !== next.provider || prior.model !== next.model) {
+        settings.overrides[node.id] = { ...prior }; changes.push({id:node.id,model:prior.model});
+      }
+    }
+    if (changes.length) {
+      this.saveRecord('model-settings',before.id,before.id,settings);
+      this.saveRecord('group-model-preservation',before.id,before.id,{at:now(),nodes:changes,detail:'Organizational changes retained selected models as explicit overrides. Use model settings to deliberately inherit again.'});
+    }
   }
 
   detail(id: string): ProjectDetail {
@@ -247,7 +289,7 @@ export class Store {
       if (operation.type === 'addNode') {
         if (canvas.nodes.some(item => item.id === operation.node.id) || this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, operation.node.id)) throw new StoreError(`Node id ${operation.node.id} already exists or belongs to a removed node`);
         if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
-        const node = this.placeNode(operation.node, canvas.nodes);
+        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(operation.node, canvas.nodes);
         canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
@@ -286,7 +328,38 @@ export class Store {
     for (const node of canvas.nodes) {
       if (!node.parentId) continue;
       const seen=new Set([node.id]); let parentId:string|null|undefined=node.parentId;
-      while(parentId) { if(seen.has(parentId)) throw new StoreError('A workspace cannot contain itself or a parent cycle'); seen.add(parentId); parentId=activeNode(parentId).parentId; }
+      while(parentId) {
+        if(seen.has(parentId)) throw new StoreError('A workspace cannot contain itself or a parent cycle');
+        seen.add(parentId); const parent=activeNode(parentId);
+        if(parent.kind!=='group')throw new StoreError('Only an explicit Group can contain blocks. Create a Group or move this block to the canvas root.');
+        parentId=parent.parentId;
+      }
+    }
+    for (const node of canvas.nodes) {
+      if (node.code?.inputArtifactId && this.getArtifact(node.code.inputArtifactId).projectId!==project.id) throw new StoreError('The Code input must belong to this project.');
+      if (node.artifactId) {
+        const artifact = this.getArtifact(node.artifactId);
+        if (artifact.projectId !== project.id) throw new StoreError('The block artifact must belong to this project.');
+      }
+      if (node.groupHighlights?.length) {
+        if (node.kind !== 'group') throw new StoreError('Only a Group can own group highlights.');
+        const descendants = groupMembers(canvas,node.id);
+        const members = new Set([node.id,...descendants.map(member=>member.id)]);
+        const represented = new Set([node.artifactId,...descendants.map(member=>member.artifactId)].filter(Boolean));
+        // Moving an originating block out also removes its visual pin. The
+        // immutable evidence/version is retained in its original block.
+        if (!operations.some(operation => operation.type==='updateNode' && operation.id===node.id && 'groupHighlights' in operation.patch)) {
+          const retained=node.groupHighlights.filter(highlight=>members.has(highlight.nodeId)||represented.has(highlight.artifactId));
+          if (retained.length!==node.groupHighlights.length) { node.groupHighlights=retained; normalized.push({type:'updateNode',id:node.id,patch:{groupHighlights:retained}}); }
+        }
+        const versions = new Set<string>();
+        for (const highlight of node.groupHighlights) {
+          const artifact = this.getArtifact(highlight.artifactId);
+          if (artifact.projectId !== project.id || artifact.nodeId !== highlight.nodeId || artifact.hash !== highlight.hash || !members.has(highlight.nodeId) && !represented.has(highlight.artifactId)) throw new StoreError('Choose an exact saved artifact version from this Group.');
+          if (versions.has(artifact.id)) throw new StoreError('Choose each highlighted version once.');
+          versions.add(artifact.id);
+        }
+      }
     }
     // Relationships can span branches; they never move notes or import artifacts.
     return { canvas, operations: normalized };
@@ -306,6 +379,9 @@ export class Store {
     const { canvas } = this.applyOperations(project, operations, false);
     const checkedLabel = z.string().min(1).max(500).parse(label);
     if (JSON.stringify(canvas) === JSON.stringify(project.canvas)) return project;
+    // Move/Group/Ungroup must not silently inherit a different model. Shared
+    // policy scopes, cumulative reservations and approval modes are untouched.
+    this.preserveModels(project,canvas);
     const history = this.getHistory(id);
     rememberPresentation(history, project.canvas);
     rememberPresentation(history, canvas);
@@ -450,9 +526,14 @@ export class Store {
 
   updateRun(id: string, patch: Partial<Run>): Run {
     const run = this.getRun(id);
-    const immutable = ['id', 'projectId', 'nodeId', 'request', 'useSearch', 'retryOf', 'createdAt', 'projectRevision', 'node', 'inputs', 'provider', 'model', 'modelVersion'] as const;
+    const immutable = ['id', 'projectId', 'nodeId', 'request', 'useSearch', 'retryOf', 'createdAt', 'projectRevision', 'node', 'inputs', 'provider', 'model'] as const;
     for (const key of immutable) if (key in patch && JSON.stringify(patch[key]) !== JSON.stringify(run[key])) throw new StoreError(`Run ${key} is immutable`);
     if (!['queued', 'running'].includes(run.status)) throw new StoreError('Finished runs are immutable', 409);
+    // The requested model is fixed at admission; its provider-reported snapshot
+    // is only known after inference. Capture that version once, while running.
+    if ('modelVersion' in patch && patch.modelVersion !== run.modelVersion) {
+      if (run.status !== 'running' || run.modelVersion !== null || typeof patch.modelVersion !== 'string' || !patch.modelVersion.trim() || patch.modelVersion.length > 500) throw new StoreError('Run modelVersion may only be captured once while running', 409);
+    }
     if (patch.status) z.enum(['queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted']).parse(patch.status);
     const updated = { ...run, ...clone(patch) };
     for (const artifactId of updated.artifactIds) {
@@ -483,7 +564,7 @@ export class Store {
     const run = this.getRun(input.runId);
     if (run.projectId !== input.projectId || run.nodeId !== input.nodeId) throw new StoreError('Artifact run does not belong to this node');
     if (run.status !== 'queued' && run.status !== 'running') throw new StoreError('Finished runs cannot receive new artifacts', 409);
-    z.enum(['result', 'source', 'dataset', 'code', 'table', 'metric', 'plot', 'log']).parse(input.kind);
+    z.enum(['result', 'source', 'dataset', 'code', 'table', 'metric', 'plot', 'log', 'notebook']).parse(input.kind);
     const content = z.string().max(10_000_000).parse(input.content);
     z.string().min(1).max(500).parse(input.title);
     const hash = createHash('sha256').update(content, 'utf8').digest('hex');
@@ -513,7 +594,7 @@ export class Store {
 
   addUsage(record: UsageRecord): UsageRecord {
     identifier.parse(record.id);
-    z.enum(['nebius', 'tavily', 'openai']).parse(record.provider);
+    z.union([z.enum(['nebius', 'tavily', 'openai']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
     z.number().finite().nonnegative().parse(record.reservedUsd);
     if (record.estimatedUsd !== null) z.number().finite().nonnegative().parse(record.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(record.status);

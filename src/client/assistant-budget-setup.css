@@ -1,0 +1,18 @@
+.assistant-budget-setup { margin:0 16px 12px; padding:12px; border:1px solid #dfe7d8; border-radius:8px; background:#f8faf5; color:#34432f; flex-shrink:0; max-height:40vh; overflow:auto; }
+.assistant-budget-setup > header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:5px; }
+.assistant-budget-setup > header strong { font-size:13px; font-weight:600; }
+.assistant-budget-setup > header .icon-button { padding:3px; }
+.assistant-budget-setup p { display:flex; align-items:center; gap:6px; margin:6px 0; font-size:12px; line-height:1.5; color:#65705f; }
+.assistant-budget-setup .assistant-budget-provider { display:block; color:#456039; }
+.assistant-budget-setup > .text-button { font-size:12px; margin:1px 0 4px; }
+.assistant-budget-setup form { display:flex; align-items:flex-end; gap:9px; margin:10px 0 6px; }
+.assistant-budget-setup label { flex:1; min-width:0; font-size:11px; line-height:1.4; color:#58694d; }
+.assistant-budget-setup input { display:block; width:100%; min-width:0; margin-top:5px; background:#fff; font-size:13px; }
+.assistant-budget-setup form button { flex-shrink:0; }
+.assistant-budget-setup > small { display:block; color:#7a8475; font-size:10px; line-height:1.5; }
+.assistant-budget-setup .assistant-budget-notice { display:block; color:#3c622e; }
+.assistant-budget-setup .assistant-budget-error { display:block; color:#984f3b; }
+.assistant-budget-setup details { font-size:11px; color:#718269; margin-top:8px; }
+.assistant-budget-setup summary { cursor:pointer; }
+.assistant-budget-setup details p { display:block; font-size:11px; white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:400px) { .assistant-budget-setup form { align-items:stretch; flex-direction:column; } .assistant-budget-setup form button { align-self:flex-start; } }

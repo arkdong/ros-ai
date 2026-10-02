@@ -1,13 +1,23 @@
 import type { CanvasNode } from './types.js';
+import type { InferenceDestination } from './inference.js';
 
-export type ModelProvider = 'nebius' | 'openai';
+/** Built-in IDs remain stable; registered connections use a durable custom-UUID. */
+export type ModelProvider = string;
 export type ModelSelection = { provider: ModelProvider; model: string };
+export type ModelMaker = { id: 'nvidia' | 'moonshot' | 'openai' | 'unknown'; label: string; monogram: string };
+/** Presentation only: model makers and inference connections are different. */
+export function modelMaker(model: string, provider?: ModelProvider): ModelMaker {
+  if(model.toLowerCase().startsWith('nvidia/'))return {id:'nvidia',label:'NVIDIA',monogram:'NV'};
+  if(model.toLowerCase().startsWith('moonshotai/'))return {id:'moonshot',label:'Moonshot',monogram:'M'};
+  if(provider==='openai')return {id:'openai',label:'OpenAI',monogram:'AI'};
+  return {id:'unknown',label:'Configured model',monogram:'M'};
+}
 export type ProjectModelSettings = { default: ModelSelection; overrides: Record<string, ModelSelection> };
 export type EffectiveModel = { selection: ModelSelection; inheritedFrom: string | null };
 export type ModelSettingsResponse = ProjectModelSettings & {
   project: ModelSelection;
   effective: Record<string, EffectiveModel>;
-  providers: { id: ModelProvider; label: string; configured: boolean; models: { id: string; label: string }[] }[];
+  providers: { id: ModelProvider; label: string; configured: boolean; connectionId?: string; destination?: InferenceDestination; endpointOrigin?: string; models: { id: string; label: string; maker?: ModelMaker }[] }[];
 };
 
 /** Parent ownership supplies settings; evidence connections never do. */

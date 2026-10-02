@@ -36,5 +36,5 @@ export function NoteTree({ projectId, nodes, runs, selectedId, onSelect }: {
       {nested.length > 0 && expanded && <div role="group">{nested.map(child => render(child, depth + 1, next))}</div>}
     </div>;
   };
-  return <div className="note-tree" role="tree" aria-label="Project notes" ref={tree}>{nodes.length ? children(null).map(node => render(node, 0, new Set())) : <p className="sidebar-empty">Notes you add to the canvas will appear here.</p>}</div>;
+  return <div className="note-tree" role="tree" aria-label="Project blocks and groups" ref={tree}>{nodes.length ? children(null).map(node => render(node, 0, new Set())) : <p className="sidebar-empty">Blocks and Groups you add to the canvas will appear here.</p>}</div>;
 }

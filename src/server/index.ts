@@ -8,12 +8,18 @@ import { Store } from './store.js';
 import { ExecutionService } from './execution.js';
 import { ExperimentService } from './experiments.js';
 import { ResearchService } from './research.js';
+import { CodexAgentService } from './codex-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
+import { ToolCredentials } from './tool-credentials.js';
+import { GoogleDriveConnection } from './google-drive.js';
+import { InferenceConnections } from './inference-connections.js';
+import type { NotebookService } from './notebooks.js';
+import { WorkspaceGuideService } from './workspace-guide.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -28,6 +34,10 @@ let execution: ExecutionService | undefined;
 let experiments: ExperimentService | undefined;
 let research:ResearchService|undefined;
 let assistant:AssistantService|undefined;
+let agent:CodexAgentService|undefined;
+let googleDrive:GoogleDriveConnection|undefined;
+let guide:WorkspaceGuideService|undefined;
+let notebooks:NotebookService|undefined;
 let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
@@ -35,10 +45,14 @@ const server = createServer();
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  notebooks?.shutdown();
+  await guide?.shutdown();
   await assistant?.shutdown();
+  await agent?.shutdown();
   await execution?.shutdown();
   await experiments?.shutdown();
   await research?.shutdown();
+  googleDrive?.shutdown();
   server.close();
   await vite?.close();
   publicDemo?.close();
@@ -55,13 +69,18 @@ try {
     app = publicDemo.app;
   } else {
     store = new Store(dataDir);
+    const credentials = new ToolCredentials(dataDir);
+    googleDrive = new GoogleDriveConnection({dataDir,port});
     const combinedBudget = new CombinedNebiusBudget(store);
-    execution = new ExecutionService(store,{combinedBudget});
+    execution = new ExecutionService(store,{combinedBudget,inference:new InferenceConnections(store,dataDir)});
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
-    assistant=new AssistantService(store,execution,experiments);
-    app = createApp(store, execution, experiments,research,assistant);
+    agent=new CodexAgentService(store,execution,experiments);
+    assistant=new AssistantService(store,execution,experiments,agent);
+    guide=new WorkspaceGuideService(store,execution);
+    app = createApp(store, execution, experiments,research,assistant,{},agent,{credentials,googleDrive},guide);
   }
+  notebooks=app.locals.notebooks;
   if (process.env.ROS_DEV !== '1') {
     if (!existsSync(resolve(root, 'dist/client/index.html'))) {
       console.log('Building the browser interface for first launch…');

@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-09-21T21:26:58.699Z",
+  "url": "https://dexter.ndw.nu/opendata/bicycle",
+  "status": "count export not submitted",
+  "emailField": 1,
+  "captchaFrame": true,
+  "observedExportMaximumLocations": 10,
+  "observedExportMaximumDays": 366,
+  "processingTextSaysUpTo24Hours": true,
+  "action": "Read form only. No email address provided, no CAPTCHA solved, no export requested.",
+  "countsRetrieved": 0
+}

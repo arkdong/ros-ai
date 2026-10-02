@@ -1,0 +1,80 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "contractor": "Multisensors",
+        "authorityId": "PNH08",
+        "aliases": [],
+        "licenseCategory": "pddl",
+        "bearing": 145,
+        "authority": "Provincie Noord-Holland",
+        "name": "De Ruyterkade",
+        "validUntil": null,
+        "locationType": "PERMANENT",
+        "id": "PNH08_11_5",
+        "validFrom": "2022-06-21T07:19:16.824131Z",
+        "equipmentType": "radar"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.8959308,
+          52.3820763
+        ]
+      },
+      "id": "8214"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "contractor": "Multisensors",
+        "authorityId": "PNH08",
+        "aliases": [],
+        "licenseCategory": "pddl",
+        "bearing": 0,
+        "authority": "Provincie Noord-Holland",
+        "name": "Zuiderzeeweg",
+        "validUntil": null,
+        "locationType": "PERMANENT",
+        "id": "PNH08_11_8",
+        "validFrom": "2022-06-21T07:19:16.824131Z",
+        "equipmentType": "radar"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.9625788,
+          52.3703575
+        ]
+      },
+      "id": "8209"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "contractor": "Multisensors",
+        "authorityId": "PNH08",
+        "aliases": [],
+        "licenseCategory": "pddl",
+        "bearing": 282,
+        "authority": "Provincie Noord-Holland",
+        "name": "Erasmusgracht",
+        "validUntil": null,
+        "locationType": "PERMANENT",
+        "id": "PNH08_11_9",
+        "validFrom": "2022-06-21T07:19:16.824131Z",
+        "equipmentType": "radar"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.8396611,
+          52.3756332
+        ]
+      },
+      "id": "8599"
+    }
+  ]
+}

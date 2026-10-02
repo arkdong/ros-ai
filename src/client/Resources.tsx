@@ -6,6 +6,9 @@ import { groupResources } from '../shared/resource-groups';
 import type { Artifact, ProjectDetail } from '../shared/types';
 import type { ProjectResource, ResourcePreview } from '../shared/research';
 import './Resources.css';
+import { artifactTable, emptyTransform, type DataTransform } from '../shared/data-view';
+import { DataViewer } from './DataViewer';
+import { DerivedDataset } from './DerivedDataset';
 
 const MAX_BYTES = 500000;
 const storageLabel = (resource: ProjectResource) => resource.storage === 'linked' ? 'Linked file' : resource.storage === 'copied' ? 'Project copy' : resource.kind === 'source' ? 'Captured source' : 'Captured dataset';
@@ -23,12 +26,13 @@ export function Resources({ detail, onChanged, onOpenArtifact, onExports, onClos
   const [upload, setUpload] = useState<{ fileName: string; content: string; bytes: number } | null>(null), [reading, setReading] = useState(false), [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<ProjectResource | null>(null), [preview, setPreview] = useState<ResourcePreview | null>(null), [previewBusy, setPreviewBusy] = useState(false);
   const [nodeId, setNodeId] = useState(detail.project.canvas.nodes[0]?.id ?? '');
+  const [derived, setDerived] = useState<DataTransform|null>(null);
   const readSequence = useRef(0), listSequence = useRef(0), previewSequence = useRef(0);
   const load = useCallback(async () => { const sequence = ++listSequence.current; const values = await api<ProjectResource[]>(base); if (sequence === listSequence.current) setResources(values); }, [base]);
   useEffect(() => { void load().catch(cause => setError(message(cause))); }, [load, detail]);
   useEffect(() => { if (!detail.project.canvas.nodes.some(node => node.id === nodeId)) setNodeId(detail.project.canvas.nodes[0]?.id ?? ''); }, [detail.project.canvas.nodes, nodeId]);
   const showPreview = async (resource: ProjectResource) => {
-    const sequence = ++previewSequence.current; setSelected(resource); setPreview(null); setPreviewBusy(true); setError(''); setNotice('');
+    const sequence = ++previewSequence.current; setSelected(resource); setPreview(null); setDerived(null); setPreviewBusy(true); setError(''); setNotice('');
     try { const value = await api<ResourcePreview>(`${base}/${resource.id}`); if (sequence === previewSequence.current) setPreview(value); }
     catch (cause) { if (sequence === previewSequence.current) setError(message(cause)); }
     finally { if (sequence === previewSequence.current) setPreviewBusy(false); }
@@ -60,6 +64,14 @@ export function Resources({ detail, onChanged, onOpenArtifact, onExports, onClos
     finally { setBusy(false); }
   };
   const shown = preview?.resource ?? selected;
+  let table: ReturnType<typeof artifactTable> | null = null;
+  try { if(preview && shown?.kind==='csv') table=artifactTable(preview.content); } catch { /* Exact raw capture remains accessible for malformed CSV. */ }
+  const addDatasetBlock = async () => {
+    if(!selected || !preview || !shown)return;
+    setBusy(true);setError('');
+    try {const saved=await post<{artifact:Artifact;nodeId:string}>(`/api/projects/${projectId}/datasets/derive`,{resourceId:selected.id,expectedHash:preview.hash,title:shown.name,transformation:emptyTransform});await load();await onChanged();setSelected(null);setPreview(null);onOpenArtifact(saved.artifact,saved.nodeId);}
+    catch(cause){setError(message(cause));}finally{setBusy(false);}
+  };
   const ownerTitle = (resource: ProjectResource) => resource.nodeId ? detail.project.canvas.nodes.find(node => node.id === resource.nodeId)?.title ?? 'Removed note' : undefined;
   const renderResource = (resource: ProjectResource) => <button key={resource.id} className="resource-row" data-resource-id={resource.id} aria-label={`Preview ${resource.name} · ${storageLabel(resource)}${ownerTitle(resource) ? ` · ${ownerTitle(resource)}` : ''}`} onClick={() => void showPreview(resource)}>
     {resource.storage === 'linked' ? <Link2 size={18}/> : resource.kind === 'source' ? <FileText size={18}/> : <FileSpreadsheet size={18}/>}<span><strong>{resource.name}</strong><small>{storageLabel(resource)} · {new Date(resource.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</small><small className="resource-owner">{ownerTitle(resource) ? `From ${ownerTitle(resource)}` : 'Project file'}</small>{(resource.url || resource.path || resource.locator) && <small className="resource-origin">{resource.url || resource.path || resource.locator}</small>}{resource.hash && <small className="resource-version">Saved version {resource.hash.slice(0, 10)}</small>}</span><ArrowUpRight size={14}/>
@@ -74,9 +86,9 @@ export function Resources({ detail, onChanged, onOpenArtifact, onExports, onClos
       <label className="field-label">Name<input aria-label="Resource name" value={name} maxLength={160} disabled={busy} onChange={event => setName(event.target.value)} placeholder="Observations"/></label>{error && <p className="resource-error" role="alert">{error}</p>}<div className="resource-dialog-actions"><button className="secondary" disabled={busy} onClick={() => setAdding(false)}>Cancel</button><button className="primary" disabled={busy || reading || !name.trim() || (mode === 'copy' ? !upload : !path.trim())} onClick={() => void add()}>{busy || reading ? <LoaderCircle size={15} className="spin"/> : <Plus size={15}/>} Add file</button></div></ResourceDialog>}
     {selected && shown && <ResourceDialog title={shown.name} onClose={() => { if (!busy) { ++previewSequence.current; setSelected(null); setPreview(null); } }}><div className="resource-detail-meta"><span>{storageLabel(shown)}</span>{shown.bytes !== undefined && <span>{shown.bytes.toLocaleString()} bytes</span>}{shown.hash && <code title={shown.hash}>SHA256 {shown.hash.slice(0, 12)}</code>}</div>{shown.path && <p className="resource-path">{shown.path}</p>}{shown.url && <p className="resource-path">{shown.url}</p>}{shown.locator && <p className="resource-path">{shown.locator}</p>}{shown.storage === 'linked' && <p className="resource-intro">This preview reads the linked file now. Use in note captures its current version and keeps the original unchanged.</p>}{shown.storage === 'copied' && <p className="resource-intro">This immutable copy is saved in this project. Use it in a note to make it available for research.</p>}{shown.storage === 'captured' && <p className="resource-intro">An immutable captured version. Selecting it in another note does not start research.</p>}
       {shown.storage === 'captured' && <p className="resource-capture-context">From <strong>{ownerTitle(shown)}</strong><br/>Captured {new Date(shown.createdAt).toLocaleString()} · Version {shown.artifactId?.slice(0, 8)}</p>}
-      {previewBusy ? <p className="resource-loading"><LoaderCircle size={16} className="spin"/> Loading preview…</p> : preview && <><pre className="resource-content-preview" tabIndex={0}>{preview.content.slice(0, 6000)}</pre>{preview.content.length > 6000 && <p className="resource-preview-limit">Preview shows the first 6,000 characters. The full resource is retained.</p>}</>}
+      {previewBusy ? <p className="resource-loading"><LoaderCircle size={16} className="spin"/> Loading preview…</p> : preview && (table ? derived ? <DerivedDataset data={table} projectId={projectId} resourceId={selected.id} sourceHash={preview.hash} initial={derived} onSaved={async(saved,nodeId)=>{await load();await onChanged();setSelected(null);setPreview(null);setDerived(null);onOpenArtifact(saved,nodeId);}} onCancel={()=>setDerived(null)}/> : <DataViewer key={`${selected.id}:${preview.hash}`} viewKey={`resource:${selected.id}:${preview.hash}`} data={table} name={shown.name} onSaveDerived={setDerived}/> : <pre className="resource-content-preview" tabIndex={0}>{preview.content}</pre>)}
       {error && <p className="resource-error" role="alert">{error}</p>}{notice && <p className="resource-notice" role="status">{notice}</p>}
-      <div className="resource-use"><label className="field-label">Use in note<select aria-label="Resource destination note" value={nodeId} disabled={busy} onChange={event => setNodeId(event.target.value)}><option value="">Choose a note…</option>{detail.project.canvas.nodes.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label><button className="primary" disabled={busy || previewBusy || !preview || !nodeId} onClick={() => void useInNote()}>{busy ? <LoaderCircle size={14} className="spin"/> : <ArrowUpRight size={14}/>} Use in note</button></div>{!detail.project.canvas.nodes.length && <p className="resource-intro">Add a note to use this resource for research.</p>}
+      {table&&!derived&&<button className="primary" disabled={busy||previewBusy||!preview} onClick={()=>void addDatasetBlock()}><Plus size={14}/> Add dataset block to canvas</button>}<div className="resource-use"><label className="field-label">Use in note<select aria-label="Resource destination note" value={nodeId} disabled={busy} onChange={event => setNodeId(event.target.value)}><option value="">Choose a note…</option>{detail.project.canvas.nodes.filter(node=>node.kind!=='group').map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label><button className="primary" disabled={busy || previewBusy || !preview || !nodeId} onClick={() => void useInNote()}>{busy ? <LoaderCircle size={14} className="spin"/> : <ArrowUpRight size={14}/>} Use in note</button></div>{!detail.project.canvas.nodes.length && <p className="resource-intro">Add a dataset block, or add a note to use this resource for research.</p>}
       {shown.artifactId && <button className="text-button" onClick={() => { const artifact = detail.artifacts.find(item => item.id === shown.artifactId); if (artifact) { setSelected(null); setPreview(null); onOpenArtifact(artifact, artifact.nodeId); } }}>Open full artifact & provenance <ArrowUpRight size={14}/></button>}</ResourceDialog>}
   </aside>;
 }

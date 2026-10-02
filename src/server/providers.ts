@@ -1,15 +1,18 @@
 import type { ModelMessage } from '../shared/types.js';
+import {captureChatCompletion} from './response-normalization.js';
 
 export type ModelCapabilities = { structuredOutput:boolean; cancellation:'abort-request'; toolCalling:boolean; modelVersion:boolean };
 export type ModelInfo = { id:string; contextTokens:number; inputUsdPerToken:number; outputUsdPerToken:number; capabilities:ModelCapabilities; metadata:Record<string,unknown> };
 export type ModelRequest = { messages:ModelMessage[]; maxOutputTokens:number; schema?:Record<string,unknown>; responseName?:string; responseMode?:'text-json' };
 export type ModelResponse = { content:string; model:string; modelVersion:string|null; usage:{inputTokens:number;outputTokens:number}|null; metadata:Record<string,unknown> };
+export type ModelInputTokenBound = { tokens:number; basis:string };
 export interface ModelAdapter {
   readonly provider:string;
   readonly model:string;
   readonly configured:boolean;
   prepare(signal:AbortSignal):Promise<ModelInfo>;
   describeRequest?(request:ModelRequest):Record<string,unknown>;
+  inputTokenBound?(wireRequest:Record<string,unknown>):ModelInputTokenBound|null;
   complete(request:ModelRequest,signal:AbortSignal):Promise<ModelResponse>;
 }
 export type SearchResult = { title:string; url:string; content:string; locator:string };
@@ -45,6 +48,21 @@ export class DeferredAgentRuntime implements AgentRuntime {
 export const DEFAULT_MODEL = 'nvidia/Nemotron-3-Ultra-550b-a55b';
 export const NEBIUS_BASE = 'https://api.tokenfactory.us-central1.nebius.com/v1';
 const TAVILY_BASE = 'https://api.tavily.com';
+
+/** Audited scalar-text shape only. NVIDIA Ultra's published tokenizer is
+ * byte-level BPE with no normalizer: merging cannot add tokens beyond UTF-8
+ * bytes. The exact wire body includes ros.ai's injected schema instructions.
+ * 16K fixed + 128/message covers the inspected 10,152-byte chat template's
+ * markers and generation prefix. Native schema/tool and unknown shapes fall
+ * back to full model context. Source audit: 2026-10-01, evidence/token-reservation-2026-10-01.json.
+ */
+export function byteLevelTextInputBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
+  const messages=wireRequest.messages;
+  const allowedKeys=['model','messages','max_completion_tokens','n','temperature'];
+  if (wireRequest.model!==DEFAULT_MODEL || Object.keys(wireRequest).some(key=>!allowedKeys.includes(key)) || wireRequest.n!==1 || !Number.isInteger(wireRequest.max_completion_tokens) || Number(wireRequest.max_completion_tokens)<1 || !Array.isArray(messages) || !messages.length || !messages.every(message=>message&&typeof message==='object'&&['system','user','assistant'].includes(message.role)&&typeof message.content==='string'&&Object.keys(message).every(key=>key==='role'||key==='content'))) return null;
+  const bytes=Buffer.byteLength(JSON.stringify(wireRequest),'utf8');
+  return {tokens:bytes+16384+128*messages.length,basis:`${bytes} exact wire UTF-8 bytes + 16,384 fixed chat-template tokens + 128 × ${messages.length} messages; audited Ultra byte-level BPE without normalization, scalar text only`};
+}
 
 function boundedNumber(value:unknown,name:string):number {
   if ((typeof value !== 'number' && typeof value !== 'string') || (typeof value === 'string' && !value.trim())) throw new Error(`Provider ${name} unavailable; no paid request was admitted.`);
@@ -82,15 +100,18 @@ async function requestJson(url:string,init:RequestInit):Promise<any> {
 
 export class NebiusAdapter implements ModelAdapter {
   readonly provider = 'nebius';
-  readonly configured:boolean;
+  get configured():boolean { return Boolean(this.key ?? process.env.NEBIUS_API_KEY); }
+  private activeKey = '';
   private info?:ModelInfo;
-  constructor(private readonly key = process.env.NEBIUS_API_KEY ?? '',readonly model = process.env.ROS_NEBIUS_MODEL ?? DEFAULT_MODEL) {
-    this.configured = Boolean(key);
+  constructor(private readonly key?:string,readonly model = process.env.ROS_NEBIUS_MODEL ?? DEFAULT_MODEL) {}
+  inputTokenBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
+    return this.model===DEFAULT_MODEL ? byteLevelTextInputBound(wireRequest) : null;
   }
   async prepare(signal:AbortSignal):Promise<ModelInfo> {
     this.info = undefined;
+    this.activeKey = this.key ?? process.env.NEBIUS_API_KEY ?? '';
     if (!this.configured) throw new Error('Set NEBIUS_API_KEY in the server-side .env.local, then restart ros.ai. Canvas and history remain available.');
-    const result = await requestJson(`${NEBIUS_BASE}/models?verbose=true`,{headers:{Authorization:`Bearer ${this.key}`},signal});
+    const result = await requestJson(`${NEBIUS_BASE}/models?verbose=true`,{headers:{Authorization:`Bearer ${this.activeKey}`},signal});
     const model = result.data?.find((item:any)=>item.id === this.model);
     if (!model) throw new Error('The selected model is absent from the authenticated us-central1 catalog. No alternate model was selected.');
     const features:string[] = model.supported_features ?? [];
@@ -109,46 +130,33 @@ export class NebiusAdapter implements ModelAdapter {
   }
   describeRequest(request:ModelRequest):Record<string,unknown> {
     if (!this.info) throw new Error('Model catalog must be validated before inference.');
-    if(request.responseMode==='text-json') return {model:this.model,messages:[{role:'system',content:`Return one JSON object matching this response contract. No Markdown fences or surrounding prose. This is a proposal only, never execution or permission. JSON Schema: ${JSON.stringify(request.schema)}`},...request.messages],max_tokens:request.maxOutputTokens,temperature:0.3};
+    if(request.responseMode==='text-json') return {model:this.model,messages:[{role:'system',content:`Return one JSON object matching this response contract. No Markdown fences or surrounding prose. This is a proposal only, never execution or permission. JSON Schema: ${JSON.stringify(request.schema)}`},...request.messages],max_completion_tokens:request.maxOutputTokens,n:1,temperature:0.3};
     if (request.schema && !this.info.capabilities.structuredOutput && !this.info.capabilities.toolCalling) throw new Error('Selected model declares neither structured output nor tool calling.');
     const toolMode = Boolean(request.schema && !this.info.capabilities.structuredOutput);
     const responseName = request.responseName ?? 'ros_ai_response';
     if (!/^[a-z][a-z0-9_]{0,63}$/.test(responseName)) throw new Error('Invalid response contract name.');
-    return {model:this.model,messages:request.messages,max_tokens:request.maxOutputTokens,temperature:0.3,
+    return {model:this.model,messages:request.messages,max_completion_tokens:request.maxOutputTokens,n:1,temperature:0.3,
       ...(request.schema ? toolMode ? {tools:[{type:'function',function:{name:responseName,description:'Return the requested proposal. This records a proposal only and does not authorize or execute code or canvas edits.',parameters:request.schema}}],tool_choice:{type:'function',function:{name:responseName}}} : {response_format:{type:'json_schema',json_schema:{name:responseName,strict:true,schema:request.schema}}} : {})};
   }
   async complete(request:ModelRequest,signal:AbortSignal):Promise<ModelResponse> {
     const body=this.describeRequest(request);
     const toolMode=Boolean(request.schema && request.responseMode!=='text-json' && !this.info!.capabilities.structuredOutput);
     const responseName=request.responseName ?? 'ros_ai_response';
-    const result = await requestJson(`${NEBIUS_BASE}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal});
-    if (typeof result.model==='string' && result.model!==this.model) throw new Error('Provider returned a different model than requested; no alternate result was accepted.');
-    const message = result.choices?.[0]?.message;
-    const calls = message?.tool_calls;
-    if (toolMode && (!Array.isArray(calls) || calls.length !== 1 || calls[0]?.type !== 'function' || calls[0]?.function?.name !== responseName || typeof calls[0]?.function?.arguments !== 'string')) throw new Error('Provider returned an unexpected tool request; nothing was authorized or executed.');
-    if (!toolMode && calls?.length) throw new Error('Provider returned unsolicited tool requests; nothing was executed.');
-    let content = toolMode ? calls[0].function.arguments : message?.content;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('Provider returned no text response.');
-    if (content.length > 100000) throw new Error('Provider response exceeds the bounded contract.');
-    if(request.responseMode==='text-json'){
-      content=content.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/,'$1').trim();
-      try{const value=JSON.parse(content);if(!value||typeof value!=='object'||Array.isArray(value))throw Error();}catch{throw new Error('Provider did not return a JSON object for the application-validated proposal. No action was executed.');}
-    }
-    if (toolMode) { try { JSON.parse(content); } catch { throw new Error('Provider returned invalid tool arguments; nothing was authorized or executed.'); } }
-    const input = result.usage?.prompt_tokens, output = result.usage?.completion_tokens;
-    const usage = Number.isFinite(input) && Number.isFinite(output) && input >= 0 && output >= 0 ? {inputTokens:input,outputTokens:output} : null;
-    return {content,model:result.model ?? this.model,modelVersion:null,usage,metadata:{requestId:result.id ?? null,finishReason:result.choices?.[0]?.finish_reason ?? null,systemFingerprint:result.system_fingerprint ?? null,providerUsage:result.usage ?? null,responseContract:request.responseMode==='text-json'?'application-validated-json':toolMode?'function-call':request.schema?'json-schema':'text',...(toolMode?{toolRequests:calls}:{}),wireRequest:body}};
+    const result = await requestJson(`${NEBIUS_BASE}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${this.activeKey}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+    return captureChatCompletion(result,{provider:this.provider,requestedModel:this.model,modelVersion:false,requireExactModel:true,
+      responseContract:request.responseMode==='text-json'?'application-validated-json':toolMode?'function-call':request.schema?'json-schema':'text',wireRequest:body,...(toolMode?{functionName:responseName}:{})});
   }
 }
 
 export const TAVILY_CREDIT_USD = 0.008;
 export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
 export class TavilyAdapter implements SearchAdapter {
-  readonly configured:boolean;
-  constructor(private readonly key = process.env.TAVILY_API_KEY ?? '') { this.configured = Boolean(key); }
+  get configured():boolean { return Boolean(this.key ?? process.env.TAVILY_API_KEY); }
+  constructor(private readonly key?:string) {}
   async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
     if (!this.configured) throw new Error('Set TAVILY_API_KEY in the server-side .env.local, then restart; model-only work is available without search.');
-    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...SEARCH_SCHEMA.configuration}),signal});
+    const key = this.key ?? process.env.TAVILY_API_KEY ?? '';
+    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...SEARCH_SCHEMA.configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
     return {results:result.results.slice(0,3).map((source:any,index:number)=>{
       if (typeof source.content !== 'string' || typeof source.url !== 'string') throw new Error('Search provider returned a malformed source.');

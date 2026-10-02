@@ -9,28 +9,18 @@ import { modeLabel } from './ResearchControls';
 import { readSaved, saveLocal, useDraft } from './persistence';
 import type { ModelDisplay } from './ModelSettings';
 import './detail-polish.css';
+import { DataTable } from './DataViewer';
+import { svgImageUrl } from '../shared/reports';
+import { parseCsv } from '../shared/data-view';
+export { DataTable } from './DataViewer';
+export { parseCsv } from '../shared/data-view';
 
 const remoteStarter = 'metric("Rows", len(rows))\ntable("First rows", rows[:10])\nconclusion("Inspect the captured rows before choosing a numeric analysis.")';
 const dockerStarter = 'table("Summary", df.describe(include="all").reset_index())\nmetric("Rows", len(df))';
 const restoredBackend = (value:unknown) => value === 'nebius-sandbox' ? 'nebius-sandbox' : value === 'docker-python' ? 'docker-python' : 'bounded';
 
-export function parseCsv(csv: string): string[][] {
-  const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false;
-  for (let i = 0; i < csv.length; i++) {
-    const ch = csv[i];
-    if (ch === '"') { if (quoted && csv[i + 1] === '"') { cell += '"'; i++; } else quoted = !quoted; }
-    else if (ch === ',' && !quoted) { row.push(cell); cell = ''; }
-    else if (ch === '\n' && !quoted) { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; }
-    else cell += ch;
-  }
-  if (cell || row.length) { row.push(cell.replace(/\r$/, '')); rows.push(row); }
-  return rows;
-}
-export function DataTable({rows}: {rows: unknown[][]}) {
-  return <div className="data-table-wrap"><table className="data-table"><thead><tr>{rows[0]?.map((cell,i) => <th key={i}>{String(cell)}</th>)}</tr></thead><tbody>{rows.slice(1,31).map((row,i) => <tr key={i}>{row.map((cell,j) => <td key={j}>{String(cell ?? '')}</td>)}</tr>)}</tbody></table>{rows.length > 31 && <p className="subtle">Showing the first 30 rows of {rows.length - 1}.</p>}</div>;
-}
 export function ArtifactContent({artifact}: {artifact: Artifact}) {
-  if (artifact.kind === 'plot') return <img className="result-plot" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`} alt={artifact.title} />;
+  if (artifact.kind === 'plot') return <img className="result-plot" src={svgImageUrl(artifact)} alt={artifact.title} />;
   if (artifact.kind === 'dataset') return <DataTable rows={parseCsv(artifact.content)} />;
   try {
     const parsed: unknown = JSON.parse(artifact.content);

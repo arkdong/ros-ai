@@ -1,5 +1,6 @@
 import type { Artifact, CanvasNode, Run } from './types.js';
 import { textPreview } from './presentation.js';
+import { isOutputArtifact } from './blocks.js';
 
 export type CardOutcome = {
   label: string;
@@ -31,7 +32,11 @@ function plainText(value: string) {
 }
 
 function savedOutcome(run: Run, artifacts: Artifact[]): Pick<CardOutcome, 'text' | 'artifactIds'> | undefined {
-  const outputs = artifacts.filter(a => a.runId === run.id && a.projectId === run.projectId);
+  const outputs = artifacts.filter(a => a.runId === run.id && a.projectId === run.projectId && isOutputArtifact(a));
+  if (run.configuration.kind === 'external-notebook-capture' && outputs.length) return {
+    text: sentences(`Captured ${outputs.slice(0, 2).map(a => textPreview(plainText(a.title), 100).text).join(' and ')} for inspection. ros.ai did not execute these notebook cells.`),
+    artifactIds: outputs.slice(0, 2).map(a => a.id),
+  };
   const conclusion = newest(outputs.filter(a => a.kind === 'result')).find(a => {
     const text = a.content.trim();
     return text && !/^[{[<]/u.test(text) && !a.mediaType?.includes('json');
@@ -50,7 +55,7 @@ function savedOutcome(run: Run, artifacts: Artifact[]): Pick<CardOutcome, 'text'
     } catch { return []; }
   }).slice(0, 2);
   if (metrics.length) return { text: sentences(`${metrics.map(m => m.text).join('; ')}.`), artifactIds: metrics.map(m => m.artifact.id) };
-  const visual = outputs.filter(a => ['table', 'plot'].includes(a.kind));
+  const visual = outputs.filter(a => ['dataset', 'table', 'plot'].includes(a.kind));
   if (visual.length) return { text: sentences(`Saved ${visual.slice(0, 2).map(a => textPreview(plainText(a.title), 100).text).join(' and ')} for inspection.`), artifactIds: visual.slice(0, 2).map(a => a.id) };
   return undefined;
 }
@@ -86,7 +91,7 @@ export function deriveCardOutcome(node: CanvasNode, runs: Run[], artifacts: Arti
     const blocker = executionBlocker(latest, options);
     if (blocker) return state('Blocked', 'warning', blocker);
     const approval = record(latest.configuration.approval);
-    if (latest.status === 'running') return state('In progress', 'progress', latest.configuration.kind === 'local-experiment' ? 'The approved experiment is running; its outcome is not yet available.' : 'Research is in progress; its outcome is not yet available.');
+    if (latest.status === 'running') return state('In progress', 'progress', latest.configuration.kind === 'external-notebook-capture' ? 'The external notebook capture is in progress; ros.ai is not executing its cells.' : latest.configuration.kind === 'local-experiment' ? 'The approved experiment is running; its outcome is not yet available.' : 'Research is in progress; its outcome is not yet available.');
     if (latest.status === 'queued') return approval.status === 'pending'
       ? state('Approval needed', 'warning', 'Review the saved code and inputs before this experiment can start.')
       : state('Queued', 'progress', 'This work is queued and has not finished.');
@@ -95,7 +100,8 @@ export function deriveCardOutcome(node: CanvasNode, runs: Run[], artifacts: Arti
     if (latest.status === 'cancelled') return state('Stopped', 'neutral', 'The latest attempt was stopped.');
     if (latest.configuration.purpose === 'experiment-plan' && (!result || latest.createdAt > result.run.createdAt)) return state('Plan ready', 'neutral', 'Code has been prepared for review; this plan does not establish an execution result.');
   }
-  if (result) return { label: 'Saved outcome', tone: 'success', text: result.text, hasResult: true, artifactIds: result.artifactIds, runId: result.run.id };
+  if (result) return { label: result.run.configuration.kind === 'external-notebook-capture' ? 'Captured output' : 'Saved outcome', tone: result.run.configuration.kind === 'external-notebook-capture' ? 'neutral' : 'success', text: result.text, hasResult: true, artifactIds: result.artifactIds, runId: result.run.id };
+  if (latest?.status === 'completed' && latest.configuration.kind === 'external-notebook-capture') return { label: 'Notebook snapshot saved', tone: 'neutral', text: 'The external notebook snapshot is saved for inspection. No outputs have been captured, and ros.ai did not execute its cells.', hasResult: false, artifactIds: [], runId: latest.id };
 
   // A captured source or imported dataset is evidence, not a successful
   // experiment. Preview input copies are deliberately excluded here.

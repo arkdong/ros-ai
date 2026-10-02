@@ -1,0 +1,65 @@
+# ros.ai — Stage One Code and Notebook delivery
+
+October 2, 2026. **Code/manual output workflows and Notebook connection/capture implementation are delivered. Stage One is not marked complete: live Jupyter access/execution remains blocked by missing local infrastructure.** The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](RESULT-before-stage-one-2026-10-02.md).
+
+## October 2 follow-up: block creation
+
+Fixed the three reported creation issues: the picker now stores one selected block type, names are optional with unique type defaults (Code, Code 2, etc.), and adding a block closes the picker and selects/reveals it on the canvas. Editors and Resources no longer open as a creation side effect. Report follows the same flow and saves its first version into the existing blank Report node. Custom names and ordinary undo/redo remain available.
+
+Verified the duplicate Code/Knowledge highlight and disabled blank-name button before the fix in an isolated browser workspace. After the fix: all seven choices had exactly one selected/pressed button and enabled blank-name creation; Code/Code 2 stayed on canvas; deliberate Open displayed the Code editor; undo/redo worked; a blank Report saved without adding a second node; adding a Notebook inside a collapsed Group expanded the Group and kept the editor closed until Open; a custom Dataset name was trimmed and Resources stayed closed. TypeScript/Vite build passed (existing bundle-size advisory only), browser error log empty. No new unit tests, unit suite, inference, execution or production data mutation. This frontend-only update needs a page refresh, not a server restart. Receipts and screenshots: [block creation](evidence/block-creation-2026-10-02/).
+
+## Delivered behavior
+
+- **Code** is created and selected on the canvas first. **Open content** or a double-click opens its dedicated editor: language/runtime, Save/Run/Stop, saved program, zero/one explicit full CSV, JSON parameters, outputs/errors, previous attempts and exact source/approval/runtime receipts. Python executes only in the existing Docker boundary. No selected dataset supplies neither a sample artifact nor `df`. Other languages retain source but have no execution adapter.
+- Saved code/settings are ordinary undoable workspace content; browser-local unsaved drafts survive reopening. Layout does not consume content history or discard redo. Failed attempts retain program, logs/errors and valid bounded outputs produced before failure; earlier attempts stay immutable. Ask reviews the exact captured attempt and checks saved source/settings before admission. Shared limits, resource/cancellation behavior and uncertainty accounting remain intact.
+- **Notebook** opens a separate editor, connects to an existing user-managed loopback Jupyter/JupyterLab server, offers a token-free native interface link, and captures bounded saved Contents API snapshots. It never starts a kernel or executes imported cells. A bounded `.ipynb` upload supports the same saved-output capture when live access is unavailable.
+- Choose a saved source version, cell and output checkboxes. Captures retain exact source/snapshot/cell/output hashes, path, stable cell ID or snapshot-index locator, reported count and capture time. These are external capture records with `executionObserved:false`; current kernel state, ordering, dependencies and code/output correspondence are not verified.
+- CSV, JSON, text/logs, validated PNG and conservative safe SVG previews are supported. Unsupported MIME remains escaped, labelled inert JSON with exact download; HTML/scripts are never rendered. Connection tokens remain private server records/headers and are excluded from native URLs, public state and artifacts. The current token is rejected in notebook text even after JSON decoding or joined array normalization.
+- Both block types use the existing artifact/history store. **Use as input** previews the exact version and same-project destination, records the selection receipt, and starts no recipient work. Only a full CSV becomes Code's single `df` input; other formats stay selected evidence. Source edits mark old output stale where evidence allows, without switching receiver/report versions or recomputing.
+- **Use in report** preserves exact evidence IDs/hashes and external-versus-measured attribution in saved reports/exports. **Interpret selected output** prepares only the deliberately selected textual output and structural destination through the existing guide context/consent flow. No whole notebook, neighboring cells or project conversation is added implicitly; no live model request was verified.
+- Blank/manual projects keep Assistant closed. Code/Notebook creation is directly discoverable on the existing canvas; **Discuss** retains the separate node conversation. Knowledge/Action/Group content remains compatible. Manual Code/Notebook cards show useful captured outputs without an inherited inference model badge.
+
+## Architecture and files
+
+The concrete choices were recorded before implementation in [the dated plan](docs/stage-one-code-and-notebooks-2026-10-02.md). This is one saved program per Code block, Python Docker, zero/one full CSV, a read-only adapter to an existing local notebook with separate native UI, and same-project input/report reuse. No second history store, managed Jupyter launcher, compiler orchestration or implicit pipeline was added.
+
+- Direct editors and routing: [App](src/client/App.tsx), [CodeBlock](src/client/CodeBlock.tsx), [NotebookBlock](src/client/NotebookBlock.tsx), [Canvas](src/client/Canvas.tsx).
+- Additive saved documents/validation: [types](src/shared/types.ts), [Store](src/server/store.ts), [block output selection](src/shared/blocks.ts).
+- Local execution/capture: [experiments](src/server/experiments.ts), [sandbox adapter](src/server/sandbox.ts), [worker](src/server/sandbox/sandbox_worker.py).
+- External notebook connection and safe cell capture: [NotebookService](src/server/notebooks.ts), [bounded shared contract](src/shared/notebooks.ts).
+- Shared output reuse/provenance: [handoff endpoint](src/server/result-handoff.ts), [ResultActions](src/client/ResultActions.tsx), [freshness](src/shared/output-provenance.ts), [ArtifactViewer](src/client/ArtifactViewer.tsx), [report claims/figures](src/shared/reports.ts).
+- Optional selected context: [WorkspaceGuide](src/client/WorkspaceGuide.tsx), [assistant context exclusion](src/server/assistant.ts).
+
+## Actual verification
+
+**Final `npm run build` passed**: TypeScript and Vite, with the existing large-bundle advisory. No new unit tests, unit-test runs or broad suite. Verification used a disposable port4311 server with inference/search credentials disabled; user projects were not used for execution.
+
+Three actual local Docker attempts verified:
+
+1. No-input program asserted `df` absent, produced metric42, a three-row JSON table/CSV, a figure and stdout. Actual browser Ask review observed queued/running/completed states.
+2. A deliberate ValueError retained preceding metric7, stdout, saved source and error, plus earlier immutable outputs.
+3. Explicit recipient execution used the full exact saved CSV and calculated14. Before that execution, the same version was branched to two blocks without starting either. Changing source marked prior output stale and did not replace the selected versions.
+
+Saved Code figure/CSV report evidence and HTML export retained exact IDs/hashes. Reloaded API/browser state retained saved source, attempts, outputs and provenance. Notebook browser checks selected only cell2's CSV, captured exact source/cell attribution, explicitly selected it into another Code block without execution, and saved/reopened a report with external evidence attribution. Unsupported HTML was deliberately captured; the artifact viewer contained one escaped `pre` and zero script/HTML-bold elements. Final browser verified preserved Code drafts, separate Discuss, visible Run controls, captured Notebook canvas output and an empty error console.
+
+The optional guide preview showed one structural destination, no metadata/block text and one selected output; no request was dispatched in the browser. Direct offline service checks verified a selected-only guide packet and labelled interpretation without applying an action. Ten controlled Code service checks, fourteen Notebook/guide checks and eight focused credential-normalization checks are **offline evidence**, not live computation or provider success. Real Docker checks above are separately evidenced.
+
+Evidence: [actual calculation receipt](evidence/stage-one-2026-10-02/manual-integration.json), [browser capture/report receipt](evidence/stage-one-2026-10-02/browser-smoke.json), [Code offline checks](evidence/stage-one-2026-10-02/code-offline-checks.json), [Notebook/guide checks](evidence/stage-one-2026-10-02/notebook-offline-checks.json), [Code screenshot](evidence/stage-one-2026-10-02/code-block.png), [selected-only guide screenshot](evidence/stage-one-2026-10-02/selected-output-review.png).
+
+The installed Docker engine was started and the research image rebuilt against the changed worker. The main port4310 service was already stopped at final inspection; read-only saved-state checks found no active work before restoring it. All29 saved projects retain content/revisions/artifact and input counts/pending proposal status, and all36 usage records retain their exact hash. The ROIC correction remains pending. [Before](evidence/stage-one-2026-10-02/production-before.json), [after](evidence/stage-one-2026-10-02/production-after.json). This is a focused preservation receipt, not a comprehensive database migration audit.
+
+The temporary port4311 verification server and agent-created browser tab were closed after checking no active work. The handoff health check confirms port4310 serves the final built frontend.
+
+No paid model/search/provider request, allowance replenishment, account change, deployment, publication, license choice, commit/push, goal or automation occurred. The synthetic imported notebook is explicitly a fixture. No live Jupyter execution is claimed.
+
+## Remaining blocker and unsupported behavior
+
+Neither system nor bundled Python contains Jupyter, and no existing local user-managed session has been supplied. Connecting to the default port8888 reports unavailable while saved snapshots remain accessible. Native connection/open/refresh is implemented, but a running real Jupyter session is required to verify opening, native execution/save and subsequent selected-output refresh. **Imported fixtures and offline Contents API checks do not satisfy that live acceptance scenario. Stage One remains incomplete at this boundary.**
+
+C/Haskell execution, multi-CSV Python inputs, arbitrary container-file import, managed/embedded notebook launch, cross-project reuse, arbitrary agent delivery and managed Nemotron packaging/training are unsupported. Plot-to-model interpretation is unavailable in the text-only guide; deliberately selected text/CSV/JSON evidence can be prepared. External notebook permissions are its owner's responsibility and do not inherit ros.ai Docker isolation or accounting.
+
+## Setup and immediate manual workflow
+
+The local service is available at **http://127.0.0.1:4310**. Refresh the frontend when ready. [Complete setup and limits](docs/stage-one-setup.md) documents `npm ci`, the Docker image build, `npm run build` and `npm start`, plus the native Jupyter connection/authentication path.
+
+Use **New project → Start blank → Add block → Code**. With **No dataset**, enter `metric("Answer", 6 * 7)`, choose **Save & run**, review **Allow & run**, then inspect42. Use **Use as input** or **Use in report** on useful outputs. For Notebook, add a separate block and connect your existing local Jupyter address/path; alternatively import a saved `.ipynb` and capture an output, understanding that this fallback does not execute it.

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Background, BackgroundVariant, ConnectionMode, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Node, type NodeProps, type Viewport } from '@xyflow/react';
-import { ArrowLeft, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Focus, GitBranch, LayoutGrid, LoaderCircle, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Settings2, X } from 'lucide-react';
+import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type Viewport } from '@xyflow/react';
+import { ArrowLeft, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Undo2, X } from 'lucide-react';
 import { ArtifactContent } from './Experiment';
-import { RelationshipEdge, type RoutedEdge } from './RelationshipEdge';
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
@@ -11,24 +10,30 @@ import { CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardW
 import { savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
-import { aggregateTopLevelRelationships } from '../shared/aggregate-relationships';
+import { aggregateTopLevelRelationships, type AggregateRelationship } from '../shared/aggregate-relationships';
+import { displayRelationship } from '../shared/relationships';
 import { routeRelationship, type RelationshipRoute, type RouteNode } from '../shared/routing';
 import { relationshipLabelSize } from '../shared/relationship-label';
-import { placeRelationshipLabels } from '../shared/relationship-label-layout';
 import { readSaved, saveLocal } from './persistence';
 import { arrangeCanvas, numberedStageOrder, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
 import type { Artifact, Canvas, Mutation, ProjectDetail, Proposal, RunStatus } from '../shared/types';
 import './canvas-interactions.css';
 import './canvas-reading.css';
 import './canvas-evidence.css';
+import './groups.css';
+import './aggregate-relationships.css';
+import { convertLegacyGroups, createGroupOperations, isGroup } from '../shared/groups';
+import { blockRegistry, isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
+import { BlockPreview } from './BlockPreview';
 
-export function kindLabel(kind?: string) { return kind === 'topic' ? 'Knowledge' : kind === 'activity' ? 'Action' : 'Unspecified'; }
-export function KindIcon({ kind, size = 14 }: { kind?: string; size?: number }) { return kind === 'activity' ? <Play size={size}/> : <BookOpen size={size}/>; }
+export function kindLabel(kind?: string) { return kind === 'group' ? 'Group' : kind === 'topic' ? 'Knowledge' : kind === 'activity' ? 'Action' : 'Note'; }
+export function KindIcon({ kind, size = 14 }: { kind?: string; size?: number }) { return kind === 'group' ? <LayoutGrid size={size}/> : kind === 'activity' ? <Play size={size}/> : <BookOpen size={size}/>; }
 type Side = 'top' | 'right' | 'bottom' | 'left';
 const sides: { id: Side; position: Position }[] = [{ id: 'top', position: Position.Top }, { id: 'right', position: Position.Right }, { id: 'bottom', position: Position.Bottom }, { id: 'left', position: Position.Left }];
 const ARTIFACT_SIZE = { width: 360, height: 300 };
 type CardData = {
   kind?: string; title: string; description: string; status?: RunStatus; awaitingApproval?: boolean;
+  workLabel?: string; blockLabel: string; primary?: Artifact; members: number; chosen: Artifact[]; origins:Record<string,string>; onHighlightOpen: (artifact: Artifact) => void;
   inputCount: number; resultCount: number; expanded: boolean; preview?: 'added' | 'changed' | 'removed';
   onExpand: () => void; onInspect: () => void; onActivate: () => void; onAdd: () => void; onHandle: (side: Side) => void;
   onSave: (title: string, description: string) => Promise<unknown>; readonly: boolean;
@@ -41,66 +46,104 @@ type CardData = {
 type ResearchNode = Node<CardData, 'research'>;
 function ResearchCard({ data, selected }: NodeProps<ResearchNode>) {
   const flow = useReactFlow();
-  const heading = useRef<HTMLDivElement>(null), resizing = useRef<{ x: number; width: number; zoom: number } | null>(null);
+  const heading = useRef<HTMLDivElement>(null), resizing = useRef<{ x:number; width:number; zoom:number } | null>(null);
   const measure = useRef(data.onMeasure); measure.current = data.onMeasure;
+  const group=data.kind==='group';
   useEffect(() => {
     if (data.expanded || !heading.current) return;
-    const element = heading.current;
-    const update = () => measure.current(data.width, Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, element.offsetHeight + 2)));
-    const observer = new ResizeObserver(update); observer.observe(element); update();
-    return () => observer.disconnect();
-  }, [data.expanded, data.width]);
-  const resizedWidth = (x: number) => Math.max(CARD_MIN_WIDTH, Math.min(CARD_MAX_WIDTH, Math.round(resizing.current!.width + (x - resizing.current!.x) / resizing.current!.zoom)));
-  const active = data.status === 'running' || data.status === 'queued';
-  const [editing, setEditing] = useState(false), [title, setTitle] = useState(data.title), [description, setDescription] = useState(data.description), [saving, setSaving] = useState(false);
-  useEffect(() => { if (!editing) { setTitle(data.title); setDescription(data.description); } }, [data.title, data.description, editing]);
-  useEffect(() => { if (!data.expanded || data.readonly) setEditing(false); }, [data.expanded, data.readonly]);
-  const edit = () => { if (!data.readonly && data.expanded) { data.onActivate(); setTitle(data.title); setDescription(data.description); setEditing(true); } };
-  const save = async () => {
-    if (!title.trim() || saving) return;
-    if (title.trim() === data.title && description === data.description) { setEditing(false); return; }
-    setSaving(true);
-    try { if (await data.onSave(title.trim(), description) !== false) setEditing(false); } finally { setSaving(false); }
-  };
-  return <article className={`research-card ${data.expanded ? 'expanded-group' : ''} ${selected ? 'selected' : ''} ${editing ? 'editing' : ''} ${data.preview ? `preview-${data.preview}` : ''}`}>
-    {sides.map(side => <Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly ? -1 : 0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a note, or click then choose a note" onClick={event => { event.stopPropagation(); data.onHandle(side.id); }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); data.onHandle(side.id); } }}/>) }
-    <div ref={heading} className={`group-heading ${editing ? 'nodrag' : ''}`}>
-      <div className="card-top"><span className="card-type"><KindIcon kind={data.kind}/> {kindLabel(data.kind)}{data.expanded && ['progress', 'warning', 'danger'].includes(data.outcome.tone) && <span className={`expanded-work-state outcome-${data.outcome.tone}`}> · {data.outcome.label}</span>}</span><span className="card-controls nodrag">
-        {data.expanded && !data.readonly && !editing && <button className="icon-button" aria-label={`Edit ${data.title} inline`} title="Edit title and description" onClick={event => { event.stopPropagation(); edit(); }}><Pencil size={15}/></button>}
-        <button className="icon-button" aria-label={`Open ${data.title}`} title="Open details" onClick={event => { event.stopPropagation(); data.onInspect(); }}><Settings2 size={15}/></button>
-        <button className="icon-button" aria-label={`${data.expanded ? 'Collapse' : 'Expand'} ${data.title}`} title={data.expanded ? 'Collapse group' : 'Expand group'} disabled={saving} onClick={event => { event.stopPropagation(); data.onExpand(); }}>{data.expanded ? <ChevronUp size={17}/> : <ChevronDown size={17}/>}</button>
+    const element=heading.current, update=()=>measure.current(data.width,Math.min(CARD_MAX_HEIGHT,Math.max(CARD_MIN_HEIGHT,element.offsetHeight+2)));
+    const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();
+  },[data.expanded,data.width,data.primary,data.chosen]);
+  const resizedWidth=(x:number)=>Math.max(CARD_MIN_WIDTH,Math.min(CARD_MAX_WIDTH,Math.round(resizing.current!.width+(x-resizing.current!.x)/resizing.current!.zoom)));
+  const active=data.status==='running'||data.status==='queued';
+  const notebookCapture=data.blockLabel==='Notebook'&&['Captured output','Notebook snapshot saved'].includes(data.outcome.label);
+  return <article className={`research-card ${group?'organizational-group':'research-block'} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
+    {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
+    <div ref={heading} className="group-heading">
+      <div className="card-top"><span className="card-type"><KindIcon kind={data.kind}/>{group?'Group':data.blockLabel==='Note'&&data.kind==='topic'?'Knowledge':data.blockLabel}{group&&<span className="group-item-count"> · {data.members} items</span>}</span><span className="card-controls nodrag">
+        <button className="icon-button" aria-label={`Open ${data.title}`} title={group?'Overview and group highlights':'Open content and results'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>
+        {group&&<button className="icon-button group-expand-control" aria-label={`${data.expanded?'Collapse':'Expand'} ${data.title}`} title={data.expanded?'Collapse group':'Expand group'} onClick={event=>{event.stopPropagation();data.onExpand();}}>{data.expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</button>}
       </span></div>
-      {data.modelLabel && <span className="node-model-indicator" title={data.modelTitle} aria-label={data.modelTitle}><span aria-hidden="true">◉</span>{data.modelLabel}</span>}
-      {editing ? <form className="inline-note-editor nodrag nopan nowheel" onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); void save(); }} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); setEditing(false); } if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void save(); } }}>
-        <input autoFocus aria-label="Note title" value={title} maxLength={200} onChange={event => setTitle(event.target.value)} disabled={saving}/>
-        <textarea aria-label="Note description" value={description} maxLength={20000} rows={2} onChange={event => setDescription(event.target.value)} disabled={saving}/>
-        <div className="inline-note-actions"><span>Save as one undoable edit</span><button type="button" className="secondary small" disabled={saving} onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="primary small" disabled={saving || !title.trim()}>{saving ? <LoaderCircle size={14} className="spin"/> : <Check size={14}/>}Save</button></div>
-      </form> : <>
-        {data.expanded && !data.readonly ? <><button className="card-copy-button nodrag" aria-label={`Edit title for ${data.title}`} onClick={event => { event.stopPropagation(); edit(); }}><span className="card-title" title={data.title}>{data.title || 'Untitled'}</span></button><button className="card-copy-button description-copy nodrag" aria-label={`Edit description for ${data.title}`} onClick={event => { event.stopPropagation(); edit(); }}><span className="card-description" title={data.description}>{data.description || 'Add a question, observation or idea…'}</span></button></> : <><div className="card-title" title={data.title}>{data.title || 'Untitled'}</div>{data.expanded ? <p className="card-description" title={data.description}>{data.description || 'A place for questions, evidence and experiments.'}</p> : <div className={`card-outcome outcome-${data.outcome.tone}`}><span className="outcome-label">{data.preview ? `Preview · ${data.preview}` : data.outcome.label}</span><p className="nowheel">{data.outcome.text}</p></div>}</>}
-        {data.expanded ? <div className="card-bottom expanded-result-bar nodrag nopan">{data.results?.total ? <>
-          <div className="result-density" role="group" aria-label={`Results shown for ${data.title}`}><span>Show</span>{([2, 4, 'all'] as const).map(size => <button key={size} aria-label={`Show ${size === 'all' ? 'all' : size} results for ${data.title}`} aria-pressed={data.results!.size === size} onClick={event => { event.stopPropagation(); data.onResultChoice(changeResultPageSize(data.results!.total, data.results!, size)); }}>{size === 'all' ? 'All' : size}</button>)}</div>
-          <span className="result-range">{data.results.size === 'all' ? `${data.results.total} results` : `${data.results.start + 1}–${Math.min(data.results.start + data.results.size, data.results.total)} of ${data.results.total}`}</span>
-          {data.results.size !== 'all' && <nav className="result-pagination" aria-label={`Result pages for ${data.title}`}><button className="icon-button" aria-label={`Previous results for ${data.title}`} disabled={data.results.page === 0} onClick={event => { event.stopPropagation(); data.onResultChoice({ ...data.results!, page: data.results!.page - 1 }); }}><ChevronLeft size={15}/></button><span className="result-page-dots">{Array.from({ length: data.results.pageCount }, (_, page) => <button key={page} className={page === data.results!.page ? 'current' : ''} aria-label={`Result page ${page + 1} of ${data.results!.pageCount} for ${data.title}`} aria-current={page === data.results!.page ? 'page' : undefined} onClick={event => { event.stopPropagation(); data.onResultChoice({ ...data.results!, page }); }}/>)}</span><button className="icon-button" aria-label={`Next results for ${data.title}`} disabled={data.results.page === data.results.pageCount - 1} onClick={event => { event.stopPropagation(); data.onResultChoice({ ...data.results!, page: data.results!.page + 1 }); }}><ChevronRight size={15}/></button></nav>}
-        </> : <span className={`node-status ${data.status || ''}`}>{active ? <LoaderCircle size={12} className="spin"/> : <span className="status-dot"/>}{data.preview ? `Preview · ${data.preview}` : data.awaitingApproval ? 'Awaiting approval' : data.status || 'No saved results yet'}</span>}</div> : <div className="outcome-footer"><button className="text-button small nodrag" onClick={event => { event.stopPropagation(); data.onInspect(); }}>{data.outcome.artifactIds.length ? 'Inspect evidence' : 'Open details'}<ArrowUpRight size={13}/></button></div>}
+      <div className="card-title" title={data.title}>{data.title||'Untitled'}</div>
+      {group ? <>
+        {data.workLabel&&<span className="group-contained-work">{data.workLabel}</span>}
+        {data.description&&<p className="group-overview-excerpt">{data.description.slice(0,140)}{data.description.length>140?'…':''}</p>}
+        {!data.expanded&&<div className="group-chosen-highlights nodrag nopan">{data.chosen.length?data.chosen.map(artifact=><button key={artifact.id} className="group-highlight-preview" aria-label={`Open highlight: ${artifact.title}`} title={`From ${data.origins[artifact.nodeId]??'a saved block'} · exact version ${artifact.hash}`} onClick={event=>{event.stopPropagation();data.onHighlightOpen(artifact);}}><BlockPreview artifact={artifact} compact/><span><strong>{artifact.title}</strong><small>{data.origins[artifact.nodeId]??'Saved block'} · {artifact.hash.slice(0,8)}</small></span></button>):<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
+      </> : <>
+        <div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{data.awaitingApproval?'Awaiting approval':active?data.status:data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':notebookCapture?data.outcome.label:data.primary?'Saved result':'No result yet'}</div>
+        <div className="block-primary-preview nodrag nopan" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{data.primary?<BlockPreview artifact={data.primary}/>:<p className="block-text-preview">{notebookCapture?data.outcome.text:data.description.slice(0,220)||'Add a question or open this block to begin.'}</p>}</div>
+        {selected&&data.modelLabel&&<span className="node-model-indicator" title={data.modelTitle}>{data.modelLabel}</span>}
       </>}
+      {!data.expanded&&<div className="outcome-footer"><button className="text-button small nodrag" onClick={event=>{event.stopPropagation();data.onInspect();}}>{group?'Group details':`Open content${data.resultCount?` · ${data.resultCount} results`:''}`}<ArrowUpRight size={13}/></button>{data.primary&&<small className="block-version">{['failed','interrupted','cancelled','queued','running'].includes(data.status??'')?'Earlier saved result · ':'Version · '}{data.primary.hash.slice(0,8)}</small>}</div>}
     </div>
-    {!data.expanded && !data.readonly && <button className="card-width-handle nodrag nopan" disabled={data.resizePending} role="slider" aria-label={`Card width for ${data.title}`} aria-valuemin={CARD_MIN_WIDTH} aria-valuemax={CARD_MAX_WIDTH} aria-valuenow={data.width} aria-valuetext={`${data.width} pixels`} title="Drag to resize width · arrow keys adjust" onClick={event => event.stopPropagation()}
-      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); resizing.current = { x: event.clientX, width: data.width, zoom: flow.getZoom() }; data.onActivate(); }}
-      onPointerMove={event => { if (resizing.current) data.onWidth(resizedWidth(event.clientX)); }}
-      onPointerUp={event => { if (!resizing.current) return; const width = resizedWidth(event.clientX); resizing.current = null; event.currentTarget.releasePointerCapture(event.pointerId); data.onWidth(width, true); }}
-      onPointerCancel={() => { resizing.current = null; data.onWidth(null); }}
-      onKeyDown={event => { const width = event.key === 'Home' ? CARD_MIN_WIDTH : event.key === 'End' ? CARD_MAX_WIDTH : event.key === 'ArrowLeft' ? data.width - 24 : event.key === 'ArrowRight' ? data.width + 24 : null; if (width !== null) { event.preventDefault(); event.stopPropagation(); data.onWidth(Math.max(CARD_MIN_WIDTH, Math.min(CARD_MAX_WIDTH, width)), true); } }}/>} 
-    {data.expanded && <div className="group-actions nodrag"><span>Drop a result here to reuse it</span><button className="small secondary" disabled={data.readonly} onClick={event => { event.stopPropagation(); data.onAdd(); }}><Plus size={14}/> Add inside</button></div>}
+    {!data.expanded&&!data.readonly&&<button className="card-width-handle nodrag nopan" disabled={data.resizePending} role="slider" aria-label={`Card width for ${data.title}`} aria-valuemin={CARD_MIN_WIDTH} aria-valuemax={CARD_MAX_WIDTH} aria-valuenow={data.width} title="Drag to resize width" onClick={event=>event.stopPropagation()}
+      onPointerDown={event=>{event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={x:event.clientX,width:data.width,zoom:flow.getZoom()};data.onActivate();}}
+      onPointerMove={event=>{if(resizing.current)data.onWidth(resizedWidth(event.clientX));}}
+      onPointerUp={event=>{if(!resizing.current)return;const width=resizedWidth(event.clientX);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);data.onWidth(width,true);}}
+      onPointerCancel={()=>{resizing.current=null;data.onWidth(null);}}
+      onKeyDown={event=>{const width=event.key==='ArrowLeft'?data.width-24:event.key==='ArrowRight'?data.width+24:null;if(width!==null){event.preventDefault();event.stopPropagation();data.onWidth(Math.max(CARD_MIN_WIDTH,Math.min(CARD_MAX_WIDTH,width)),true);}}}/>}
+    {data.expanded&&<div className="group-actions nodrag"><span>Mixed research blocks · relationships do not run work</span><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
 type ArtifactData = { artifact: Artifact; destinationId: string; highlighted: boolean; reused: boolean; originLabel?: string; producer?: string; onOpen: () => void; onPin: () => void; onReuse: () => void; readonly: boolean };
 type ArtifactNode = Node<ArtifactData, 'artifact'>;
 function ArtifactCard({ data }: NodeProps<ArtifactNode>) {
   const { artifact } = data;
-  return <article className={`canvas-artifact ${data.highlighted ? 'highlighted' : ''}`}><div className="card-top"><span className="card-type">{data.highlighted ? <Pin size={13}/> : null}{data.reused ? 'Selected input' : artifact.kind}</span><div className="row nodrag"><button className="icon-button" aria-label={`${data.highlighted ? 'Unpin' : 'Pin'} ${artifact.title}`} disabled={data.readonly} title={data.highlighted ? 'Unpin highlight' : 'Pin as highlight'} onClick={data.onPin}><Pin size={15} fill={data.highlighted ? 'currentColor' : 'none'}/></button><button className="icon-button" aria-label={`Inspect ${artifact.title}`} title="Inspect result" onClick={data.onOpen}><ArrowUpRight size={15}/></button></div></div><h3>{artifact.title}</h3>{data.originLabel&&<span className="artifact-origin">{data.originLabel}</span>}<div className="artifact-preview nodrag nowheel" onDoubleClick={data.onOpen}><ArtifactContent artifact={artifact}/></div><div className="artifact-footer"><span title={`Immutable version ${artifact.hash}`}>{data.reused ? 'Exact selected version' : 'Saved result'} · {artifact.hash.slice(0, 8)}{data.producer&&<small className="artifact-producer"> · Produced by {data.producer}</small>}</span><button className="text-button small nodrag" disabled={data.readonly} onClick={data.onReuse}>Reuse <ArrowUpRight size={13}/></button></div></article>;
+  return <article className={`canvas-artifact ${data.highlighted ? 'highlighted' : ''}`}><div className="card-top"><span className="card-type">{data.highlighted ? <Pin size={13}/> : null}{data.reused ? 'Selected input' : artifact.kind}</span><div className="row nodrag"><button className="icon-button" aria-label={`${data.highlighted ? 'Unpin' : 'Pin'} ${artifact.title}`} disabled={data.readonly} title={data.highlighted ? 'Unpin highlight' : 'Pin as highlight'} onClick={data.onPin}><Pin size={15} fill={data.highlighted ? 'currentColor' : 'none'}/></button><button className="icon-button" aria-label={`Inspect ${artifact.title}`} title="Inspect result" onClick={data.onOpen}><ArrowUpRight size={15}/></button></div></div><h3>{artifact.title}</h3>{data.originLabel&&<span className="artifact-origin">{data.originLabel}</span>}<div className="artifact-preview nodrag nowheel" onDoubleClick={data.onOpen}><BlockPreview artifact={artifact}/></div><div className="artifact-footer"><span title={`Immutable version ${artifact.hash}`}>{data.reused ? 'Exact selected version' : 'Saved result'} · {artifact.hash.slice(0, 8)}{data.producer&&<small className="artifact-producer"> · Produced by {data.producer}</small>}</span><button className="text-button small nodrag" disabled={data.readonly} onClick={data.onReuse}>Reuse <ArrowUpRight size={13}/></button></div></article>;
 }
 const nodeTypes = { research: ResearchCard, artifact: ArtifactCard };
-const edgeTypes = { relationship: RelationshipEdge };
+type RoutedEdge = Edge<{ route: RelationshipRoute; label: string; tooltip: string; showLabel: boolean; onSelect: () => void }, 'relationship'>;
+function CanvasRelationshipEdge({ id, data, selected, style, markerStart, markerEnd, interactionWidth }: EdgeProps<RoutedEdge>) {
+  if (!data) return null;
+  const { route, label, tooltip } = data;
+  return <g data-route-source-side={route.sourceHandle} data-route-target-side={route.targetHandle} data-route-obstructed={route.obstructed} data-aggregate-relationship="true">
+    <title>{tooltip}</title>
+    <BaseEdge id={id} path={route.path} style={style} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={interactionWidth}/>
+    <EdgeLabelRenderer>{data.showLabel && <button type="button" className={`relationship-edge-label on-route-relationship-label nodrag nopan ${selected ? 'selected' : ''}`} style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${route.label.x}px, ${route.label.y}px)`, width: route.labelWidth, pointerEvents: 'all' }} title={tooltip} aria-label={`Inspect relationship: ${tooltip}`} onClick={event => { event.stopPropagation(); data.onSelect(); }}><span>{label}</span><ChevronRight size={12} aria-hidden="true"/></button>}</EdgeLabelRenderer>
+  </g>;
+}
+const edgeTypes = { relationship: CanvasRelationshipEdge };
+function relationshipBadge(group: AggregateRelationship, canvas: Canvas) {
+  const normalize = (text: string) => text.replace(/\s+/gu, ' ').trim();
+  const label = group.contributions.length === 1 ? normalize(displayRelationship(group.contributions[0].connection).label) || 'Related' : `${group.contributions.length} relationships`;
+  const title = (id: string) => normalize(canvas.nodes.find(node => node.id === id)?.title || 'Untitled block');
+  const originals = group.contributions.map(({ connection, sourceTitle, targetTitle }) => `${normalize(sourceTitle) || 'Untitled block'} → ${normalize(targetTitle) || 'Untitled block'}: ${normalize(connection.label) || 'Related'}`);
+  return { label, tooltip: `${title(group.source)} ${group.bidirectional ? '↔' : '→'} ${title(group.target)}\n${originals.length === 1 ? 'Saved relationship' : `${originals.length} saved relationships`}:\n${originals.join('\n')}\nClick to inspect the original relationships.` };
+}
+/** Keep every badge on a straight part of its own rendered route. Enclosing
+ * frames have traversable interiors; crowded routes stay selectable without a
+ * displaced badge suggesting a relationship elsewhere on the board. */
+export function placeCanvasRelationshipLabels(items: { route: RelationshipRoute; showLabel: boolean }[], nodes: readonly RouteNode[], expandedIds: readonly string[]) {
+  const expanded = new Set(expandedIds), occupied: Box[] = [];
+  const obstacles: Box[] = nodes.flatMap(node => expanded.has(node.id) ? [{ ...node, height: GROUP_INSET.y - 20 }, { ...node, y: node.y + node.height - GROUP_FOOTER, height: GROUP_FOOTER }] : [node]);
+  const intersects = (a: Box, b: Box) => a.x < b.x + b.width + 4 && a.x + a.width + 4 > b.x && a.y < b.y + b.height + 4 && a.y + a.height + 4 > b.y;
+  for (const item of items) {
+    const { route } = item, height = 28;
+    let traversed = 0;
+    const segments = route.points.slice(1).map((b, index) => {
+      const a = route.points[index], length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y), start = traversed;
+      traversed += length;
+      return { a, b, length, start, horizontal: a.y === b.y };
+    });
+    const candidates = segments.flatMap(({ a, b, length, start, horizontal }) => {
+      // Rounded bends consume ten pixels at either end of an inner segment.
+      const width = route.labelWidth;
+      if (width < 64) return [];
+      // The badge can overhang a short horizontal segment's bends when its
+      // complete rectangle still fits; only its center must stay on the line.
+      const margin = horizontal ? 10 : height / 2 + 10;
+      if (length < margin * 2) return [];
+      return [Math.max(margin, Math.min(length - margin, traversed / 2 - start)), ...[.125, .25, .375, .5, .625, .75, .875].map(fraction => Math.max(margin, Math.min(length - margin, length * fraction)))].map(offset => {
+        const point = { x: a.x + (b.x - a.x) * offset / length, y: a.y + (b.y - a.y) * offset / length };
+        const area = { x: point.x - width / 2, y: point.y - height / 2, width, height };
+        return { point, area, distance: Math.abs(start + offset - traversed / 2) };
+      });
+    }).sort((a, b) => a.distance - b.distance);
+    const chosen = candidates.find(candidate => ![...obstacles, ...occupied].some(box => intersects(candidate.area, box)));
+    item.showLabel = Boolean(chosen);
+    if (chosen) { route.label = chosen.point; route.labelWidth = chosen.area.width; route.labelHeight = height; occupied.push(chosen.area); }
+  }
+}
 export function emptyPosition(canvas: Canvas): { x: number; y: number } {
   for (let row = 0; row < 100; row++) for (let column = 0; column < 5; column++) {
     const x = column * (CARD_SIZE.width + LAYOUT_GAP), y = row * (CARD_MAX_HEIGHT + LAYOUT_GAP);
@@ -117,10 +160,10 @@ function previewCanvas(canvas: Canvas, proposal?: Proposal) {
     if (op.type === 'addConnection') result.connections.push(op.connection);
     if (op.type === 'removeConnection') result.connections = result.connections.filter(c => c.id !== op.id);
   }
-  return { canvas: result, marks };
+  return { canvas: convertLegacyGroups(result), marks };
 }
 export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
-type Props = { detail: ProjectDetail; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null };
+type Props = { detail: ProjectDetail; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -142,8 +185,10 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
   });
   return { items, width, height, minY };
 }
-function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, proposal, historyCanvas, expandedIds, onExpandedChange, focusId }: Props) {
+function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId }: Props) {
+  const expandedIds = useMemo(()=>{const canvas=historyCanvas||detail.project.canvas;return requestedExpandedIds.filter(id=>canvas.nodes.some(node=>node.id===id&&(isGroup(node)||canvas.nodes.some(child=>child.parentId===id))));},[requestedExpandedIds,historyCanvas,detail.project.canvas]);
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
+  const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group');
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
   const [animatingLayout, setAnimatingLayout] = useState(false), [artifactPlacementRevision, setArtifactPlacementRevision] = useState(0);
@@ -231,7 +276,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
   };
   const readonly = Boolean(historyCanvas || proposal);
   const displayed = useMemo(() => previewCanvas(historyCanvas || detail.project.canvas, historyCanvas ? undefined : proposal), [historyCanvas, detail.project.canvas, proposal]);
-  const aggregatedRelationships = useMemo(() => aggregateTopLevelRelationships(displayed.canvas), [displayed.canvas]);
+  const aggregatedRelationships = useMemo(() => aggregateTopLevelRelationships(displayed.canvas, expandedIds), [displayed.canvas, expandedIds]);
   const selectedAggregate = aggregatedRelationships.find(connection => connection.id === selectedEdge);
   const rootStages = displayed.canvas.nodes.filter(node => !node.parentId);
   const stageOrder = numberedStageOrder(rootStages);
@@ -258,7 +303,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
       void mutate([{ type: 'updateNode', id, patch: { width } }], 'Resize card width').finally(() => { clear(); resizeCommits.current.delete(id); setResizingCards([...resizeCommits.current]); });
     }
   };
-  const toggle = (id: string) => { const open = expandedIds.includes(id); onExpandedChange(open ? expandedIds.filter(n => n !== id) : [...expandedIds, id]); onSelect(id); };
+  const toggle = (id: string) => { if (!displayed.canvas.nodes.some(node=>node.id===id&&isGroup(node))) return; const open = expandedIds.includes(id); onExpandedChange(open ? expandedIds.filter(n => n !== id) : [...expandedIds, id]); onSelect(id); };
   const connect = (source: string, target: string, sourceHandle?: Side, targetHandle?: Side) => {
     if (readonly || source === target || connectionBusy.current) return;
     setPendingConnection(null); connectionCommittedAt.current = Date.now();
@@ -279,9 +324,11 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
     const parentId = node.id;
         const runs = detail.runs.filter(r => r.nodeId === parentId && r.status === 'completed');
         const local = runs.filter(r => r.configuration.kind === 'local-experiment').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-        const model = runs.filter(r => r.configuration.kind !== 'local-experiment' && r.configuration.purpose !== 'experiment-plan').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        const research = runs.filter(r => !['local-experiment','external-notebook-capture'].includes(String(r.configuration.kind)) && r.configuration.purpose !== 'experiment-plan').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        const capture = runs.filter(r => r.configuration.kind === 'external-notebook-capture' && detail.artifacts.some(a => a.runId === r.id && isOutputArtifact(a))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        const manualBlock = ['code','notebook'].includes(nodeBlockType(node));
         const pinned = highlights.filter(h => h.nodeId === parentId || descendantIds[parentId]?.has(h.nodeId)); const selected = detail.inputs.filter(i => i.nodeId === parentId);
-        const artifacts = detail.artifacts.filter(a => pinned.some(h => h.artifactId === a.id) || selected.some(i => i.artifactId === a.id) || ((a.runId === local?.id || a.runId === model?.id) && a.kind !== 'log' && a.kind !== 'source')).sort((a, b) => Number(pinned.some(h => h.artifactId === b.id)) - Number(pinned.some(h => h.artifactId === a.id)));
+        const artifacts = detail.artifacts.filter(a => (!manualBlock || isOutputArtifact(a)) && (pinned.some(h => h.artifactId === a.id) || selected.some(i => i.artifactId === a.id) || ([local?.id,research?.id,capture?.id].includes(a.runId) && isOutputArtifact(a)))).sort((a, b) => Number(pinned.some(h => h.artifactId === b.id)) - Number(pinned.some(h => h.artifactId === a.id)));
     return [parentId, resultPage(artifacts, resultChoices[parentId])];
   })), [displayed.canvas.nodes, detail.runs, detail.inputs, detail.artifacts, highlights, resultChoices, descendantIds]);
   const computedNodes = useMemo<(ResearchNode | ArtifactNode)[]>(() => {
@@ -289,45 +336,34 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
       const siblings = displayed.canvas.nodes.filter(n => (n.parentId || null) === parentId).sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
       const built: (ResearchNode | ArtifactNode)[] = []; let right = 0, bottom = 0;
       for (const node of siblings) {
-        const expanded = expandedIds.includes(node.id); const child = expanded ? build(node.id, depth + 1) : { nodes: [], width: 0, height: 0 };
+        const expanded = isGroup(node) && expandedIds.includes(node.id); const child = expanded ? build(node.id, depth + 1) : { nodes: [], width: 0, height: 0 };
         const width = expanded ? Math.ceil(Math.max(768, child.width + GROUP_INSET.x * 2) / 24) * 24 : cardSizes[node.id].width;
         const height = expanded ? Math.ceil(Math.max(408, child.height + GROUP_INSET.y + GROUP_FOOTER) / 24) * 24 : cardSizes[node.id].height;
         const box: Box = { x: parentId ? Math.max(0, node.x) : node.x, y: parentId ? Math.max(0, node.y) : node.y, width, height };
         right = Math.max(right, box.x + width); bottom = Math.max(bottom, box.y + height);
         const runs = detail.runs.filter(r => r.nodeId === node.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); const status = runs.find(r => ['queued', 'running'].includes(r.status))?.status || runs[0]?.status;
-        const effective=modelSettings?resolveModelSetting(modelSettings,displayed.canvas.nodes,node.id):null;
+        const contained=node.kind==='group'?new Set([node.id,...descendantIds[node.id]]):new Set<string>();
+        const latestByBlock=new Map<string,typeof detail.runs[number]>();
+        for(const run of [...detail.runs].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)))if(contained.has(run.nodeId)&&!latestByBlock.has(run.nodeId))latestByBlock.set(run.nodeId,run);
+        const containedAttempts=[...latestByBlock.values()];
+        const pending=containedAttempts.filter(run=>(run.configuration.approval as {status?:string}|undefined)?.status==='pending').length;
+        const working=containedAttempts.filter(run=>['running','queued'].includes(run.status)&&(run.configuration.approval as {status?:string}|undefined)?.status!=='pending').length;
+        const failed=containedAttempts.filter(run=>['failed','interrupted'].includes(run.status)).length;
+        const stopped=containedAttempts.filter(run=>run.status==='cancelled').length;
+        const workLabel=[working?`${working} block${working===1?'':'s'} working`:'',pending?`${pending} approval${pending===1?'':'s'} pending`:'',failed?`${failed} block${failed===1?' needs':'s need'} attention`:'',stopped?`${stopped} stopped attempt${stopped===1?'':'s'}`:''].filter(Boolean).join(' · ');
+        const effective=modelSettings&&!['code','notebook'].includes(nodeBlockType(node))?resolveModelSetting(modelSettings,displayed.canvas.nodes,node.id):null;
         const selectedProvider=modelSettings?.providers.find(item=>item.id===effective?.selection.provider);
         const selectedModel=selectedProvider?.models.find(item=>item.id===effective?.selection.model);
         const modelTitle=effective?`Selected model: ${selectedProvider?.label??effective.selection.provider} · ${selectedModel?.label??effective.selection.model}${effective.inheritedFrom===node.id?' · task override':effective.inheritedFrom?' · inherited from '+displayed.canvas.nodes.find(item=>item.id===effective.inheritedFrom)?.title:' · project default'}. Saved results retain their original producing model.`:undefined;
-        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { modelLabel:selectedModel?.label??effective?.selection.model, modelTitle, results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, onWidth: (width, commit) => resizeCard(node.id, width, commit), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && ['result', 'metric', 'table', 'plot'].includes(a.kind)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => onInspect(node.id), onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly } }, ...child.nodes);
-      }
-      if (parentId) {
-        const pinned = highlights.filter(h => h.nodeId === parentId || descendantIds[parentId]?.has(h.nodeId)); const selected = detail.inputs.filter(i => i.nodeId === parentId);
-        const page = resultPages[parentId];
-        const artifacts = page.items;
-        const packed = packArtifactCards(artifacts, parentId, pinned, page.size !== 'all');
-        const startY = Math.max(bottom ? bottom + LAYOUT_GAP : 0, packed.minY);
-        packed.items.forEach(({ artifact, box }) => {
-          const position = { x: box.x + GROUP_INSET.x, y: box.y + startY + GROUP_INSET.y }; const used = selected.some(i => i.artifactId === artifact.id);
-          const owner=displayed.canvas.nodes.find(item=>item.id===artifact.nodeId);
-          const producerRun=detail.runs.find(run=>run.id===artifact.runId);
-          const original=artifact.metadata?.originalExecution as {provider?:string;model?:string}|undefined;
-          const producer=original?.model?`${original.provider??'recorded'} · ${original.model}`:original?'recorded execution (see provenance)':producerRun?`${producerRun.provider} · ${producerRun.model}`:undefined;
-          built.push({ id: `artifact:${parentId}:${artifact.id}`, parentId, type: 'artifact', position, ...ARTIFACT_SIZE, style: { ...ARTIFACT_SIZE }, zIndex: depth + 1, connectable: false, data: { artifact, destinationId: parentId, producer, originLabel:artifact.nodeId!==parentId?`From ${owner?.title??'a saved note'}${used?' · selected input':' · highlighted finding'}`:undefined, highlighted: pinned.some(h => h.artifactId === artifact.id), reused: used && artifact.nodeId !== parentId, onOpen: () => onArtifact(artifact, parentId), onPin: () => onPin(artifact, parentId), onReuse: () => onReuse(artifact), readonly } });
-          right = Math.max(right, box.x + ARTIFACT_SIZE.width); bottom = Math.max(bottom, startY + box.y + ARTIFACT_SIZE.height);
-        });
+        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockLabel:blockRegistry[nodeBlockType(node)].label, primary:isGroup(node)?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), modelLabel:selectedModel?.label??effective?.selection.model, modelTitle, results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, onWidth: (width, commit) => resizeCard(node.id, width, commit), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly } }, ...child.nodes);
       }
       return { nodes: built, width: right, height: bottom };
     };
     return build(null).nodes;
-  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, cardOutcomes, resizingCards, resultPages, modelSettings, descendantIds]);
+  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, cardOutcomes, resizingCards, resultPages, modelSettings, descendantIds, groupSelection]);
   const [nodes, setNodes] = useState(computedNodes);
   const liveNodes = useRef(nodes); liveNodes.current = nodes;
-  const extraContent = useMemo(() => Object.fromEntries(expandedIds.flatMap(parentId => {
-    const page = resultPages[parentId]; if (!page?.items.length) return [];
-    const packed = packArtifactCards(page.items, parentId, highlights.filter(highlight => highlight.nodeId === parentId || descendantIds[parentId]?.has(highlight.nodeId)), page.size !== 'all');
-    return [[parentId, { width: packed.width, height: packed.height, minY: packed.minY }]];
-  })), [expandedIds, resultPages, highlights, descendantIds, artifactPlacementRevision]);
+  const extraContent = useMemo(() => ({}), []);
   useEffect(() => {
     if (readonly) { reflowState.current = null; return; }
     // Pointer drags/width previews are live UI only. Settle once their saved state
@@ -432,23 +468,25 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
   }, [focusRequest, computedNodes]);
   useEffect(() => { if (focusId) setFocusRequest(focusId); }, [focusId]);
   const edges = useMemo<RoutedEdge[]>(() => {
-    // Every root pair gets exactly one visible summary, whether groups are
-    // folded or expanded. Descendant links remain stored and inspectable.
-    const geometry: RouteNode[] = nodes.filter(node => !node.parentId && node.type === 'research').map(node => ({ id: node.id, ...node.position, width: node.width || CARD_SIZE.width, height: node.height || CARD_SIZE.height }));
+    // Original endpoints remain visible in expanded frames; collapsed ancestors
+    // aggregate only their hidden contributions.
+    const byId=new Map(nodes.map(node=>[node.id,node]));
+    const absolute=(id:string):{x:number;y:number}=>{const node=byId.get(id)!;const parent=node.parentId?absolute(node.parentId):{x:0,y:0};return {x:node.position.x+parent.x,y:node.position.y+parent.y};};
+    const geometry: RouteNode[] = nodes.filter(node=>node.type==='research').map(node=>({id:node.id,parentId:node.parentId,...absolute(node.id),width:node.width||CARD_SIZE.width,height:node.height||CARD_SIZE.height}));
     const items = aggregatedRelationships.flatMap(group => {
-      const route = routeRelationship({ source: group.source, target: group.target, nodes: geometry, previous: routeHistory.current.get(group.id), labelSize: relationshipLabelSize(group.label) });
+      const badge = relationshipBadge(group, displayed.canvas), size = relationshipLabelSize(badge.label);
+      const route = routeRelationship({ source: group.source, target: group.target, nodes: geometry.filter(item=>item.id===group.source||item.id===group.target||!expandedIds.includes(item.id)), previous: routeHistory.current.get(group.id), labelSize: { width: size.width + 14, height: 28 } });
       if (!route) return [];
       routeHistory.current.set(group.id, route);
-      return [{ group, route: { ...route, visibleSource: group.source, visibleTarget: group.target, renderSource: group.source, renderTarget: group.target, boundaries: [] } }];
+      return [{ group, ...badge, showLabel: true, route: { ...route } }];
     });
-    // Reuse the existing text packing with no child boundaries or inner legs.
-    placeRelationshipLabels(items.map(({ group, route }) => ({ id: group.id, route, label: group.label })), geometry);
-    return items.map(({ group, route }) => {
+    placeCanvasRelationshipLabels(items, geometry, expandedIds);
+    return items.map(({ group, route, label, tooltip, showLabel }) => {
       const selected = group.id === selectedEdge, color = selected ? '#536f69' : '#99a5a2';
       const marker = { type: MarkerType.ArrowClosed, width: 17, height: 17, color };
-      return { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label: group.label, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+      return { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
     });
-  }, [aggregatedRelationships, nodes, selectedEdge]);
+  }, [aggregatedRelationships, nodes, selectedEdge, expandedIds, displayed.canvas]);
   const broader = () => { const selected = displayed.canvas.nodes.find(n => n.id === selectedId); if (selected?.parentId) { onSelect(selected.parentId); setFocusRequest(selected.parentId); } else void fitCanvas(450); };
   const arrange = async () => {
     if (readonly || arranging || animatingLayout) return;
@@ -470,9 +508,9 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
   };
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}`} data-testid="canvas">
     <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={changes => setNodes(current => applyNodeChanges(changes, current))}
-      onNodeClick={(event, node) => { if ((event.target as HTMLElement).closest('.relationship-handle')) return; if (node.type === 'research') { if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side); else onSelect(node.id); } setSelectedEdge(null); }}
-      onNodeDoubleClick={(event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if (!expandedIds.includes(node.id)) toggle(node.id); else setFocusRequest(node.id); } else onArtifact(node.data.artifact, node.data.destinationId); }}
-      onPaneClick={() => { onSelect(null); setSelectedEdge(null); setPendingConnection(null); }} onEdgeClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }} onEdgeDoubleClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }}
+      onNodeClick={(event, node) => { if ((event.target as HTMLElement).closest('.relationship-handle')) return; if (node.type === 'research') { if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side); else if(selecting){setGroupSelection(ids=>ids.includes(node.id)?ids.filter(id=>id!==node.id):[...ids,node.id]);} else onSelect(node.id); } setSelectedEdge(null); }}
+      onNodeDoubleClick={(event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); }}
+      onPaneClick={() => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); }} onEdgeClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }} onEdgeDoubleClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }}
       onNodeDragStart={() => { dragging.current = true; setReflowRevision(revision => revision + 1); }} onNodeDragStop={(event, node) => {
         dragging.current = false;
         if (node.type === 'artifact') {
@@ -491,13 +529,22 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
         const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
         if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
       }}
-      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodesConnectable={!readonly} deleteKeyCode={null} snapToGrid snapGrid={[24, 24]} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} onMoveEnd={(_, view) => saveLocal(viewKey, view)} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.1} color="#dedede"/></ReactFlow>
+      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodesConnectable={!readonly} deleteKeyCode={null} snapToGrid snapGrid={[24, 24]} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} onMoveEnd={(_, view) => saveLocal(viewKey, view)} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/></ReactFlow>
     <div className="canvas-header">
-      <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.length} notes · {expandedIds.length} expanded</span></div>
-      <div className="canvas-navigation"><button className="secondary small" aria-label="Broader view" onClick={broader}><ArrowLeft size={15}/> Broader view</button><button className="secondary small" aria-label="Arrange canvas" title="Place sources above consumers with room for relationship labels" disabled={readonly || arranging || animatingLayout || !displayed.canvas.nodes.length} onClick={() => void arrange()}>{arranging || animatingLayout ? <LoaderCircle size={15} className="spin"/> : <LayoutGrid size={15}/>} Arrange</button><button className="secondary small" aria-label="Canvas overview" title="See the entire canvas" onClick={() => void fitCanvas(400, true)}><Focus size={15}/> Overview</button><button className="secondary small" aria-label="Collapse all" disabled={!expandedIds.length} onClick={() => { onExpandedChange([]); onSelect(null); }}><PanelTopClose size={15}/></button></div>
+      <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.filter(node=>!isGroup(node)).length} blocks · {displayed.canvas.nodes.filter(isGroup).length} groups</span></div>
+      <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
+        {nodes.length>0&&<button className="secondary small canvas-add-button" data-testid="add-node" aria-label="Add block to canvas" disabled={readonly||busy} onClick={()=>onAdd(null)}><Plus size={15}/> Add block</button>}
+        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title="Undo canvas change" disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
+        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title="Redo canvas change" disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
+        {onHistory&&<button className={`icon-button ${historyOpen?'active':''}`} aria-label="Canvas history" title="Canvas content history" aria-expanded={historyOpen} aria-controls="canvas-content-history" onClick={onHistory}><History size={16}/></button>}
+        {onDemo&&<button className="secondary small canvas-add-button" onClick={onDemo}><BookOpen size={14}/>{demoLabel}</button>}
+        {onTour&&<button className="icon-button" title="Tour saved research" aria-label="Start guided demo" onClick={onTour}><BookOpen size={17}/></button>}
+      </div>
+      <div className="canvas-navigation"><button className="secondary small" aria-pressed={selecting} disabled={readonly} onClick={()=>{setSelecting(!selecting);setGroupSelection([]);onSelect(null);}}><Check size={15}/>{selecting?'Done selecting':'Select blocks'}</button><button className="secondary small" aria-label="Broader view" onClick={broader}><ArrowLeft size={15}/> Broader view</button><button className="secondary small" aria-label="Arrange canvas" title="Place sources above consumers with room for relationship labels" disabled={readonly || arranging || animatingLayout || !displayed.canvas.nodes.length} onClick={() => void arrange()}>{arranging || animatingLayout ? <LoaderCircle size={15} className="spin"/> : <LayoutGrid size={15}/>} Arrange</button><button className="secondary small" aria-label="Canvas overview" title="See the entire canvas" onClick={() => void fitCanvas(400, true)}><Focus size={15}/> Overview</button><button className="secondary small" aria-label="Collapse all" disabled={!expandedIds.length} onClick={() => { onExpandedChange([]); onSelect(null); }}><PanelTopClose size={15}/></button></div>
       {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
     </div>
-    {!nodes.length && <div className="canvas-empty"><BookOpen size={34} strokeWidth={1.2}/><h2>Give a question room.</h2><p>Add what you know, or an Action to explore what you don’t.</p>{!readonly && <button className="primary" onClick={() => onAdd(null)}><Plus size={16}/> Add Knowledge or Action</button>}</div>}
+    {!nodes.length && <div className="canvas-empty"><BookOpen size={34} strokeWidth={1.2}/><h2>Give a question room.</h2><p>Add what you know, or an Action to explore what you don’t.</p>{!readonly && <button className="primary" onClick={() => onAdd(null)}><Plus size={16}/> Add your first block</button>}</div>}
+    {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Choose another note to connect</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
     {selectedAggregate && <section className="aggregate-relationships nodrag nopan nowheel" role="dialog" aria-modal="false" aria-label="Contributing relationships">
       <header><GitBranch size={17}/><strong>{selectedAggregate.label}</strong><button className="icon-button" aria-label="Close contributing relationships" onClick={() => setSelectedEdge(null)}><X size={16}/></button></header>
@@ -509,7 +556,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
       </li>)}</ol>
     </section>}
     {message && <div className="canvas-feedback" role="status">{message}</div>}
-    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; Overview shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div><div className="canvas-hint">Double-click to expand · drag corner to resize · group links summarize relationships</div>
+    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; Overview shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div><div className="canvas-hint">Double-click to open content · Groups expand with their arrow · drag to arrange</div>
   </div>;
 }
 export function ResearchCanvas(props: Props) { return <ReactFlowProvider key={props.detail.project.id}><FlowCanvas {...props}/></ReactFlowProvider>; }

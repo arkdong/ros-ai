@@ -108,17 +108,21 @@ def main():
     captured_out, captured_err = CapturedText(), CapturedText()
     error = None
     try:
-        frame = pd.read_csv("/input/dataset.csv")
-        if len(frame) > 100_000 or len(frame.columns) > 100:
-            raise ValueError("Dataset exceeds 100,000 rows or 100 columns.")
+        frame = None
+        if os.path.isfile("/input/dataset.csv"):
+            frame = pd.read_csv("/input/dataset.csv")
+            if len(frame) > 100_000 or len(frame.columns) > 100:
+                raise ValueError("Dataset exceeds 100,000 rows or 100 columns.")
         with open("/input/parameters.json", encoding="utf-8") as handle:
             parameters = json.load(handle)
         with open("/input/program.py", encoding="utf-8") as handle:
             code = handle.read()
-        scope = {"__name__": "__research__", "df": frame, "params": parameters,
+        scope = {"__name__": "__research__", "params": parameters,
                  "pd": pd, "np": np, "plt": plt, "scipy": scipy,
                  "table": table, "metric": metric, "plot": plot,
                  "export_csv": export_csv, "conclusion": conclusion}
+        if frame is not None:
+            scope["df"] = frame
         with contextlib.redirect_stdout(captured_out), contextlib.redirect_stderr(captured_err):
             exec(compile(code, "/input/program.py", "exec"), scope, scope)
     except BaseException as failure:

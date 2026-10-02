@@ -73,6 +73,38 @@
   background: #f1f7e8;
   color: #243718;
 }
+.single-canvas-shell .canvas-stage,
+.single-canvas-shell .canvas-stage > .canvas-area,
+.direct-canvas .react-flow { background: #ffffff; }
+.direct-canvas .canvas-edit-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px #00000008;
+  pointer-events: auto;
+}
+.direct-canvas .canvas-edit-controls .icon-button {
+  width: 34px;
+  height: 34px;
+}
+.direct-canvas .canvas-edit-controls .canvas-add-button {
+  min-height: 34px;
+  padding: 7px 10px;
+  background: #ffffff;
+  border: 0;
+  font-size: 14px;
+}
+.direct-canvas .canvas-edit-controls button:focus-visible {
+  outline: 2px solid #6a806d;
+  outline-offset: 2px;
+}
+.direct-canvas .canvas-edit-controls .active { background: #eeeeee; }
 .single-canvas-shell .direct-canvas .relationship-editor { top: auto; bottom: 98px; }
 @media (max-width: 850px) {
   .single-canvas-shell .assistant-panel { width: min(365px, 48%); }

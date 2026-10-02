@@ -3,7 +3,7 @@ import type { ResearchLimits } from './research.js';
 export type BudgetPeriod = 'hour' | 'today' | 'day';
 export type BudgetUsage = {
   id: string;
-  provider: 'nebius' | 'openai' | 'tavily' | 'nebius-sandbox';
+  provider: string;
   purpose: string;
   at: string;
   status: string;

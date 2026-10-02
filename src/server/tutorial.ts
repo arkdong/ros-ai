@@ -225,7 +225,7 @@ export class TutorialService {
     const roots = this.store.getProject(saved.projectId).canvas.nodes.filter(node => !node.parentId);
     const previous = roots.find(node => node.id === saved.stageNodeIds.at(-1));
     const node:CanvasNode = {id:randomUUID(),title:content.stages[index].title,
-      description:summary,kind:'topic',parentId:null,x:previous?.x ?? 0,
+      description:summary,kind:'group',parentId:null,x:previous?.x ?? 0,
       y:roots.length ? Math.max(...roots.map(node => node.y)) + CARD_MAX_HEIGHT + LAYOUT_GAP : 0,width:480};
     const operations:Mutation[] = [{type:'addNode',node}];
     if (index) operations.push({type:'addConnection',connection:{id:randomUUID(),source:saved.stageNodeIds[index-1],target:node.id,

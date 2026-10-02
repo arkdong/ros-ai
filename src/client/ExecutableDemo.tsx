@@ -17,7 +17,7 @@ function artifactLabel(item: Artifact) {
   if (item.kind === 'source') return 'Prepared source note';
   if (item.kind === 'dataset') return item.metadata?.originalExecution ? 'Saved calculation data' : 'Captured dataset';
   const origin = item.metadata?.tutorialOrigin === 'prepared' ? 'Prepared' : 'Saved';
-  const kind = { result: 'text', plot: 'figure', metric: 'metrics', table: 'table', code: 'code', log: 'record' }[item.kind];
+  const kind = { result: 'text', plot: 'figure', metric: 'metrics', table: 'table', code: 'code', log: 'record', notebook:'notebook source' }[item.kind];
   return `${origin} ${kind}`;
 }
 

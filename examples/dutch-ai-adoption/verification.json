@@ -1,0 +1,35 @@
+{
+  "verifiedAt": "2026-09-23T09:41:34.922Z",
+  "projectId": "67e23d18-f399-46ed-9698-147e7d9d5f2c",
+  "nodes": 9,
+  "completedLocalRuns": [
+    {
+      "id": "49dea26e-eb9d-4bc0-99a1-a8706074db11",
+      "status": "completed",
+      "provider": "local",
+      "backend": "docker-python",
+      "outputs": 8
+    },
+    {
+      "id": "669eeee7-ee61-49ca-81ad-c5317bb1d747",
+      "status": "completed",
+      "provider": "local",
+      "backend": "docker-python",
+      "outputs": 9
+    }
+  ],
+  "articleSelectedExactVersions": [
+    "09c83511-2424-4640-926c-73b15a3a8a5e",
+    "4d584c50-365d-4f8a-8504-e1eddd89da04",
+    "d86430d8-903c-4342-ab9c-e0f71963baf1",
+    "35fcbc5a-5d86-491d-a6a2-96d6eab55e0a",
+    "5771c10f-abac-4c5a-9ae3-f26a10d246d1",
+    "2297df0a-3b29-4c99-8586-e7c10164d4c7",
+    "a2dc1226-69d3-4279-92b9-bb56edf8b9ae"
+  ],
+  "datasetHash": "001e64f840ad88e59db3ed525e370fc943d2bc908120b1f8be8f97128998ac52",
+  "plottedArithmeticChecks": "41.4pp adoption gap; 20.3pp denominator difference; 2 intermediate bins with turnover share below enterprise share; all passed in actual runtime",
+  "visualCheck": "Both actual SVGs rendered and inspected; legible labels, units, captions and legends.",
+  "newPaidProviderCalls": 0,
+  "liveModelRefinement": "Not run; saved tour/manual fallback explicitly labelled"
+}

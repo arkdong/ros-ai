@@ -1,0 +1,46 @@
+Public CBS chapter text retrieved through the web browsing tool on 2026-09-23T09:35:06.986Z
+URL: https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies
+Capture: selected source lines as returned; unchanged numeric tables. This is not a downloaded original CSV or microdata. Direct HTTPS retrieval returned HTTP 500.
+
+L40: Publication date: 18/06/2025 06:30 Dutch AI monitor 2024
+L41: # 2 .Use of AI technology by Dutch companies
+L42: 
+L43: This chapter examines the use of AI technologies by Dutch companies with ten or more employees.
+L44: 
+L45: Questions on use of AI technology in survey on ICT use in enterprises
+L46: The data used for this chapter were taken from the cite34†survey on ICT usage in enterprises. This survey describes ICT use among firms with at least one person employed in sections C through N and Q of the NACE classification of economic activities. Since 2020, it has included a series of questions about the use of Artificial Intelligence (AI), which are posed to companies with ten or more employees.
+L47: They ask whether companies use specific AI technologies, for what purposes these AI technologies are used, and how the AI technologies were obtained. Companies indicating that they do not use AI are asked if they have ever considered using such technology, and if not, for what reason. There is some variation over the years in the questions asked, as well as the response categories used. A summary of these questions and categories can be found in cite30†Appendix 1 .
+L48: For the period 2021-2024, the use of at least one of the following seven AI technologies could be identified consistently: machine learning, service robots or autonomous vehicles, robot-assisted process automation, speech recognition, image recognition, text mining and natural language generation. However, a consistent time series from 2020 onwards could only be established for the first four of the listed technologies.
+L49: cite35†Eurostat†ec.europa.eu defines the investigated technologies as follows.
+L108: 2.1.3 Use of at least one of seven AI technologies by companies, by size, 2024*
+L109: Grootteklasse  | AI use (Use of AI technology (%))  | AI use, margin (Use of AI technology (%))
+L110: --- | --- | ---
+L111: 10-19
+L112: employees  | 17.8  | 16.3 - 19.5
+L113: 20-49
+L114: employees  | 22.2  | 20.4 - 24
+L115: 50-99
+L116: employees  | 28.1  | 25.8 - 30.5
+L117: 100-249
+L118: employees  | 34.8  | 33.2 - 36.5
+L119: 250-499
+L120: employees  | 46.2  | 43.1 - 49.4
+L121: 500 or more
+L122: employees  | 59.2  | 55.9 - 62.4
+L123: * provisional figures
+L244: ## 2.2 Revenue share of companies with AI technology
+L245: Companies that used AI technology accounted for more than half (51.1 percent) of the total turnover in 2024 by companies with ten or more employees in sectors C through N and Q; companies that did not use AI accounted for the remaining 48.9 percent of turnover. The revenue share of companies that used AI technology was greater among larger companies.
+L246: For example, among companies with ten to nineteen employees, those that used AI technology accounted for 18.7 percent of turnover, compared with 79.5 percent for companies with 500 or more employees. This positive relationship between revenue share and company size can be partly explained by the fact that larger companies are more likely to use AI technology.
+L247: Download CSV Show datatable
+L248: 
+L249: 2.2.1 Share of revenue among companies that use AI, by size, 2024*
+L250: Grootteklasse  | Companies using AI (Share of revenue (%))  | Companies not using AI (Share of revenue (%))
+L251: --- | --- | ---
+L252: 10-19 employees  | 18.7  | 81.3
+L253: 20-49 employees  | 21.6  | 78.4
+L254: 50-99 employees  | 27.8  | 72.2
+L255: 100-249 employees  | 43.7  | 56.3
+L256: 250-499 employees  | 60.5  | 39.5
+L257: 500 employees and more  | 79.5  | 20.5
+L258: * provisional figures
+

@@ -2,23 +2,32 @@ import express, { type ErrorRequestHandler } from 'express';
 import { z, ZodError } from 'zod';
 import { StoreError, type Store } from './store.js';
 import type { ExecutionService } from './execution.js';
+import { attachResultHandoffRoutes } from './result-handoff.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
 import { Authority, modeSchema } from './authority.js';
 import type { ResearchService } from './research.js';
 import { attachAssistantRoutes, type AssistantService } from './assistant.js';
+import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
+import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
 import { projectBudgetReport } from './budget-report.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
+import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
+import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
+import { attachConnectionBudgetRoutes } from './connection-budgets.js';
+import { attachInferenceConnectionRoutes } from './inference-connections.js';
+import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
+import { attachNotebookRoutes } from './notebooks.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
-/** The HTTP boundary has no provider credentials or arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean}={}) {
+/** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -45,6 +54,13 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   attachTutorialRoutes(app,new TutorialService(store,experiments,options));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
+  if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
+  if(!options.publicDemo)attachNotebookRoutes(app,store);
+  if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);}
+  if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
+  if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
+  if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
     const { title,start } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional() }).strict().parse(req.body);
@@ -85,6 +101,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const id = routeId(req.params.id);
     res.status(201).json(experiments?.owns(id) ? experiments.retry(id).run : execution.retryRun(id));
   });
+  attachResultHandoffRoutes(app,store);
   app.post('/api/projects/:id/inputs', (req, res) => {
     const body = z.object({ nodeId: identifier, artifactId: identifier, excerpt: z.string().max(200000).optional() }).strict().parse(req.body);
     res.status(201).json(store.addInput(routeId(req.params.id), body.nodeId, body.artifactId, body.excerpt));
@@ -100,10 +117,19 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.json({ ...report, providerAccounts: await providerUsage.read() });
   });
   app.get('/api/projects/:id/policy',(req,res)=>res.json(authority.policy(routeId(req.params.id))));
+  if(!options.publicDemo)app.patch('/api/projects/:id/policy/spend',(req,res)=>{
+    if(!req.is('application/json'))throw new StoreError('A JSON request is required.',415);
+    const {spendUsd,expectedRevision}=z.object({spendUsd:z.number().finite().min(0).max(1000),expectedRevision:z.number().int().nonnegative()}).strict().parse(req.body);
+    res.json(store.atomic(()=>{
+      const id=routeId(req.params.id),policy=authority.policy(id);
+      if(policy.revision!==expectedRevision)throw new StoreError('Project permissions changed. Refresh the ceiling before saving.',409);
+      return authority.configure(id,{mode:policy.mode,scope:policy.scope,nodeIds:policy.nodeIds,datasetIds:policy.datasetIds,allowActionCreation:policy.allowActionCreation,limits:{...policy.limits,spendUsd}});
+    }));
+  });
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
   app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));
-  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);if(research)res.json(research.stopProject(id));else{authority.setStopped(id,true);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));}});
+  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);guide?.stopProject(id);if(research)res.json(research.stopProject(id));else{authority.setStopped(id,true);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));}});
   app.get('/api/projects/:id/reviews',(req,res)=>res.json(store.records('review',routeId(req.params.id))));
   app.get('/api/projects/:id/local-connections',(req,res)=>res.json(connections.list(routeId(req.params.id))));
   app.get('/api/projects/:id/resources',(req,res)=>res.json(connections.resources(routeId(req.params.id))));

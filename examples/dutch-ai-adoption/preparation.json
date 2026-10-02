@@ -1,0 +1,23 @@
+{
+  "publisher": "Statistics Netherlands (CBS)",
+  "publication": "Dutch AI monitor 2024, chapter 2",
+  "publication_date": "2025-06-18",
+  "retrieved_date": "2026-09-23",
+  "url": "https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies",
+  "table_ids": [
+    "2.1.3",
+    "2.2.1"
+  ],
+  "period": "2024",
+  "geography": "Netherlands",
+  "population": "Enterprises with 10 or more persons employed in NACE sections C through N and Q; English source labels size groups employees.",
+  "measure": "Use of at least one of seven AI technologies; enterprise percentage and share of turnover belonging to AI-using enterprises are distinct denominators.",
+  "excluded": "Enterprises with fewer than 10 persons employed and sectors outside C-N,Q. No productivity, loan or causal-impact observations.",
+  "missingness": "All six published size bins have numeric values in both captured tables. No missing values converted to zero; no enterprise-level sample counts provided in the chart.",
+  "transformations": "Programmatic extraction of six bins from preserved web text; joined by size label; 500 or more normalised to 500+. No smoothing or imputation. Published CI endpoints retained unchanged.",
+  "retrieval_method": "Public web browsing tool rendered table text. Direct HTTPS requests returned 500; this is a derived CSV, not a raw publisher CSV.",
+  "source_sha256": "7cac8260ba7c587b0c499ce3517d9fdfe9610ffeff0731c172e8e8f4736254f7",
+  "csv_sha256": "001e64f840ad88e59db3ed525e370fc943d2bc908120b1f8be8f97128998ac52",
+  "rows": 6,
+  "authorship": "Prepared by coding assistant. No ros.ai model or Tavily request."
+}

@@ -69,7 +69,8 @@ export class LocalConnections {
     if(resource.storage==='captured') {const artifact=this.store.getArtifact(resource.artifactId!);this.store.addInput(projectId,nodeId,artifact.id);return artifact;}
     if(resource.storage==='linked')return this.import(projectId,resource.connectionId!,nodeId);
     const source=this.previewResource(projectId,id);
-    return this.capture(projectId,nodeId,{content:source.content,hash:source.hash,metadata:{resourceId:id,fileName:resource.fileName!,bytes:resource.bytes!,capturedAt:now(),permission:'immutable project copy',origin:'browser-upload'}});
+    const googleDrive=this.store.record('google-drive-capture',id);
+    return this.capture(projectId,nodeId,{content:source.content,hash:source.hash,metadata:{resourceId:id,fileName:resource.fileName!,bytes:resource.bytes!,capturedAt:now(),permission:'immutable project copy',origin:googleDrive?'google-drive':'browser-upload',...(googleDrive?{googleDrive}:{})}});
   }
   add(projectId:string,supplied:unknown):LocalConnection {
     const body=z.object({name:z.string().trim().min(1).max(160),kind:z.enum(['csv','output-folder']),path:z.string().min(1).max(4000)}).strict().parse(supplied);

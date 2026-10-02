@@ -17,19 +17,26 @@ export type AggregateRelationship = {
 
 /** Canvas-only summaries. Underlying endpoints, labels, and reuse stay intact.
  * Links inside one top-level group belong in note details, not on the canvas. */
-export function aggregateTopLevelRelationships(canvas: Canvas): AggregateRelationship[] {
+export function aggregateTopLevelRelationships(canvas: Canvas, expandedIds?:readonly string[]): AggregateRelationship[] {
   const nodes = new Map(canvas.nodes.map(node => [node.id, node]));
+  const expanded = new Set(expandedIds);
   const rootOf = (id: string): string | undefined => {
     const visited = new Set<string>();
     let node = nodes.get(id);
+    let visible = node;
     while (node?.parentId && !visited.has(node.id)) {
-      visited.add(node.id);
-      node = nodes.get(node.parentId);
+      visited.add(node.id); node = nodes.get(node.parentId);
+      if (expandedIds === undefined || node && !expanded.has(node.id)) visible = node;
     }
-    return node && !node.parentId ? node.id : undefined;
+    return node && !node.parentId ? visible?.id : undefined;
   };
   const pairs = new Map<string, AggregateRelationship>();
   for (const connection of canvas.connections) {
+    // Direct membership is already drawn by the enclosing Group frame. Keep
+    // the saved relationship available in details without a second canvas wire.
+    if (connection.label.trim().toLowerCase() === 'contains'
+      && nodes.get(connection.source)?.kind === 'group'
+      && nodes.get(connection.target)?.parentId === connection.source) continue;
     const shown = displayRelationship(connection);
     const source = rootOf(shown.source), target = rootOf(shown.target);
     if (!source || !target || source === target) continue;

@@ -1,0 +1,93 @@
+{
+  "projectId": "afe30582-bc82-4141-b07e-25ad3fdc066a",
+  "title": "Amsterdam-area rainfall patterns for cycling planning",
+  "createdAt": "2026-09-23T09:37:00.655Z",
+  "status": "completed",
+  "execution": "Actual local Docker Python, prepared code; no paid model/search requests.",
+  "sourceSha256": "52ab235da9f5c4581d483d23c7404baa08cffe1ada87b1945c90ba7f7640df1a",
+  "datasetArtifactId": "9ad573fd-0ed0-489b-aa31-84a5b6375fdc",
+  "connectionId": "39e23435-fa98-438d-8198-bb39e5bd00a9",
+  "runId": "74e38462-440c-4e86-b9e0-0831912ca817",
+  "completedAt": "2026-09-23T09:37:03.147Z",
+  "nodeIds": [
+    "question",
+    "source",
+    "method",
+    "analysis",
+    "challenge",
+    "conclusion"
+  ],
+  "artifactCount": 13,
+  "plotArtifactIds": [
+    "69fa3c8d-3c40-4c03-8b3f-47ec16ba45b9",
+    "32f36de4-0deb-497d-bd3d-4126eca43946"
+  ],
+  "conclusionArtifactId": "6c8a8c4c-9937-42f9-9b5f-41d1dfe7adf3",
+  "conclusion": "Schiphol recorded 1047.0 mm of precipitation across 366 complete local days in 2024, with 155 days at or above 1 mm (42.35%). Missing days: 0. The median was 0.35 mm/day. This describes recorded weather near Amsterdam, not cycling demand or behavior. The original cycling question remains unanswered because compatible bicycle counts were not obtained. KNMI trace hours are counted as zero; assigning an illustrative 0.025 mm per trace hour changes the wet-day count to 158. That sensitivity assumption is not a new observation. No future forecast or route-specific exposure claim follows.",
+  "metrics": [
+    {
+      "title": "Wet days ≥1 mm / observed days",
+      "value": "155 / 366 (42.35%)"
+    },
+    {
+      "title": "Precipitation, mm · traces counted as zero",
+      "value": 1047
+    },
+    {
+      "title": "Missing local days",
+      "value": 0
+    },
+    {
+      "title": "Observed local days",
+      "value": 366
+    }
+  ],
+  "exportedFiles": [
+    {
+      "artifactId": "6c8a8c4c-9937-42f9-9b5f-41d1dfe7adf3",
+      "hash": "6dbfbcc897e2ad252bc9ea3f1f8583595ee22f730d53999b116ebd910190fccf",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Experiment-conclusion-6c8a8c4c-9937-42f9-9b5f-41d1dfe7adf3-9d60865f.md"
+    },
+    {
+      "artifactId": "69fa3c8d-3c40-4c03-8b3f-47ec16ba45b9",
+      "hash": "e12c32ee8a671ad2475202b7a3060e6fd684f1c39b070964bffe0bf4e8247734",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Monthly-wet-day-shares-explicit-denominators-69fa3c8d-3c40-4c03-8b3f-47ec16ba45b9-b87c4029.svg"
+    },
+    {
+      "artifactId": "32f36de4-0deb-497d-bd3d-4126eca43946",
+      "hash": "ef6b777e4d8fdb66420b4635a44d32a473386eee0a88c69e45aa414e1b0ee82a",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Rainfall-over-time-Schiphol-2024-32f36de4-0deb-497d-bd3d-4126eca43946-e1b484da.svg"
+    },
+    {
+      "artifactId": "d7d74b07-0e70-4547-b1d3-22d9319eedda",
+      "hash": "beb204d7184ed59db0187e5490e4756abbc7e84f6290c4021a393851a5ad4b6b",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Weather-summary-and-trace-sensitivity-d7d74b07-0e70-4547-b1d3-22d9319eedda-6b340d7a.json"
+    },
+    {
+      "artifactId": "abaa208b-3e1a-454c-a749-46dcf03361f6",
+      "hash": "a04f2dd3c69e4c200a9681301d124c7830d86889a0b196583346157e31828e64",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Monthly-rainfall-denominators-and-missingness-abaa208b-3e1a-454c-a749-46dcf03361f6-64cac6f1.json"
+    },
+    {
+      "artifactId": "4b392723-e649-4fbc-8697-b4b8f0971c2d",
+      "hash": "cef80d121135b41138259c06886897676c5e19db3e36dcc4d975724649338f1d",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Wet-days-1-mm-observed-days-4b392723-e649-4fbc-8697-b4b8f0971c2d-f411f02a.json"
+    },
+    {
+      "artifactId": "4a092236-7f6c-4539-a31f-4fc8d9aa6e44",
+      "hash": "f2dc3ba62be747f43dbe964a269a7139f68cff0e6706f4aaabfb4c9d7765c45b",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Precipitation-mm-traces-counted-as-zero-4a092236-7f6c-4539-a31f-4fc8d9aa6e44-8c84b051.json"
+    },
+    {
+      "artifactId": "73759d1c-2cfc-451a-8138-8b1c2fc33db6",
+      "hash": "598979e18cafc4b5a0f3471e13e06a674377dd38e11e708287fc77e2c5fffb28",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Missing-local-days-73759d1c-2cfc-451a-8138-8b1c2fc33db6-1ed914ed.json"
+    },
+    {
+      "artifactId": "70679cdc-111c-4962-aae6-13d730367e20",
+      "hash": "13437b8839f9329b4081e8fe5fc880f57e87944dd13bf056e1b8ef5c6fde147f",
+      "path": "/Users/adamdong/code/ros-ai/examples/demo-amsterdam/outputs/Observed-local-days-70679cdc-111c-4962-aae6-13d730367e20-31f0bd48.json"
+    }
+  ],
+  "newPaidCalls": 0
+}

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { BatteryMedium, ChevronDown, Clock3, LoaderCircle, PanelRightClose, RefreshCw } from 'lucide-react';
 import { api } from './api';
+import type { InferenceConnectionsResponse } from '../shared/inference';
 import { summarizeBudgetPeriod, type BudgetPeriod, type BudgetReport, type BudgetUsage, type ProviderAccounts, type TavilyUsageScope } from '../shared/budget-report';
 import './BudgetPanel.css';
 
 const money = (value: number) => value > 0 && value < .000001 ? '< US$0.000001' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < .01 ? 6 : 2 }).format(value);
 const count = (value: number) => new Intl.NumberFormat().format(value);
 const periods: { value: BudgetPeriod; label: string }[] = [{ value: 'hour', label: 'Last hour' }, { value: 'today', label: 'Today' }, { value: 'day', label: 'Last 24h' }];
-const providerName = { nebius: 'Nebius', openai: 'OpenAI', tavily: 'Tavily', 'nebius-sandbox': 'Nebius Sandbox' };
+const providerName:Record<string,string> = { nebius: 'Nebius', openai: 'OpenAI', tavily: 'Tavily', 'nebius-sandbox': 'Nebius Sandbox' };
 
 export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [report, setReport] = useState<BudgetReport | null>(null);
@@ -16,6 +17,8 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
   const [now, setNow] = useState(() => new Date());
   const [refresh, setRefresh] = useState(0);
   const [visible, setVisible] = useState(12);
+  const [registeredNames,setRegisteredNames]=useState<Record<string,string>>({});
+  useEffect(()=>{let current=true;void api<InferenceConnectionsResponse>('/api/connections/inference').then(value=>{if(current)setRegisteredNames(Object.fromEntries(value.connections.map(connection=>[connection.id,connection.name])));}).catch(()=>{});return()=>{current=false;};},[refresh]);
   useEffect(() => {
     let disposed = false, request: AbortController | null = null;
     const load = async () => {
@@ -52,7 +55,7 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
           <p className="budget-timezone"><Clock3 size={11}/>{period === 'today' ? 'Since local midnight' : period === 'hour' ? 'Rolling 60 minutes' : 'Rolling 24 hours'} · {zone}</p>
           <div className="budget-period-totals"><div><span>Known cost estimates</span><strong>{summary.entries.length && !hasKnownEstimates ? 'Unknown' : money(summary.knownEstimatedUsd)}</strong><small>{summary.unknownEstimates ? `${summary.unknownEstimates} request${summary.unknownEstimates === 1 ? '' : 's'} missing a USD estimate` : summary.entries.length ? 'From saved usage and pricing' : 'No requests in this period'}</small></div><div><span>Retained reservations</span><strong>{summary.unknownReservations === summary.entries.length && summary.entries.length ? 'Unknown' : money(summary.retainedUsd)}</strong><small>{summary.unknownReservations ? `${summary.unknownReservations} reservation${summary.unknownReservations === 1 ? '' : 's'} unknown` : 'For requests in this period'}</small></div></div>
           <p className="budget-estimate-note">Estimates are not invoices. Reported tokens and search credits appear below; missing costs remain unknown.</p>
-          {summary.entries.length ? <ol className="budget-usage-list">{summary.entries.slice(0, visible).map(entry => <UsageRow key={entry.id} entry={entry}/>)}</ol> : <div className="budget-empty">No provider requests recorded in this project during this period.</div>}
+          {summary.entries.length ? <ol className="budget-usage-list">{summary.entries.slice(0, visible).map(entry => <UsageRow key={entry.id} entry={entry} providerLabel={registeredNames[entry.provider]||providerName[entry.provider]||entry.provider}/>)}</ol> : <div className="budget-empty">No provider requests recorded in this project during this period.</div>}
           {summary.entries.length > visible && <button className="budget-more text-button" onClick={() => setVisible(value => value + 20)}>Show more requests <ChevronDown size={14}/></button>}
         </section>
         <AccountUsage accounts={data.providerAccounts}/>
@@ -93,11 +96,11 @@ function AccountUsage({ accounts }: { accounts: ProviderAccounts | undefined }) 
   </section>;
 }
 
-function UsageRow({ entry }: { entry: BudgetUsage }) {
+function UsageRow({ entry,providerLabel }: { entry: BudgetUsage;providerLabel:string }) {
   const quantities: string[] = [];
   if (entry.inputTokens !== null) quantities.push(`${count(entry.inputTokens)} input tokens`);
   if (entry.outputTokens !== null) quantities.push(`${count(entry.outputTokens)} output tokens`);
   if (entry.credits !== null) quantities.push(`${count(entry.credits)} search credit${entry.credits === 1 ? '' : 's'}`);
   const label = entry.status === 'settled' ? 'Usage reported' : entry.status === 'reserved' ? 'Awaiting usage' : entry.status === 'uncertain' || entry.status === 'interrupted' ? 'Outcome uncertain' : entry.status;
-  return <li className="budget-usage-row"><div className="budget-usage-meta"><strong>{providerName[entry.provider]}</strong><time dateTime={entry.at} title={new Date(entry.at).toLocaleString()}>{new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><p className="budget-usage-purpose">{entry.purpose}</p>{entry.nodeTitle && <p className="budget-usage-node">{entry.nodeTitle}</p>}<p className="budget-usage-quantities">{quantities.length ? quantities.join(' · ') : 'Reported usage unavailable'}</p><div className="budget-usage-cost"><span>{entry.estimatedUsd === null ? 'USD estimate unknown' : `${money(entry.estimatedUsd)} estimated`}</span><span>{entry.reservedUsd === null ? 'Reservation unknown' : `${money(entry.reservedUsd)} retained`}</span></div>{entry.rawCost !== null && <p className="budget-raw-cost">Provider cost: {count(entry.rawCost)} · unit unknown; not converted to USD</p>}<span className={`budget-usage-status ${['uncertain', 'interrupted'].includes(entry.status) ? 'uncertain' : ''}`}>{label}</span></li>;
+  return <li className="budget-usage-row"><div className="budget-usage-meta"><strong title={entry.provider}>{providerLabel}</strong><time dateTime={entry.at} title={new Date(entry.at).toLocaleString()}>{new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><p className="budget-usage-purpose">{entry.purpose}</p>{entry.nodeTitle && <p className="budget-usage-node">{entry.nodeTitle}</p>}<p className="budget-usage-quantities">{quantities.length ? quantities.join(' · ') : 'Reported usage unavailable'}</p><div className="budget-usage-cost"><span>{entry.estimatedUsd === null ? 'USD estimate unknown' : `${money(entry.estimatedUsd)} estimated`}</span><span>{entry.reservedUsd === null ? 'Reservation unknown' : `${money(entry.reservedUsd)} retained`}</span></div>{entry.rawCost !== null && <p className="budget-raw-cost">Provider cost: {count(entry.rawCost)} · unit unknown; not converted to USD</p>}<span className={`budget-usage-status ${['uncertain', 'interrupted'].includes(entry.status) ? 'uncertain' : ''}`}>{label}</span></li>;
 }

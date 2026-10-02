@@ -1,0 +1,9 @@
+{
+  "checked": "independent decimal sums, wet-day counts and interval coverage",
+  "observed_days": 366,
+  "precipitation_mm": 1047.0,
+  "wet_days": 155,
+  "wet_day_percent": 42.349726775956285,
+  "trace_midpoint_wet_days": 158,
+  "missing_precipitation_hours": 0
+}

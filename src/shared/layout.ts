@@ -5,7 +5,7 @@ import { relationshipLabelSize } from './relationship-label';
 import { aggregateTopLevelRelationships } from './aggregate-relationships';
 
 export const CARD_SIZE = { width: CARD_DEFAULT_WIDTH, height: CARD_DEFAULT_HEIGHT };
-export const GROUP_INSET = { x: 32, y: 264 };
+export const GROUP_INSET = { x: 32, y: 144 };
 export const GROUP_FOOTER = 64;
 export const LAYOUT_GAP = 72;
 export type CanvasSize = { width: number; height: number };

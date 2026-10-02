@@ -1,0 +1,48 @@
+.assistant-compact .assistant-heading { min-height:62px; padding:14px 16px; gap:8px; }
+.assistant-compact .assistant-heading h2 { font-size:16px; }
+.assistant-compact .assistant-heading>.icon-button { align-self:center; margin-right:0; }
+.assistant-compact .assistant-signal { width:25px; height:28px; }
+.assistant-compact .assistant-signal img { width:35px; height:35px; transform:translate(2px,3px); }
+.assistant-compact .assistant-tabs { padding:0 16px; gap:14px; }
+.single-canvas-shell .assistant-compact .assistant-tabs button { padding-bottom:10px; font-size:13px; }
+.assistant-compact .assistant-focus { min-height:36px; padding:7px 16px; gap:7px; }
+.assistant-compact .assistant-focus>div { flex-direction:row; align-items:baseline; gap:7px; }
+.assistant-compact .assistant-focus span { font-size:11px; text-transform:none; letter-spacing:0; }
+.assistant-compact .assistant-focus strong { font-weight:500; font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.assistant-compact .assistant-focus .icon-button { width:22px; height:22px; padding:3px; }
+.assistant-model-row { padding:10px 16px; flex-shrink:0; border-bottom:1px solid #eee; }
+.assistant-model-row .model-settings { margin:0; }
+.assistant-runtime-trigger { width:100%; min-height:44px; display:flex; align-items:center; text-align:left; gap:10px; border:1px solid #dedede; border-radius:8px; padding:7px 10px; }
+.assistant-runtime-trigger span { min-width:0; flex:1; display:grid; gap:2px; }
+.assistant-runtime-trigger strong { font-size:13px; font-weight:600; }
+.assistant-runtime-trigger small { font-size:11px; color:#777; }
+.assistant-settings-popover { position:absolute; z-index:50; top:53px; right:15px; width:calc(100% - 30px); max-width:360px; padding:14px; border:1px solid #dedede; border-radius:10px; background:#fff; box-shadow:0 10px 30px #00000014; max-height:calc(100% - 65px); overflow:auto; }
+.assistant-settings-popover h3 { font-size:12px; color:#656565; margin:0 0 8px; font-weight:500; }
+.assistant-settings-popover [aria-pressed] { width:100%; display:flex; align-items:center; gap:10px; padding:9px 8px; text-align:left; border:1px solid transparent; border-radius:6px; }
+.assistant-settings-popover [aria-pressed][aria-pressed=true] { border-color:#b5ca9f; background:#f5f9ef; }
+.assistant-settings-popover [aria-pressed] span { flex:1; display:grid; gap:3px; }
+.assistant-settings-popover [aria-pressed] strong { font-size:13px; font-weight:500; }
+.assistant-settings-popover [aria-pressed] small { font-size:11px; color:#727272; }
+.assistant-settings-links { display:grid; gap:4px; padding-top:10px; margin-top:10px; border-top:1px solid #eee; }
+.assistant-settings-links button { justify-content:flex-start; gap:7px; font-size:12px; padding:7px 8px; }
+.assistant-settings-popover details { margin-top:8px; font-size:11px; color:#777; line-height:1.6; }
+.assistant-settings-popover details p { padding-top:7px; overflow-wrap:anywhere; }
+.assistant-compact .assistant-scroll { padding:16px; }
+.assistant-admission { flex-shrink:0; margin:0 16px 8px; padding:9px 10px; background:#f8f6ef; border:1px solid #e8e2d4; border-radius:7px; }
+.assistant-admission>div { display:flex; align-items:flex-start; flex-wrap:wrap; gap:6px; font-size:12px; line-height:1.45; color:#61543d; }
+.assistant-admission svg { flex-shrink:0; margin-top:1px; }
+.assistant-admission span { flex:1; min-width:190px; }
+.assistant-admission button { padding:3px 0; gap:4px; font-size:12px; font-weight:500; color:#423b2e; margin-left:20px; }
+.assistant-compact .assistant-composer { margin:0 16px 0; flex-shrink:0; }
+.assistant-compact .assistant-composer textarea { min-height:72px; max-height:160px; font-size:14px; }
+.assistant-compact .assistant-provider-status { max-height:none; padding:8px 16px 10px; font-size:11px; min-height:32px; }
+.assistant-failure-details,.assistant-saved-fallback { font-size:12px; color:#6b6b6b; line-height:1.6; margin-top:8px; }
+.assistant-failure-details summary { display:flex; align-items:center; gap:6px; cursor:pointer; padding:7px 9px; background:#f7f7f7; border:1px solid #e6e6e6; border-radius:6px; list-style:none; }
+.assistant-failure-details summary span:last-child { margin-left:auto; font-size:11px; text-decoration:underline; text-underline-offset:2px; }
+.assistant-failure-details p { padding:8px 10px; overflow-wrap:anywhere; }
+.assistant-saved-fallback summary { cursor:pointer; }
+.assistant-saved-fallback .rich-text { margin-top:8px; }
+.assistant-compact .assistant-turn-events { font-size:11px; margin-top:7px; }
+.assistant-compact .assistant-turn-events summary { font-size:11px; }
+@media (max-height:700px) { .assistant-compact .assistant-heading { min-height:50px; padding-top:9px; padding-bottom:9px; } .assistant-compact .assistant-composer textarea { min-height:56px; } }
+.assistant-compact .assistant-actual-model { color:#839078; font-size:10px; line-height:1.5; margin:2px 0 9px; overflow-wrap:anywhere; }
