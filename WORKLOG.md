@@ -244,3 +244,10 @@ Stage One final cleanup: closed the disposable4311 tab/server after zero active 
 Reproduced Code also selecting Knowledge and the disabled blank-name button. Replaced the picker’s independent kind/blockType state with one choice; names are optional with case-insensitive unique type defaults. All seven choices create/select/reveal the canvas block before an editor opens. Report now supports first save into an existing blank node with a separate per-node draft. Existing names, defaults, nested Group expansion and content history retained.
 
 One TypeScript/Vite build passed; focused disposable4311 browser verified all choices, unnamed Code/Code 2, deliberate editor opening, undo/redo, blank Report save with unchanged node count, nested Notebook creation/open and trimmed custom Dataset name without automatic Resources. No browser errors, paid/model calls, execution, new unit tests or unit suites. Production data and running service untouched; updated frontend served on next refresh. Current RESULT and Stage One setup/implementation notes updated. Evidence: evidence/block-creation-2026-10-02/.
+
+## 2026-10-03 — Repository cleanup, robustness fixes and Stage One completion
+
+- Moved 21 dated RESULT snapshots, the completed GOAL and 12 superseded docs into `docs/history/`, with links rewritten; dated README sections moved to `docs/history/readme-changelog.md`.
+- Removed six unimported client/shared files, an unused 852 KB image, 13 one-off scripts for finished runs, and merged three secret scanners into `scripts/verify-secrets.mjs`.
+- Fixed demo mode on fresh clones (the gitignored market data no longer breaks the catalog), a Codex stdin crash path, stale Nebius sandbox keys, quick consecutive canvas edits failing with a stale revision, demo-run polling resets, unguarded browser storage, public demo visitor capacity, and shutdown lock release.
+- Verified the Stage One live Jupyter loop and fixed two Notebook dialog layout bugs; see RESULT.md. Checks: `npm run build`, browser smoke of the demo and Notebook flows. No paid calls.

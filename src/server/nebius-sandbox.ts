@@ -91,28 +91,28 @@ function validateOutput(output: SandboxOutput): void {
  * the caller's responsibility. Construction never probes or starts cloud work.
  */
 export class NebiusSandboxBackend implements ExecutionBackend {
-  private readonly apiKey: string;
-  private readonly projectId: string;
+  // Keys saved from Connections update process.env at runtime, so read them per use.
+  private readonly options: { apiKey?: string; projectId?: string };
+  private get apiKey() { return this.options.apiKey ?? process.env.NEBIUS_SANDBOX_API_KEY ?? process.env.NEBIUS_API_KEY ?? ''; }
+  private get projectId() { return this.options.projectId ?? process.env.NEBIUS_SANDBOX_PROJECT_ID ?? process.env.NEBIUS_PROJECT_ID ?? process.env.NEBIUS_AI_PROJECT ?? process.env.CONTREE_PROJECT ?? ''; }
   private readonly imageId: string;
   private readonly fetcher: typeof fetch;
   private readonly pollIntervalMs: number;
   private readonly requestTimeoutMs: number;
   private readonly completionTimeoutMs: number;
   private readonly worker: string;
-  private readonly value: SandboxCapabilities;
+  private readonly base: SandboxCapabilities;
 
   constructor(options: { apiKey?: string; projectId?: string; imageId?: string; fetch?: typeof fetch; pollIntervalMs?: number; requestTimeoutMs?: number; completionTimeoutMs?: number } = {}) {
-    this.apiKey = options.apiKey ?? process.env.NEBIUS_SANDBOX_API_KEY ?? process.env.NEBIUS_API_KEY ?? '';
-    this.projectId = options.projectId ?? process.env.NEBIUS_SANDBOX_PROJECT_ID ?? process.env.NEBIUS_PROJECT_ID ?? process.env.NEBIUS_AI_PROJECT ?? process.env.CONTREE_PROJECT ?? '';
+    this.options = { apiKey: options.apiKey, projectId: options.projectId };
     this.imageId = options.imageId ?? process.env.ROS_NEBIUS_SANDBOX_IMAGE_ID ?? process.env.NEBIUS_SANDBOX_IMAGE_ID ?? NEBIUS_SANDBOX_IMAGE;
     this.fetcher = options.fetch ?? fetch;
     this.pollIntervalMs = bounded(options.pollIntervalMs, 1000, 1, 10_000);
     this.requestTimeoutMs = bounded(options.requestTimeoutMs, 10_000, 10, 15_000);
     this.completionTimeoutMs = bounded(options.completionTimeoutMs, 90_000, 50, 180_000);
     this.worker = readFileSync(workerPath, 'utf8');
-    const configured = Boolean(this.apiKey && this.projectId && !/[\r\n]/.test(this.apiKey + this.projectId) && uuid.safeParse(this.imageId).success);
-    this.value = {
-      available: configured, backend: 'nebius-sandbox', policy: 'nebius-disposable-stdlib-v1',
+    this.base = {
+      available: false, backend: 'nebius-sandbox', policy: 'nebius-disposable-stdlib-v1',
       runtime: 'Configured Python 3.12 standard library on Nebius; remote runtime not yet probed',
       workerHash: createHash('sha256').update(JSON.stringify({ worker: this.worker, image: this.imageId, policy: 'nebius-disposable-stdlib-v1' })).digest('hex'),
       imageId: uuid.safeParse(this.imageId).success ? this.imageId : null, libraries: {}, timeoutMs: 30_000, maxMemoryMb: null, maxOutputBytes: MAX_CAPTURE_BYTES,
@@ -125,7 +125,6 @@ export class NebiusSandboxBackend implements ExecutionBackend {
         '20 outputs, 100 KB each, 500 KB result bundle; bounded response decoding. Stop requests cancellation and polls its terminal state.',
       ],
       limitations: [
-        ...(!configured ? ['Nebius sandbox API token, project ID and valid pinned image UUID are required.'] : []),
         'Availability means configured only. Account access, runtime behavior and billing need separate verification and permission.',
         'Provider VM isolation and resource controls are documented claims. No configurable provider CPU/RAM cap is published; maxMemoryMb is unknown.',
         'Sandbox pricing and cost units are unverified. Raw provider cost is recorded with unknown units, never treated as USD or free.',
@@ -133,6 +132,11 @@ export class NebiusSandboxBackend implements ExecutionBackend {
         'A lost spawn response can leave execution uncertain; it is never automatically submitted again. Restart reconciles only known operation IDs.',
       ],
     };
+  }
+  private get value(): SandboxCapabilities {
+    const configured = Boolean(this.apiKey && this.projectId && !/[\r\n]/.test(this.apiKey + this.projectId) && uuid.safeParse(this.imageId).success);
+    return { ...this.base, available: configured,
+      limitations: [...(!configured ? ['Nebius sandbox API token, project ID and valid pinned image UUID are required.'] : []), ...this.base.limitations] };
   }
   capabilities(): SandboxCapabilities { return structuredClone(this.value); }
 

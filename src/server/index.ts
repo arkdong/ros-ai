@@ -45,19 +45,23 @@ const server = createServer();
 async function shutdown() {
   if (stopping) return;
   stopping = true;
-  notebooks?.shutdown();
-  await guide?.shutdown();
-  await assistant?.shutdown();
-  await agent?.shutdown();
-  await execution?.shutdown();
-  await experiments?.shutdown();
-  await research?.shutdown();
-  googleDrive?.shutdown();
-  server.close();
-  await vite?.close();
-  publicDemo?.close();
-  store?.close();
-  releaseLock();
+  // Release the data lock even if one service fails to stop cleanly.
+  try {
+    notebooks?.shutdown();
+    await guide?.shutdown();
+    await assistant?.shutdown();
+    await agent?.shutdown();
+    await execution?.shutdown();
+    await experiments?.shutdown();
+    await research?.shutdown();
+    googleDrive?.shutdown();
+    server.close();
+    await vite?.close();
+    publicDemo?.close();
+    store?.close();
+  } finally {
+    releaseLock();
+  }
 }
 try {
   let app:express.Express;
@@ -65,7 +69,7 @@ try {
     if (process.env.ROS_DEV === '1') throw new Error('Public demo mode serves a production frontend build. Build it first and leave ROS_DEV unset.');
     const origin = process.env.ROS_PUBLIC_ORIGIN || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
     if (!origin) throw new Error('Set ROS_PUBLIC_ORIGIN or RAILWAY_PUBLIC_DOMAIN before starting public demo mode.');
-    publicDemo = createPublicDemoApp({dataDir,origin,maxSessions:Number(process.env.ROS_PUBLIC_MAX_SESSIONS || 500)});
+    publicDemo = createPublicDemoApp({dataDir,origin,maxSessions:Number(process.env.ROS_PUBLIC_MAX_SESSIONS || 500),sessionDays:Number(process.env.ROS_PUBLIC_SESSION_DAYS || 7)});
     app = publicDemo.app;
   } else {
     store = new Store(dataDir);
@@ -100,7 +104,7 @@ try {
   server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
     console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().then(() => process.exit(0)); });
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().catch(error => { console.error(`ros.ai stopped with an error: ${error instanceof Error ? error.message : error}`); process.exitCode = 1; }).finally(() => process.exit()); });
 } catch (error) {
   console.error(`ros.ai could not start: ${error instanceof Error ? error.message : 'Unknown error'}`);
   await shutdown();

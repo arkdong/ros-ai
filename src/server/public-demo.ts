@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import express, { type Express, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -74,7 +74,7 @@ function visitorApp(store:Store):Express {
   return app;
 }
 
-export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSessions?:number}) {
+export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSessions?:number;sessionDays?:number}) {
   const origin = new URL(options.origin);
   const loopback = ['localhost','127.0.0.1','[::1]'].includes(origin.hostname);
   if (origin.protocol !== 'https:' && !(loopback && origin.protocol === 'http:')) throw new Error('Public demo origin must use HTTPS, except local preview.');
@@ -84,16 +84,32 @@ export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSes
   const maxSessions = options.maxSessions ?? 500;
   if (!Number.isInteger(maxSessions) || maxSessions < 1) throw new Error('Public demo session capacity must be a positive integer.');
   const sessions = new Map<string,{store:Store;app:Express}>();
+  const sessionDays = options.sessionDays ?? 7;
+  if (!Number.isFinite(sessionDays) || sessionDays <= 0) throw new Error('Public demo session lifetime must be a positive number of days.');
+  const lifetimeMs = sessionDays*24*60*60*1000;
+  const lastWrite = (path:string) => Math.max(statSync(path).mtimeMs,...readdirSync(path).map(name => statSync(join(path,name)).mtimeMs));
+  // A visitor's cookie lasts as long as its session lifetime from creation, so a workspace
+  // untouched for longer can no longer be reached. Removing it frees visitor capacity.
+  const pruneExpired = () => {
+    const cutoff = Date.now()-lifetimeMs;
+    for (const name of readdirSync(directory)) {
+      if (!idPattern.test(name) || sessions.has(name)) continue;
+      try { if (lastWrite(join(directory,name)) < cutoff) rmSync(join(directory,name),{recursive:true,force:true}); } catch { /* Retry on the next pass. */ }
+    }
+  };
+  const visitorCount = () => readdirSync(directory).filter(name => idPattern.test(name)).length;
+  pruneExpired();
   const ensureVisitor = (req:Request,res:Response):string|null => {
     const existing = req.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${cookieName}=`))?.slice(cookieName.length+1);
     if (existing && idPattern.test(existing) && existsSync(join(directory,existing))) return existing;
-    if (readdirSync(directory).filter(name => idPattern.test(name)).length >= maxSessions) {
+    if (visitorCount() >= maxSessions) pruneExpired();
+    if (visitorCount() >= maxSessions) {
       res.status(503).json({error:'The demonstration has reached its visitor capacity. Existing browser sessions remain available.'});
       return null;
     }
     const sessionId = randomBytes(32).toString('hex');
     mkdirSync(join(directory,sessionId),{mode:0o700});
-    res.cookie(cookieName,sessionId,{httpOnly:true,sameSite:'strict',secure:origin.protocol === 'https:',path:'/',maxAge:7*24*60*60*1000});
+    res.cookie(cookieName,sessionId,{httpOnly:true,sameSite:'strict',secure:origin.protocol === 'https:',path:'/',maxAge:lifetimeMs});
     return sessionId;
   };
   const app = express();

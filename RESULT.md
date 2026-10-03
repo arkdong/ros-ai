@@ -1,6 +1,12 @@
 # ros.ai — Stage One Code and Notebook delivery
 
-October 2, 2026. **Code/manual output workflows and Notebook connection/capture implementation are delivered. Stage One is not marked complete: live Jupyter access/execution remains blocked by missing local infrastructure.** The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](RESULT-before-stage-one-2026-10-02.md).
+October 2–3, 2026. **Stage One is complete.** Code/manual output workflows and Notebook connection/capture were delivered on October 2; the remaining live Jupyter acceptance passed on October 3 (below). The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](docs/history/RESULT-before-stage-one-2026-10-02.md).
+
+## October 3: live Jupyter acceptance
+
+Verified against a real JupyterLab 4 server (token-authenticated, loopback port 8899) in a disposable cloud workspace, using an isolated ros.ai data directory on port 4311 with no provider credentials. In the browser: **Add block → Notebook**, open it, enter address, notebook path and token, then **Connect**. The block reported the session available. **Read saved cells** captured the unexecuted notebook (three cells, no outputs). **Open notebook** opened the native interface in a new tab; its URL contained no token and Jupyter asked for its own login. In native JupyterLab the cells were run with its own kernel and saved. Back in ros.ai, **Refresh saved cells** showed the new outputs: cell 2's stdout (`sum 12`) and cell 3's CSV computed by the kernel (`x,square` with 3/9, 4/16, 5/25). Selecting only cell 3's CSV and choosing **Capture 1 output** saved a `dataset` artifact with those exact values, labelled as an external capture. The project's API detail did not contain the token, and the browser console stayed empty.
+
+The same check found and fixed two layout problems in the Notebook dialog: its narrow-layout rules keyed off the window instead of the dialog, and a global rule stretched the output checkbox so its label collapsed to zero width. Docker Code runs were not re-run in this environment (Docker Hub rate-limited the image pull); they remain verified by the October 2 evidence below.
 
 ## October 2 follow-up: block creation
 
@@ -50,11 +56,9 @@ The installed Docker engine was started and the research image rebuilt against t
 
 The temporary port4311 verification server and agent-created browser tab were closed after checking no active work. The handoff health check confirms port4310 serves the final built frontend.
 
-No paid model/search/provider request, allowance replenishment, account change, deployment, publication, license choice, commit/push, goal or automation occurred. The synthetic imported notebook is explicitly a fixture. No live Jupyter execution is claimed.
+No paid model/search/provider request, allowance replenishment, account change, deployment, publication, license choice, commit/push, goal or automation occurred. The synthetic imported notebook is explicitly a fixture. No live Jupyter execution was claimed on October 2; the October 3 section above records it.
 
-## Remaining blocker and unsupported behavior
-
-Neither system nor bundled Python contains Jupyter, and no existing local user-managed session has been supplied. Connecting to the default port8888 reports unavailable while saved snapshots remain accessible. Native connection/open/refresh is implemented, but a running real Jupyter session is required to verify opening, native execution/save and subsequent selected-output refresh. **Imported fixtures and offline Contents API checks do not satisfy that live acceptance scenario. Stage One remains incomplete at this boundary.**
+## Unsupported behavior
 
 C/Haskell execution, multi-CSV Python inputs, arbitrary container-file import, managed/embedded notebook launch, cross-project reuse, arbitrary agent delivery and managed Nemotron packaging/training are unsupported. Plot-to-model interpretation is unavailable in the text-only guide; deliberately selected text/CSV/JSON evidence can be prepared. External notebook permissions are its owner's responsibility and do not inherit ros.ai Docker isolation or accounting.
 

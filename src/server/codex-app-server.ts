@@ -99,6 +99,8 @@ export class CodexAppServer {
     this.process.stdout.on('data', (chunk: string) => this.receive(chunk));
     // Upstream diagnostics can contain local paths/account details. Never forward them.
     this.process.stderr.on('data', () => {});
+    // A crashed child closes its pipe; an unhandled EPIPE would otherwise stop the whole server.
+    this.process.stdin.on('error', () => this.fail(new StoreError('Codex app-server disconnected. The request outcome may be unknown; it will not be retried automatically.', 503)));
     this.process.on('error', () => this.fail(new StoreError('Codex app-server could not start. Check the installed CLI and local permissions.', 503)));
     this.process.on('exit', () => { if (!this.closed) this.fail(new StoreError('Codex app-server disconnected. The request outcome may be unknown; it will not be retried automatically.', 503)); });
   }
