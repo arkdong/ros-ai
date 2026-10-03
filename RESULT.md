@@ -1,6 +1,6 @@
 # ros.ai — Stage One Code and Notebook delivery
 
-October 2, 2026. **Code/manual output workflows and Notebook connection/capture implementation are delivered. Stage One is not marked complete: live Jupyter access/execution remains blocked by missing local infrastructure.** The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](RESULT-before-stage-one-2026-10-02.md).
+October 2, 2026. **Code/manual output workflows and Notebook connection/capture implementation are delivered. Stage One is not marked complete: live Jupyter access/execution remains blocked by missing local infrastructure.** The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](docs/history/RESULT-before-stage-one-2026-10-02.md).
 
 ## October 2 follow-up: block creation
 

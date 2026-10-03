@@ -35,7 +35,7 @@ For the audited Ultra scalar-text request shape, local reservation counts the ex
 
 Get the key from your chosen project in Token Factory's API keys page, following the [official quickstart](https://docs.tokenfactory.nebius.com/quickstart). Save it under **Nebius Token Factory → Connect**. This implementation uses `https://api.tokenfactory.us-central1.nebius.com/v1`.
 
-**Check key** sends only a catalog GET. A successful check does not establish access to a particular inference model, balance, invoice, or an account spending cap. Research still needs the visible cumulative provider allowance, current project spending/request limits, and applicable approval. See [provider verification](provider-verification.md) for the existing accounting limits.
+**Check key** sends only a catalog GET. A successful check does not establish access to a particular inference model, balance, invoice, or an account spending cap. Research still needs the visible cumulative provider allowance, current project spending/request limits, and applicable approval. See [provider verification](history/provider-verification.md) for the existing accounting limits.
 
 ## Codex
 

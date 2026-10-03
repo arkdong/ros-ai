@@ -5,14 +5,11 @@
 .idea/
 .vscode/
 
-# Common dependency and build outputs; remove entries that do not fit the chosen stack.
+# Dependency and build outputs
 .venv/
 __pycache__/
-.pytest_cache/
 node_modules
-coverage/
 dist/
-build/
 
 # Local research data and test/browser state
 .ros-ai/

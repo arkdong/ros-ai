@@ -34,7 +34,7 @@ The requested Amsterdam cycling/weather example requires verified real data. KNM
 
 ## September 21 next-build precedence
 
-The manually dispatched next-build prompt now supersedes the older inspector recommendation, code-execution deferral, prior model preference and event-track preference below. It requests substantial project-left/node-right canvases; Topic and Activity at both scopes; a bounded local dataset/code/plot loop with real approval decisions; Nemotron 3 Ultra via Nebius as the preferred model; and optional scoped Auto Research. These are implemented/verified only to the extent recorded in the current [RESULT](../RESULT.md), [architecture](architecture.md), and [next-build decisions](next-build-decisions.md).
+The manually dispatched next-build prompt now supersedes the older inspector recommendation, code-execution deferral, prior model preference and event-track preference below. It requests substantial project-left/node-right canvases; Topic and Activity at both scopes; a bounded local dataset/code/plot loop with real approval decisions; Nemotron 3 Ultra via Nebius as the preferred model; and optional scoped Auto Research. These are implemented/verified only to the extent recorded in the current [RESULT](../RESULT.md), [architecture](architecture.md), and [next-build decisions](history/next-build-decisions.md).
 
 The prior one-time provider caps are historical. During the next build Adam explicitly authorized up to $5 for at most two Ultra verification requests, without Tavily. New accounting is preserved separately under that authorization; no historical budget or saved project was reset. Local testing uses disposable data. This request did not activate a goal or automation.
 
