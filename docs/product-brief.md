@@ -1,8 +1,12 @@
 # ros.ai product brief
 
-Updated October 2, 2026 with the decided Stage one Code and Notebook objectives. Current implementation and verification are separated in [RESULT.md](../RESULT.md); planned objectives and earlier dated milestones do not establish delivered functionality.
+Updated October 3, 2026 with the local-product direction. Current implementation and verification are separated in [RESULT.md](../RESULT.md); planned objectives and earlier dated milestones do not establish delivered functionality.
 
 ros.ai helps a person research over days, weeks or months: understand prerequisites and literature, notice possible gaps, form hypotheses, run experiments, inspect results and follow new questions. These are flexible activities, not a required lifecycle or execution graph.
+
+## October 3 — the local app is the product
+
+Adam decided that the local, downloadable ros.ai is the final product, run on the user's machine like DeepSeek's open-source harness or Codex CLI. The Railway deployment is a quick demo and does not set local defaults. Packaging, install and first run come before demo or pitch polish. Code blocks should feel direct: write code in place with highlighting and completion. [The roadmap](roadmap.md) lists what a public local release still needs and which decisions are open.
 
 ## October 2 planning direction
 

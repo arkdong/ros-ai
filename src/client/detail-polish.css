@@ -325,6 +325,12 @@
   font-size: 13px;
   line-height: 1.7;
 }
+.experiment-tools.detail-polish .experiment-block .code-editor {
+  margin: 10px 0 6px;
+}
+.experiment-tools.detail-polish .experiment-block .code-editor:not(.compact) .cm-editor {
+  height: clamp(220px, 40vh, 460px);
+}
 .experiment-tools.detail-polish .approval-card {
   margin: 16px 0 21px;
   padding: 18px;

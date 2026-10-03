@@ -1,0 +1,42 @@
+/* Shared by the CodeMirror editor and read-only CodeView; token classes come from @lezer/highlight's classHighlighter. */
+.code-editor { border: 1px solid #d9dfd9; border-radius: 8px; background: #fafbf9; overflow: hidden; }
+.code-editor:focus-within { border-color: #8fb86a; box-shadow: 0 0 0 3px rgba(143, 184, 106, .18); }
+.code-editor .cm-editor { height: clamp(320px, 52vh, 640px); font-size: 14px; background: transparent; }
+.code-editor.compact .cm-editor { height: auto; min-height: 72px; max-height: 180px; font-size: 13px; }
+.code-editor .cm-editor.cm-focused { outline: none; }
+.code-editor .cm-scroller { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.6; }
+.code-editor .cm-content { padding: 10px 0; caret-color: #1f2a24; }
+.code-editor .cm-gutters { background: #f2f5f1; border-right: 1px solid #e4e8e4; color: #8a948e; }
+.code-editor .cm-activeLine { background: rgba(143, 184, 106, .08); }
+.code-editor .cm-activeLineGutter { background: rgba(143, 184, 106, .16); color: #3d4a43; }
+.code-editor .cm-selectionBackground, .code-editor .cm-focused .cm-selectionBackground { background: #d6e8c4 !important; }
+.code-editor .cm-matchingBracket { background: #e3efd6; outline: 1px solid #b5d197; }
+.code-editor .cm-placeholder { color: #9aa49e; }
+.code-editor.read-only .cm-content { caret-color: transparent; }
+.code-editor .cm-tooltip { border: 1px solid #d9dfd9; border-radius: 6px; background: #fff; box-shadow: 0 6px 20px rgba(31, 42, 36, .12); font-size: 13px; }
+.code-editor .cm-tooltip-autocomplete > ul > li { padding: 3px 10px !important; }
+.code-editor .cm-tooltip-autocomplete > ul > li[aria-selected] { background: #e3efd6; color: #1f2a24; }
+.code-editor .cm-completionDetail { color: #6c7670; font-style: normal; margin-left: 8px; }
+.code-editor .cm-completionInfo { max-width: 320px; padding: 8px 10px; line-height: 1.5; }
+.code-editor .cm-panels { background: #f2f5f1; border-color: #e4e8e4; }
+/* Global form rules stretch inputs to full width; the search panel lays its fields out inline. */
+.code-editor .cm-panel.cm-search input, .code-editor .cm-panel.cm-search button { width: auto; }
+.code-editor .cm-lintRange-error { background-image: none; text-decoration: underline wavy #c2412d; text-underline-offset: 3px; }
+.code-editor .cm-lintRange-warning { background-image: none; text-decoration: underline wavy #b7954e; text-underline-offset: 3px; }
+.code-editor .cm-diagnostic { font-size: 12px; }
+.code-editor-fallback { width: 100%; box-sizing: border-box; min-height: clamp(320px, 52vh, 640px); font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #fafbf9; tab-size: 4; }
+.code-editor-fallback.compact { min-height: 72px; font-size: 13px; }
+
+.code-view { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #fafbf9; border: 1px solid #ebeeea; border-radius: 6px; padding: 10px 12px; color: #25332c; }
+
+.tok-keyword, .tok-operator.tok-keyword { color: #8a3ffc; }
+.tok-definition, .tok-function { color: #1d5fa8; }
+.tok-variableName.tok-definition { color: #1d5fa8; }
+.tok-className, .tok-typeName, .tok-namespace { color: #0f7d74; }
+.tok-propertyName { color: #2c5f8a; }
+.tok-string, .tok-string2 { color: #3f7d20; }
+.tok-number, .tok-bool, .tok-atom { color: #b35c00; }
+.tok-comment { color: #7d8781; font-style: italic; }
+.tok-meta { color: #8a6d00; }
+.tok-invalid { color: #c2412d; }
+.tok-punctuation, .tok-operator { color: #4c5852; }

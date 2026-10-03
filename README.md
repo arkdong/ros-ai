@@ -4,10 +4,13 @@ A persistent local research workspace for following questions, collecting knowle
 
 The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code, Notebook, Dataset, Figure, Report and Group. The assistant proposes changes for review under the project's approval mode, and Python runs in an isolated Docker sandbox.
 
+**The product is this local app.** You download it and run it on your own machine, much like DeepSeek's open-source harness or Codex CLI. Your projects, keys and the Python sandbox stay on your machine. Model and search requests go only to the providers you connect, and a model server on your own machine keeps inference local too. The [hosted demo](https://ros-ai-production.up.railway.app/app) is only a quick way to show ros.ai without installing it. What the local release still needs is in [the roadmap](docs/roadmap.md).
+
 ## Status
 
 - **Stage One (Code and Notebook blocks)** is complete, including a live Jupyter check on October 3. See [RESULT.md](RESULT.md) for what is verified and [the setup guide](docs/stage-one-setup.md) for the workflow. Later stages are not yet defined.
 - **Inference:** the user's own **Research model** and the separate **Workspace guide** are described in [the inference design](docs/inference-design-2026-10-01.md) and [setup](docs/inference-setup.md). Managed Nemotron packaging and fine-tuning are deferred.
+- **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.
 

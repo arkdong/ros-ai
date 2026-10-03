@@ -83,7 +83,7 @@ export function App(){
   useEffect(()=>{if(projectId&&detail?.project.id===projectId){saveLocal(`navigation:${projectId}`,{selectedId,workNodeId:selectedId});saveLocal(`expanded-groups:${projectId}`,expandedIds);}},[projectId,detail?.project.id,selectedId,expandedIds]);
   const hasActive=detail?.runs.some(run=>['running','queued'].includes(run.status))||sessions.some(s=>s.status==='running')||Boolean(assistant?.activeTurnId);
   useEffect(()=>{if(!hasActive&&!chatBusy)return;let polling=false;const interval=setInterval(()=>{if(polling)return;polling=true;void refresh().catch(report).finally(()=>{polling=false;});},1500);return()=>clearInterval(interval);},[hasActive,chatBusy,refresh,report]);
-  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){setNewProject(false);setDialog(null);setAttachment(null);setAddScope(undefined);setInspectorId(null);setResearchNodeId(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);setTrashOpen(false);setDeleteCandidate(null);setProjectMenu(null);setDemoPicker(false);saveLocal('demo-offer-seen',true);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!event.defaultPrevented&&!(event.target instanceof Element&&event.target.closest('.cm-editor'))){setNewProject(false);setDialog(null);setAttachment(null);setAddScope(undefined);setInspectorId(null);setResearchNodeId(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);setTrashOpen(false);setDeleteCandidate(null);setProjectMenu(null);setDemoPicker(false);saveLocal('demo-offer-seen',true);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const action=useCallback(async(fn:()=>Promise<unknown>,shouldRefresh=true)=>{setSaving(n=>n+1);try{await fn();if(shouldRefresh)await refresh();return true;}catch(cause){report(cause);if(shouldRefresh)await refresh().catch(()=>undefined);return false;}finally{setSaving(n=>n-1);}},[refresh,report]);
   // Run canvas edits one at a time against the newest revision this browser has seen,
   // so quick consecutive edits do not trip the server's stale-canvas check.
@@ -120,7 +120,8 @@ export function App(){
     const canvas={...detail.project.canvas,nodes:detail.project.canvas.nodes.filter(n=>(n.parentId||null)===scope)};
     if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(blockType==='code'?{code:blankCode}:{}),...(blockType==='notebook'?{notebook:{path:''}}:{}),...emptyPosition(canvas)}}],`Add ${label}`)){
       setAddScope(undefined);
-      setInspectorId(null);
+      // Code opens straight into its editor once the block exists on the canvas.
+      setInspectorId(blockType==='code'?id:null);
       selectFocus(id);
       if(scope)setExpandedIds(current=>[...new Set([...current,scope])]);
       setFocusId(id);
@@ -219,8 +220,8 @@ function ProposalPreview({ proposal, revision, onClose, onAccept, onDismiss, onR
 
 function Modal({ title, children, onClose, className = '', nonBlocking = false }: { title: string; children: ReactNode; onClose: () => void; className?: string; nonBlocking?: boolean }) {
   const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => { const previous = document.activeElement as HTMLElement | null; panel.current?.querySelector<HTMLElement>('input, select, textarea, button')?.focus(); return () => previous?.focus(); }, []);
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${className}`} role="dialog" aria-modal={!nonBlocking} aria-label={title} ref={panel} onKeyDown={event => { if (event.key !== 'Tab' || nonBlocking) return; const focusable = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]') || [])]; const first = focusable[0]; const last = focusable.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></div>{children}</div></div>;
+  useEffect(() => { const previous = document.activeElement as HTMLElement | null; if (!panel.current?.contains(document.activeElement)) panel.current?.querySelector<HTMLElement>('[data-autofocus], input, select, textarea, button')?.focus(); return () => previous?.focus(); }, []);
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${className}`} role="dialog" aria-modal={!nonBlocking} aria-label={title} ref={panel} onKeyDown={event => { if (event.key !== 'Tab' || nonBlocking || event.defaultPrevented) return; const focusable = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]') || [])]; const first = focusable[0]; const last = focusable.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></div>{children}</div></div>;
 }
 function NewProjectModal({ onClose, onCreate, onDemo }: { onDemo: () => void; onClose: () => void; onCreate: (title: string, start: 'blank'|'demo'|'conversation', question:string) => Promise<void> }) {
   const [title,setTitle]=useState(''),[start,setStart]=useState<'blank'|'demo'|'conversation'>('blank'),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false);
@@ -263,8 +264,8 @@ function NewNodeModal({scope,onClose,onCreate}: {scope?:string;onClose:()=>void;
       </div>
       <label className="field-label" htmlFor="new-node-title">Name <span>(optional)</span></label>
       <input id="new-node-title" value={title} onChange={event=>setTitle(event.target.value)} maxLength={200} placeholder={choice.label} disabled={busy}/>
-      <p className="subtle node-kind-note">Add it to the canvas now. Open the block when you’re ready to work on it.</p>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?'Adding…':`Add ${choice.label}`}</button></div>
+      <p className="subtle node-kind-note">{choice.blockType==='code'?'Adds it to the canvas and opens the editor so you can start writing.':'Add it to the canvas now. Open the block when you’re ready to work on it.'}</p>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?'Adding…':choice.blockType==='code'?'Add & write code':`Add ${choice.label}`}</button></div>
     </form>
   </Modal>;
 }

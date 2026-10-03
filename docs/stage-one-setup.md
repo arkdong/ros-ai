@@ -21,10 +21,10 @@ The image provides Python 3.12.11, pandas, NumPy, matplotlib and SciPy. Each run
 
 ## Write and run a Code block
 
-1. Use **Add block → Code → Add Code**. A name is optional; ros.ai supplies a unique type name such as **Code** or **Code 2**. The block is selected on the canvas. Choose **Open content** (or double-click the block) to edit the program, language and JSON parameters. **Save code** records an undoable content edit.
-2. For Python, check that **Isolated Docker Python** is available. Other language labels, including C and Haskell, can be saved but currently have no execution adapter.
+1. Use **Add block → Code → Add & write code**. A name is optional; ros.ai supplies a unique type name such as **Code** or **Code 2**. The block appears on the canvas and its editor opens with the cursor in the program. Later, choose **Open content** (or double-click the block) to reopen it. The editor highlights Python, suggests ros.ai helpers, library members, CSV column names (`df["`) and parameter keys (`params["`) as you type, and underlines lines Python cannot parse. **Save** (`Ctrl/⌘+S`) records an undoable content edit.
+2. For Python, check that the badge reads **Docker Python ready**. Other language labels, including C and Haskell, can be saved but currently have no execution adapter.
 3. Choose **No dataset**, or explicitly choose one captured CSV from this project. The selected CSV is supplied in full as `df`; it is not a preview or an automatic import from connected blocks. JSON tables and other evidence formats do not become runtime CSV inputs.
-4. Choose **Save & run** or **Run**. In Ask mode, inspect the captured source, input and parameters, then choose **Allow & run**. A source change invalidates approval for the earlier captured attempt. **Stop** requests cancellation of the current container.
+4. Choose **Save & run** or **Run** (`Ctrl/⌘+Enter`). In Ask mode, inspect the captured source, input and parameters, then choose **Allow & run**. A source change invalidates approval for the earlier captured attempt. **Stop** requests cancellation of the current container. When an attempt fails, the line that raised the error is underlined while the editor still holds that attempt's code.
 
 With **No dataset**, no `df` is created and no sample file is supplied. `params`, `pd`, `np`, `plt` and `scipy` are available. This example creates its own small data explicitly:
 
