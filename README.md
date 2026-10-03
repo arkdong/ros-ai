@@ -141,3 +141,11 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 ## Optional public demonstration
 
 The curated public mode is separate from your local workspace and provider credentials. See [Railway setup](docs/railway-deployment.md). It uses per-browser visitor stores, the banking tutorial and saved results only; new inference, execution and host-file access are disabled. The market dataset and figures are omitted pending redistribution permission. A prepared Docker image or local preview is not a deployed website; current deployment status belongs in [RESULT.md](RESULT.md).
+
+## Licence
+
+ros.ai's code and documentation are released under the [MIT licence](LICENSE). The licence does not cover:
+
+- the ros.ai name and logo (`public/brand/`);
+- other organisations' logos and marks, in `public/deck/assets/` and drawn in `src/client/ModelMakerSymbol.tsx` and `src/client/ConnectionsPanel.tsx`; they belong to their owners and are shown only to identify their services;
+- third-party data in `examples/`: KNMI weather observations and the datasets derived from them ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), Royal Netherlands Meteorological Institute), CBS statistics in `examples/dutch-ai-adoption/` (CBS's own reuse terms), and NDW counter-site records (ODC PDDL).
