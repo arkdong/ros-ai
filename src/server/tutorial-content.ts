@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { Artifact } from '../shared/types.js';
 
 /** Server-only, attributed captures. These files never enter the public asset build. */
@@ -17,7 +17,11 @@ export interface TutorialScenarioContent {
   draftGuide: string; draftNarrative: string;
   publicDataReady: boolean; publicDataStatus: string;
 }
-const readExample = (path: string) => readFileSync(new URL(`../../examples/${path}`, import.meta.url), 'utf8');
+const exampleUrl = (path: string) => new URL(`../../examples/${path}`, import.meta.url);
+const readExample = (path: string) => readFileSync(exampleUrl(path), 'utf8');
+// The market captures are gitignored local research data, so fresh clones lack them.
+const marketFiles = ['demo-market-risk/source/fred-sp500-2018-2021.csv', 'demo-market-risk/research-v2/paper.md', 'tutorial-results/market.json'];
+export const localMarketDataAvailable = () => marketFiles.every(path => existsSync(exampleUrl(path)));
 const savedOutputs = (id: TutorialScenarioId): TutorialSavedOutput[] => JSON.parse(readExample(`tutorial-results/${id}.json`));
 const cbsUrl = 'https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies';
 const fredUrl = 'https://fred.stlouisfed.org/series/SP500';

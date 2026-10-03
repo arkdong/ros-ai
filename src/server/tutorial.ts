@@ -6,7 +6,7 @@ import type { TutorialCatalog, TutorialExecution, TutorialScenarioId, TutorialSe
 import type { ExperimentService } from './experiments.js';
 import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
-import { loadTutorialContent } from './tutorial-content.js';
+import { loadTutorialContent, localMarketDataAvailable } from './tutorial-content.js';
 import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import { LAYOUT_GAP } from '../shared/layout.js';
 
@@ -30,6 +30,8 @@ export class TutorialService {
     this.highlights = new Highlights(store);
   }
 
+  private marketAvailable() { return !this.options.publicDemo && localMarketDataAvailable(); }
+
   private execution():TutorialExecution {
     const available = this.experiments?.capabilities().sandbox?.available ?? false;
     return { available, backend:'docker-python', reason:available
@@ -42,13 +44,15 @@ export class TutorialService {
       scenarios:scenarioSchema.options.map(id => {
         // Restricted market files are deliberately absent from the public image.
         // Listing the unavailable choice must not read or package its snapshot.
-        if (this.options.publicDemo && id === 'market') return {
+        if (id === 'market' && !this.marketAvailable()) return {
           id,title:'When market conditions change · a historical risk baseline',
           summary:'Explore historical risk thresholds and their limits. This real-data demonstration is currently available in the local research workspace.',
           question:'How well does a simple historical risk baseline describe losses as market conditions change?',
           publicDataReady:false,available:false,
           publicDataStatus:'The captured S&P/FRED series and derived figures require reproduction permission before public distribution.',
-          unavailableReason:'The market scenario remains local until reproduction permission or an approved replacement dataset is available. Its data and figures are not included in this public website.',
+          unavailableReason:this.options.publicDemo
+            ? 'The market scenario remains local until reproduction permission or an approved replacement dataset is available. Its data and figures are not included in this public website.'
+            : 'The market scenario needs its captured S&P/FRED data, which is kept outside the repository. Add the local research files under examples/demo-market-risk to enable it.',
         };
         const content = loadTutorialContent(id);
         return { id, title:content.title, summary:content.summary, question:content.question,
@@ -97,7 +101,9 @@ export class TutorialService {
   }
 
   create(scenario:TutorialScenarioId):TutorialSession {
-    if (this.options.publicDemo && scenario === 'market') throw new StoreError('The market scenario is unavailable publicly: its captured S&P/FRED data and derived figures need reproduction permission or an approved replacement dataset.',403);
+    if (scenario === 'market' && !this.marketAvailable()) throw new StoreError(this.options.publicDemo
+      ? 'The market scenario is unavailable publicly: its captured S&P/FRED data and derived figures need reproduction permission or an approved replacement dataset.'
+      : 'The market scenario needs its captured S&P/FRED data, which is not in this checkout.',this.options.publicDemo ? 403 : 409);
     const content = loadTutorialContent(scenario);
     if (this.options.publicDemo && !content.publicDataReady) throw new StoreError(content.publicDataStatus,403);
     return this.store.atomic(() => {

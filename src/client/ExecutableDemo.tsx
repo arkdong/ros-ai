@@ -36,11 +36,19 @@ export function ExecutableDemo({ session, detail, onSession, onRefresh, onStage,
   const path = `/api/projects/${session.projectId}/demo-session`;
   useEffect(() => { setView(session.step); }, [session.step]);
   useEffect(() => { const id = session.stages[session.step].nodeId; if (id && shownStage.current !== id && detail.project.canvas.nodes.some(node => node.id === id)) { shownStage.current = id; onStage(id); } }, [session.step, session.stages, detail.project.canvas.nodes, onStage]);
+  // Parent callbacks change every render; keep them in refs so the poll is not reset.
+  const callbacks = useRef({ onSession, onRefresh }); callbacks.current = { onSession, onRefresh };
   useEffect(() => {
     if (!running) return;
-    const timer = window.setInterval(() => { void api<TutorialSession>(path).then(async next => { onSession(next); if (!['queued','running'].includes(next.preview?.run.status || '')) await onRefresh(); }).catch(cause => setError(cause.message)); }, 1500);
+    let polling = false;
+    const timer = window.setInterval(() => {
+      if (polling) return;
+      polling = true;
+      void api<TutorialSession>(path).then(async next => { callbacks.current.onSession(next); if (!['queued','running'].includes(next.preview?.run.status || '')) await callbacks.current.onRefresh(); })
+        .catch(cause => setError(cause.message)).finally(() => { polling = false; });
+    }, 1500);
     return () => window.clearInterval(timer);
-  }, [running, path, onSession, onRefresh]);
+  }, [running, path]);
   const act = async (work: () => Promise<TutorialSession | void>) => {
     if (busy) return;
     setBusy(true); setError('');
