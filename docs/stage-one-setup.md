@@ -45,7 +45,7 @@ Use `table`, `metric`, `plot`, `export_csv` and `conclusion` to retain intended 
 
 ## Connect an existing Jupyter notebook
 
-The Notebook block uses a Jupyter/JupyterLab server that you already manage. ros.ai does not install Jupyter, start a server/kernel, or run imported cells. Neither inspected Python runtime contains Jupyter, and no existing user-managed session has been supplied. The default loopback address on port8888 was unavailable in the browser check. Actual native Jupyter access remains unverified; offline captures and fixtures do not establish a working live connection.
+The Notebook block uses a Jupyter/JupyterLab server that you already manage. ros.ai does not install Jupyter, start a server/kernel, or run imported cells. If you need a server, `python3 -m pip install jupyterlab` and `jupyter lab` start one on `http://127.0.0.1:8888/` and print its token. The full connect, native run and save, refresh and capture loop was verified against a live JupyterLab server on October 3 ([RESULT.md](../RESULT.md)).
 
 1. Open your existing local Jupyter server and identify its base address and notebook path. Use a relative `.ipynb` path such as `research/analysis.ipynb`.
 2. Use **Add block → Notebook → Add Notebook**, then open the new canvas block. A name is optional. Enter the **Jupyter address**, **Notebook path**, and interface choice. If the server requires an API token, enter it only in the password field in ros.ai; do not put it in a URL, notebook, report or chat.

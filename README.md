@@ -6,7 +6,7 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 
 ## Status
 
-- **Stage One (Code and Notebook blocks)** is delivered. See [RESULT.md](RESULT.md) for what is verified and [the setup guide](docs/stage-one-setup.md) for the workflow. Later stages are not yet defined.
+- **Stage One (Code and Notebook blocks)** is complete, including a live Jupyter check on October 3. See [RESULT.md](RESULT.md) for what is verified and [the setup guide](docs/stage-one-setup.md) for the workflow. Later stages are not yet defined.
 - **Inference:** the user's own **Research model** and the separate **Workspace guide** are described in [the inference design](docs/inference-design-2026-10-01.md) and [setup](docs/inference-setup.md). Managed Nemotron packaging and fine-tuning are deferred.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.

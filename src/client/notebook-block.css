@@ -1,4 +1,4 @@
-.notebook-block { display:flex; flex-direction:column; gap:16px; min-width:0; width:100%; padding:22px; color:var(--ink); font-size:13px; }
+.notebook-block { container-type:inline-size; display:flex; flex-direction:column; gap:16px; min-width:0; width:100%; padding:22px; color:var(--ink); font-size:13px; }
 .notebook-block h3,.notebook-block h4,.notebook-block p { margin:0; }
 .notebook-block h3 { font-size:15px; font-weight:600; }
 .notebook-block h4 { font-size:13px; font-weight:600; }
@@ -62,7 +62,7 @@
 .notebook-output-heading>span { color:var(--muted); font-size:10px; }
 .notebook-output { border:1px solid var(--line); border-radius:6px; min-width:0; }
 .notebook-output-choice { display:flex; align-items:flex-start; gap:8px; padding:10px 12px; cursor:pointer; }
-.notebook-output-choice input { margin:3px 0 0; flex:none; }
+.notebook-output-choice input { margin:3px 0 0; flex:none; width:auto; }
 .notebook-output-choice>span { display:flex; flex-direction:column; gap:4px; min-width:0; overflow-wrap:anywhere; }
 .notebook-output-choice strong { font-size:12px; font-weight:500; }
 .notebook-output-choice small { color:var(--muted); font-size:10px; }
@@ -86,7 +86,7 @@
 .notebook-captured-output>small { font-size:10px; color:var(--muted); }
 .notebook-captured-output .result-actions { min-width:0; }
 .notebook-captured-output .output-handoff { max-width:100%; }
-@media(max-width:700px) {
+@container (max-width:700px) {
   .notebook-block { padding:15px; }
   .notebook-heading input { font-size:17px; }
   .notebook-session { flex-direction:column; align-items:stretch; }
