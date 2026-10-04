@@ -249,3 +249,8 @@
 @media (prefers-reduced-motion: reduce) {
   .outline-hierarchy .outline-disclosure-icon { transition: none; }
 }
+
+.outline-hierarchy .outline-withdrawn p {
+  text-decoration: line-through;
+  color: #7b857f;
+}
