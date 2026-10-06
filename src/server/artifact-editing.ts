@@ -5,6 +5,7 @@ import { artifactTable, columnSummary, tableCsv, transformTable } from '../share
 import { canonicalReport, evidenceClaim, reportHtml, reportMarkdown, reportReferences } from '../shared/reports.js';
 import type { Artifact, CanvasNode, Run } from '../shared/types.js';
 import { LocalConnections } from './connections.js';
+import { reportRecord } from './report-record.js';
 import { Store, StoreError } from './store.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), hash = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -73,24 +74,26 @@ export class ArtifactEditingService {
   }
   saveReport(projectId: string, supplied: unknown, agent?:AgentReportProvenance) {
     if(agent) z.object({agent:z.literal('codex'),assistantTurnId:id,captureHash:hash}).strict().parse(agent);
-    const body = z.object({ nodeId:id.optional(),sourceArtifactId:id.optional(),title:z.string().trim().min(1).max(200),text:z.string().max(200000),evidenceIds:z.array(id).max(100),expectedRevision:z.number().int().nonnegative().optional() }).strict().parse(supplied);
+    const body = z.object({ nodeId:id.optional(),sourceArtifactId:id.optional(),title:z.string().trim().min(1).max(200),text:z.string().max(200000),evidenceIds:z.array(id).max(100),aiUse:z.string().trim().max(2000).optional(),expectedRevision:z.number().int().nonnegative().optional() }).strict().parse(supplied);
     const project = this.store.getProject(projectId);
     if (body.expectedRevision !== undefined && project.revision !== body.expectedRevision) throw new StoreError('The project changed. Reload and review before saving the report.',409);
     const previous = body.sourceArtifactId ? this.owned(projectId,body.sourceArtifactId) : undefined;
     const evidence = [...new Set(body.evidenceIds)].map(artifactId => this.owned(projectId,artifactId));
     const text = canonicalReport(body.text,evidence), referenced = reportReferences(text);
+    // The researcher's own line on AI used outside ros.ai carries forward when an agent revision omits it.
+    const aiUse = body.aiUse ?? (typeof previous?.metadata?.aiUse === 'string' ? previous.metadata.aiUse : '');
     if (referenced.some(artifactId => !evidence.some(artifact => artifact.id === artifactId))) throw new StoreError('Every inline figure, table and evidence link must select its exact saved artifact.');
     if (previous && body.nodeId && previous.nodeId !== body.nodeId) throw new StoreError('Report revision must belong to its original block.');
     return this.store.atomic(() => {
       const node = body.nodeId ? project.canvas.nodes.find(node => node.id === body.nodeId) : this.newBlock(projectId,body.title,'report');
       if (!node) throw new StoreError('Report block not found.');
       if (body.nodeId && node.artifactId && node.artifactId !== previous?.id) throw new StoreError('A newer report version is current. Open that version before editing.',409);
-      const artifact = this.save(projectId,node,{kind:'result',title:body.title,content:text,mediaType:'text/markdown',capture:'generated',metadata:{report:true,contribution:agent?'model claim':'user interpretation',...(agent??{}),...(previous ? {sourceArtifactId:previous.id,sourceHash:previous.hash} : {}),evidence:evidence.map(item => ({artifactId:item.id,hash:item.hash,title:item.title,kind:item.kind,claimType:evidenceClaim(item)}))}},[...evidence,...(previous ? [previous] : [])],{operation:'save-report',...(agent??{}),sourceArtifactId:previous?.id,evidenceIds:evidence.map(item => item.id)});
+      const artifact = this.save(projectId,node,{kind:'result',title:body.title,content:text,mediaType:'text/markdown',capture:'generated',metadata:{report:true,contribution:agent?'model claim':'user interpretation',...(agent??{}),...(aiUse ? {aiUse} : {}),...(previous ? {sourceArtifactId:previous.id,sourceHash:previous.hash} : {}),evidence:evidence.map(item => ({artifactId:item.id,hash:item.hash,title:item.title,kind:item.kind,claimType:evidenceClaim(item)}))}},[...evidence,...(previous ? [previous] : [])],{operation:'save-report',...(agent??{}),sourceArtifactId:previous?.id,evidenceIds:evidence.map(item => item.id)});
       this.store.mutate(projectId,[{type:'updateNode',id:node.id,patch:{title:body.title,blockType:'report',artifactId:artifact.id}}],`Save report: ${body.title}`);
       return {artifact,nodeId:node.id};
     });
   }
-  exportReport(projectId: string, artifactId: string, format: 'html'|'markdown') {
+  exportReport(projectId: string, artifactId: string, format: 'html'|'markdown', includeRequests = false) {
     const artifact = this.owned(projectId,artifactId);
     const selected = this.store.detail(projectId).inputs.filter(input => input.nodeId === artifact.nodeId).map(input => this.owned(projectId,input.artifactId));
     const descriptors = artifact.metadata?.evidence;
@@ -98,7 +101,8 @@ export class ArtifactEditingService {
       if (!value || typeof value !== 'object' || typeof value.artifactId !== 'string') throw new StoreError('Report evidence manifest is invalid.');
       const saved = this.owned(projectId,value.artifactId); if (saved.hash !== value.hash) throw new StoreError('Captured evidence hash differs from the report manifest.',500); return saved;
     }) : selected;
-    return format === 'html' ? reportHtml(artifact.title,artifact.content,evidence,artifact) : reportMarkdown(artifact.title,artifact.content,evidence,artifact);
+    const record = reportRecord(this.store,artifact,evidence,includeRequests);
+    return format === 'html' ? reportHtml(artifact.title,artifact.content,evidence,artifact,record) : reportMarkdown(artifact.title,artifact.content,evidence,artifact,record);
   }
 }
 export function attachArtifactEditingRoutes(app: Express, store: Store) {
@@ -108,8 +112,8 @@ export function attachArtifactEditingRoutes(app: Express, store: Store) {
   app.post('/api/projects/:id/artifacts/:artifactId/presentation',(req,res) => res.status(201).json(service.figurePresentation(id.parse(req.params.id),id.parse(req.params.artifactId),req.body)));
   app.post('/api/projects/:id/reports',(req,res) => res.status(201).json(service.saveReport(id.parse(req.params.id),req.body)));
   app.get('/api/projects/:id/reports/:artifactId/export',(req,res) => {
-    const format = z.enum(['html','markdown']).default('html').parse(req.query.format);
-    const content = service.exportReport(id.parse(req.params.id),id.parse(req.params.artifactId),format);
+    const format = z.enum(['html','markdown']).default('html').parse(req.query.format), requests = z.enum(['full']).optional().parse(req.query.requests);
+    const content = service.exportReport(id.parse(req.params.id),id.parse(req.params.artifactId),format,requests === 'full');
     res.type(format === 'html' ? 'html' : 'text/markdown').setHeader('Content-Disposition',`attachment; filename="ros-ai-report.${format === 'html' ? 'html' : 'md'}"`);
     res.send(content);
   });
