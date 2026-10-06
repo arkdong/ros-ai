@@ -11,16 +11,19 @@ import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, 
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
+const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
 const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report']).optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
-const nodeSchema = z.object({ id: identifier, ...nodeFields }).strict();
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
-export const mutationSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('addNode'), node: nodeSchema }).strict(),
-  z.object({ type: z.literal('updateNode'), id: identifier, patch: z.object(nodeFields).partial().strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict(),
+const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
+  z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
+  z.object({ type: z.literal('updateNode'), id: identifier, patch: z.object(fields).partial().strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict(),
   z.object({ type: z.literal('removeNode'), id: identifier }).strict(),
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
   z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
 ]);
+export const mutationSchema = mutations({ ...nodeFields, decisions: z.array(decisionSchema).max(100).optional() });
+/** What agents may propose: decisions are recorded only by the researcher. */
+export const proposalMutationSchema = mutations(nodeFields);
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);
@@ -285,7 +288,13 @@ export class Store {
       return node;
     };
     const normalized: Mutation[] = [];
+    const recordedDecisions = new Set<string>();
     for (const operation of operations) {
+      const decided = operation.type === 'addNode' ? operation.node.decisions && operation.node.id : operation.type === 'updateNode' && 'decisions' in operation.patch ? operation.id : undefined;
+      if (decided) {
+        if (proposal) throw new StoreError('Decisions are recorded by the researcher. A proposal cannot add or change them.');
+        recordedDecisions.add(decided);
+      }
       if (operation.type === 'addNode') {
         if (canvas.nodes.some(item => item.id === operation.node.id) || this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, operation.node.id)) throw new StoreError(`Node id ${operation.node.id} already exists or belongs to a removed node`);
         if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
@@ -336,6 +345,19 @@ export class Store {
       }
     }
     for (const node of canvas.nodes) {
+      if (recordedDecisions.has(node.id) && node.decisions) {
+        // Unknown citations are refused, never dropped. Unchanged entries were checked when recorded.
+        const previous = new Map((project.canvas.nodes.find(item => item.id === node.id)?.decisions ?? []).map(decision => [decision.id, JSON.stringify(decision)]));
+        if (new Set(node.decisions.map(decision => decision.id)).size !== node.decisions.length) throw new StoreError('Each decision needs its own id.');
+        for (const decision of node.decisions) {
+          if (previous.get(decision.id) === JSON.stringify(decision)) continue;
+          for (const basis of decision.basedOn) {
+            const row = this.db.prepare('SELECT data FROM artifacts WHERE id = ?').get(basis.artifactId) as JsonRow | undefined;
+            const saved = row ? JSON.parse(row.data) as Omit<Artifact, 'content'> : undefined;
+            if (saved?.projectId !== project.id || saved.hash !== basis.hash) throw new StoreError(`A decision can only cite saved versions in this project. ${basis.artifactId} is not one.`);
+          }
+        }
+      }
       if (node.code?.inputArtifactId && this.getArtifact(node.code.inputArtifactId).projectId!==project.id) throw new StoreError('The Code input must belong to this project.');
       if (node.artifactId) {
         const artifact = this.getArtifact(node.artifactId);

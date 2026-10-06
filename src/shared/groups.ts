@@ -43,9 +43,10 @@ export function ungroupOperations(canvas: Canvas, group: CanvasNode): Mutation[]
     { type: 'updateNode', id: group.id, patch: { kind: group.legacyKind ?? 'topic', ...(group.legacyKind ? {} : {blockType: 'note' as const}), groupHighlights: [] } }];
 }
 
-/** Only organizational/presentation fields are omitted. Scientific content,
+/** Only organizational/presentation fields and the decision log are omitted, so
+ * recording a decision never stales a pending approval. Scientific content,
  * selected evidence and runtime permissions remain part of approval validation. */
 export function executionNodeContext(node: CanvasNode) {
-  const { x: _x, y: _y, width: _width, parentId: _parent, groupHighlights: _highlights, legacyKind, ...content } = node;
+  const { x: _x, y: _y, width: _width, parentId: _parent, groupHighlights: _highlights, decisions: _decisions, legacyKind, ...content } = node;
   return { ...content, ...(content.kind==='group' && legacyKind ? { kind: legacyKind } : {}) };
 }

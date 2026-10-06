@@ -11,6 +11,7 @@ import './detail-polish.css';
 import { groupMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
+import { DecisionLog } from './Decisions';
 
 type Props = {
   node: CanvasNode; detail: ProjectDetail; connections: ConnectionStatus[]; width: number;
@@ -56,7 +57,7 @@ export function Inspector({ node, detail, connections, width, onResize, onClose,
     </div>
     {readOnly&&<div className="history-inspector-note">Historical canvas · inspect saved work below. Return to the current canvas to make changes.</div>}
     <nav className="inspector-tabs" aria-label="Node sections"><button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}><FileText size={14} /> {isGroup(node)?'Overview':'Content'}</button><button className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}><Layers3 size={14}/> Results</button><button className={tab === 'experiment' ? 'active' : ''} onClick={() => setTab('experiment')}><Play size={14} /> Experiments</button><button className={tab === 'work' ? 'active' : ''} onClick={() => setTab('work')}><MessageSquare size={14} /> Conversation</button><button className={tab === 'inputs' ? 'active' : ''} onClick={() => setTab('inputs')}><ArrowDownToLine size={14} /> Sources{inputs.length > 0 && <span>{inputs.length}</span>}</button><button className={tab === 'runs' ? 'active' : ''} onClick={() => setTab('runs')}><History size={14} /> History{runs.length > 0 && <span>{runs.length}</span>}</button></nav>
-    {tab === 'overview' && <NoteOverview node={node} detail={detail} onArtifact={onOpenArtifact} onNote={onOpenNote}/> }
+    {tab === 'overview' && <NoteOverview node={node} detail={detail} onArtifact={onOpenArtifact} onNote={onOpenNote} mutate={mutate} readOnly={readOnly}/> }
     {tab === 'results' && <SavedResults node={node} detail={detail} onArtifact={onOpenArtifact}/>}
     {tab === 'experiment' && <Experiment key={node.id} node={node} detail={detail} onRefresh={onRefresh} readOnly={readOnly} policy={policy} model={reasoningModel} />}
     {tab === 'work' && <>
@@ -107,13 +108,14 @@ function SavedResults({node,detail,onArtifact}:{node:CanvasNode;detail:ProjectDe
   const artifacts=detail.artifacts.filter(item=>ids.has(item.nodeId)||item.id===node.artifactId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   return <div className="inspector-scroll note-overview"><h3>All saved results and captured material</h3><p className="subtle">Attempts, failures and earlier successful versions stay separate in History.</p><div className="overview-artifacts">{artifacts.map(item=><button className="overview-artifact" key={item.id} onClick={()=>onArtifact(item)}><FileText size={16}/><span><strong>{item.title}</strong><small>{item.kind} · {item.hash.slice(0,8)} · {detail.runs.find(run=>run.id===item.runId)?.status??'Saved'}{isGroup(node)?` · ${detail.project.canvas.nodes.find(member=>member.id===item.nodeId)?.title??'Saved block'}`:''}</small></span><ArrowRight size={14}/></button>)}</div>{!artifacts.length&&<p>No saved results yet. Open Conversation or Experiments to begin work.</p>}</div>;
 }
-function NoteOverview({node,detail,onArtifact,onNote}:{node:CanvasNode;detail:ProjectDetail;onArtifact:(artifact:Artifact)=>void;onNote:(id:string)=>void}) {
+function NoteOverview({node,detail,onArtifact,onNote,mutate,readOnly}:{node:CanvasNode;detail:ProjectDetail;onArtifact:(artifact:Artifact)=>void;onNote:(id:string)=>void;mutate:Props['mutate'];readOnly:boolean}) {
   const primary=primaryArtifact(node,detail),children=detail.project.canvas.nodes.filter(item=>item.parentId===node.id);
   return <div className="inspector-scroll note-overview">
     {node.description&&<section><h3>{isGroup(node)?'Group overview':'Question and notes'}</h3><RichText text={node.description}/></section>}
     {!isGroup(node)&&primary&&<section className="overview-finding"><div className="section-heading"><h3>{primary.title}</h3><button className="small secondary" onClick={()=>onArtifact(primary)}>Open saved content</button></div><span className="subtle">Exact version {primary.hash.slice(0,8)} · {date(primary.createdAt)}</span><BlockPreview artifact={primary}/></section>}
     {isGroup(node)&&<section><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{isGroup(child)?'Group':child.blockType??(child.kind==='activity'?'Action':'Note')}</small></span><ArrowRight size={14}/></button>)}</section>}
     {!node.description&&!primary&&!children.length&&<div className="empty-small"><FileText size={24}/><p>Add a question or description to develop this block.</p></div>}
+    <DecisionLog node={node} detail={detail} readOnly={readOnly} onOpenArtifact={onArtifact} save={(decisions,label)=>mutate([{type:'updateNode',id:node.id,patch:{decisions}}],label)}/>
   </div>;
 }
 

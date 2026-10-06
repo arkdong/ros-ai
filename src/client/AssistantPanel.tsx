@@ -246,7 +246,7 @@ function OutlineItem({entry,detail,onReference,directionContext=false}:{entry:Ou
   const hasSummary=summaryPreview.text&&summaryPreview.text!==textPreview(title,Number.MAX_SAFE_INTEGER).text;
   const needsDisclosure=titlePreview.truncated||Boolean(hasSummary&&summaryPreview.truncated);
   const refs=entry.references.filter(reference=>reference.kind!=='node'||reference.id!==entry.nodeId);
-  return <article className={`outline-entry ${directionContext ? 'outline-direction-context' : ''}`}>
+  return <article className={`outline-entry ${directionContext ? 'outline-direction-context' : ''} ${entry.status === 'withdrawn' ? 'outline-withdrawn' : ''}`}>
     {directionContext ? entry.nodeId && <button className="outline-open-direction" title={`Open ${title}`} onClick={()=>onReference({kind:'node',id:entry.nodeId!,label:title,nodeId:entry.nodeId})}>Open note<ArrowRight size={12}/></button> : !genericTitle&&(entry.nodeId?<button className="outline-title" title={title} onClick={()=>onReference({kind:'node',id:entry.nodeId!,label:title,nodeId:entry.nodeId})}><span>{titlePreview.text}</span><ArrowRight size={14}/></button>:<strong className="outline-title" title={title}>{titlePreview.text}</strong>)}
     {hasSummary&&<p className={genericTitle?'outline-main-summary':undefined}>{summaryPreview.text}</p>}
     {needsDisclosure&&<details className="outline-entry-details"><summary>Read full text</summary>{titlePreview.truncated&&<strong>{title}</strong>}{hasSummary&&<p>{summary}</p>}</details>}

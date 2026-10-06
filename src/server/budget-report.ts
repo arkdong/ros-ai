@@ -9,6 +9,22 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 const amount = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 type SandboxAdmission = { runId: string; reservedUsd: number; at: string };
 
+/** Explicit trace ownership is strongest. Older rows have only a saved run ID. */
+export function usageProject(store: Store, row: UsageRecord): string | undefined {
+  const trace = object(row.reportedUsage);
+  if (typeof trace.projectId === 'string' && trace.projectId) return trace.projectId;
+  if (row.runId) {
+    try { return store.getRun(row.runId).projectId; } catch { /* Unattributed records stay outside project totals. */ }
+  }
+  if (typeof trace.assistantTurnId === 'string') {
+    const turn = store.record<{ projectId: string }>('assistant-turn', trace.assistantTurnId);
+    if (typeof turn?.projectId === 'string') return turn.projectId;
+  }
+  const admission = store.record<{ projectId: string }>('combined-nebius-admission', `inference-${row.id}`);
+  if (typeof admission?.projectId === 'string') return admission.projectId;
+  return undefined;
+}
+
 /** Read-only projection. Never return model prompts, responses, authorization IDs or credentials. */
 export function projectBudgetReport(store: Store, projectId: string, options: {
   connections: ConnectionStatus[];
@@ -18,21 +34,7 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
 }): BudgetReport {
   const project = store.getProject(projectId), policy = new Authority(store).policy(projectId);
   const projectRuns = new Map(store.listRuns(projectId).map(run => [run.id, run]));
-  // Explicit trace ownership is strongest. Older rows have only a saved run ID.
-  const owner = (row: UsageRecord): string | undefined => {
-    const trace = object(row.reportedUsage);
-    if (typeof trace.projectId === 'string' && trace.projectId) return trace.projectId;
-    if (row.runId) {
-      try { return store.getRun(row.runId).projectId; } catch { /* Unattributed records stay outside project totals. */ }
-    }
-    if (typeof trace.assistantTurnId === 'string') {
-      const turn = store.record<{ projectId: string }>('assistant-turn', trace.assistantTurnId);
-      if (typeof turn?.projectId === 'string') return turn.projectId;
-    }
-    const admission = store.record<{ projectId: string }>('combined-nebius-admission', `inference-${row.id}`);
-    if (typeof admission?.projectId === 'string') return admission.projectId;
-    return undefined;
-  };
+  const owner = (row: UsageRecord) => usageProject(store, row);
   const nodeTitle = (run: Run | undefined) => run ? project.canvas.nodes.find(node => node.id === run.nodeId)?.title ?? run.node.title : null;
   const allUsage = store.listUsage();
   const entries: BudgetUsage[] = allUsage.filter(row => owner(row) === projectId).map(row => {

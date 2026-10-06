@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { Store, StoreError, mutationSchema } from './store.js';
+import { Store, StoreError, proposalMutationSchema } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantAction } from '../shared/assistant.js';
@@ -10,7 +10,7 @@ import { ArtifactEditingService } from './artifact-editing.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const readSchema = z.object({ artifactId: id.optional(), offset: z.number().int().min(0).default(0), length: z.number().int().min(1).max(30000).default(12000) }).strict();
-const canvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(mutationSchema).min(1).max(20) }).strict();
+const canvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(proposalMutationSchema).min(1).max(20) }).strict();
 const reuseSchema = z.object({ artifactId: id, targetNodeId: id, reason: z.string().trim().min(1).max(1000) }).strict();
 const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python', 'nebius-sandbox']) }).strict();
 const reportSchema = z.object({ nodeId: id, sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
