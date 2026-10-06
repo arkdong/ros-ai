@@ -13,7 +13,7 @@ npm run build
 npm start
 ```
 
-Open the local URL printed by the server, normally `http://127.0.0.1:4310`. Keep `.ros-ai/` and `.env.local` private; they contain local records and configuration. Manual Code runs and Notebook captures need no model API key.
+Open the local URL printed by the server, normally `http://127.0.0.1:4310`. Keep the data folder printed at startup and `.env.local` private; they contain local records and configuration. Manual Code runs and Notebook captures need no model API key.
 
 The Docker build downloads the pinned Python image and packages. Rebuild after capture-worker changes; ros.ai checks the image against the current worker and fails closed if it does not match. The app does not install packages, build the image, or substitute unrestricted host Python when Docker is unavailable. The server also uses Python 3 for permission analysis; this is separate from the Docker execution runtime.
 

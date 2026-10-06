@@ -10,6 +10,7 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 
 - **Stage One (Code and Notebook blocks)** is complete, including a live Jupyter check on October 3. See [RESULT.md](RESULT.md) for what is verified and [the setup guide](docs/stage-one-setup.md) for the workflow. Later stages are not yet defined.
 - **Inference:** the user's own **Research model** and the separate **Workspace guide** are described in [the inference design](docs/inference-design-2026-10-01.md) and [setup](docs/inference-setup.md). Managed Nemotron packaging and fine-tuning are deferred.
+- **Project folders:** each project lives in a folder you choose. Notes, code, notebooks and data are ordinary files (Markdown, `.py`, `.ipynb`, CSV) that Obsidian, VS Code or Jupyter open, and edits saved there come back as changes you can undo. See [RESULT.md](RESULT.md).
 - **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.
@@ -25,7 +26,7 @@ npm run build
 npm start
 ```
 
-Open **http://127.0.0.1:4310**. The service binds to loopback. Keep `.env.local` and `.ros-ai/` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
+Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
 ```sh
 npm run dev       # frontend live reload and local server
@@ -132,7 +133,7 @@ The historical September 22 continuous-assistant build recorded a **US$10 combin
 - [Amsterdam cycling and weather](examples/amsterdam-cycling-weather/README.md): saved as **Amsterdam cycling & weather — evidence first**, with 366 real KNMI days, two completed local Python analyses, three plots, selected evidence reuse and a seasonal follow-up. Open **Audit the real weather data**, then **Compare seasons & trace assumptions**. Code was prepared by the coding assistant; no new app-model inference was used. Bicycle counts are missing, so no cycling association is claimed.
 - [Coffee cooling](examples/coffee-cooling/README.md): earlier synthetic-data example with real local computations and preserved history.
 
-Data lives in ignored `.ros-ai/` (SQLite and content-addressed artifacts). Stop the app before backing up the whole directory. Legacy projects, chats, histories, artifacts, selections and accounting remain intact. Captured requests explain observable provenance, not hidden reasoning or deterministic replay.
+ros.ai's own records (SQLite and content-addressed artifacts) live in the data folder printed at startup. Stop the app before backing up the whole folder. A project's folder holds copies of its blocks as plain files; history, runs and saved versions stay in the data folder. Legacy projects, chats, histories, artifacts, selections and accounting remain intact. Captured requests explain observable provenance, not hidden reasoning or deterministic replay.
 
 Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud sync and remote continuation remain future work. The local Codex adapter is implemented, but an actual authorized end-to-end turn remains unverified and blocked as described above. Nebius Sandboxes has a REST execution adapter, pinned Python 3.12 stdlib image, separate budget admission, cancellation and restart reconciliation. One narrowly authorized historical remote smoke is verified; beta pricing/units remain unknown for normal admission. Remote attempts always require exact approval. No deployment, purchase, public write or eligibility claim is part of this iteration.
 

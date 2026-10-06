@@ -14,12 +14,12 @@ DNS rebinding and cross-site requests that carry an Origin header are already re
 
 | # | Gap | Evidence | Fix | Size |
 |---|---|---|---|---|
-| 1 | Requests without an Origin pass, a GET starts `codex`/`claude` setup, and there is no CSP | `app.ts:42`; `codex-agent.ts:277` | Require `application/json` on non-GET `/api` calls and reject `Sec-Fetch-Site: cross-site`. Make the setup route a POST. Add a CSP that allows CodeMirror's injected styles (`EditorView.cspNonce`) | S |
+| 1 | Requests without an Origin pass, a GET starts `codex`/`claude` setup, and there is no CSP | `app.ts:42`; `codex-agent.ts:277` | **Partly done October 6:** non-GET `/api` calls need `application/json`, `Sec-Fetch-Site: cross-site` is refused and setup is a POST. Still open: a CSP that allows CodeMirror's injected styles (`EditorView.cspNonce`) | S |
 | 2 | No licence | | **Done October 3:** Adam chose MIT. `LICENSE` and the README's Licence section exclude the name, logo, other organisations' marks and third-party data | S |
 | 3 | Going public ⚑ | Absolute home-directory paths in eight tracked files (e.g. `examples/demo-amsterdam/native-project.json`, `scripts/create-dutch-ai-demo.ts`); the AISO logo's embedded metadata names a person and Canva IDs; CBS reuse terms are not recorded | Decide what a public tree contains, then publish from a clean copy rather than this history | S–M |
 | 4 | Every install serves the pitch deck at `/deck` | `public/deck/**`; the OpenAI icon loads from it (`ModelMakerSymbol.tsx:6`) | Copy `openai-mark.png` to `public/brand`, then serve the deck only in demo mode | S |
 | 5 | It can't be installed as a command | No `bin`; `npm start` needs devDependencies (`tsx`, `vite`) | Add `bin/ros-ai.mjs`, move `tsx` to dependencies, build `dist/client` in `prepack`, add `files`. Ship `npx github:arkdong/ros-ai` first; npm publishing is a later choice | M |
-| 6 | Data lives in the checkout, so reinstalling could lose it (inferred) ⚑ | `index.ts:26-27` | Default to the OS user data directory, but keep using an existing repo-local `.ros-ai` so nothing has to move. Keep `ROS_DATA_DIR` | S–M |
+| 6 | Data lives in the checkout, so reinstalling could lose it (inferred) ⚑ | `index.ts:26-27` | **Done October 6** with project folders: the OS app-data folder is the default, an existing repo-local `.ros-ai` keeps being used, and `ROS_DATA_DIR` still wins | S–M |
 | 7 | The sandbox image is built by hand, and the runtime check blocks startup for up to 15 s and never reruns | `sandbox.ts:64-69` | `ros-ai doctor` / `setup` to build the image, an async check, and a Recheck button in Code | M |
 | 8 | No URL printed, no flags, and the UI goes stale after `git pull` | `index.ts:105`, `index.ts:89` | Print the URL; add `--open`, `--port`, `--data-dir`, `--version`; rebuild when the version changes; check Node 24+ | S |
 | 9 | Demo and pitch material appears in the local app | Demo picker on first launch (`App.tsx:49`); ABN AMRO tutorial (`tutorial-content.ts:49-50`) | Off by default locally, with one neutral Examples entry | S |
@@ -40,7 +40,7 @@ Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 | 17 | No live run output or model streaming | Polling every 1.5 s (`App.tsx:85`); `stream:false` (`inference-connections.ts:161`) | Stream stdout and model tokens | M |
 | 18 | Limited data input | UTF-8 CSV up to 500 KB (`connections.ts:13`); one input per Code block | Larger local limit, named inputs, xlsx/parquet | S–M |
 | 19 | Fixed packages and a 30 s limit | `sandbox/Dockerfile`; `sandbox.ts:63` | User requirements at image build; configurable local limits | M |
-| 20 | No project export or import | | Hash-checked project bundle | M |
+| 20 | No project export or import | Partly covered October 6: a project folder reopens elsewhere with its blocks, layout and connections, but not its runs or history | Hash-checked project bundle | M |
 | 21 | Merging to `main` redeploys the demo ⚑ | Railway builds `main` | Deploy the demo from a `demo` branch | S |
 | 22 | Dead demo code | `start:'demo'` looks unreachable (`App.tsx:229`, inferred); unused `hosting` (`tutorial.ts:60-62`) | Remove it and group demo files | S |
 | 23 | A blank project only suggests Knowledge or Action | `Canvas.tsx:546` | Empty state with New Code, Import CSV and Connect local model | S |

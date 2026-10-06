@@ -79,6 +79,8 @@ function decodeText(bytes: Buffer): string {
 }
 function outputFile(artifact: Artifact): { bytes: Buffer; extension: string } {
   if (artifact.mediaType === 'image/png') return { bytes: Buffer.from(artifact.content, artifact.metadata?.contentEncoding === 'base64' ? 'base64' : 'utf8'), extension: '.png' };
+  // Tables go out as CSV, which spreadsheets and pandas open directly.
+  if (artifact.kind === 'table' && artifact.mediaType === 'application/json') try { return { bytes: Buffer.from(tableCsv(artifactTable(artifact.content, false)), 'utf8'), extension: '.csv' }; } catch { /* kept as its exact JSON */ }
   const extension = artifact.mediaType === 'image/svg+xml' ? '.svg' : artifact.mediaType === 'text/csv' ? '.csv' : artifact.mediaType === 'application/json' ? '.json'
     : artifact.mediaType === 'text/markdown' || artifact.kind === 'result' ? '.md' : '.txt';
   return { bytes: Buffer.from(artifact.content, 'utf8'), extension };
@@ -238,8 +240,8 @@ export class ProjectFolders {
     try {
       const real = realpathSync(record.path), info = statSync(real);
       if (real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode) return real;
-      return { reason: 'The project folder was moved or replaced. Use Open folder to reconnect it from its new place.' };
-    } catch { return { reason: 'The project folder is missing. Put it back, or use Open folder to reconnect it from its new place.' }; }
+      return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
+    } catch { return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' }; }
   }
   private mapped(record: FolderRecord): Set<string> {
     return new Set([...Object.values(record.files).filter(entry => !entry.removed).map(entry => entry.path.toLowerCase()),
@@ -296,7 +298,7 @@ export class ProjectFolders {
     }
     if (existsSync(real)) {
       const manifest = this.manifest(real);
-      if (manifest && manifest.projectId !== projectId) throw new StoreError(`This folder already holds the ros.ai project “${manifest.title}”. Use Open folder to open it.`, 409);
+      if (manifest && manifest.projectId !== projectId) throw new StoreError(`This folder already holds the ros.ai project “${manifest.title}”. Open it with New project, then Open a folder.`, 409);
     }
     return real;
   }
@@ -304,7 +306,7 @@ export class ProjectFolders {
   /** Gives a project its folder, creating the folder if needed, and writes every block into it. */
   attach(projectId: string, supplied: string): ProjectFolderStatus {
     this.store.getProject(projectId);
-    if (this.load(projectId)) throw new StoreError('This project already has a folder. Move it in Finder, then use Open folder to reconnect it.', 409);
+    if (this.load(projectId)) throw new StoreError('This project already has a folder. If you moved it, reconnect it from its new place.', 409);
     const real = this.prepare(supplied, projectId);
     mkdirSync(real, { recursive: true });
     this.connect(projectId, realpathSync(real));
@@ -358,7 +360,7 @@ export class ProjectFolders {
     }
     this.save(record);
     this.activate(projectId);
-    this.sync(projectId, true);
+    this.syncNow(projectId, true);
   }
 
   /** A folder ros.ai made on another computer: its blocks come back from project.json and their files. */
@@ -531,10 +533,16 @@ export class ProjectFolders {
     if (this.timers.has(projectId)) return;
     this.timers.set(projectId, setTimeout(() => {
       this.timers.delete(projectId);
-      const due = this.exportDue.delete(projectId);
-      try { this.sync(projectId, due); }
-      catch (error) { this.checked.set(projectId, { available: true, unplaced: this.checked.get(projectId)?.unplaced ?? [], problems: [{ path: '.', message: `Folder sync stopped: ${message(error)}` }], checkedAt: now() }); }
+      this.syncNow(projectId, this.exportDue.delete(projectId));
     }, write ? 50 : 150));
+  }
+  /** A failed pass is shown with the folder and tried again on the next change. */
+  private syncNow(projectId: string, write: boolean): void {
+    try { this.sync(projectId, write); }
+    catch (error) {
+      if (write) this.exportDue.add(projectId);
+      this.checked.set(projectId, { available: true, unplaced: this.checked.get(projectId)?.unplaced ?? [], problems: [{ path: '.', message: `Folder sync stopped: ${message(error)}` }], checkedAt: now() });
+    }
   }
 
   private sync(projectId: string, write: boolean): void {

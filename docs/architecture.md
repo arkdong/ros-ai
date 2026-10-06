@@ -57,6 +57,7 @@ The local service owns project mutations, grants, run coordination and evidence.
 | `experiments.ts` | Exact captured execution previews, authority routing, two-worker queue, immutable output/attempt capture |
 | `sandbox.ts`, `sandbox/` | `ExecutionBackend` contract and actual local Docker isolation/library runtime |
 | `nebius-sandbox.ts`, `sandbox-budget.ts`, `sandbox/nebius_worker.py` | Fixed-origin remote REST transport, conservative separate allowance, bounded stdlib captures and cancellation/recovery |
+| `project-folders.ts`, `shared/project-folders.ts`, `client/ProjectFolder.tsx` | Per-project folder record, two-way file sync, manifest and JSON Canvas board, folder routes and the folder UI |
 | `combined-budget.ts` | Retained build-wide US$10 ceiling shared by new Nebius inference and sandbox admissions |
 | `budget-report.ts`, `shared/budget-report.ts`, `client/BudgetPanel.tsx` | Read-only sanitized accounting projection, browser-local usage windows and project/provider budget display |
 | `experiment_worker.py` | Earlier closed numerical interpreter for explicitly selected compatibility runs |
@@ -223,3 +224,12 @@ Generated placement now counts additions/moves within each resolved parent scope
 Result handoff checks artifact ownership/hash and expected canvas revision. It saves an exact selected-input receipt; a CSV into Code also updates the ordinary single-input document. All other formats remain selected evidence. Execution is separate. `output-provenance.ts` compares saved source/configuration without rewriting outputs or receiver choices. Reports retain exact artifact references. The optional guide starts with only the deliberately selected textual artifact and structural destination; ordinary assistant context excludes raw notebook sources and unrelated notebook captures.
 
 Source: [Stage One setup](stage-one-setup.md), [delivery and verification](../RESULT.md). Live Jupyter integration remains unverified until a user-managed local session is available.
+
+## Project folders · October 6, 2026
+
+A project can have one folder on disk (`workspace_records` namespace `project-folder`, keyed by project). The database stays the source of history: runs, artifact versions and undo live there, and the folder holds the current content of each block as an ordinary file. `ProjectFolders` keeps the two in step.
+
+- **Out:** `Store.onCommit` reports each committed canvas change (and each finished run) after the outermost transaction commits. A debounced pass then writes every block's file, Code outputs, `.ros-ai/project.json` and `<project>.canvas`. Notes, code, reports, datasets and notebooks are two-way; figures and outputs are written only by ros.ai.
+- **In:** a recursive `fs.watch` plus a check every 3 s compares each file with its last agreed hash. A changed two-way file becomes one mutation labelled "Edited outside ros.ai", so Undo and history work as for any edit; datasets, notebooks and reports become new saved versions of the block (a dataset through a `file-import` run). A missing file is first looked for elsewhere in the folder by size and hash (a rename); otherwise the block is marked missing until the file is put back or the block is removed.
+- **Safety:** paths are resolved inside the folder without following links, writes go through a temporary file and a rename, reads are size-capped and refuse links, and a file changed elsewhere is never overwritten before it has been read in. Removed and replaced files move to `.ros-ai/trash/<date>/`. The folder must not be a home, system or top-level folder, ros.ai's own data or code, or overlap another project; its device and inode are checked on every pass, so a moved or replaced folder stops syncing until it is reconnected.
+- **Routes:** `GET /api/folders/suggest`, `POST /api/folders/choose` (the OS folder window), `POST /api/folders/open` (reconnect, rebuild from a manifest, or adopt a plain folder), and per project `GET|POST /api/projects/:id/folder`, `/folder/open`, `/folder/restore` and `/folder/add`. `POST /api/projects` accepts `folder`. None exist in public demo mode.
