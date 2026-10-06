@@ -274,7 +274,7 @@ export function attachCodexAgentRoutes(app: Express, service: CodexAgentService)
     z.object({}).strict().parse(req.body);
     res.json(service.pauseAllowance(String(req.params.id)));
   });
-  app.get('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex', 'claude']).parse(req.params.agent))));
+  app.post('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex', 'claude']).parse(req.params.agent))));
   app.get('/api/projects/:id/agents/codex/login', (req, res) => res.json(service.currentLogin(String(req.params.id))));
   app.post('/api/projects/:id/agents/codex/login', async (req, res) => {
     if (!req.is('application/json')) throw new StoreError('Send native sign-in requests as JSON.', 415);

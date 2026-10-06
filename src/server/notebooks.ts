@@ -207,7 +207,7 @@ export class NotebookService {
       const project=this.store.getProject(projectId),at=now(),run=this.captureRun(projectId,node,at,'Read saved notebook source',{origin,notebookPath:path,sessionId:session?.id??null,executionEvidence:'No execution observed; saved notebook snapshot only'});
       this.store.createRun(run);
       const artifact=this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'notebook',title:path.split('/').at(-1)??'Notebook snapshot',content,mediaType:'application/x-ipynb+json',capture:'external',
-        metadata:{origin:'external-notebook-source',notebookPath:path,sessionId:session?.id??null,runtimeOwner:origin==='jupyter'?'user-managed-jupyter':'unknown-external-notebook',sourceSerialization:origin==='jupyter'?'Serialized exact Contents API notebook JSON':'Uploaded exact UTF-8 snapshot',executionObserved:false,warnings:parsed.warnings}});
+        metadata:{origin:'external-notebook-source',notebookPath:path,sessionId:session?.id??null,runtimeOwner:origin==='jupyter'?'user-managed-jupyter':'unknown-external-notebook',sourceSerialization:origin==='jupyter'?'Serialized exact Contents API notebook JSON':origin==='project-file'?'Exact UTF-8 file from the project folder':'Uploaded exact UTF-8 snapshot',executionObserved:false,warnings:parsed.warnings}});
       this.store.updateRun(run.id,{status:'completed',endedAt:at,artifactIds:[artifact.id]});
       const snapshot:SnapshotRecord={id:randomUUID(),projectId,nodeId,hash:artifact.hash,sourceArtifactId:artifact.id,runId:run.id,capturedAt:at,path,origin,...(session?{sessionId:session.id}:{}),cells:parsed.cells.length,kernelName:parsed.kernelName,language:parsed.language,warnings:parsed.warnings};
       this.store.saveRecord('notebook-snapshot',snapshot.id,projectId,snapshot);return this.state(projectId,nodeId);
@@ -225,6 +225,11 @@ export class NotebookService {
     if(body.name.includes('/')||body.name.includes('\\'))throw new StoreError('Use an .ipynb filename, not a filesystem path.');
     assertNotebookCredentialAbsent(body.content,this.session(projectId,nodeId)?.token);
     return this.saveSnapshot(projectId,nodeId,body.content,notebookPath(body.name),'uploaded-ipynb');
+  }
+  /** The block's .ipynb in the project folder, read after another app saved it. */
+  importProjectFile(projectId:string,nodeId:string,path:string,content:string):NotebookState {
+    assertNotebookCredentialAbsent(content,this.session(projectId,nodeId)?.token);
+    return this.saveSnapshot(projectId,nodeId,content,notebookPath(path),'project-file');
   }
   private captureRun(projectId:string,node:CanvasNode,at:string,title:string,configuration:Record<string,unknown>):Run {
     const project=this.store.getProject(projectId);

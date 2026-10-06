@@ -21,7 +21,7 @@ type NotebookBlockProps = {
 };
 const errorText = (cause:unknown) => cause instanceof Error ? cause.message : String(cause);
 const stamp = (value:string) => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-const sourceLabel = (snapshot:NotebookSnapshot) => snapshot.origin === 'jupyter' ? 'Saved in Jupyter' : 'Uploaded .ipynb';
+const sourceLabel = (snapshot:NotebookSnapshot) => snapshot.origin === 'jupyter' ? 'Saved in Jupyter' : snapshot.origin === 'project-file' ? 'Saved in the project folder' : 'Uploaded .ipynb';
 
 function OutputPreview({output,viewKey}:{output:NotebookOutputPreview;viewKey:string}) {
   const table=useMemo(()=>{

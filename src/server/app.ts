@@ -21,13 +21,14 @@ import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
 import { attachNotebookRoutes } from './notebooks.js';
+import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -42,6 +43,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     if (!options.publicDemo && origin && origin !== `http://${host}`) {
       return res.status(403).json({ error: 'Cross-origin requests are not permitted.' });
     }
+    // Changes arrive only as JSON from ros.ai's own page. A form or a request from another site cannot send that without permission.
+    if (!options.publicDemo && req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
+      if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
+      if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
+    }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -55,7 +61,9 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   attachTutorialRoutes(app,new TutorialService(store,experiments,options));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
   if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
-  if(!options.publicDemo)attachNotebookRoutes(app,store);
+  const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store);
+  const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
+  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
@@ -63,9 +71,13 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
-    const { title,start } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional() }).strict().parse(req.body);
+    const { title,start,folder } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
+    if(folder&&!folders)throw new StoreError('Project folders are available in the local app.');
+    // Check the folder before the project exists, so a refused folder leaves nothing behind.
+    if(folder)folders!.prepare(folder);
     const project=store.createProject(title);
-    res.status(201).json(start==='demo'?seedDemo(store,project.id):project);
+    if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
+    res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));
   });
   app.post('/api/projects/:id/trash',(req,res)=>res.json(store.trashProject(routeId(req.params.id))));
   app.post('/api/projects/:id/restore',(req,res)=>res.json(store.restoreProject(routeId(req.params.id))));

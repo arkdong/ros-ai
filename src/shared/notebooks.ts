@@ -8,7 +8,7 @@ export type NotebookOutputPreview = { index:number; kind:'text'|'csv'|'json'|'fi
 export type NotebookCellPreview = { index:number; id:string|null; locator:string; cellType:'code'|'markdown'|'raw';
   source:string; sourceHash:string; executionCount:number|null; outputs:NotebookOutputPreview[] };
 export type NotebookSnapshotSummary = { id:string; projectId:string; nodeId:string; hash:string; sourceArtifactId:string; runId:string;
-  capturedAt:string; path:string; origin:'jupyter'|'uploaded-ipynb'; sessionId?:string; cells:number; kernelName?:string; language?:string;
+  capturedAt:string; path:string; origin:'jupyter'|'uploaded-ipynb'|'project-file'; sessionId?:string; cells:number; kernelName?:string; language?:string;
   warnings:string[] };
 export type NotebookSnapshot = Omit<NotebookSnapshotSummary,'cells'> & { cells:NotebookCellPreview[] };
 export type NotebookCaptureSummary = { runId:string; snapshotId:string; snapshotHash:string; cellIndex:number; cellId:string|null;

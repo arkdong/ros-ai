@@ -19,7 +19,7 @@ export function ConnectionsPanel({projectId,connections,publicDemo,onChanged,onR
     if(publicDemo)return;
     setLoading(true);
     const paths=['/api/connections/credentials','/api/connections/google-drive',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,projectId?`/api/projects/${projectId}/agents/setup/claude`:null,'/api/connections/budgets'];
-    const values=await Promise.allSettled(paths.map(path=>path?api<unknown>(path):Promise.resolve(null)));
+    const values=await Promise.allSettled(paths.map(path=>!path?Promise.resolve(null):path.includes('/agents/setup/')?post<unknown>(path):api<unknown>(path)));
     const failures:Record<string,string>={};
     values.forEach((result,index)=>{const id=['credentials','google','codex','claude','budgets'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1)setGoogle(result.value as GoogleDriveStatus);if((index===2||index===3)&&result.value)setAgents(previous=>({...previous,[id]:result.value as LocalAgentSetup}));if(index===4)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);});
     setErrors(failures);setLoading(false);
