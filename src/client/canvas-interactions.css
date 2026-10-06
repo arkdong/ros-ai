@@ -371,27 +371,7 @@
 .direct-canvas .canvas-context .live-dot {
   background: #6b6b6b;
 }
-.direct-canvas .canvas-navigation {
-  top: 71px;
-  left: 25px;
-  right: auto;
-  gap: 7px;
-  max-width: calc(100% - 50px);
-  flex-wrap: wrap;
-}
-.direct-canvas .canvas-navigation .small {
-  padding: 7px 10px;
-  min-height: 34px;
-  font-size: 14px;
-  gap: 6px;
-  background: #ffffffef;
-  border-color: #dedede;
-}
-.direct-canvas .canvas-navigation .small:hover {
-  background: #f7f7f7;
-  border-color: #dedede;
-}
-.direct-canvas .connection-instruction,.direct-canvas .canvas-feedback {
+.direct-canvas .connection-instruction {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -411,11 +391,6 @@
 .direct-canvas .connection-instruction {
   bottom: 132px;
   white-space: nowrap;
-}
-.direct-canvas .canvas-feedback {
-  bottom: 177px;
-  text-align: center;
-  pointer-events: none;
 }
 .single-canvas-shell .direct-canvas .relationship-editor {
   top: 117px;
@@ -507,43 +482,17 @@
   .direct-canvas .canvas-context {
     left: 20px;
   }
-  .direct-canvas .canvas-navigation {
-    left: 20px;
-    gap: 5px;
-    max-width: calc(100% - 40px);
-  }
-  .direct-canvas .canvas-navigation .small {
-    font-size: 13px;
-    padding: 7px 9px;
-  }
   .direct-canvas .relationship-semantics {
     display: none;
   }
   .direct-canvas .relationship-editor input {
     width: 160px;
   }
-  .direct-canvas .canvas-feedback {
-    bottom: 181px;
-  }
 }
 @media (max-width:600px) {
   .direct-canvas .canvas-context {
     top: 18px;
     left: 16px;
-  }
-  .direct-canvas .canvas-navigation {
-    top: 47px;
-    left: 15px;
-    max-width: calc(100% - 30px);
-  }
-  .direct-canvas .canvas-navigation .small {
-    font-size: 13px;
-    padding: 6px 8px;
-    min-height: 32px;
-  }
-  .direct-canvas .canvas-navigation .small svg {
-    width: 13px;
-    height: 13px;
   }
   .single-canvas-shell .direct-canvas .relationship-editor {
     left: 15px;
@@ -558,10 +507,6 @@
     bottom: 152px;
     font-size: 13px;
     gap: 6px;
-  }
-  .direct-canvas .canvas-feedback {
-    bottom: 197px;
-    font-size: 13px;
   }
   .direct-canvas .canvas-tools .icon-button {
     width: 29px;

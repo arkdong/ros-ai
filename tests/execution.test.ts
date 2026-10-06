@@ -25,7 +25,7 @@ function setup(){
   const path=mkdtempSync(join(tmpdir(),'ros-ai-execution-'));
   const store=new Store(path);const project=store.createProject('Separate investigations');
   store.mutate(project.id,['a','b','c'].map((id,index)=>({type:'addNode' as const,node:{id,title:`Node ${id}`,description:'Independent',x:index*312,y:0}})),'Create independent nodes');
-  new Authority(store).configure(project.id,{mode:'ask',scope:'Explicit fixture-only provider tests',nodeIds:['a','b','c'],datasetIds:[],allowActionCreation:false,limits:{experiments:100,modelCalls:100,createdActions:0,runtimeSeconds:3000,spendUsd:10}});
+  new Authority(store).configure(project.id, { mode: 'ask' });
   return {store,project,path,cleanup:()=>{store.close();rmSync(path,{recursive:true,force:true});}};
 }
 async function until(predicate:()=>boolean){for(let i=0;i<200;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}throw new Error('Timed out waiting for local fixture');}

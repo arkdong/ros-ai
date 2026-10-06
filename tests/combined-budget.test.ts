@@ -109,8 +109,7 @@ test('known admission failure rolls back combined, provider, project and sandbox
     assert.equal(remote.status().remainingRuns, 10);
     assert.equal(authority.policy(f.project.id).used.modelCalls, 0);
     assert.equal(f.store.records('combined-nebius-admission', f.project.id).length, 0);
-    const policy = authority.policy(f.project.id);
-    authority.configure(f.project.id, { mode: 'ask', scope: 'Offline fixture', nodeIds: [], datasetIds: [], allowActionCreation: false, limits: { ...policy.limits, spendUsd: 10 } });
+    authority.configure(f.project.id, { mode: 'ask' });
     assert.throws(() => f.store.atomic(() => {
       authority.reserve(f.project.id, { kind: 'model', nodeId: 'project', fingerprint: 'rollback-persistence', spendUsd: 2 });
       remote.reserve('rollback-persistence', f.project.id);

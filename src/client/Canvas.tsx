@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type Viewport } from '@xyflow/react';
-import { ArrowLeft, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Undo2, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, BoxSelect, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Undo2, X } from 'lucide-react';
 import { ArtifactContent } from './Experiment';
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
@@ -25,6 +25,7 @@ import './aggregate-relationships.css';
 import { convertLegacyGroups, createGroupOperations, isGroup } from '../shared/groups';
 import { blockRegistry, isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
+import { CanvasDock } from './CanvasDock';
 
 export function kindLabel(kind?: string) { return kind === 'group' ? 'Group' : kind === 'topic' ? 'Knowledge' : kind === 'activity' ? 'Action' : 'Note'; }
 export function KindIcon({ kind, size = 14 }: { kind?: string; size?: number }) { return kind === 'group' ? <LayoutGrid size={size}/> : kind === 'activity' ? <Play size={size}/> : <BookOpen size={size}/>; }
@@ -163,7 +164,7 @@ function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   return { canvas: convertLegacyGroups(result), marks };
 }
 export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
-type Props = { detail: ProjectDetail; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null };
+type Props = { notices?: ReactNode; detail: ProjectDetail; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -185,7 +186,7 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
   });
   return { items, width, height, minY };
 }
-function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId }: Props) {
+function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId }: Props) {
   const expandedIds = useMemo(()=>{const canvas=historyCanvas||detail.project.canvas;return requestedExpandedIds.filter(id=>canvas.nodes.some(node=>node.id===id&&(isGroup(node)||canvas.nodes.some(child=>child.parentId===id))));},[requestedExpandedIds,historyCanvas,detail.project.canvas]);
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group');
@@ -244,6 +245,8 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
         if (overlay.left < bounds.right && overlay.right > bounds.left && overlay.bottom > bounds.top) right = Math.max(right, bounds.right - Math.max(bounds.left, overlay.left) + 22);
       }
       left = Math.min(left, bounds.width / 8);
+      const dock = area.current!.querySelector('.canvas-dock')?.getBoundingClientRect();
+      if (dock?.width) left = Math.max(left, dock.right - bounds.left + 16);
     }
     return { top, bottom, left, right };
   };
@@ -268,7 +271,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
     if (!overview && zoom < .65) {
       const anchor = visible.find(node => node.id === selectedId) || visible.filter(node => !node.parentId).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)[0];
       if (anchor) {
-        setMessage('Reading view · use the stage buttons to follow the question, or Overview to see the whole canvas.');
+        setMessage('Reading view · use the stage buttons to follow the question, or See all to show the whole canvas.');
         return focusReadable(anchor.id, duration);
       }
     }
@@ -418,7 +421,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
       animateNextLayout.current = new Map(result.canvas.nodes.map(node => [node.id, { x: node.x, y: node.y }]));
       const failed = () => {
         animateNextLayout.current = null; state.positions = positions; state.dimensions = dimensions; state.canvas = source; state.sizes = actualSizes;
-        setMessage('Automatic spacing could not be saved. Arrange can retry.');
+        setMessage('Automatic spacing could not be saved. Tidy can retry.');
       };
       void mutate(operations, 'Adjust canvas spacing').then(saved => {
         if (saved === false) failed();
@@ -501,7 +504,7 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
       else {
         reflowState.current = null;
         animateNextLayout.current = new Map(canvas.nodes.map(node => [node.id, { x: node.x, y: node.y }]));
-        if (await mutate(operations, 'Arrange canvas') !== false) setMessage('Canvas arranged. Research content is unchanged.');
+        if (await mutate(operations, 'Tidy canvas') !== false) setMessage('Blocks tidied. Research content is unchanged.');
         else animateNextLayout.current = null;
       }
     } finally { setArranging(false); }
@@ -540,9 +543,15 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
         {onDemo&&<button className="secondary small canvas-add-button" onClick={onDemo}><BookOpen size={14}/>{demoLabel}</button>}
         {onTour&&<button className="icon-button" title="Tour saved research" aria-label="Start guided demo" onClick={onTour}><BookOpen size={17}/></button>}
       </div>
-      <div className="canvas-navigation"><button className="secondary small" aria-pressed={selecting} disabled={readonly} onClick={()=>{setSelecting(!selecting);setGroupSelection([]);onSelect(null);}}><Check size={15}/>{selecting?'Done selecting':'Select blocks'}</button><button className="secondary small" aria-label="Broader view" onClick={broader}><ArrowLeft size={15}/> Broader view</button><button className="secondary small" aria-label="Arrange canvas" title="Place sources above consumers with room for relationship labels" disabled={readonly || arranging || animatingLayout || !displayed.canvas.nodes.length} onClick={() => void arrange()}>{arranging || animatingLayout ? <LoaderCircle size={15} className="spin"/> : <LayoutGrid size={15}/>} Arrange</button><button className="secondary small" aria-label="Canvas overview" title="See the entire canvas" onClick={() => void fitCanvas(400, true)}><Focus size={15}/> Overview</button><button className="secondary small" aria-label="Collapse all" disabled={!expandedIds.length} onClick={() => { onExpandedChange([]); onSelect(null); }}><PanelTopClose size={15}/></button></div>
       {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
     </div>
+    <CanvasDock label="Canvas tools" items={[
+      { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks.' : 'Pick blocks, then put them in a group.', icon: <BoxSelect size={19}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
+      { id: 'up', label: 'Up a level', hint: 'Go to the group around the selected block.', icon: <CornerLeftUp size={19}/>, onClick: broader },
+      { id: 'tidy', label: 'Tidy', hint: 'Line blocks up so nothing overlaps.', icon: arranging || animatingLayout ? <LoaderCircle size={19} className="spin"/> : <LayoutGrid size={19}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
+      { id: 'all', label: 'See all', hint: 'Zoom out to show every block.', icon: <Maximize size={19}/>, onClick: () => void fitCanvas(400, true) },
+      { id: 'collapse', label: 'Collapse', hint: 'Close every open group.', icon: <PanelTopClose size={19}/>, disabled: !expandedIds.length, onClick: () => { onExpandedChange([]); onSelect(null); } },
+    ]}/>
     {!nodes.length && <div className="canvas-empty"><BookOpen size={34} strokeWidth={1.2}/><h2>Give a question room.</h2><p>Add what you know, or an Action to explore what you don’t.</p>{!readonly && <button className="primary" onClick={() => onAdd(null)}><Plus size={16}/> Add your first block</button>}</div>}
     {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Choose another note to connect</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
@@ -555,8 +564,8 @@ function FlowCanvas({ detail, selectedId, onSelect, onInspect, onArtifact, onReu
         <div className="contribution-actions"><button className="text-button" aria-label={`Inspect source: ${sourceTitle}`} onClick={() => { setSelectedEdge(null); onInspect(connection.source); }}>Inspect source note</button><button className="text-button" aria-label={`Inspect target: ${targetTitle}`} onClick={() => { setSelectedEdge(null); onInspect(connection.target); }}>Inspect target note</button></div>
       </li>)}</ol>
     </section>}
-    {message && <div className="canvas-feedback" role="status">{message}</div>}
-    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; Overview shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div><div className="canvas-hint">Double-click to open content · Groups expand with their arrow · drag to arrange</div>
+    <div className="canvas-notices">{notices}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
+    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div><div className="canvas-hint">Double-click to open content · Groups expand with their arrow · drag to arrange</div>
   </div>;
 }
 export function ResearchCanvas(props: Props) { return <ReactFlowProvider key={props.detail.project.id}><FlowCanvas {...props}/></ReactFlowProvider>; }

@@ -101,7 +101,7 @@ test('Trash and restore retain exact project history, artifacts, policy and cons
   f.store.addMessage(id, null, 'user', 'Project conversation survives Trash');
   f.store.saveRecord('highlight', 'fixture-highlight', id, { id: 'fixture-highlight', projectId: id, nodeId: 'source', artifactId: artifact.id, x: 48, y: 240 });
   const authority = new Authority(f.store);
-  authority.configure(id, { mode: 'review', scope: 'Offline fixture research', nodeIds: ['source', 'destination'], datasetIds: [], allowActionCreation: true, limits: { experiments: 5, modelCalls: 5, createdActions: 2, runtimeSeconds: 100, spendUsd: 10 } });
+  authority.configure(id, { mode: 'review' });
   authority.reserve(id, { kind: 'model', nodeId: 'source', fingerprint: 'retained-project-spend', spendUsd: 3 });
   const authorization = { authorizationId: 'offline-trash-test', maxUsd: 10 };
   const budget = new CombinedNebiusBudget(f.store, authorization);

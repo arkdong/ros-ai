@@ -62,8 +62,7 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
   }
   const combined = options.combined ?? new CombinedNebiusBudget(store).status();
   return {
-    projectId, generatedAt: (options.now ?? new Date()).toISOString(), limits: policy.limits, used: policy.used,
-    remainingUsd: Math.max(0, policy.limits.spendUsd - policy.used.spendUsd), stopped: policy.stopped,
+    projectId, generatedAt: (options.now ?? new Date()).toISOString(), used: policy.used, stopped: policy.stopped,
     entries: entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.id.localeCompare(b.id)),
     unattributedWorkspaceRequests: allUsage.filter(row => !owner(row)).length,
     providerAllowances: options.connections.filter(value => ['nebius', 'openai', 'tavily'].includes(value.provider)).map(value => ({

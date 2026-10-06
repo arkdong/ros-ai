@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, Pause, ShieldCheck } from 'lucide-react';
+import { Pause, ShieldCheck } from 'lucide-react';
 import type { ConnectionBudgetProvider, ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { CodexAllowanceStatus, CodexAllowanceLimits } from '../shared/agent-budget-settings';
-import type { ResearchPolicy } from '../shared/research';
 import type { ProjectDetail } from '../shared/types';
 import { api, post } from './api';
 
@@ -23,22 +22,9 @@ export function ConnectionAllowance({provider,status,onChanged}:{provider:Connec
       <label className="connection-consent"><input type="checkbox" checked={consent} onChange={event=>setConsent(event.target.checked)}/>Allow ros.ai to {provider==='tavily'?'search the web':'make model calls'} within these total limits.</label>
       <div className="connection-actions"><button className="primary small" type="submit" disabled={busy||!status||!consent||Number(limit)<=0||Number(requests)<1}><ShieldCheck size={13}/>{busy?'Saving…':status?.source==='app'?'Save allowance':'Enable usage'}</button>{status?.enabled&&<button type="button" className="secondary small" disabled={busy} onClick={()=>void run(()=>post(`/api/connections/budgets/${provider}/pause`,{}),'Usage paused. Existing reservations remain.')}><Pause size={12}/>Pause usage</button>}</div>
     </form>
-    <p className="allowance-note">Each call must also fit the project ceiling above. {provider==='tavily'?'Search queries':'Model inputs'} go to this provider. Earlier server-authorized usage remains in Budget & usage. Saving does not start a call.</p>
+    <p className="allowance-note">{provider==='tavily'?'Search queries':'Model inputs'} go to this provider. Earlier server-authorized usage remains in Budget & usage. Saving does not start a call.</p>
     {notice&&<p className="connection-check" role="status">{notice}</p>}{error&&<p className="inline-error" role="alert">{error}</p>}
   </section>;
-}
-
-export function ProjectSpendingCeiling({projectId,onChanged}:{projectId:string|null;onChanged:()=>Promise<void>}) {
-  const [policy,setPolicy]=useState<ResearchPolicy|null>(null),[amount,setAmount]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
-  const load=async()=>{if(!projectId)return;const value=await api<ResearchPolicy>(`/api/projects/${projectId}/policy`);setPolicy(value);setAmount(String(value.limits.spendUsd));};
-  useEffect(()=>{setPolicy(null);setError('');setNotice('');let current=true;if(projectId)void api<ResearchPolicy>(`/api/projects/${projectId}/policy`).then(value=>{if(current){setPolicy(value);setAmount(String(value.limits.spendUsd));}}).catch(cause=>{if(current)setError(errorText(cause));});return()=>{current=false;};},[projectId]);
-  if(!projectId)return <p className="project-ceiling-empty">Open a project to set its spending ceiling.</p>;
-  return <details className="project-spending" id="connections-project-ceiling"><summary><span>Project ceiling <strong>{policy?money(policy.limits.spendUsd):'Loading…'}</strong></span><ChevronDown size={14}/></summary><div>
-    <p>{policy?`${money(policy.used.spendUsd)} reserved · ${money(Math.max(0,policy.limits.spendUsd-policy.used.spendUsd))} remaining.`:'Reading project limits.'} This ceiling is shared by all providers in this project.</p>
-    <form onSubmit={event=>{event.preventDefault();if(!policy||busy)return;setBusy(true);setError('');setNotice('');void api<ResearchPolicy>(`/api/projects/${projectId}/policy/spend`,{method:'PATCH',body:JSON.stringify({spendUsd:Number(amount),expectedRevision:policy.revision})}).then(async value=>{setPolicy(value);await onChanged();setNotice('Project ceiling saved. Approval mode and used amounts are unchanged.');}).catch(async cause=>{setError(errorText(cause));try{await load();}catch{}}).finally(()=>setBusy(false));}}><label>Total project budget (USD)<input aria-label="Total project budget (USD)" type="number" min="0" max="1000" step="0.01" value={amount} onChange={event=>setAmount(event.target.value)} required/></label><button type="submit" className="secondary small" disabled={busy||!policy}>{busy?'Saving…':'Save project ceiling'}</button></form>
-    <p className="allowance-note">A connection allowance is also required. Setting this ceiling keeps your existing research permissions.</p>
-    {notice&&<p className="connection-check" role="status">{notice}</p>}{error&&<p className="inline-error" role="alert">{error}</p>}
-  </div></details>;
 }
 
 export function CodexAllowance({projectId,onChanged}:{projectId:string;onChanged:()=>Promise<void>}) {

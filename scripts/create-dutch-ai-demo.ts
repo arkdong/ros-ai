@@ -86,7 +86,7 @@ if (!manifest.projectId) {
   const memory: ResearchMemory = { originalQuestion: question, questionHistory: [{ id: randomUUID(), text: question, at: time }, { id: randomUUID(), text: 'How does reported AI use differ by company size in CBS 2024, and how does changing the denominator challenge the interpretation?', at: time }], decisions: [{ id: randomUUID(), kind: 'decision', text: 'Use six same-year published CBS size groups. Banking surveys and AURORA style references have separate roles. Coding-assistant preparation and local execution; no app-model call.', references: [{ kind: 'node', id: 'dutch-ai-direction', label: 'Comparable scope' }], at: time, status: 'recorded' }], findings: [], hypotheses: [], gaps: [] };
   store.saveRecord('research-memory', project.id, project.id, memory);
   store.addMessage(project.id, null, 'system', 'Original question: ' + question + '\n\nThis requested demo was prepared by the coding assistant from public CBS and ABN AMRO sources. Calculations run through the local Docker backend. No live application-model research or remote execution is claimed. Exact data, selected outputs and editorial revisions remain saved.');
-  new Authority(store).configure(project.id, { mode: 'ask', scope: 'Authorized flagship demonstration: two local descriptive analyses of the exact CBS aggregate CSV; no external calls.', nodeIds: ['dutch-ai-analysis', 'dutch-ai-challenge'], datasetIds: [dataset[0].id], allowActionCreation: false, limits: { experiments: 4, modelCalls: 0, createdActions: 0, runtimeSeconds: 120, spendUsd: 0 } });
+  new Authority(store).configure(project.id, { mode: 'ask' });
   save();
 }
 assert.equal(store.getArtifact(manifest.datasetArtifactId).hash, metadata.csv_sha256);

@@ -25,7 +25,7 @@ function fixture(answers:unknown[],mode:ApprovalMode='full'){
   const requests:ModelRequest[]=[];
   const model:ModelAdapter={provider:'nebius',model:'explicit-fixture-model',configured:true,prepare:async()=>({id:'explicit-fixture-model',contextTokens:100000,inputUsdPerToken:0.0000001,outputUsdPerToken:0.0000003,capabilities:{structuredOutput:false,toolCalling:false,cancellation:'abort-request',modelVersion:false},metadata:{fixture:true}}),complete:async request=>{requests.push(structuredClone(request));const answer=answers.shift();if(answer===undefined)throw new Error('Fixture exhausted; never call a live provider.');return {content:JSON.stringify(answer),model:'explicit-fixture-model',modelVersion:null,usage:{inputTokens:100,outputTokens:100},metadata:{fixture:true}};}};
   const execution=new ExecutionService(store,{model}),experiments=new ExperimentService(store,{sandbox:backend});
-  experiments.authority.configure(project.id,{mode,scope:'Measure fixture values and compare groups',nodeIds:['a'],datasetIds:[dataset.id],allowActionCreation:true,limits:{experiments:4,modelCalls:8,createdActions:2,runtimeSeconds:120,spendUsd:1}});
+  experiments.authority.configure(project.id,{mode});
   const research=new ResearchService(store,execution,experiments);
   return {dir,store,project,dataset,requests,execution,experiments,research,async cleanup(){await research.shutdown();await execution.shutdown();await experiments.shutdown();store.close();rmSync(dir,{recursive:true,force:true});}};
 }

@@ -33,7 +33,7 @@ function savedRun(store: Store, projectId: string, id: string, patch: Partial<Ru
 test('an empty budget is read-only and distinguishes no requests from unknown account credit', t => {
   const { store, project } = fixture(t), before = store.detail(project.id);
   const report = projectBudgetReport(store, project.id, { connections: [], combined, now: instant });
-  assert.equal(report.remainingUsd, 0); assert.equal(report.limits.spendUsd, 0);
+  assert.equal(report.used.spendUsd, 0);
   assert.deepEqual(report.entries, []); assert.equal(report.providerAccountCredit, null);
   assert.equal(report.combined.accountedUsd, 4, 'A shared provider gate is not attributed to the empty project');
   assert.equal(report.used.spendUsd, 0); assert.equal(report.sandbox, null);
@@ -56,14 +56,14 @@ test('project ownership, reported quantities, unknown costs and retained sandbox
   store.saveRecord('sandbox-admission', 'sandbox-run', project.id, { runId: 'sandbox-run', reservedUsd: .2, at: instant.toISOString(), authorization: 'never-expose' });
   store.saveRecord('combined-nebius-admission', 'sandbox-sandbox-run', project.id, { kind: 'sandbox', attemptId: 'sandbox-run', amountUsd: .2, reservedUsd: .2 });
   store.saveRecord('combined-nebius-admission', 'inference-assistant', project.id, { kind: 'inference', attemptId: 'assistant', amountUsd: 1, reservedUsd: 1 });
-  const authority = new Authority(store), base = authority.policy(project.id);
-  authority.configure(project.id, { mode: 'ask', scope: '', nodeIds: [], datasetIds: [], allowActionCreation: false, limits: { ...base.limits, spendUsd: 5 } });
+  const authority = new Authority(store);
+  authority.configure(project.id, { mode: 'ask' });
   authority.reserve(project.id, { kind: 'model', nodeId: 'project', fingerprint: 'fixture', spendUsd: 1.208 });
   const before = store.detail(project.id), ledger = store.listUsage();
   const report = projectBudgetReport(store, project.id, { connections: [{ provider: 'tavily', configured: false, detail: 'Contains no balance', limitUsd: 10, accountedUsd: 2 }], combined, sandbox: { ready: false, reason: 'Unknown price', maxCostPerRunUsd: null, pricingBasis: null, remainingRuns: 0, remainingUsd: 0 }, now: instant });
   assert.equal(report.entries.length, 4, 'Shared grant admissions do not duplicate request rows');
   assert.equal(report.unattributedWorkspaceRequests, 1);
-  assert.equal(report.remainingUsd, 5 - 1.208); assert.equal(report.used.spendUsd, 1.208);
+  assert.equal(report.used.spendUsd, 1.208);
   assert.deepEqual(report.providerAllowances.map(value => value.remainingUsd), [8]);
   assert.equal(report.combined.remainingUsd, 6); assert.equal(report.sandbox?.perAttemptUsd, null);
   const assistant = report.entries.find(value => value.id === 'assistant')!;

@@ -60,7 +60,7 @@ export class ExperimentService {
     const probe = spawnSync(this.python, ['-I', '-S', '-c', 'import sys; print(sys.version.split()[0])'], { encoding: 'utf8', timeout: 3000, env: environment, maxBuffer: 10000 });
     this.capabilitiesValue = {
       available: probe.status === 0, permissionMode: 'ask', executionTarget: 'Local Python numerical interpreter', runtime: probe.status === 0 ? `Python ${probe.stdout.trim()}` : null, workerHash: hash(readFileSync(workerPath, 'utf8')),
-      approveForMe: { available: true, reason: 'Independent deterministic reviewer checks scoped nodes, exact datasets, imports/I/O and shared limits; unfamiliar actions escalate.' }, fullAccess: true,
+      approveForMe: { available: true, reason: 'Independent deterministic reviewer runs plain data-analysis code and escalates imports, I/O and anything unfamiliar.' }, fullAccess: true,
       sandbox:this.sandbox.capabilities(),
       nebiusSandbox:this.nebiusSandbox.capabilities(),
       enforcement: ['Python AST allowlist; no imports, attributes, loops, filesystem, network, shell, or package installation API.', 'Child receives only explicit CSV/code/parameters, with an allowlisted environment excluding provider credentials.', '10,000 rows, 40 columns, 2,000 syntax nodes, 20 outputs; stdout/stderr caps and process timeout; at most two active workers.', 'CPU limit is requested through Python resource; application timeout always kills the child.'],
@@ -221,7 +221,7 @@ export class ExperimentService {
     run = this.store.updateRun(runId, { artifactIds: [...(dataset?[dataset.id]:[]), codeArtifact.id] });
     if(request.backend==='nebius-sandbox')run=this.store.updateRun(runId,{events:[...run.events,{at:now(),type:'external-transfer-preview',message:'Exact approval sends the captured code, CSV and parameters to a disposable Nebius VM. Networking is disabled; provider retention of request data and logs is undocumented. Credentials remain on the local server.'}]});
     this.store.addMessage(projectId, node.id, 'user', request.request, runId);
-    const review=this.authority.review(projectId,{kind:'experiment',nodeId:node.id,fingerprint,datasetId:sourceDatasetArtifactId,code,runtimeSeconds:this.timeout(configuration)/1000});
+    const review=this.authority.review(projectId,{kind:'experiment',nodeId:node.id,fingerprint,code,runtimeSeconds:this.timeout(configuration)/1000});
     this.event(runId,'permission-review',review.reason,review);
     if(request.backend==='nebius-sandbox')this.event(runId,'remote-approval-required','Remote execution always requires explicit approval of this exact external transfer, independently of the project automatic mode.');
     else if(review.outcome==='allow')this.decide(run.id,fingerprint,'allow',`Automatic ${review.mode}: ${review.reason}`);

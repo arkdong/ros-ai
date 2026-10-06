@@ -31,7 +31,7 @@ function fixture(t: TestContext, options: { timeoutMs?: number; maxConcurrent?: 
   const directory = mkdtempSync(join(tmpdir(), 'ros-assistant-search-')), store = new Store(directory), project = store.createProject('Offline search lifecycle');
   store.mutate(project.id, ['a', 'b', 'c'].map(id => ({ type: 'addNode' as const, node: { id, title: id, description: 'Independent fixture note', x: 0, y: 0 } })), 'Fixture notes');
   const authority = new Authority(store);
-  authority.configure(project.id, { mode: 'ask', scope: 'Offline lifecycle fixtures', nodeIds: ['a', 'b', 'c'], datasetIds: [], allowActionCreation: false, limits: { experiments: 0, modelCalls: 100, createdActions: 0, runtimeSeconds: 0, spendUsd: 10 } });
+  authority.configure(project.id, { mode: 'ask' });
   const search = new DeferredSearch(), model = new DeferredModel();
   const service = new ExecutionService(store, { search, model, limits: { nebius: 10, tavily: options.tavilyLimit ?? 10 }, timeoutMs: options.timeoutMs ?? 30000, maxConcurrent: options.maxConcurrent ?? 2, includeSetupUsage: false });
   t.after(async () => { await service.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); });
@@ -152,7 +152,7 @@ test('project-aware capabilities respect stop, zero/default allowance, call exha
   const empty = f.store.createProject('No project allowance');
   assert.deepEqual(f.service.assistantCapabilities(empty.id), { modelAvailable: false, searchAvailable: false });
   assert.equal(f.store.record('policy', empty.id), undefined, 'A capability check never mints a project allowance');
-  const configure = (modelCalls: number, spendUsd: number) => f.authority.configure(f.project.id, { mode: 'ask', scope: 'Offline fixture', nodeIds: ['a'], datasetIds: [], allowActionCreation: false, limits: { experiments: 0, modelCalls, createdActions: 0, runtimeSeconds: 0, spendUsd } });
+  const configure = (modelCalls: number, spendUsd: number) => f.authority.configure(f.project.id, { mode: 'ask' });
   configure(1, TAVILY_CREDIT_USD / 2);
   assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: true, searchAvailable: false });
   configure(1, TAVILY_CREDIT_USD);

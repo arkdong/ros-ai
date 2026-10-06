@@ -93,7 +93,7 @@ if (command === 'prepare') {
   receipt.sourceArtifactId = packetArtifact.id; save(receipt);
   await api(`/api/projects/${project.id}/inputs`, { nodeId: 'calculation', artifactId: packetArtifact.id });
   for (const artifactId of [dataset.id, packetArtifact.id]) await api(`/api/projects/${project.id}/inputs`, { nodeId: 'article', artifactId });
-  await api(`/api/projects/${project.id}/policy`, { mode: 'ask', scope: 'Explicit user-authorized US$90 total three-model comparison: two inference calls and one reviewed local Docker calculation on the exact captured CBS dataset. No searches, remote sandbox or automatic retry.', nodeIds: ['calculation', 'article'], datasetIds: [dataset.id], allowActionCreation: false, limits: { experiments: 1, modelCalls: 2, createdActions: 0, runtimeSeconds: 30, spendUsd: config.spendUsd } }, 'PUT');
+  await api(`/api/projects/${project.id}/policy`, { mode: 'ask' }, 'PUT');
   await collect(receipt);
   console.log(JSON.stringify({ key, status: 'prepared', projectId: project.id, csvSha256: receipt.csvSha256, sourceSha256: receipt.sourceSha256 }));
 } else {

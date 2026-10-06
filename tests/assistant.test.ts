@@ -44,7 +44,7 @@ function fixture(answers: Answer[] = [], configured = true, runtimeOverride?: Ex
   const dir = mkdtempSync(join(tmpdir(), 'ros-assistant-fixture-')), store = new Store(dir), project = store.createProject('Offline continuous assistant fixture');
   store.mutate(project.id, ['a', 'b'].map((id, i) => ({ type: 'addNode' as const, node: { id, title: `Fixture ${id}`, description: 'Fixture research context', kind: 'activity' as const, x: i * 384, y: 0 } })), 'Fixture setup');
   const api = services(store, answers, configured, runtimeOverride);
-  api.experiments.authority.configure(project.id, { mode: 'ask', scope: 'Offline context and approvals', nodeIds: ['a', 'b'], datasetIds: [], allowActionCreation: true, limits: { experiments: 10, modelCalls: 30, createdActions: 10, runtimeSeconds: 300, spendUsd: 5 } });
+  api.experiments.authority.configure(project.id, { mode: 'ask' });
   return { dir, store, project, ...api, async close() { await api.shutdown(); store.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 async function until(check: () => boolean) { for (let i = 0; i < 200; i++) { if (check()) return; await delay(5); } throw new Error('Offline assistant fixture timed out.'); }
@@ -239,8 +239,7 @@ test('cancelling an automatically admitted experiment reaches its saved run and 
   const answers: Answer[] = [], f = fixture(answers, true, runtime);
   try {
     const data = capture(f.store, f.project.id, 'a', [{ kind: 'dataset', content: 'value\n2\n4\n' }]).outputs[0];
-    const policy = f.experiments.authority.policy(f.project.id);
-    f.experiments.authority.configure(f.project.id, { mode: 'full', scope: 'Explicit offline fixture execution', nodeIds: ['a'], datasetIds: [data.id], allowActionCreation: false, limits: policy.limits });
+    f.experiments.authority.configure(f.project.id, { mode: 'full' });
     answers.push(reply({ tools: [{ type: 'experiment', nodeId: 'a', datasetArtifactId: data.id, request: 'Start the controlled fixture', explanation: 'Cancellation test only.', code: 'metric("Mean", df["value"].mean())', parameters: {}, backend: 'docker-python' }] }));
     const initial = f.assistant.start(f.project.id, { message: 'Run under the configured fixture grant' });
     await until(() => runtimeStarts === 1);

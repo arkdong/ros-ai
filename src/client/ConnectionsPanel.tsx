@@ -5,7 +5,7 @@ import type { CredentialProvider, CredentialStatus } from '../shared/tool-connec
 import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-setup';
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
-import { ConnectionAllowance, CodexAllowance, ProjectSpendingCeiling } from './ConnectionAllowance';
+import { ConnectionAllowance, CodexAllowance } from './ConnectionAllowance';
 import { InferenceConnections } from './InferenceConnections';
 import { api, post } from './api';
 import './connections.css';
@@ -33,7 +33,6 @@ export function ConnectionsPanel({projectId,connections,publicDemo,onChanged,onR
     <div className="connections-scroll">
       {publicDemo?<p>This demo cannot connect private accounts. Launch the local workspace to connect your tools.</p>:<>
         <div className="connections-intro"><p>Your tools, on this computer. Open a connection to set it up or manage usage.</p><button className="icon-button" disabled={loading} aria-label="Refresh connection status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></div>
-        <ProjectSpendingCeiling key={projectId} projectId={projectId} onChanged={changed}/>
         {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
         {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
         <KeyConnection provider="nebius" label="Nebius Token Factory" icon={<ConnectionSymbol name="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} onChanged={changed} description="Model access through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>

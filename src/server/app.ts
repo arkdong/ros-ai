@@ -117,15 +117,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.json({ ...report, providerAccounts: await providerUsage.read() });
   });
   app.get('/api/projects/:id/policy',(req,res)=>res.json(authority.policy(routeId(req.params.id))));
-  if(!options.publicDemo)app.patch('/api/projects/:id/policy/spend',(req,res)=>{
-    if(!req.is('application/json'))throw new StoreError('A JSON request is required.',415);
-    const {spendUsd,expectedRevision}=z.object({spendUsd:z.number().finite().min(0).max(1000),expectedRevision:z.number().int().nonnegative()}).strict().parse(req.body);
-    res.json(store.atomic(()=>{
-      const id=routeId(req.params.id),policy=authority.policy(id);
-      if(policy.revision!==expectedRevision)throw new StoreError('Project permissions changed. Refresh the ceiling before saving.',409);
-      return authority.configure(id,{mode:policy.mode,scope:policy.scope,nodeIds:policy.nodeIds,datasetIds:policy.datasetIds,allowActionCreation:policy.allowActionCreation,limits:{...policy.limits,spendUsd}});
-    }));
-  });
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
   app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));

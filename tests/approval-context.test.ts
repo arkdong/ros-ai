@@ -40,8 +40,7 @@ function fixture() {
   })), 'Fixture nodes');
   const grant = new SandboxBudget(store, terms);
   const service = new ExperimentService(store, { sandbox: backend, nebiusSandbox: backend, sandboxBudget: grant });
-  const policy = service.authority.policy(project.id);
-  service.authority.configure(project.id, { mode: 'ask', scope: '', nodeIds: [], datasetIds: [], allowActionCreation: false, limits: { ...policy.limits, spendUsd: 10 } });
+  service.authority.configure(project.id, { mode: 'ask' });
   return { store, project, service, grant, backend, capabilities, inputs, async cleanup() {
     await service.shutdown(); store.close(); rmSync(dir, { recursive: true, force: true });
   } };
@@ -198,8 +197,7 @@ test('position-only approval still respects current project stop and resource li
       f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { x: 1200 } }], 'Move');
       if (change === 'stop') f.service.authority.setStopped(f.project.id, true);
       else {
-        const policy = f.service.authority.policy(f.project.id);
-        f.service.authority.configure(f.project.id, { mode: 'ask', scope: '', nodeIds: [], datasetIds: [], allowActionCreation: false, limits: { ...policy.limits, experiments: 0 } });
+        f.service.authority.configure(f.project.id, { mode: 'ask' });
       }
       assert.throws(() => f.service.decide(pending.run.id, pending.approval.fingerprint, 'allow'), /stopped|experiments limit/);
       assertNoAdmission(f, pending.run.id);

@@ -13,7 +13,7 @@ import { DEFAULT_MODEL, NebiusAdapter, type ModelAdapter, type ModelInfo, type M
 function fixture() {
   const path=mkdtempSync(join(tmpdir(),'ros-next-provider-')),store=new Store(path),project=store.createProject('Isolated provider fixture');
   store.mutate(project.id,[{type:'addNode',node:{id:'a',title:'Dataset analysis',description:'One independent activity',kind:'activity',x:0,y:0}}],'Fixture');
-  new Authority(store).configure(project.id,{mode:'ask',scope:'Explicit fixture-only provider tests',nodeIds:['a'],datasetIds:[],allowActionCreation:false,limits:{experiments:100,modelCalls:100,createdActions:0,runtimeSeconds:3000,spendUsd:10}});
+  new Authority(store).configure(project.id, { mode: 'ask' });
   return {path,store,project,close:()=>{try{store.close();}catch{}rmSync(path,{recursive:true,force:true});}};
 }
 async function terminal(store:Store,id:string) { for(let i=0;i<200;i++) {const run=store.getRun(id);if(!['queued','running'].includes(run.status))return run;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Fixture timed out'); }
