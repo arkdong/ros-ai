@@ -4,10 +4,13 @@ A persistent local research workspace for following questions, collecting knowle
 
 The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code, Notebook, Dataset, Figure, Report and Group. The assistant proposes changes for review under the project's approval mode, and Python runs in an isolated Docker sandbox.
 
+**The product is this local app.** You download it and run it on your own machine, much like DeepSeek's open-source harness or Codex CLI. Your projects, keys and the Python sandbox stay on your machine. Model and search requests go only to the providers you connect, and a model server on your own machine keeps inference local too. The [hosted demo](https://ros-ai-production.up.railway.app/app) is only a quick way to show ros.ai without installing it. What the local release still needs is in [the roadmap](docs/roadmap.md).
+
 ## Status
 
 - **Stage One (Code and Notebook blocks)** is complete, including a live Jupyter check on October 3. See [RESULT.md](RESULT.md) for what is verified and [the setup guide](docs/stage-one-setup.md) for the workflow. Later stages are not yet defined.
 - **Inference:** the user's own **Research model** and the separate **Workspace guide** are described in [the inference design](docs/inference-design-2026-10-01.md) and [setup](docs/inference-setup.md). Managed Nemotron packaging and fine-tuning are deferred.
+- **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.
 
@@ -138,3 +141,11 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 ## Optional public demonstration
 
 The curated public mode is separate from your local workspace and provider credentials. See [Railway setup](docs/railway-deployment.md). It uses per-browser visitor stores, the banking tutorial and saved results only; new inference, execution and host-file access are disabled. The market dataset and figures are omitted pending redistribution permission. A prepared Docker image or local preview is not a deployed website; current deployment status belongs in [RESULT.md](RESULT.md).
+
+## Licence
+
+ros.ai's code and documentation are released under the [MIT licence](LICENSE). The licence does not cover:
+
+- the ros.ai name and logo (`public/brand/`);
+- other organisations' logos and marks, in `public/deck/assets/` and drawn in `src/client/ModelMakerSymbol.tsx` and `src/client/ConnectionsPanel.tsx`; they belong to their owners and are shown only to identify their services;
+- third-party data in `examples/`: KNMI weather observations and the datasets derived from them ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), Royal Netherlands Meteorological Institute), CBS statistics in `examples/dutch-ai-adoption/` (CBS's own reuse terms), and NDW counter-site records (ODC PDDL).

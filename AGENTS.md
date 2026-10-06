@@ -10,7 +10,7 @@ Read `README.md`, `RESULT.md`, `docs/product-brief.md` and `docs/architecture.md
 - Build an exploratory research workspace, not an automation pipeline. Nodes work independently; connections do not imply scheduling, blocking, or automatic input import.
 - Project and node conversations are separate. Manual content edits are direct and undoable; layout and view changes persist without entering content history or discarding redo. Agent-generated additions follow the selected project/Action approval mode and shared grant, with visible relation, provenance and undo history; Ask requires specific approval.
 - Preserve the user's ownership of canvas structure. Use one expandable canvas where only explicit Groups contain blocks; Knowledge and Action are block kinds, not containers. Deeper Group nesting is allowed without cycles. Additional Actions inherit the project default and never replenish limits.
-- The first application is CLI-launched and local, with a browser frontend. Nebius and Tavily calls are external connections. Keep credentials server-side.
+- The product is the downloadable local app: CLI-launched, served on loopback, with a browser frontend. The Railway deployment is only a quick demo and must not set local defaults. Nebius and Tavily calls are external connections. Keep credentials server-side.
 - Generated code runs only in isolated Python, and the collaborator works within explicit permissions and resources. Beyond the curated public demo, hosted deployment remains excluded. Leave clear adapter boundaries for later models, database connections and confirmed Nebius sandbox access.
 - Treat architectural recommendations as implementation defaults, not claims of completed code. Avoid wholesale harness-repository merging.
 

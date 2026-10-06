@@ -4,6 +4,7 @@ import type { Artifact, ProjectDetail } from '../shared/types';
 import type { TutorialSession } from '../shared/tutorial';
 import { api, post } from './api';
 import { textPreview } from '../shared/presentation';
+import { CodeView } from './code';
 import './executable-demo.css';
 
 const stageGuidance = [
@@ -97,7 +98,7 @@ export function ExecutableDemo({ session, detail, onSession, onRefresh, onStage,
     {view >= 2 && <details className="demo-rerun"><summary>Optional: run the calculation again</summary><p>The tutorial above uses saved results. This runs reviewed Python on the server’s isolated local runtime and creates a separate attempt. It does not call a model.</p>
       {!session.execution.available && <p className="demo-runtime-note">{session.execution.reason}</p>}
       {!pending && !running && <button className="secondary small" disabled={busy || !session.execution.available} onClick={() => void act(() => post<TutorialSession>(`${path}/preview`))}><Play size={13}/> {run ? 'Review another attempt' : 'Review code and inputs'}</button>}
-      {session.preview && <div className="demo-exact-review"><span className="tag">{pending ? 'Awaiting your approval' : run?.status}</span><details><summary>Exact Python code</summary><pre>{session.preview.code}</pre></details><details><summary>Captured input data</summary><pre>{session.preview.csv}</pre></details><details><summary>Parameters and runtime</summary><pre>{JSON.stringify({ parameters: session.preview.parameters, backend: run?.configuration.backend }, null, 2)}</pre></details>
+      {session.preview && <div className="demo-exact-review"><span className="tag">{pending ? 'Awaiting your approval' : run?.status}</span><details><summary>Exact Python code</summary><CodeView code={session.preview.code}/></details><details><summary>Captured input data</summary><pre>{session.preview.csv}</pre></details><details><summary>Parameters and runtime</summary><pre>{JSON.stringify({ parameters: session.preview.parameters, backend: run?.configuration.backend }, null, 2)}</pre></details>
         {pending && <div className="row gap"><button className="primary small" disabled={busy} onClick={() => void act(async () => { await post(`/api/experiments/${run!.id}/decision`, { fingerprint: session.preview!.approval.fingerprint, decision: 'allow' }); })}><Play size={13}/> Approve and run code</button><button className="secondary small" disabled={busy} onClick={() => void act(async () => { await post(`/api/experiments/${run!.id}/decision`, { fingerprint: session.preview!.approval.fingerprint, decision: 'cancel' }); })}>Cancel review</button></div>}
         {running && <div className="row gap" role="status"><LoaderCircle size={14} className="spin"/><span>Executing this attempt…</span><button className="secondary small" disabled={busy} onClick={() => void act(async () => { await post(`/api/experiments/${run!.id}/cancel`); })}><Square size={12}/> Stop</button></div>}
         {run?.error && <p className="inline-error">{run.error}</p>}
