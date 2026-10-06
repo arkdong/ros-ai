@@ -32,7 +32,10 @@ npm run dev       # frontend live reload and local server
 npm run lint      # TypeScript
 npm test          # historical unit suite; day-to-day verification uses lint, build and a browser smoke check
 npm run build     # production frontend
+npm run try -- 4  # start pull request #4 (or a branch) on localhost without switching branches
 ```
+
+`npm run try` checks the pull request out into `../ros-ai-try/pr-4` with its own packages and an empty data folder, starts it on the next free port from 4311 and opens the browser. Your checkout, projects and keys stay as they are, and the copy gets no AI keys or spending allowances. Running it again picks up new pushes; `git worktree remove --force ../ros-ai-try/pr-4` deletes the copy.
 
 Credentials, `.ros-ai/` databases, local `evidence/`, generated `outputs/`, historical model-comparison bundles and the restricted market captures stay ignored on disk. A fresh clone includes the banking and weather examples; the market demo appears only where its local data exists.
 
