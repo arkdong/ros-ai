@@ -1,5 +1,5 @@
-/* Vertical canvas tools on the left edge. Items magnify towards the pointer;
-   --dock-grow/--dock-widen let the pill grow evenly around its centre. */
+/* Vertical canvas tools on the left edge, each in its own tile. Tiles magnify towards the pointer;
+   --dock-grow/--dock-widen stretch the dock's invisible hover area over the magnified tiles. */
 .canvas-dock {
   position: absolute;
   left: 16px;
@@ -9,31 +9,29 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
-  padding: calc(6px + var(--dock-grow, 0px)) calc(6px + var(--dock-widen, 0px)) calc(6px + var(--dock-grow, 0px)) 6px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffffef;
-  box-shadow: 0 4px 16px #00000010;
-  transition: padding .12s ease-out;
+  gap: 8px;
+  padding: var(--dock-grow, 0px) var(--dock-widen, 0px) var(--dock-grow, 0px) 0;
 }
-.canvas-dock-item {
+/* Two classes, so the global button transition (background and colours only) cannot drop scale and translate. */
+.canvas-dock .canvas-dock-item {
   position: relative;
   width: 40px;
   height: 40px;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #ffffff;
+  box-shadow: 0 3px 10px #00000012;
   color: var(--ink);
   transform-origin: left center;
-  transition: scale .12s ease-out, translate .12s ease-out, background .12s;
+  transition: scale .12s ease-out, translate .12s ease-out, background .12s, border-color .12s, color .12s;
 }
-.canvas-dock-item:hover:not(:disabled), .canvas-dock-item:focus-visible { background: #f2f2f2; }
-.canvas-dock-item.active { background: var(--ink); color: #ffffff; }
-.canvas-dock-item:disabled { color: #b5b5b5; }
+.canvas-dock .canvas-dock-item:hover:not(:disabled), .canvas-dock .canvas-dock-item:focus-visible { background: #f2f2f2; }
+.canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: var(--ink); border-color: var(--ink); color: #ffffff; }
+/* An unavailable tool keeps a solid tile and greys its icon, rather than the global see-through fade. */
+.canvas-dock .canvas-dock-item:disabled { opacity: 1; color: #c2c2c2; box-shadow: none; }
 .canvas-dock-tip {
   position: absolute;
   left: calc(100% + 14px);
@@ -56,7 +54,7 @@
 .canvas-dock-tip strong { display: block; font-size: 13px; font-weight: 600; }
 .canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .canvas-dock, .canvas-dock-item { transition: none; }
+  .canvas-dock .canvas-dock-item { transition: none; }
 }
 
 /* Transient canvas notices sit above every canvas control, centred at the top. */

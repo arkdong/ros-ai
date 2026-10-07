@@ -52,7 +52,7 @@
   .single-canvas-shell .workspace-actions .assistant-toggle { margin-left: auto; padding: 5px 9px; min-height: 36px; }
   .single-canvas-shell .assistant-panel { width: 100%; }
 }
-/* Demo panels sit right of the canvas tools dock on the left edge (16px inset, 54px wide). */
+/* Demo panels sit right of the canvas tools dock on the left edge, clear of its magnified tiles. */
 .single-canvas-shell .canvas-stage > .executable-demo,
 .single-canvas-shell .canvas-stage > .demo-tour {
   position: absolute;
