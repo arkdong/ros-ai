@@ -20,7 +20,7 @@ import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-dr
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
-import { attachNotebookRoutes } from './notebooks.js';
+import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
 
 const identifier = z.string().min(1).max(120);
@@ -28,7 +28,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -56,12 +56,14 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   });
   app.get(['/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302,'/app'));
   app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
+  // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
+  if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   attachTutorialRoutes(app,new TutorialService(store,experiments,options));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
   if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
-  const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store);
+  const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store,authority,options.notebooks);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
@@ -83,7 +85,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.post('/api/projects/:id/restore',(req,res)=>res.json(store.restoreProject(routeId(req.params.id))));
   app.get('/api/projects/:id/models', (req,res)=>res.json(modelSettings.read(routeId(req.params.id))));
   app.patch('/api/projects/:id/models', (req,res)=>res.json(modelSettings.update(routeId(req.params.id),req.body)));
-  app.get('/api/projects/:id', (req, res) => res.json(store.detail(routeId(req.params.id))));
+  app.get('/api/projects/:id', (req, res) => {
+    const detail = store.detail(routeId(req.params.id)), running = notebooks?.running(detail.project.id);
+    // Notebook cards show Python still working after their notebook closes, and the page keeps reading until it stops.
+    res.json(running?.size ? { ...detail, notebooks: detail.notebooks?.map(summary => running.has(summary.nodeId) ? { ...summary, running: true } : summary) } : detail);
+  });
   app.post('/api/projects/:id/mutations', (req, res) => {
     const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
     res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));

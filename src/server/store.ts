@@ -264,7 +264,7 @@ export class Store {
   detail(id: string): ProjectDetail {
     const project = this.getProject(id);
     const history = this.getHistory(id);
-    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: contentCursor(history, project.canvas, -1) !== undefined, canRedo: contentCursor(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id) };
+    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: contentCursor(history, project.canvas, -1) !== undefined, canRedo: contentCursor(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
   }
 
   private getHistory(id: string): HistoryState {

@@ -27,7 +27,7 @@ function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
 }
 const requestText = z.string().trim().min(1).max(12000);
 const id = z.string().min(1).max(120);
-const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','report']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
+const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','notebook','report']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
 const operation = z.discriminatedUnion('type',[
   z.object({type:z.literal('addNode'),node}).strict(),
   z.object({type:z.literal('updateNode'),id,patch:node.omit({id:true}).partial()}).strict(),

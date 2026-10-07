@@ -12,21 +12,21 @@ import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
-import type { NotebookService } from './notebooks.js';
+import type { KernelFolder } from './notebook-kernel.js';
+import type { NotebookFolders, NotebookService } from './notebooks.js';
 import { Store, StoreError } from './store.js';
 
 const RECORD = 'project-folder';
 const MANIFEST = '.ros-ai/project.json';
 const TRASH = '.ros-ai/trash';
 // Largest file read back per kind. Text limits in characters are checked after decoding.
-const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 500_000, figure: 10_000_000 };
+const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000 };
 const TWO_WAY = new Set<FolderFileKind>(['note', 'code', 'report', 'dataset', 'notebook']);
 const CODE_TYPES: [language: string, extension: string][] = [['python', '.py'], ['r', '.R'], ['julia', '.jl'], ['c', '.c'], ['haskell', '.hs'], ['sql', '.sql'], ['bash', '.sh']];
 const NOTE_EXTENSIONS = ['.md', '.markdown', '.txt'];
 const SKIPPED_FOLDERS = new Set(['node_modules', '__pycache__', 'venv', 'site-packages']);
 const SYSTEM_FOLDERS = ['/bin', '/boot', '/dev', '/etc', '/lib', '/lib32', '/lib64', '/proc', '/run', '/sbin', '/srv', '/sys', '/usr', '/var', '/System', '/Library', '/Applications', '/private', '/cores'];
 const HOME_FOLDERS = ['Documents', 'Desktop', 'Downloads', 'Library', 'Pictures', 'Movies', 'Music', 'Public', 'Applications'];
-const EMPTY_NOTEBOOK = `${JSON.stringify({ cells: [], metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' }, language_info: { name: 'python' } }, nbformat: 4, nbformat_minor: 5 }, null, 1)}\n`;
 
 type Observed = { hash: string; mtimeMs: number; size: number };
 type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string };
@@ -34,7 +34,8 @@ type OutputEntry = { path: string; hash: string; artifactId: string };
 /** ros.ai's side of the sync. `hash` is the content ros.ai and the file last agreed on. */
 type FolderRecord = { projectId: string; path: string; device: number; inode: number; attachedAt: string; files: Record<string, FileEntry>; outputs: Record<string, OutputEntry[]>; board?: string };
 type Listed = { path: string; size: number };
-type Rendered = { bytes: Buffer; extension: string; artifactId?: string };
+/** `keep` is a file already on disk that matches, though ros.ai would write it differently. */
+type Rendered = { bytes: Buffer; extension: string; artifactId?: string; keep?: string };
 
 const sha = (data: Buffer | string) => createHash('sha256').update(data).digest('hex');
 const now = () => new Date().toISOString();
@@ -158,7 +159,7 @@ class FolderFiles {
     for (let folder = posix.dirname(rel); folder !== stop && folder !== '.' && folder.startsWith(`${stop}/`); folder = posix.dirname(folder))
       try { rmdirSync(this.resolve(folder)); } catch { return; }
   }
-  /** Files other apps made or changed, skipping hidden, package and output folders. */
+  /** Files other apps made or changed, skipping hidden and package folders. Notebook cells can write tables into outputs/. */
   list(limit = 5000, depth = 4): Listed[] {
     const found: Listed[] = [];
     let visited = 0;
@@ -169,7 +170,7 @@ class FolderFiles {
         if (visited++ >= limit) return;
         if (entry.name.startsWith('.')) continue;
         const child = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) { if (level < depth && !SKIPPED_FOLDERS.has(entry.name) && child !== 'outputs') walk(join(folder, entry.name), child, level + 1); }
+        if (entry.isDirectory()) { if (level < depth && !SKIPPED_FOLDERS.has(entry.name)) walk(join(folder, entry.name), child, level + 1); }
         else if (entry.isFile()) { try { found.push({ path: child, size: lstatSync(join(folder, entry.name)).size }); } catch { /* removed while listing */ } }
       }
     };
@@ -190,7 +191,7 @@ type Manifest = z.infer<typeof manifestSchema>;
  * Keeps each project's blocks as ordinary files in a folder the person chose. ros.ai writes a file after every saved
  * change; a file changed in another app comes back as an undoable canvas change. Run history stays in ros.ai's database.
  */
-export class ProjectFolders {
+export class ProjectFolders implements NotebookFolders {
   private readonly active = new Set<string>();
   private readonly watchers = new Map<string, FSWatcher>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -206,6 +207,7 @@ export class ProjectFolders {
   constructor(private readonly store: Store, options: { reserved: string[]; notebooks?: NotebookService }) {
     this.editing = new ArtifactEditingService(store);
     this.notebooks = options.notebooks;
+    this.notebooks?.useFolders(this);
     this.reserved = options.reserved.map(path => { try { return realpathSync(path); } catch { return resolve(path); } });
     this.stopListening = store.onCommit(projectId => this.schedule(projectId, true));
   }
@@ -266,6 +268,25 @@ export class ProjectFolders {
       problems: [...entries.filter(([, entry]) => entry.problem).map(([, entry]) => ({ path: entry.path, message: entry.problem! })), ...(checked?.problems ?? [])],
       ...(checked ? { checkedAt: checked.checkedAt } : {}) };
   }
+
+  /** The block's .ipynb, relative to the project folder. */
+  notebookFile(projectId: string, nodeId: string): string | null {
+    const entry = this.load(projectId)?.files[nodeId];
+    return entry && !entry.removed && entry.kind === 'notebook' ? entry.path : null;
+  }
+  /** Mounted for the notebook's Python: the folder read-only, and outputs/<notebook>/, made here, writable. */
+  notebookFolder(projectId: string, nodeId: string): KernelFolder | null {
+    if (!this.load(projectId)) return null;
+    const { files } = this.require(projectId), file = this.notebookFile(projectId, nodeId);
+    const title = this.store.getProject(projectId).canvas.nodes.find(node => node.id === nodeId)?.title ?? 'Notebook';
+    const outputs = posix.join('outputs', file ? stemOf(file) : safeFileBase(title)), place = files.resolve(posix.join(outputs, 'file'), true);
+    return { root: files.root, notebookDir: file ? posix.dirname(file) : '.', outputs, outputsPath: dirname(place) };
+  }
+  /** An outputs folder the notebook left empty is removed again. */
+  releaseNotebookFolder(_projectId: string, folder: KernelFolder): void {
+    new FolderFiles(folder.root).prune(posix.join(folder.outputs, 'file'), 'outputs');
+  }
+  notebookChanged(projectId: string): void { this.schedule(projectId, true); }
 
   suggest(name: string): FolderSuggestion {
     const home = homedir(), documents = existsSync(join(home, 'Documents')) ? join(home, 'Documents') : home, stem = safeFileBase(name || 'Untitled project');
@@ -354,7 +375,7 @@ export class ProjectFolders {
       for (const block of manifest.blocks) {
         const node = project.canvas.nodes.find(item => item.id === block.id), kind = node && fileKind(node, artifacts);
         if (!node || !kind || !block.file || !files.exists(block.file)) continue;
-        const rendered = this.render(node, kind, artifacts, this.exported(record), posix.dirname(block.file));
+        const rendered = this.render(projectId, node, kind, artifacts, this.exported(record), posix.dirname(block.file));
         if (rendered) record.files[node.id] = { path: block.file, kind, hash: sha(rendered.bytes), ...(rendered.artifactId ? { artifactId: rendered.artifactId } : {}) };
       }
     }
@@ -411,7 +432,7 @@ export class ProjectFolders {
       if (text.length > 100_000) throw new StoreError(`${rel} is longer than 100,000 characters, the most a Code block holds.`);
       node = { ...base, blockType: 'code', code: { language: codeLanguage(extensionOf(rel)) ?? 'python', source: text, parameters: {}, inputArtifactId: null } };
     } else if (kind === 'dataset') { parseCsv(text, true); node = { ...base, blockType: 'dataset' }; }
-    else if (kind === 'notebook') node = { ...base, blockType: 'notebook', notebook: { path: rel } };
+    else if (kind === 'notebook') node = { ...base, blockType: 'notebook' };
     else node = { ...base, blockType: 'report' };
     // The file is recorded with the block in one transaction, so the folder pass that follows never writes a second copy.
     return this.store.atomic(() => {
@@ -420,7 +441,7 @@ export class ProjectFolders {
       this.store.mutate(projectId, [{ type: 'addNode', node }], `Added ${rel} from the project folder`);
       const added = this.store.getProject(projectId).canvas.nodes.find(item => item.id === id)!;
       if (kind === 'dataset') record.files[id].artifactId = this.capture(projectId, added, { kind: 'dataset', title: added.title, content: text, mediaType: 'text/csv', path: rel }).id;
-      if (kind === 'notebook') { if (!this.notebooks) throw new StoreError('Notebooks are unavailable.'); this.notebooks.importProjectFile(projectId, id, rel, text); }
+      if (kind === 'notebook') { if (!this.notebooks) throw new StoreError('Notebooks are unavailable.'); this.notebooks.fromFile(projectId, id, rel, text, read.observed.hash); }
       if (kind === 'report') {
         const evidence = new Set<string>(), canonical = reportFromFolder(text, posix.dirname(rel), new Map([...this.exported(record)].map(([artifactId, path]) => [path.toLowerCase(), artifactId])), evidence);
         this.editing.saveReport(projectId, { nodeId: id, title: added.title, text: canonical, evidenceIds: [...evidence].filter(artifactId => this.ownArtifact(projectId, artifactId)) });
@@ -452,7 +473,7 @@ export class ProjectFolders {
     const node = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
     if (!node || !entry || entry.removed) throw new StoreError('This block has no file in the project folder.', 404);
     if (!files.exists(entry.path)) {
-      const rendered = this.render(node, entry.kind, new Map(this.store.listArtifacts(projectId).map(artifact => [artifact.id, artifact])), this.exported(record), posix.dirname(entry.path));
+      const rendered = this.render(projectId, node, entry.kind, new Map(this.store.listArtifacts(projectId).map(artifact => [artifact.id, artifact])), this.exported(record), posix.dirname(entry.path));
       if (!rendered) throw new StoreError('ros.ai has nothing to write for this block yet.');
       entry.disk = files.write(entry.path, rendered.bytes);
       entry.hash = entry.disk.hash;
@@ -609,7 +630,7 @@ export class ProjectFolders {
         } else if (entry.kind === 'code') {
           if (text.length > 100_000) throw new StoreError('is longer than 100,000 characters, so ros.ai kept its own copy.');
           operations.push({ type: 'updateNode', id: nodeId, patch: { code: { ...(node.code ?? { language: codeLanguage(extensionOf(entry.path)) ?? 'python', parameters: {}, inputArtifactId: null }), source: text } } });
-        } else { this.readArtifactFile(record, project.id, node, entry, text); entry.hash = seen.observed.hash; delete entry.problem; continue; }
+        } else { this.readArtifactFile(record, project.id, node, entry, text, seen.observed.hash); entry.hash = seen.observed.hash; delete entry.problem; continue; }
         agreed.push([entry, seen.observed]);
         edited.push(entry.path);
       } catch (error) { entry.problem = `${entry.path} ${message(error)}`; }
@@ -632,11 +653,11 @@ export class ProjectFolders {
     return null;
   }
 
-  private readArtifactFile(record: FolderRecord, projectId: string, node: CanvasNode, entry: FileEntry, text: string): void {
+  private readArtifactFile(record: FolderRecord, projectId: string, node: CanvasNode, entry: FileEntry, text: string, hash: string): void {
     if (entry.kind === 'dataset') { parseCsv(text, true); this.capture(projectId, node, { kind: 'dataset', title: node.title, content: text, mediaType: 'text/csv', path: entry.path }); return; }
     if (entry.kind === 'notebook') {
       if (!this.notebooks) throw new StoreError('could not be read because notebooks are unavailable.');
-      this.notebooks.importProjectFile(projectId, node.id, entry.path, text);
+      this.notebooks.fromFile(projectId, node.id, entry.path, text, hash);
       return;
     }
     if (entry.kind !== 'report') return;
@@ -648,7 +669,7 @@ export class ProjectFolders {
     this.editing.saveReport(projectId, { nodeId: node.id, ...(previous ? { sourceArtifactId: previous.id } : {}), title: node.title, text: canonical, evidenceIds: [...evidence].filter(id => this.ownArtifact(projectId, id)).slice(0, 100) });
   }
 
-  private render(node: CanvasNode, kind: FolderFileKind, artifacts: ReadonlyMap<string, Artifact>, exported: ReadonlyMap<string, string>, folder: string): Rendered | null {
+  private render(projectId: string, node: CanvasNode, kind: FolderFileKind, artifacts: ReadonlyMap<string, Artifact>, exported: ReadonlyMap<string, string>, folder: string): Rendered | null {
     const artifact = node.artifactId ? artifacts.get(node.artifactId) : undefined;
     if (kind === 'note') return { bytes: Buffer.from(node.description, 'utf8'), extension: '.md' };
     if (kind === 'code') {
@@ -657,8 +678,9 @@ export class ProjectFolders {
     }
     if (kind === 'report') return { bytes: Buffer.from(artifact ? reportForFolder(artifact.content, folder, exported) : '', 'utf8'), extension: '.md', ...(artifact ? { artifactId: artifact.id } : {}) };
     if (kind === 'notebook') {
-      const snapshot = [...artifacts.values()].filter(item => item.nodeId === node.id && item.kind === 'notebook').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-      return { bytes: Buffer.from(snapshot?.content ?? EMPTY_NOTEBOOK, 'utf8'), extension: '.ipynb', ...(snapshot ? { artifactId: snapshot.id } : {}) };
+      if (!this.notebooks) return null;
+      const file = this.notebooks.file(projectId, node.id);
+      return { bytes: file.bytes, extension: '.ipynb', ...(file.keep ? { keep: file.keep } : {}) };
     }
     if (!artifact) return null;
     if (kind === 'dataset') return { bytes: Buffer.from(artifact.mediaType === 'text/csv' ? artifact.content : tableCsv(artifactTable(artifact.content, false)), 'utf8'), extension: '.csv', artifactId: artifact.id };
@@ -697,7 +719,7 @@ export class ProjectFolders {
       entry = undefined;
     }
     const current = entry && !entry.removed ? entry : undefined;
-    const rendered = this.render(node, kind, artifacts, exported, current ? posix.dirname(current.path) : FOLDER_DIRECTORIES[kind]);
+    const rendered = this.render(record.projectId, node, kind, artifacts, exported, current ? posix.dirname(current.path) : FOLDER_DIRECTORIES[kind]);
     if (!rendered) return;
     const hash = sha(rendered.bytes), base = safeFileBase(node.title);
     if (!current) {
@@ -720,6 +742,9 @@ export class ProjectFolders {
       return;
     }
     const onDisk = current.disk && current.disk.mtimeMs === info.mtimeMs && current.disk.size === info.size ? current.disk.hash : (current.disk = files.read(current.path, READ_BYTES[kind]).observed).hash;
+    // A notebook read from this exact file stays byte for byte as the other app wrote it.
+    const kept = rendered.keep !== undefined && onDisk === rendered.keep;
+    if (kept) current.hash = onDisk;
     const changedElsewhere = onDisk !== current.hash;
     if (changedElsewhere && TWO_WAY.has(kind)) return;
     let path = current.path;
@@ -729,7 +754,7 @@ export class ProjectFolders {
     if (changedElsewhere) this.retire(files, current.path, current.hash, true); // another app's figure stays in .ros-ai/trash
     else if (path !== current.path) files.move(current.path, path);
     if (path !== current.path) { taken.delete(current.path.toLowerCase()); taken.add(path.toLowerCase()); current.path = path; }
-    if (hash !== current.hash || changedElsewhere) { current.disk = files.write(path, rendered.bytes); current.hash = hash; }
+    if (!kept && (hash !== current.hash || changedElsewhere)) { current.disk = files.write(path, rendered.bytes); current.hash = hash; }
     delete current.missing;
     if (rendered.artifactId) current.artifactId = rendered.artifactId; else delete current.artifactId;
   }

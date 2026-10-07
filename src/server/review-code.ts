@@ -53,14 +53,25 @@ FORBIDDEN_ATTRS = set("os sys subprocess socket pathlib ctypes ctypeslib builtin
 IN_MEMORY = {"remove", "rename", "replace", "loads", "format"}
 BUILTINS = set("print len min max sum abs round sorted enumerate range zip all any int float str bool list tuple set dict frozenset reversed next iter isinstance issubclass filter map slice divmod pow hash ValueError TypeError RuntimeError KeyError IndexError ZeroDivisionError AssertionError Exception NotImplementedError StopIteration".split())
 HELPERS = {"table", "metric", "plot", "export_csv", "conclusion"}
+MODE = sys.argv[1] if len(sys.argv) > 1 else "code"
+if MODE != "code":
+    # Notebook cells run with the project folder mounted read-only and no network, so reading data files is
+    # ordinary analysis. Writing files, pickles and anything unfamiliar still asks.
+    READS = {"pandas": "read_csv read_table read_json read_excel read_parquet read_feather read_fwf read_stata read_spss read_sas read_xml read_orc read_html", "numpy": "load loadtxt genfromtxt fromfile"}
+    for module, names in READS.items():
+        FUNCTIONS[module] |= set(names.split())
+    FUNCTIONS["matplotlib.pyplot"].add("show")
+    FORBIDDEN_ATTRS -= set(" ".join(READS.values()).split()) | {"show"}
+    HELPERS = {"display"}
 AGGREGATIONS = set("sum mean median min max count size std var first last nunique sem skew kurt kurtosis prod all any".split())
 
 class Escalate(Exception):
     pass
 
 class Checker(ast.NodeVisitor):
-    def __init__(self):
-        self.env = {"df": "data", "params": "data", "pd": "module:pandas", "np": "module:numpy", "plt": "module:matplotlib.pyplot", "scipy": "module:scipy"}
+    def __init__(self, carried=None):
+        # A notebook cell starts from the names earlier reviewed cells set up in the same Python session.
+        self.env = dict(carried) if carried is not None else {"df": "data", "params": "data", "pd": "module:pandas", "np": "module:numpy", "plt": "module:matplotlib.pyplot", "scipy": "module:scipy"}
         self.env.update({name: "call:" + name for name in BUILTINS | HELPERS})
 
     def fail(self, reason):
@@ -80,7 +91,7 @@ class Checker(ast.NodeVisitor):
 
     def infer(self, node):
         if isinstance(node, ast.Name):
-            return self.env.get(node.id, "data")
+            return self.env.get(node.id, "data" if MODE == "code" else "unknown:" + node.id)
         if isinstance(node, ast.Attribute):
             if node.attr.startswith("_") or node.attr in FORBIDDEN_ATTRS - IN_MEMORY:
                 # JSON loads is approved only as an explicit library member.
@@ -89,7 +100,9 @@ class Checker(ast.NodeVisitor):
             base = self.infer(node.value)
             if base.startswith("module:"):
                 return self.module_member(base[7:], node.attr)
-            return "method:" + node.attr if node.attr in METHODS else "data"
+            if node.attr in METHODS:
+                return "method:" + node.attr
+            return base if base.startswith("unknown:") else "data"
         if isinstance(node, ast.Lambda):
             return "call:local-lambda"
         # Results and explicitly captured data do not become callable authority.
@@ -100,20 +113,22 @@ class Checker(ast.NodeVisitor):
             self.fail("Dynamic, process or I/O name " + node.id + " requires human review.")
 
     def visit_Attribute(self, node):
-        if isinstance(node.ctx, (ast.Store, ast.Del)) and self.infer(node.value).startswith(("module:", "call:")):
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and self.infer(node.value).startswith(("module:", "call:", "unknown:")):
             self.fail("Changing a library or callable requires human review.")
         self.infer(node)
         self.generic_visit(node)
 
     def visit_Call(self, node):
         target = self.infer(node.func)
+        if target.startswith("unknown:"):
+            self.fail(target[8:] + " comes from a cell the automatic reviewer did not check, or from before Python restarted. Approve this cell, or run the cell that sets up " + target[8:] + " again.")
         if not target.startswith(("call:", "method:")):
             label = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "dynamic expression")
             self.fail("Unfamiliar or dynamic call " + label + " requires human review.")
         if any(keyword.arg is None for keyword in node.keywords):
             self.fail("Dynamic keyword expansion requires human review.")
-        if any(keyword.arg in {"file", "out", "engine", "backend", "storage_options"} for keyword in node.keywords):
-            self.fail("File/output backend overrides require human review; use capture helpers.")
+        if any(keyword.arg in {"file", "out", "engine", "backend", "storage_options", "allow_pickle"} for keyword in node.keywords):
+            self.fail("File, output and pickle options require human review.")
         if isinstance(node.func, ast.Attribute) and node.func.attr in {"agg", "aggregate", "apply", "transform", "applymap"}:
             if node.args:
                 self.aggregation(node.args[0])
@@ -214,15 +229,72 @@ class Checker(ast.NodeVisitor):
     def visit_NamedExpr(self, node):
         self.fail("Assignment expressions require human review.")
 
+def carried(value):
+    """Names earlier reviewed notebook cells bound. Only kinds this reviewer itself produces are accepted."""
+    env = {}
+    for name, kind in (list(value.items())[:2000] if isinstance(value, dict) else []):
+        if not isinstance(name, str) or not name.isidentifier() or not isinstance(kind, str):
+            continue
+        module, _, member = kind[5:].rpartition(".")
+        if kind in ("data", "call:local-function", "call:local-lambda") or (kind.startswith("module:") and kind[7:] in MODULES) \
+                or (kind.startswith("method:") and kind[7:] in METHODS) or (kind.startswith("call:") and member in FUNCTIONS.get(module, ())):
+            env[name] = kind
+    return env
+
+def forget(source, env):
+    """After a cell runs without review, names it may have changed are no longer known, and neither are earlier
+    functions, whose bodies can use those names. Anything that can change names indirectly forgets everything."""
+    try:
+        tree = ast.parse(source, mode="exec")
+    except (SyntaxError, ValueError, RecursionError):
+        return {}
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Global, ast.Nonlocal, ast.ClassDef)):
+            return {}
+        if isinstance(node, ast.Name):
+            if node.id in FORBIDDEN_NAMES or node.id.startswith("__"):
+                return {}
+            if isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+        elif isinstance(node, ast.Attribute) and (node.attr.startswith("_") or isinstance(node.ctx, (ast.Store, ast.Del))):
+            return {}
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for item in node.names:
+                if item.name == "*":
+                    return {}
+                names.add(item.asname or item.name.split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names.add(node.name)
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            names.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            names.add(node.rest)
+    return {name: kind for name, kind in env.items() if name not in names and kind not in ("call:local-function", "call:local-lambda")}
+
 try:
-    source = sys.stdin.read(20001)
-    if not source.strip() or len(source.encode("utf-8")) > 20000:
-        raise Escalate("Code must be nonempty and no larger than 20 KB.")
-    tree = ast.parse(source, mode="exec")
-    if sum(1 for _ in ast.walk(tree)) > 6000:
-        raise Escalate("Code is too complex for automatic syntax review.")
-    Checker().visit(tree)
-    result = {"allowed": True, "reason": "Syntax review found only recognized numerical/data/plot operations and captured-output helpers. This is a conservative syntax check, not proof of research relevance or sandbox safety."}
+    if MODE == "code":
+        source, env = sys.stdin.read(20001), None
+    else:
+        payload = json.loads(sys.stdin.read(400001))
+        source, env = payload.get("code"), carried(payload.get("env"))
+        if not isinstance(source, str):
+            raise Escalate("The cell source is missing.")
+    if MODE == "forget":
+        result = {"env": forget(source, env)}
+    else:
+        if not source.strip() or len(source.encode("utf-8")) > 20000:
+            raise Escalate("Code must be nonempty and no larger than 20 KB.")
+        tree = ast.parse(source, mode="exec")
+        if sum(1 for _ in ast.walk(tree)) > 6000:
+            raise Escalate("Code is too complex for automatic syntax review.")
+        checker = Checker(env)
+        checker.visit(tree)
+        result = {"allowed": True, "reason": "Syntax review found only recognized numerical/data/plot operations and captured-output helpers. This is a conservative syntax check, not proof of research relevance or sandbox safety."}
+        if MODE == "notebook":
+            result["env"] = {name: kind for name, kind in checker.env.items() if not (kind == "call:" + name and name in BUILTINS | HELPERS)}
 except (Escalate, SyntaxError, ValueError, RecursionError) as error:
     result = {"allowed": False, "reason": str(error)[:800] or "Python syntax could not be reviewed."}
 except BaseException:
@@ -246,4 +318,31 @@ export function reviewCode(code: string, options: { python?: string } = {}): Cod
     if (typeof decision !== 'object' || decision === null || !('allowed' in decision) || typeof decision.allowed !== 'boolean' || !('reason' in decision) || typeof decision.reason !== 'string') throw new Error('Invalid reviewer result.');
     return { allowed: decision.allowed, reason: decision.reason.slice(0, 1000) };
   } catch { return { allowed: false, reason: 'The trusted syntax reviewer returned an invalid result; human review is required.' }; }
+}
+
+/** What the reviewer knows about names earlier notebook cells set up in the same Python session. */
+export type NotebookNames = Record<string, string>;
+const notebookNames = (value: unknown): NotebookNames => value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string').slice(0, 2000)) : {};
+function notebookParser(mode: 'notebook' | 'forget', code: string, names: NotebookNames, python = '/usr/bin/python3'): unknown {
+  const result = spawnSync(python, ['-I', '-S', '-c', PARSER, mode], {
+    input: JSON.stringify({ code, env: names }), encoding: 'utf8', timeout: 1500, maxBuffer: 400_000,
+    env: { PATH: '/usr/bin:/bin', LC_ALL: 'C.UTF-8' },
+  });
+  if (result.status !== 0 || result.error) return undefined;
+  try { return JSON.parse(result.stdout); } catch { return undefined; }
+}
+/** The same conservative review for one notebook cell. Names from earlier reviewed cells, such as
+ * `import pandas as pd` or a helper function, carry over; reading data files is allowed because
+ * notebook cells see the project folder read-only and have no network. */
+export function reviewNotebookCell(code: string, names: NotebookNames, options: { python?: string } = {}): CodeReview & { names: NotebookNames } {
+  if (!code.trim() || Buffer.byteLength(code, 'utf8') > 20_000) return { allowed: false, reason: 'Cells longer than 20 KB are not reviewed automatically.', names };
+  const decision = notebookParser('notebook', code, names, options.python) as { allowed?: unknown; reason?: unknown; env?: unknown } | undefined;
+  if (typeof decision?.allowed !== 'boolean' || typeof decision.reason !== 'string') return { allowed: false, reason: 'The trusted Python syntax reviewer is unavailable or timed out; human review is required.', names };
+  return { allowed: decision.allowed, reason: decision.reason.slice(0, 1000), names: decision.allowed ? notebookNames(decision.env) : names };
+}
+/** After a cell runs without review, the names it may have changed are no longer trusted. */
+export function forgetNotebookNames(code: string, names: NotebookNames, options: { python?: string } = {}): NotebookNames {
+  const result = notebookParser('forget', code, names, options.python) as { env?: unknown } | undefined;
+  return notebookNames(result?.env);
 }

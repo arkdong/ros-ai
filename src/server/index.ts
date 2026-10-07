@@ -1,4 +1,5 @@
 import { config as loadEnv } from 'dotenv';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
@@ -56,7 +57,7 @@ async function shutdown() {
   // Release the data lock even if one service fails to stop cleanly.
   try {
     projectFolders?.shutdown();
-    notebooks?.shutdown();
+    await notebooks?.shutdown();
     await guide?.shutdown();
     await assistant?.shutdown();
     await agent?.shutdown();
@@ -91,7 +92,7 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     assistant=new AssistantService(store,execution,experiments,agent);
     guide=new WorkspaceGuideService(store,execution);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]}},agent,{credentials,googleDrive},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

@@ -37,7 +37,7 @@ Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 | 14 | Platform assumptions | `/usr/bin/python3` in `experiments.ts:59` and `review-code.ts:239`; inline `ROS_DEV=1` in `package.json` | Support macOS, Linux, and Windows through WSL2; find `python3` on PATH | S |
 | 15 | No schema versions or backups before upgrades | `store.ts:95-109` | `PRAGMA user_version`, ordered migrations, automatic backup | M |
 | 16 | No CI, releases or changelog | No `.github/` | GitHub Actions for typecheck, build, health check and sandbox build; tags; CHANGELOG | S–M |
-| 17 | No live run output or model streaming | Polling every 1.5 s (`App.tsx:85`); `stream:false` (`inference-connections.ts:161`) | Stream stdout and model tokens | M |
+| 17 | No live run output or model streaming | Polling every 1.5 s (`App.tsx:85`); `stream:false` (`inference-connections.ts:161`) | Stream stdout and model tokens. **Partly done October 7:** notebook cells stream their output | M |
 | 18 | Limited data input | UTF-8 CSV up to 500 KB (`connections.ts:13`); one input per Code block | Larger local limit, named inputs, xlsx/parquet | S–M |
 | 19 | Fixed packages and a 30 s limit | `sandbox/Dockerfile`; `sandbox.ts:63` | User requirements at image build; configurable local limits | M |
 | 20 | No project export or import | Partly covered October 6: a project folder reopens elsewhere with its blocks, layout and connections, but not its runs or history | Hash-checked project bundle | M |
@@ -53,7 +53,6 @@ Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 - Fall back to another port when 4310 is busy (`index.ts:104`).
 - Keys in the OS keychain instead of a 0600 JSON file (`tool-credentials.ts:45`).
 - Search across projects.
-- A helper that launches Jupyter (`notebooks.ts:17-19`).
 - A web search adapter besides Tavily.
 - Check whether current Codex CLI supports restricted read roots (`codex-agent.ts:67`); a Claude Code adapter.
 - C and Haskell: real runtimes, or remove them from the language list.

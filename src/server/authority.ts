@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Store, StoreError } from './store.js';
-import { reviewCode } from './review-code.js';
+import { reviewCode, type CodeReview } from './review-code.js';
 import type { ApprovalMode, ResearchPolicy, ResearchUsage, ReviewDecision } from '../shared/research.js';
 
 export const modeSchema=z.enum(['ask','review','full']);
 export const policySchema=z.object({mode:modeSchema}).strict();
 const zero=():ResearchUsage=>({experiments:0,modelCalls:0,createdActions:0,runtimeSeconds:0,spendUsd:0});
-type Action={kind:ReviewDecision['kind'];nodeId:string;fingerprint:string;code?:string;runtimeSeconds?:number;spendUsd?:number};
+// A notebook cell arrives already reviewed, because names carry over from earlier cells in its Python session.
+type Action={kind:ReviewDecision['kind'];nodeId:string;fingerprint:string;code?:string;reviewed?:CodeReview;runtimeSeconds?:number;spendUsd?:number};
 
 /** Deterministic permission reviewer. Model output is never authority.
  * The approval mode decides whether work waits for the user; usage is tallied, never capped here.
@@ -41,7 +42,7 @@ export class Authority {
     else if(mode==='review'&&action.kind==='experiment'){
       // Parse source as data with a fixed trusted parser; never execute it.
       // The independent container boundary still applies to manually allowed code.
-      const codeReview=reviewCode(action.code??'');
+      const codeReview=action.reviewed??reviewCode(action.code??'');
       if(!codeReview.allowed){outcome='escalate';reason=`Automatic reviewer: ${codeReview.reason}`;}
       else reason='The automatic reviewer found only data-analysis code.';
     }

@@ -9,7 +9,9 @@ export const modKey = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test
 export type { CodeEditorApi, CodeEditorProps, ErrorMark } from './CodeEditor';
 
 function PlainEditor(props: CodeEditorProps) {
-  return <textarea className={`code-input code-editor-fallback${props.compact ? ' compact' : ''}`} aria-label={props.ariaLabel} value={props.value} readOnly={props.readOnly} spellCheck={false} placeholder={props.placeholder} onChange={event => props.onChange(event.target.value)} />;
+  // Notebook cells (no line numbers) grow with their text, so the stand-in is about as tall as the editor that replaces it.
+  return <textarea className={`code-input code-editor-fallback${props.compact ? ' compact' : ''}`} aria-label={props.ariaLabel} value={props.value} readOnly={props.readOnly} spellCheck={false} placeholder={props.placeholder}
+    rows={props.lineNumbers === false ? Math.max(1, props.value.split('\n').length) : undefined} onChange={event => props.onChange(event.target.value)} />;
 }
 
 // CodeMirror loads only when an editor opens, keeping it out of the main bundle. If its chunk

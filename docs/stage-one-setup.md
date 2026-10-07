@@ -1,6 +1,6 @@
 # Stage One: Code and Notebook setup
 
-October 2, 2026. These workflows let you write your own code, connect an existing notebook, and deliberately reuse saved outputs. Blocks remain independent: a connection or input selection never starts another block. Current integrated verification is recorded in [RESULT.md](../RESULT.md).
+October 2, 2026; notebooks updated October 7. These workflows let you write your own code, run notebooks, and deliberately reuse saved outputs. Blocks remain independent: a connection or input selection never starts another block. Current integrated verification is recorded in [RESULT.md](../RESULT.md).
 
 ## Start ros.ai and its Python runtime
 
@@ -13,7 +13,7 @@ npm run build
 npm start
 ```
 
-Open the local URL printed by the server, normally `http://127.0.0.1:4310`. Keep the data folder printed at startup and `.env.local` private; they contain local records and configuration. Manual Code runs and Notebook captures need no model API key.
+Open the local URL printed by the server, normally `http://127.0.0.1:4310`. Keep the data folder printed at startup and `.env.local` private; they contain local records and configuration. Code and Notebook runs need no model API key.
 
 The Docker build downloads the pinned Python image and packages. Rebuild after capture-worker changes; ros.ai checks the image against the current worker and fails closed if it does not match. The app does not install packages, build the image, or substitute unrestricted host Python when Docker is unavailable. The server also uses Python 3 for permission analysis; this is separate from the Docker execution runtime.
 
@@ -43,29 +43,18 @@ Use `table`, `metric`, `plot`, `export_csv` and `conclusion` to retain intended 
 
 **Attempts & outputs** retains each attempt's status, captured source/input/parameters, output artifacts, logs and errors. Ordinary Python failures retain preceding helper outputs. Approval policy and cumulative execution allowances still apply to manual runs; creating another Code block does not replenish them. The app does not infer that a saved program or successful run is scientifically correct.
 
-## Connect an existing Jupyter notebook
+## Write and run a notebook
 
-The Notebook block uses a Jupyter/JupyterLab server that you already manage. ros.ai does not install Jupyter, start a server/kernel, or run imported cells. If you need a server, `python3 -m pip install jupyterlab` and `jupyter lab` start one on `http://127.0.0.1:8888/` and print its token. The full connect, native run and save, refresh and capture loop was verified against a live JupyterLab server on October 3 ([RESULT.md](../RESULT.md)).
+1. Use **Add block → Notebook → Add & open notebook**. To start from an existing notebook, choose its `.ipynb` file in the same dialog. The notebook opens over the canvas with the cursor in its first cell. **Canvas** goes back; double-click the block, or choose **Open notebook** on its card, to return.
+2. Type Python and press **Shift+Enter** to run the cell and move on, or **Ctrl/⌘+Enter** to run it in place. The first run starts the notebook's Python, which keeps variables from cell to cell until **Restart**. **Stop** interrupts the running cell. **Run all** runs every code cell from the top and stops at the first error.
+3. **+ Text** adds a Markdown cell; press **Esc** to see it rendered and double-click it to edit. After **Esc**, **A** or **B** adds a cell above or below, **M** or **Y** makes the cell text or code, **D D** deletes it and **Z** brings it back.
+4. Each cell passes the project's permission choice before it runs. Ask every time shows a check card on the cell, Approve for me asks only about code the automatic reviewer does not clear, and Full access runs every cell inside the sandbox.
 
-1. Open your existing local Jupyter server and identify its base address and notebook path. Use a relative `.ipynb` path such as `research/analysis.ipynb`.
-2. Use **Add block → Notebook → Add Notebook**, then open the new canvas block. A name is optional. Enter the **Jupyter address**, **Notebook path**, and interface choice. If the server requires an API token, enter it only in the password field in ros.ai; do not put it in a URL, notebook, report or chat.
-3. Choose **Connect**, then **Check**. The API connection checks the named notebook through Jupyter's Contents API. Only loopback hosts (`localhost`, `127.0.0.1`, `::1`) with ports 1024–65535 are accepted. Embedded credentials, URL query/fragment tokens and parent-directory traversal are rejected.
-4. Use **Open notebook** to open the native Jupyter interface in a separate tab. Its URL contains no API token. Native browser authentication is separate: sign in directly in Jupyter if requested. A successful ros.ai API check does not sign that browser tab in.
-5. Work, run and save in Jupyter. Return to ros.ai and choose **Read saved cells** or **Refresh saved cells**. Unsaved editor/kernel state is not captured.
+The notebook's Python uses the same Docker image and packages as Code blocks. Nothing is preloaded, so import what you use (`import pandas as pd`). It has no network. With a project folder it can read the folder, for example `pd.read_csv('../data/survey.csv')` from `notebooks/`, and save files only in `outputs/<notebook>/`; without one it can write only to `/tmp`. Up to four notebooks keep Python running at once, and a notebook left unused for 30 minutes stops its Python and says so; run the cells again to continue. A notebook file can be up to 20 MB, with 1,000 cells of up to 100,000 characters each.
 
-ros.ai stores the API credential in private server records. Public connection state, canvas references, native URLs, artifacts and run configuration omit it. Notebook responses containing that credential are rejected before saving or display, including decoded JSON and joined source/output arrays. Reconnecting with edited settings requires reentering the token. Jupyter documents its [API authentication](https://jupyter-server.readthedocs.io/en/latest/operators/security.html) and [Contents API](https://jupyter-server.readthedocs.io/en/latest/developers/rest-api.html).
+The notebook is saved as `notebooks/<name>.ipynb` in the project folder, so Jupyter, JupyterLab or VS Code can open it. A save from one of those apps reloads the open notebook with **Undo**; if ros.ai still holds unsaved typing, it asks which version to keep. **Import .ipynb** on the toolbar replaces the notebook with a file, and **Undo** brings the previous version back.
 
-The connection sends bounded, authenticated reads for the named notebook. It sends no cell updates, execution requests or kernel/session creation commands. Execution you initiate in native Jupyter uses that server's own filesystem/network permissions; ros.ai's Docker boundary and execution allowances do not govern its kernel.
-
-## Capture selected saved outputs
-
-Select a saved source version, inspect a cell, select its output checkboxes, and choose **Capture selected output(s)**. Each operation captures one cell and at most eight explicitly selected outputs. Repeating the click creates another external-capture receipt; it does not recompute the cell. **Inspect producing snapshot** opens the exact saved notebook source associated with an output, including older versions.
-
-Supported previews include text/logs, explicit CSV, JSON, bounded PNG and conservatively sanitized SVG. Other formats remain labelled unsupported and can be captured/downloaded as inert JSON. HTML, scripts and notebook attachments are not executed. The limits are nbformat 4, 500,000 UTF-8 bytes per notebook, 200 cells, 100,000 source characters per cell, 32 saved outputs per cell and 300,000 bytes per output. Reads have an eight-second timeout and a 750,000-byte response cap.
-
-Each capture records the exact source artifact/hash, snapshot identity, notebook path, cell index, unique cell ID when available, cell-source hash, output index and saved execution count. Missing or duplicated cell IDs use an exact-snapshot index locator. Counts do not prove execution order, dependencies, code/output correspondence or reproducibility. The records are labelled external notebook captures with execution unobserved, rather than ros.ai-generated results. See [nbformat's cell IDs](https://nbformat.readthedocs.io/en/latest/format_description.html#cell-ids).
-
-If live Jupyter is unavailable, expand **Import a saved .ipynb snapshot**, choose a saved file and select **Import snapshot**. This supports the same explicit output capture and provenance. It preserves the supplied file text, while live reads preserve the notebook JSON delivered by the Contents API; neither implies byte-for-byte original on-disk formatting for a live API read. Import is a fallback for saved evidence, not proof of live Notebook integration.
+Outputs show tables, text, errors, PNG and SVG figures, Markdown and CSV. Other HTML, scripts and pictures from the web are not loaded; they stay in the file. **Save as result** under an output keeps it as a project result for **Use as input** or **Use in report**. An output that ros.ai's sandbox produced counts as a measured result; one that came with an imported file or an outside edit is labelled as such.
 
 ## Reuse an exact output or write a report
 

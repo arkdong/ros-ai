@@ -8,6 +8,11 @@ export function outputFreshness(artifact:Artifact,detail:ProjectDetail):{state:'
     if(canonical(codeSource)!==canonical(node.code))return {state:'stale',message:'Code, parameters or selected input changed. This output keeps its producing version.'};
     return {state:'current',message:'Matches the saved Code source and selected input. This does not guarantee deterministic replay.'};
   }
+  if(artifact.metadata?.origin==='notebook-cell-output') {
+    const cell=`cell [${artifact.metadata.executionCount??' '}]`;
+    if(artifact.metadata.sourceMatchesRun===false)return {state:'stale',message:`The notebook's ${cell} was edited after it ran. This output keeps the run that made it.`};
+    return {state:'unverifiable',message:`Made by ${cell} in ros.ai's notebook sandbox. Variables from earlier cells can affect it, so the cell alone may not reproduce it.`};
+  }
   if(artifact.capture==='external'||run?.configuration.kind==='external-notebook-capture') {
     const sourceId=artifact.metadata?.notebookSourceArtifactId;
     const current=detail.artifacts.find(value=>value.nodeId===artifact.nodeId&&value.kind==='notebook');
