@@ -10,6 +10,7 @@
   "scripts": {
     "start": "tsx src/server/index.ts",
     "dev": "ROS_DEV=1 tsx src/server/index.ts",
+    "try": "node scripts/try.mjs",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/*.test.ts",
     "lint": "tsc --noEmit"

@@ -38,8 +38,7 @@ export class WorkspaceGuideService{
     const settings=this.store.record<WorkspaceGuideSettings>('workspace-guide-settings',projectId)??{connectionId:null,model:null};
     const statuses=this.execution.inference?.statuses()??[];
     const selected=statuses.find(c=>c.id===settings.connectionId),policy=new Authority(this.store).policy(projectId);
-    let blocker=!settings.connectionId?'Choose a guide connection in settings.':!selected?'The saved guide connection is unavailable.':!selected.models.some(m=>m.id===settings.model)?'Choose an available guide model.':!selected.ready?selected.reason:policy.stopped?'Project research is stopped. Resume it before reviewing.':policy.used.modelCalls>=policy.limits.modelCalls?'The shared project model-request limit is exhausted.':'';
-    if(!blocker&&selected?.destination==='remote'&&policy.used.spendUsd>=policy.limits.spendUsd)blocker='Set the project spending ceiling before using an external guide.';
+    let blocker=!settings.connectionId?'Choose a guide connection in settings.':!selected?'The saved guide connection is unavailable.':!selected.models.some(m=>m.id===settings.model)?'Choose an available guide model.':!selected.ready?selected.reason:policy.stopped?'Project research is stopped. Resume it before reviewing.':'';
     const reviews=this.saved(projectId),activeReviewId=reviews.find(r=>r.status==='running'||r.status==='queued')?.id??null;
     return {projectId,settings,connections:statuses.map(c=>({id:c.id,revision:c.revision,label:c.name,destination:c.endpointOrigin,location:c.destination==='remote'?'external':'local-unverified',configured:c.models.length>0,enabled:c.enabled,models:c.models.map(m=>({id:m.id,label:m.label}))})),ready:!blocker&&!activeReviewId,blocker:activeReviewId?'A guide review is already running.':blocker,reviews:reviews.map(r=>this.publicReview(r)),activeReviewId};
   }

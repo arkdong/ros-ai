@@ -36,7 +36,7 @@ For registered remote inference, ros.ai reserves twice the full declared context
 
 Loopback requests debit no provider USD in ros.ai, but still consume the connection request ceiling and the project's shared model-request limit. If a previously remote connection becomes loopback, historical USD accounting remains retained. **Local endpoint · processing unverified** means the server is user-managed: a loopback URL does not prove offline operation, restricted tools or private processing.
 
-The project's limits apply independently. New projects have a $0 spending ceiling; remote inference needs sufficient project spending allowance as well as the connection allowance. The shared model-request ceiling and stopped state apply to both research and guide requests. Additional Actions, retries and model changes never replenish those limits. Connection terms are rechecked after preparation and at atomic admission, so an edit or pause prevents dispatch under old terms. A busy connection blocks new admission before consuming another allowance.
+The project's stopped state applies to both research and guide requests. Projects have no spending ceiling of their own; the connection allowance caps paid calls, and additional Actions, retries and model changes never replenish it. Connection terms are rechecked after preparation and at atomic admission, so an edit or pause prevents dispatch under old terms. A busy connection blocks new admission before consuming another allowance.
 
 Built-in Nebius, OpenAI and Tavily retain their separate setup and accounting rules; see [tool connections](tool-connections.md). Registering a personal endpoint does not enlarge a historical comparison or sandbox grant.
 

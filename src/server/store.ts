@@ -87,6 +87,8 @@ export class Store {
   private readonly db: DatabaseSync;
   private readonly artifactDir: string;
   private transactionDepth=0;
+  private readonly commitListeners = new Set<(projectId: string) => void>();
+  private readonly pendingCommits = new Set<string>();
 
   constructor(dataDir: string, options: { recoverInterrupted?: boolean } = {}) {
     const directory = resolve(dataDir);
@@ -166,13 +168,28 @@ export class Store {
   removeRecord(namespace:string,id:string,projectId:string) { this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId); }
   atomic<T>(fn:()=>T):T { return this.transaction(fn); }
 
+  /** Called with a project id after a canvas change or a finished run is committed. */
+  onCommit(listener: (projectId: string) => void): () => void {
+    this.commitListeners.add(listener);
+    return () => { this.commitListeners.delete(listener); };
+  }
+  private committed(projectId: string): void {
+    if (this.transactionDepth > 0) { this.pendingCommits.add(projectId); return; }
+    // A listener failure never undoes or fails a write that is already committed.
+    for (const listener of this.commitListeners) try { listener(projectId); } catch { /* reported by the listener */ }
+  }
+
   private transaction<T>(fn: () => T): T {
     const depth=this.transactionDepth++,savepoint=`ros_transaction_${depth}`;
+    let committed=false;
     try{
       this.db.exec(depth===0?'BEGIN IMMEDIATE':`SAVEPOINT ${savepoint}`);
-      try { const result = fn(); this.db.exec(depth===0?'COMMIT':`RELEASE ${savepoint}`); return result; }
-      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); throw error; }
-    }finally{this.transactionDepth--;}
+      try { const result = fn(); this.db.exec(depth===0?'COMMIT':`RELEASE ${savepoint}`); committed=depth===0; return result; }
+      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); if(depth===0)this.pendingCommits.clear(); throw error; }
+    }finally{
+      this.transactionDepth--;
+      if(committed){const projects=[...this.pendingCommits];this.pendingCommits.clear();for(const id of projects)this.committed(id);}
+    }
   }
 
   private all<T>(sql: string, ...parameters: (string | number | null)[]): T[] {
@@ -247,7 +264,7 @@ export class Store {
   detail(id: string): ProjectDetail {
     const project = this.getProject(id);
     const history = this.getHistory(id);
-    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: contentCursor(history, project.canvas, -1) !== undefined, canRedo: contentCursor(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id) };
+    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: contentCursor(history, project.canvas, -1) !== undefined, canRedo: contentCursor(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
   }
 
   private getHistory(id: string): HistoryState {
@@ -392,6 +409,7 @@ export class Store {
     this.db.prepare('UPDATE projects SET data = ?, history = ? WHERE id = ?').run(JSON.stringify(updated), JSON.stringify(history), project.id);
     for (const node of canvas.nodes) this.db.prepare('INSERT OR IGNORE INTO node_identities(project_id, node_id) VALUES (?, ?)').run(project.id, node.id);
     this.recordChange(updated, label);
+    this.committed(project.id);
     return updated;
   }
 
@@ -412,6 +430,7 @@ export class Store {
       // Captured evidence and approvals keep their original immutable inputs.
       const updated = { ...project, canvas, updatedAt: now() };
       this.db.prepare('UPDATE projects SET data = ?, history = ? WHERE id = ?').run(JSON.stringify(updated), JSON.stringify(history), id);
+      this.committed(id);
       return updated;
     }
     history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
@@ -563,6 +582,7 @@ export class Store {
       if (artifact.runId !== id) throw new StoreError('Run output does not belong to this run');
     }
     this.db.prepare('UPDATE runs SET data = ? WHERE id = ?').run(this.serializeRun(updated), id);
+    if (updated.status !== run.status && !['queued', 'running'].includes(updated.status)) this.committed(run.projectId);
     return updated;
   }
 

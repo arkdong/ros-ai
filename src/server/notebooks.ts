@@ -1,273 +1,580 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Express, Request } from 'express';
+import { chmodSync } from 'node:fs';
+import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseCsv } from '../shared/data-view.js';
-import { NOTEBOOK_LIMITS, type NotebookCaptureSummary, type NotebookCellPreview, type NotebookOpen, type NotebookOutputPreview,
-  type NotebookSessionStatus, type NotebookSnapshot, type NotebookSnapshotSummary, type NotebookState } from '../shared/notebooks.js';
-import type { Artifact, CanvasNode, Run } from '../shared/types.js';
 import { Store, StoreError } from './store.js';
+import type { Authority } from './authority.js';
+import { forgetNotebookNames, reviewNotebookCell, type NotebookNames } from './review-code.js';
+import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage } from './notebook-kernel.js';
+import { NOTEBOOK_LIMITS, type NotebookCell, type NotebookContent, type NotebookEvent, type NotebookKernel, type NotebookOutput,
+  type NotebookRunResult, type NotebookState, type NotebookSummary } from '../shared/notebooks.js';
+import type { ApprovalMode } from '../shared/research.js';
+import type { Artifact, CanvasNode, Run } from '../shared/types.js';
 
-const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u);
+export const NOTEBOOK_ROUTE = '/api/projects/:id/nodes/:nodeId/notebook';
+const DOCUMENT = 'notebook-document', PREVIOUS = 'notebook-previous', EXECUTION = 'notebook-execution', SUMMARY = 'notebook-summary';
+const IDLE_MS = NOTEBOOK_LIMITS.idleStopMinutes * 60_000, START_MS = 90_000;
+const METADATA = { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' }, language_info: { name: 'python' } };
+const sha = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
 const now = () => new Date().toISOString();
-const hash = (content:string) => createHash('sha256').update(content,'utf8').digest('hex');
-const bytes = (content:string) => Buffer.byteLength(content,'utf8');
-const object = (value:unknown):Record<string,unknown>|null => value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
-const text = (value:unknown):string|null => typeof value==='string'?value:Array.isArray(value)&&value.every(item=>typeof item==='string')?value.join(''):null;
-const label = (value:unknown,max=128) => typeof value==='string'?value.slice(0,max):undefined;
-const warnings = ['Saved notebook outputs were produced externally; ros.ai did not execute these cells.',
-  'Execution counts are reported notebook metadata, not verified execution order or dependency evidence.',
-  'A user-managed Jupyter kernel has its own permissions; ros.ai Docker isolation and execution grants do not apply to it.'];
+const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+const text = (value: unknown): string | null => typeof value === 'string' ? value : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join('') : null;
+const isJson = (mime: string) => mime === 'application/json' || mime.endsWith('+json');
+const newCellId = () => randomUUID().replaceAll('-', '').slice(0, 12);
+/** A plain number, also as NumPy 2 shows scalars, for example np.float64(4.0). */
+/** A Markdown cell as plain words for the canvas card: headings, emphasis, links and pictures lose their marks. */
+const plainMarkdown = (text: string) => text.replace(/!\[[^\]]*\]\([^)]*\)/gu, '').replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1')
+  .replace(/^ {0,3}(?:#{1,6}|>|[-*+]|\d{1,9}[.)])\s+/gmu, '').replace(/\*\*|__|~~|`|\*/gu, '').trim();
+const numberText = (plain: string): string | null => { const value = plain.trim().replace(/^np\.(?:float|int|uint)\d*\((.+)\)$/u, '$1'); return /^-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/iu.test(value) && Number.isFinite(Number(value)) ? value : null; };
+const cellIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/u);
 
-type Session = {id:string;projectId:string;nodeId:string;name:string;endpoint:string;token?:string;interface:'lab'|'notebook';revision:number;
-  available:boolean|null;checkedAt:string|null;reason:string;disabled?:boolean};
-type SnapshotRecord = NotebookSnapshotSummary;
-type Output = { preview:NotebookOutputPreview; kind:Artifact['kind']; content:string; mediaType:string; metadata?:Record<string,unknown> };
-type Parsed = {cells:NotebookCellPreview[];outputs:Output[][];kernelName?:string;language?:string;warnings:string[]};
+/** The document as kept in ros.ai. `fileHash` is the exact file it was read from, until ros.ai changes it. */
+type Stored = NotebookContent & { fileHash?: string };
+type Previous = { content: Stored; reason: string; at: string };
+/** `names` are what the automatic reviewer knows after this cell, if it and every cell before it finish. */
+type Pending = { execution: string; cellId: string; source: string; reviewable: string; names?: NotebookNames; queuedAt: string; approval: { mode: ApprovalMode; outcome: 'allow' | 'approved'; reason: string } };
+type Running = Pending & { count: number; session: string; startedAt: string; outputs: NotebookOutput[] };
+type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; status: NotebookKernel['status']; count: number;
+  queue: Pending[]; running?: Running; info?: { python: string; libraries: Record<string, string>; cwd: string }; message?: string; stopMessage?: string;
+  settled?: NotebookNames; idle?: NodeJS.Timeout; startup?: NodeJS.Timeout; usedAt: number; folder?: KernelFolder };
+type Execution = { id: string; projectId: string; nodeId: string; cellId: string; session: string; executionCount: number; source: string; sourceHash: string;
+  status: 'ok' | 'error' | 'interrupted'; approval: Pending['approval']; queuedAt: string; startedAt: string; endedAt: string; outputs: { type: string; mimes?: string[]; hash: string }[] };
+/** The project folder's side of a notebook: where its .ipynb is, and the one folder its cells may write to. */
+export interface NotebookFolders {
+  notebookFile(projectId: string, nodeId: string): string | null;
+  notebookFolder(projectId: string, nodeId: string): KernelFolder | null;
+  releaseNotebookFolder(projectId: string, folder: KernelFolder): void;
+  notebookChanged(projectId: string): void;
+}
 
-/** Reject the current connection credential even when JSON decoding or nbformat
- * multiline fields would reconstruct it. Diagnostics never echo its value. */
-export function assertNotebookCredentialAbsent(content:string,token?:string):void {
-  if(!token)return;
-  const reject=()=>{throw new StoreError('Notebook response contains the connection credential; it was not saved or displayed.');};
-  if(content.includes(token))reject();
-  let decoded:unknown;try{decoded=JSON.parse(content);}catch{throw new StoreError('Notebook response is not supported JSON.');}
-  const pending:unknown[]=[decoded];
-  while(pending.length){
-    const value=pending.pop();
-    if(typeof value==='string'){if(value.includes(token))reject();}
-    else if(Array.isArray(value)){
-      // nbformat source/text/MIME/traceback fields may be string arrays on disk.
-      // Also cover string-array metadata before saving the exact source JSON.
-      if(value.every(item=>typeof item==='string')&&value.join('').includes(token))reject();
-      for(const item of value)pending.push(item);
-    }else if(value!==null&&typeof value==='object')for(const [key,item] of Object.entries(value)){
-      if(key.includes(token))reject();pending.push(item);
+function readOutput(value: unknown): NotebookOutput | null {
+  const output = object(value);
+  if (output?.output_type === 'stream') {
+    const body = text(output.text);
+    return body === null ? null : { output_type: 'stream', name: output.name === 'stderr' ? 'stderr' : 'stdout', text: body };
+  }
+  if (output?.output_type === 'display_data' || output?.output_type === 'execute_result') {
+    const data: Record<string, unknown> = {};
+    for (const [mime, item] of Object.entries(object(output.data) ?? {})) { const body = isJson(mime) ? item : text(item); if (body !== null && body !== undefined) data[mime] = body; }
+    const metadata = object(output.metadata) ?? {};
+    return output.output_type === 'display_data' ? { output_type: 'display_data', data, metadata }
+      : { output_type: 'execute_result', data, metadata, execution_count: Number.isSafeInteger(output.execution_count) ? output.execution_count as number : null };
+  }
+  if (output?.output_type === 'error') return { output_type: 'error', ename: String(output.ename ?? 'Error'), evalue: String(output.evalue ?? ''), traceback: Array.isArray(output.traceback) ? output.traceback.map(String) : [] };
+  return null;
+}
+
+/** Reads nbformat 4 without running anything. Fields Jupyter writes are kept, so an unchanged file writes back the same. */
+export function parseIpynb(content: string): Pick<NotebookContent, 'nbformatMinor' | 'metadata' | 'cells'> {
+  if (Buffer.byteLength(content, 'utf8') > NOTEBOOK_LIMITS.fileBytes) throw new StoreError(`Notebooks are limited to ${NOTEBOOK_LIMITS.fileBytes / 1_000_000} MB.`, 413);
+  let notebook: Record<string, unknown> | null;
+  try { notebook = object(JSON.parse(content)); } catch { throw new StoreError('This file is not a notebook: it is not valid JSON.'); }
+  if (notebook?.nbformat !== 4 || !Array.isArray(notebook.cells)) throw new StoreError('ros.ai opens Jupyter notebooks in format 4, which Jupyter has written since 2015.');
+  if (notebook.cells.length > NOTEBOOK_LIMITS.cells) throw new StoreError(`Notebooks are limited to ${NOTEBOOK_LIMITS.cells} cells.`);
+  const seen = new Set<string>();
+  const cells = notebook.cells.map((raw, index): NotebookCell => {
+    const cell = object(raw), type = cell?.cell_type, source = text(cell?.source);
+    if (!cell || (type !== 'code' && type !== 'markdown' && type !== 'raw') || source === null) throw new StoreError(`Cell ${index + 1} is not a notebook cell ros.ai can read.`);
+    if (source.length > NOTEBOOK_LIMITS.cellSourceCharacters) throw new StoreError(`Cell ${index + 1} is longer than ${NOTEBOOK_LIMITS.cellSourceCharacters.toLocaleString('en-US')} characters.`);
+    const id = typeof cell.id === 'string' && cellIdSchema.safeParse(cell.id).success && !seen.has(cell.id) ? cell.id : newCellId();
+    seen.add(id);
+    const base = { id, source, metadata: object(cell.metadata) ?? {} };
+    if (type !== 'code') return { ...base, cell_type: type, ...(object(cell.attachments) ? { attachments: object(cell.attachments)! } : {}) };
+    const outputs = Array.isArray(cell.outputs) ? cell.outputs.flatMap(output => { const value = readOutput(output); return value ? [value] : []; }) : [];
+    return { ...base, cell_type: 'code', outputs, execution_count: Number.isSafeInteger(cell.execution_count) ? cell.execution_count as number : null };
+  });
+  const minor = notebook.nbformat_minor;
+  return { nbformatMinor: typeof minor === 'number' && Number.isSafeInteger(minor) && minor >= 0 ? minor : 5, metadata: object(notebook.metadata) ?? {}, cells };
+}
+
+// Python's str.splitlines(keepends=True), which Jupyter uses for multi-line fields.
+const lines = (value: string) => value.split(/(?<=\r\n|[\n\v\f\x1c-\x1e\x85\u2028\u2029]|\r(?!\n))/u).filter(Boolean);
+const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)
+  : object(value) ? Object.fromEntries(Object.keys(value as object).sort().map(key => [key, sorted((value as Record<string, unknown>)[key])])) : value;
+const outputHash = (output: NotebookOutput) => sha(JSON.stringify(sorted(output)));
+/** The notebook as Jupyter itself writes it (sorted keys, one-space indent, multi-line text as lists of lines),
+ * so Jupyter, VS Code and Git see ordinary files. Tables ros.ai keeps for saving results stay out of the file. */
+export function ipynb(notebook: Pick<NotebookContent, 'nbformatMinor' | 'metadata' | 'cells'>): string {
+  const bundle = (data: Record<string, unknown>) => Object.fromEntries(Object.entries(data).filter(([mime]) => mime !== 'text/csv')
+    .map(([mime, value]) => [mime, typeof value === 'string' && (mime.startsWith('text/') || mime === 'application/javascript' || mime === 'image/svg+xml') ? lines(value) : value]));
+  const output = (item: NotebookOutput) => item.output_type === 'stream' ? { ...item, text: lines(item.text) }
+    : item.output_type === 'error' ? item : { ...item, data: bundle(item.data) };
+  const cells = notebook.cells.map(cell => cell.cell_type === 'code'
+    ? { cell_type: 'code', execution_count: cell.execution_count ?? null, id: cell.id, metadata: cell.metadata, outputs: (cell.outputs ?? []).map(output), source: lines(cell.source) }
+    : { ...(cell.attachments ? { attachments: cell.attachments } : {}), cell_type: cell.cell_type, id: cell.id, metadata: cell.metadata, source: lines(cell.source) });
+  return `${JSON.stringify(sorted({ cells, metadata: notebook.metadata, nbformat: 4, nbformat_minor: Math.max(5, notebook.nbformatMinor) }), null, 1)}\n`;
+}
+
+/** What a cell output becomes when it is saved as a ros.ai result. */
+function resultFor(output: NotebookOutput): Pick<Artifact, 'kind' | 'content' | 'mediaType'> & { label: string; metadata?: Record<string, unknown> } {
+  if (output.output_type === 'stream') return { kind: 'result', content: output.text, mediaType: 'text/plain', label: 'Printed text' };
+  if (output.output_type === 'error') throw new StoreError('Errors are kept with the notebook; they cannot be saved as results.');
+  const data = output.data, png = data['image/png'], csv = data['text/csv'], svg = data['image/svg+xml'], plain = data['text/plain'];
+  if (typeof png === 'string' && /^[A-Za-z0-9+/\n\r]+={0,2}\s*$/u.test(png)) return { kind: 'plot', content: png.replace(/\s/gu, ''), mediaType: 'image/png', label: 'Figure', metadata: { contentEncoding: 'base64' } };
+  if (typeof csv === 'string') return { kind: 'dataset', content: csv, mediaType: 'text/csv', label: 'Table' };
+  if (typeof svg === 'string' && /^\s*<svg\b/u.test(svg) && !/<script|\son[a-z]+\s*=|javascript:/iu.test(svg)) return { kind: 'plot', content: svg, mediaType: 'image/svg+xml', label: 'Figure' };
+  if (typeof plain === 'string') {
+    const value = numberText(plain);
+    if (value !== null) return { kind: 'metric', content: JSON.stringify({ value: Number(value) }), mediaType: 'application/json', label: 'Value' };
+    return { kind: 'result', content: plain, mediaType: 'text/plain', label: 'Result' };
+  }
+  throw new StoreError('This output has no form ros.ai can save as a result yet.');
+}
+
+/** Notebook blocks: their cells, and one long-running Python per open notebook in the Docker sandbox. */
+export class NotebookService {
+  private readonly live = new Map<string, Live>();
+  /** Cells deleted in this session, by notebook, so undoing a delete brings their outputs back. */
+  private readonly removed = new Map<string, Map<string, NotebookCell>>();
+  private readonly listeners = new Map<string, Set<(event: NotebookEvent) => void>>();
+  private readonly stopListening: () => void;
+  private readonly docker: string;
+  private readonly owner: string;
+  private folders?: NotebookFolders;
+  private runtime?: { at: number; value: { id: string } | { reason: string } };
+  private closed = false;
+
+  constructor(private readonly store: Store, private readonly authority: Authority, options: { owner?: string; docker?: string } = {}) {
+    this.owner = options.owner ?? 'ros-ai';
+    this.docker = options.docker ?? 'docker';
+    removeLeftoverKernels(this.owner, this.docker);
+    // A removed or retyped Notebook block stops its Python.
+    this.stopListening = store.onCommit(projectId => this.prune(projectId));
+  }
+  useFolders(folders: NotebookFolders): void { this.folders = folders; }
+
+  private node(projectId: string, nodeId: string): CanvasNode {
+    if (this.closed) throw new StoreError('ros.ai is shutting down.', 503);
+    const node = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
+    if (!node || node.kind === 'group' || node.blockType !== 'notebook') throw new StoreError('Choose a Notebook block in this project.', 404);
+    return node;
+  }
+  private key(projectId: string, nodeId: string) { return `${projectId}:${nodeId}`; }
+  private entry(projectId: string, nodeId: string): Live {
+    const key = this.key(projectId, nodeId);
+    let live = this.live.get(key);
+    if (!live) { live = { key, projectId, nodeId, status: 'off', count: 0, queue: [], usedAt: Date.now() }; this.live.set(key, live); }
+    return live;
+  }
+
+  /** The block's notebook. A new block starts with one empty code cell; an older block's newest snapshot becomes its notebook. */
+  private content(projectId: string, nodeId: string): Stored {
+    const saved = this.store.record<Stored>(DOCUMENT, this.key(projectId, nodeId));
+    if (saved) return saved;
+    let parsed: ReturnType<typeof parseIpynb> | undefined;
+    const snapshot = this.store.listArtifacts(projectId).filter(item => item.nodeId === nodeId && item.kind === 'notebook').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (snapshot) try { parsed = parseIpynb(snapshot.content); } catch { /* an unreadable snapshot stays in the block's history */ }
+    const fresh: Stored = { nodeId, projectId, revision: 1, updatedAt: now(), ...(parsed ?? { nbformatMinor: 5, metadata: structuredClone(METADATA), cells: [{ id: newCellId(), cell_type: 'code', source: '', metadata: {}, outputs: [], execution_count: null }] }) };
+    this.persist(fresh, true);
+    return fresh;
+  }
+  /** Saves the notebook. The folder copy follows; the canvas card summary changes only with outputs or cells. */
+  private persist(content: Stored, outputsChanged: boolean, lastRun?: NotebookSummary['lastRun']): void {
+    this.store.saveRecord(DOCUMENT, this.key(content.projectId, content.nodeId), content.projectId, content);
+    const previous = this.store.record<NotebookSummary>(SUMMARY, this.key(content.projectId, content.nodeId));
+    const first = content.cells.find(cell => cell.source.trim()), excerpt = first && (first.cell_type === 'code' ? first.source.trim() : plainMarkdown(first.source));
+    const summary: NotebookSummary = { nodeId: content.nodeId, cells: content.cells.length, codeCells: content.cells.filter(cell => cell.cell_type === 'code').length,
+      ...(lastRun ?? previous?.lastRun ? { lastRun: lastRun ?? previous!.lastRun } : {}), ...(first && excerpt ? { excerpt: { kind: first.cell_type === 'code' ? 'code' : 'text', text: excerpt.slice(0, 400) } } : {}) };
+    if (outputsChanged) {
+      for (const cell of content.cells) for (const output of cell.outputs ?? []) {
+        if (output.output_type !== 'display_data' && output.output_type !== 'execute_result') continue;
+        if (typeof output.data['image/png'] === 'string') summary.figure = sha(output.data['image/png']);
+        const plain = output.data['text/plain'];
+        if (output.output_type === 'execute_result' && typeof plain === 'string' && plain.length <= 60 && !plain.includes('\n') && Object.keys(output.data).length === 1) summary.value = numberText(plain) ?? plain;
+      }
+    } else { if (previous?.figure) summary.figure = previous.figure; if (previous?.value) summary.value = previous.value; }
+    this.store.saveRecord(SUMMARY, this.key(content.projectId, content.nodeId), content.projectId, summary);
+    this.folders?.notebookChanged(content.projectId);
+  }
+  /** Outputs of the running cell are kept in memory until it finishes. */
+  private current(projectId: string, nodeId: string): NotebookContent {
+    const { fileHash: _, ...content } = this.content(projectId, nodeId), running = this.live.get(this.key(projectId, nodeId))?.running;
+    if (running) content.cells = content.cells.map(cell => cell.id === running.cellId && cell.cell_type === 'code' ? { ...cell, outputs: structuredClone(running.outputs), execution_count: null } : cell);
+    return content;
+  }
+
+  /** The notebook file for the project folder. `keep` names a file on disk that already matches, because ros.ai read it unchanged. */
+  file(projectId: string, nodeId: string): { bytes: Buffer; keep?: string } {
+    const content = this.content(projectId, nodeId);
+    return { bytes: Buffer.from(ipynb(content), 'utf8'), ...(content.fileHash ? { keep: content.fileHash } : {}) };
+  }
+  /** A notebook file read from the project folder, after the person saved it in Jupyter, VS Code or another app. */
+  fromFile(projectId: string, nodeId: string, path: string, content: string, hash: string): void {
+    this.node(projectId, nodeId);
+    this.replace(projectId, nodeId, parseIpynb(content), `${path} changed in another app`, hash);
+  }
+  private replace(projectId: string, nodeId: string, parsed: ReturnType<typeof parseIpynb>, reason: string, fileHash?: string): Stored {
+    const current = this.content(projectId, nodeId), pristine = current.revision === 1 && current.cells.every(cell => !cell.source.trim() && !cell.outputs?.length);
+    if (!pristine) this.store.saveRecord<Previous>(PREVIOUS, this.key(projectId, nodeId), projectId, { content: current, reason, at: now() });
+    const next: Stored = { nodeId, projectId, revision: current.revision + 1, updatedAt: now(), ...parsed, ...(fileHash ? { fileHash } : {}) };
+    this.persist(next, true);
+    this.emit(this.key(projectId, nodeId), { type: 'notebook', revision: next.revision, reason });
+    return next;
+  }
+
+  private async runtimeStatus(refresh = false): Promise<{ id: string } | { reason: string }> {
+    if (!refresh && this.runtime && Date.now() - this.runtime.at < 30_000) return this.runtime.value;
+    const value = await kernelImage(this.docker);
+    this.runtime = { at: Date.now(), value };
+    return value;
+  }
+  private kernelState(live?: Live): NotebookKernel {
+    return { status: live?.status ?? 'off', session: live?.kernel?.id ?? null, executionCount: live?.count ?? 0, ...(live?.message ? { message: live.message } : {}), ...(live?.info ?? {}) };
+  }
+  /** Notebook blocks in a project with a cell running or waiting to run. */
+  running(projectId: string): Set<string> {
+    return new Set([...this.live.values()].filter(live => live.projectId === projectId && (live.running || live.queue.length)).map(live => live.nodeId));
+  }
+  /** `check` asks Docker again, for example after the person started Docker Desktop. */
+  async state(projectId: string, nodeId: string, check = false): Promise<NotebookState> {
+    this.node(projectId, nodeId);
+    const live = this.live.get(this.key(projectId, nodeId)), runtime = await this.runtimeStatus(check), previous = this.store.record<Previous>(PREVIOUS, this.key(projectId, nodeId));
+    const file = this.folders?.notebookFile(projectId, nodeId) ?? null, notebook = this.current(projectId, nodeId);
+    const results = new Map(this.store.listArtifacts(projectId).filter(item => item.nodeId === nodeId && typeof item.metadata?.outputHash === 'string')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(item => [`${item.metadata!.cellId}/${item.metadata!.outputIndex}/${item.metadata!.outputHash}`, item.id]));
+    const saved: Record<string, string> = {};
+    if (results.size) for (const cell of notebook.cells) (cell.outputs ?? []).forEach((output, index) => {
+      const id = results.get(`${cell.id}/${index}/${outputHash(output)}`);
+      if (id) saved[`${cell.id}/${index}`] = id;
+    });
+    return { notebook, kernel: this.kernelState(live), mode: this.authority.mode(projectId, nodeId), saved,
+      queue: [...(live?.running ? [{ cellId: live.running.cellId, state: 'running' as const }] : []), ...(live?.queue ?? []).map(item => ({ cellId: item.cellId, state: 'queued' as const }))],
+      file, outputs: file ? `outputs/${file.split('/').at(-1)!.replace(/\.ipynb$/iu, '')}` : null,
+      runtime: 'id' in runtime ? { available: true } : { available: false, reason: runtime.reason },
+      ...(previous ? { previous: { reason: previous.reason, at: previous.at } } : {}) };
+  }
+
+  private static readonly saveSchema = z.object({ base: z.number().int().nonnegative(), client: z.string().max(64).optional(), cells: z.array(z.object({ id: cellIdSchema, cell_type: z.enum(['code', 'markdown', 'raw']),
+    source: z.string().max(NOTEBOOK_LIMITS.cellSourceCharacters), metadata: z.record(z.string(), z.unknown()).optional() }).strict()).max(NOTEBOOK_LIMITS.cells) }).strict();
+  /** Cell edits from the notebook screen. Outputs stay with their cell ids on the server. */
+  save(projectId: string, nodeId: string, supplied: unknown): { revision: number } {
+    this.node(projectId, nodeId);
+    const body = NotebookService.saveSchema.parse(supplied), current = this.content(projectId, nodeId);
+    if (body.base !== current.revision) throw new StoreError('This notebook changed in another window or app. Reload it to see the newest version.', 409);
+    if (new Set(body.cells.map(cell => cell.id)).size !== body.cells.length) throw new StoreError('Each cell needs its own id.');
+    const old = new Map(current.cells.map(cell => [cell.id, cell])), removed = this.removed.get(this.key(projectId, nodeId)) ?? new Map<string, NotebookCell>();
+    const cells = body.cells.map((edit): NotebookCell => {
+      const before = old.get(edit.id) ?? removed.get(edit.id), metadata = edit.metadata ?? before?.metadata ?? {};
+      if (edit.cell_type === 'code') return { id: edit.id, cell_type: 'code', source: edit.source, metadata, outputs: before?.cell_type === 'code' ? before.outputs ?? [] : [], execution_count: before?.cell_type === 'code' ? before.execution_count ?? null : null };
+      return { id: edit.id, cell_type: edit.cell_type, source: edit.source, metadata, ...(before?.attachments && before.cell_type === edit.cell_type ? { attachments: before.attachments } : {}) };
+    });
+    const shape = (list: NotebookCell[]) => JSON.stringify(list.map(cell => [cell.id, cell.cell_type, cell.source, cell.metadata]));
+    if (shape(cells) === shape(current.cells)) return { revision: current.revision };
+    const kept = new Set(cells.map(cell => cell.id));
+    for (const cell of current.cells) if (!kept.has(cell.id)) { removed.delete(cell.id); removed.set(cell.id, cell); }
+    for (const id of kept) removed.delete(id);
+    for (const id of [...removed.keys()].slice(0, Math.max(0, removed.size - 20))) removed.delete(id);
+    if (removed.size) this.removed.set(this.key(projectId, nodeId), removed); else this.removed.delete(this.key(projectId, nodeId));
+    const outputsChanged = cells.length !== current.cells.length || cells.some((cell, index) => cell.outputs?.length !== current.cells[index]?.outputs?.length);
+    const { fileHash: _, ...rest } = current, next: Stored = { ...rest, cells, revision: current.revision + 1, updatedAt: now() };
+    this.persist(next, outputsChanged);
+    this.emit(this.key(projectId, nodeId), { type: 'notebook', revision: next.revision, reason: 'Edited in another window', ...(body.client ? { client: body.client } : {}) });
+    return { revision: next.revision };
+  }
+
+  private static readonly runSchema = z.object({ base: z.number().int().nonnegative().optional(), client: z.string().max(64).optional(), cells: z.array(z.unknown()).optional(),
+    run: z.array(cellIdSchema).min(1).max(NOTEBOOK_LIMITS.cells), approve: z.record(cellIdSchema, z.string().regex(/^[a-f0-9]{64}$/u)).optional() }).strict();
+  /** Queues cells in order. Each one passes the block's permission choice first; the first that needs approval stops the queue there. */
+  run(projectId: string, nodeId: string, supplied: unknown): NotebookRunResult {
+    this.node(projectId, nodeId);
+    const body = NotebookService.runSchema.parse(supplied);
+    if (body.cells) {
+      if (body.base === undefined) throw new StoreError('Send the notebook revision with its cells.');
+      this.save(projectId, nodeId, { base: body.base, cells: body.cells, ...(body.client ? { client: body.client } : {}) });
+    }
+    const content = this.content(projectId, nodeId), live = this.entry(projectId, nodeId), mode = this.authority.mode(projectId, nodeId);
+    if (this.authority.policy(projectId).stopped) throw new StoreError('Research is stopped in this project. Resume it before running cells.', 409);
+    const queued: string[] = [];
+    let approval: NotebookRunResult['approval'];
+    for (const cellId of body.run) {
+      const cell = content.cells.find(item => item.id === cellId && item.cell_type === 'code');
+      if (!cell) throw new StoreError('That cell is not a code cell in this notebook.', 404);
+      if (!cell.source.trim() || live.queue.some(item => item.cellId === cellId)) continue;
+      const fingerprint = sha(JSON.stringify([projectId, nodeId, cellId, sha(cell.source)]));
+      // %matplotlib inline and similar setup lines do nothing in ros.ai, so the reviewer reads them as pass.
+      const reviewable = cell.source.replace(/^(\s*)%(?:matplotlib|config|load_ext|reload_ext|autoreload)\b.*$/gmu, '$1pass');
+      // Each cell is reviewed with the names the cells before it leave, as an error cancels every cell after it.
+      const last = live.queue.at(-1) ?? live.running, before = (last ? last.names : live.settled) ?? {};
+      const reviewed = mode === 'review' ? reviewNotebookCell(reviewable, before) : undefined;
+      const decision = this.authority.review(projectId, { kind: 'experiment', nodeId, fingerprint, code: cell.source, reviewed });
+      if (decision.outcome === 'deny') throw new StoreError(decision.reason, 409);
+      const approved = decision.outcome === 'escalate' && body.approve?.[cellId] === fingerprint;
+      if (decision.outcome === 'escalate' && !approved) { approval = { cellId, fingerprint, reason: decision.reason }; break; }
+      // Names carry over only while every cell in the session was reviewed or is known not to change them.
+      const names = mode !== 'review' ? undefined : approved ? forgetNotebookNames(reviewable, before) : reviewed!.names;
+      live.queue.push({ execution: randomUUID(), cellId, source: cell.source, reviewable, ...(names ? { names } : {}), queuedAt: now(), approval: { mode, outcome: approved ? 'approved' : 'allow', reason: decision.reason } });
+      queued.push(cellId);
+      this.emit(live.key, { type: 'cell', cellId, state: 'queued' });
+    }
+    if (queued.length) {
+      live.usedAt = Date.now();
+      if (!live.kernel && live.status === 'off') void this.launch(live);
+      else this.pump(live);
+    }
+    return { revision: content.revision, queued, ...(approval ? { approval } : {}) };
+  }
+
+  private async launch(live: Live): Promise<void> {
+    live.status = 'starting'; live.message = undefined; live.stopMessage = undefined;
+    this.emitKernel(live);
+    const fail = (message: string) => { live.status = 'off'; live.message = message; this.cancelQueue(live); this.emitKernel(live); };
+    const image = await this.runtimeStatus(true);
+    if (this.closed || live.status !== 'starting' || live.kernel) return;
+    if ('reason' in image) return fail(image.reason);
+    const others = [...this.live.values()].filter(item => item !== live && item.kernel);
+    if (others.length >= NOTEBOOK_LIMITS.runningKernels) {
+      const spare = others.filter(item => !item.running && !item.queue.length).sort((a, b) => a.usedAt - b.usedAt)[0];
+      if (!spare) return fail(`${NOTEBOOK_LIMITS.runningKernels} notebooks are already running cells. Wait for one to finish, then run this cell again.`);
+      await this.stopKernel(spare, `Python stopped to make room for another notebook (ros.ai keeps up to ${NOTEBOOK_LIMITS.runningKernels} running). Its variables were cleared.`);
+      if (this.closed || live.status !== 'starting') return;
+    }
+    let folder: KernelFolder | undefined;
+    try {
+      folder = this.folders?.notebookFolder(live.projectId, live.nodeId) ?? undefined;
+      // A server running as root runs Python as nobody, which must be able to write the outputs folder.
+      if (folder && process.getuid?.() === 0) chmodSync(folder.outputsPath, 0o777);
+    } catch (error) { return fail(`The project folder could not be prepared: ${error instanceof Error ? error.message : String(error)}`); }
+    const kernel: NotebookKernelProcess = new NotebookKernelProcess({ image: image.id, owner: this.owner, docker: this.docker, folder,
+      onMessage: message => this.message(live, kernel, message), onExit: exit => this.exit(live, kernel, exit) });
+    live.kernel = kernel; live.folder = folder; live.count = 0; live.info = undefined;
+    kernel.start();
+    live.startup = setTimeout(() => { if (live.kernel === kernel && live.status === 'starting') void kernel.stop('Python did not start within 90 seconds. Check that Docker Desktop is running and has enough memory.'); }, START_MS);
+  }
+
+  private message(live: Live, kernel: NotebookKernelProcess, message: KernelMessage): void {
+    if (live.kernel !== kernel) return;
+    if (message.type === 'ready') {
+      clearTimeout(live.startup);
+      live.info = { python: message.python, libraries: message.libraries, cwd: message.cwd };
+      live.status = 'idle';
+      this.emitKernel(live);
+      this.pump(live);
+      return;
+    }
+    const running = live.running;
+    if (!running || message.id !== running.execution) return;
+    if (message.type === 'stream') {
+      const last = running.outputs.at(-1);
+      if (last?.output_type === 'stream' && last.name === message.name) last.text += message.text;
+      else running.outputs.push({ output_type: 'stream', name: message.name, text: message.text });
+      this.emit(live.key, { type: 'stream', cellId: running.cellId, name: message.name, text: message.text });
+    } else if (message.type === 'display') {
+      // Rich output is kept as data. Only images, tables and text are ever shown, never as HTML.
+      const data = Object.fromEntries(Object.entries(message.data).filter(([mime, value]) => isJson(mime) || typeof value === 'string'));
+      const output: NotebookOutput = message.result ? { output_type: 'execute_result', data, metadata: message.metadata, execution_count: running.count } : { output_type: 'display_data', data, metadata: message.metadata };
+      running.outputs.push(output);
+      this.emit(live.key, { type: 'output', cellId: running.cellId, output });
+    } else if (message.type === 'clear') {
+      running.outputs = [];
+      this.emit(live.key, { type: 'clear', cellId: running.cellId });
+    } else this.finish(live, message.status, message.error);
+  }
+
+  private pump(live: Live): void {
+    if (!live.kernel || live.status === 'starting' || live.running || this.closed) return;
+    const next = live.queue.shift();
+    if (!next) { if (live.status !== 'idle') { live.status = 'idle'; this.emitKernel(live); } this.touch(live); return; }
+    live.count += 1;
+    live.running = { ...next, count: live.count, session: live.kernel.id, startedAt: now(), outputs: [] };
+    if (live.status !== 'busy') { live.status = 'busy'; this.emitKernel(live); }
+    this.emit(live.key, { type: 'cell', cellId: next.cellId, state: 'running', executionCount: live.count });
+    if (!live.kernel.execute({ id: next.execution, code: next.source, count: live.count })) this.finish(live, 'error', { ename: 'Stopped', evalue: 'Python stopped before this cell could run.', traceback: [] });
+  }
+
+  /** A finished cell: its outputs are saved into the notebook and its run is recorded. */
+  private finish(live: Live, status: Execution['status'], error?: { ename: string; evalue: string; traceback: string[] }): void {
+    const run = live.running;
+    if (!run) return;
+    live.running = undefined;
+    // A cell that stopped part-way may have bound some of its names, so the reviewer stops trusting them.
+    try { live.settled = status === 'ok' || !run.names ? run.names : forgetNotebookNames(run.reviewable, live.settled ?? {}); } catch { live.settled = undefined; }
+    if (error) {
+      const output: NotebookOutput = { output_type: 'error', ename: error.ename, evalue: error.evalue, traceback: error.traceback };
+      run.outputs.push(output);
+      this.emit(live.key, { type: 'output', cellId: run.cellId, output });
+    }
+    const endedAt = now();
+    try {
+      const content = this.content(live.projectId, live.nodeId), cell = content.cells.find(item => item.id === run.cellId && item.cell_type === 'code');
+      if (cell) { cell.outputs = run.outputs; cell.execution_count = run.count; }
+      const { fileHash: _, ...rest } = content;
+      this.persist(rest, true, { at: endedAt, status, executionCount: run.count });
+      const record: Execution = { id: run.execution, projectId: live.projectId, nodeId: live.nodeId, cellId: run.cellId, session: run.session, executionCount: run.count,
+        source: run.source, sourceHash: sha(run.source), status, approval: run.approval, queuedAt: run.queuedAt, startedAt: run.startedAt, endedAt,
+        outputs: run.outputs.map(output => ({ type: output.output_type, ...('data' in output ? { mimes: Object.keys(output.data) } : {}), hash: outputHash(output) })) };
+      this.store.saveRecord(EXECUTION, record.id, live.projectId, record);
+    } catch { /* the project or block is gone; nothing is left to save into */ }
+    this.emit(live.key, { type: 'cell', cellId: run.cellId, state: 'done', executionCount: run.count, status });
+    // As in Jupyter, an error or Stop cancels the cells queued after it.
+    if (status !== 'ok') this.cancelQueue(live);
+    this.pump(live);
+  }
+  private cancelQueue(live: Live): void {
+    for (const item of live.queue.splice(0)) this.emit(live.key, { type: 'cell', cellId: item.cellId, state: 'cancelled' });
+  }
+
+  private exit(live: Live, kernel: NotebookKernelProcess, exit: KernelExit): void {
+    if (live.kernel !== kernel) return;
+    clearTimeout(live.startup); clearTimeout(live.idle);
+    const starting = live.status === 'starting';
+    const reason = exit.stopped ? live.stopMessage : starting ? `Python could not start in Docker${exit.detail ? `: ${exit.detail}` : '.'}`
+      : exit.code === 137 || exit.signal === 'SIGKILL' ? 'Python stopped because it ran out of memory (a notebook can use 2 GB), or Docker stopped it. Its variables were cleared; run the cells again.'
+      : `Python stopped unexpectedly${exit.code === null ? '' : ` (exit code ${exit.code})`}. Its variables were cleared; run the cells again.${exit.detail && !exit.detail.startsWith('Python') ? ` ${exit.detail.slice(-300)}` : ''}`;
+    live.kernel = undefined; live.status = 'off'; live.message = reason; live.count = 0; live.info = undefined;
+    this.cancelQueue(live);
+    if (live.running) this.finish(live, 'error', { ename: 'Stopped', evalue: reason ?? 'Python was restarted before this cell finished.', traceback: [] });
+    live.settled = undefined;
+    if (live.folder) { try { this.folders?.releaseNotebookFolder(live.projectId, live.folder); } catch { /* an outputs folder in use stays */ } live.folder = undefined; }
+    this.emitKernel(live);
+  }
+  private stopKernel(live: Live, message?: string): Promise<void> {
+    clearTimeout(live.idle);
+    live.stopMessage = message;
+    return live.kernel?.stop() ?? Promise.resolve();
+  }
+  private touch(live: Live): void {
+    clearTimeout(live.idle);
+    live.usedAt = Date.now();
+    live.idle = setTimeout(() => { if (!live.running && !live.queue.length) void this.stopKernel(live, `Python stopped after ${NOTEBOOK_LIMITS.idleStopMinutes} minutes without use, so its variables were cleared. Run the cells again to continue.`); }, IDLE_MS);
+    live.idle.unref();
+  }
+
+  interrupt(projectId: string, nodeId: string): NotebookKernel {
+    this.node(projectId, nodeId);
+    const live = this.live.get(this.key(projectId, nodeId));
+    if (live) { this.cancelQueue(live); if (live.running) live.kernel?.interrupt(); }
+    return this.kernelState(live);
+  }
+  async restart(projectId: string, nodeId: string): Promise<NotebookKernel> {
+    this.node(projectId, nodeId);
+    const live = this.entry(projectId, nodeId);
+    this.cancelQueue(live);
+    await this.stopKernel(live);
+    if (!this.closed && !live.kernel && live.status === 'off') { live.usedAt = Date.now(); await this.launch(live); }
+    return this.kernelState(live);
+  }
+  /** Clears outputs and run numbers, for some cells or all of them. */
+  clear(projectId: string, nodeId: string, supplied: unknown): { revision: number } {
+    this.node(projectId, nodeId);
+    const { cellIds } = z.object({ cellIds: z.array(cellIdSchema).max(NOTEBOOK_LIMITS.cells).optional() }).strict().parse(supplied ?? {});
+    const content = this.content(projectId, nodeId), running = this.live.get(this.key(projectId, nodeId))?.running?.cellId;
+    for (const cell of content.cells) if (cell.cell_type === 'code' && (!cellIds || cellIds.includes(cell.id)) && cell.id !== running) { cell.outputs = []; cell.execution_count = null; }
+    const { fileHash: _, ...rest } = content;
+    this.persist(rest, true);
+    for (const cell of content.cells) if (cell.cell_type === 'code' && (!cellIds || cellIds.includes(cell.id)) && cell.id !== running) this.emit(this.key(projectId, nodeId), { type: 'clear', cellId: cell.id });
+    return { revision: content.revision };
+  }
+  /** A .ipynb the person chose. The notebook it replaces can be brought back. */
+  import(projectId: string, nodeId: string, supplied: unknown): { revision: number } {
+    this.node(projectId, nodeId);
+    const body = z.object({ name: z.string().min(1).max(300), content: z.string().min(1) }).strict().parse(supplied);
+    if (!/\.ipynb$/iu.test(body.name)) throw new StoreError('Choose a Jupyter notebook (.ipynb) file.');
+    return { revision: this.replace(projectId, nodeId, parseIpynb(body.content), `Imported ${body.name.split(/[\\/]/u).at(-1)}`).revision };
+  }
+  restore(projectId: string, nodeId: string): { revision: number } {
+    this.node(projectId, nodeId);
+    const previous = this.store.record<Previous>(PREVIOUS, this.key(projectId, nodeId));
+    if (!previous) throw new StoreError('There is no earlier version to bring back.', 404);
+    const current = this.content(projectId, nodeId), { fileHash: _, ...restored } = previous.content;
+    const next: Stored = { ...restored, revision: current.revision + 1, updatedAt: now() };
+    this.store.removeRecord(PREVIOUS, this.key(projectId, nodeId), projectId);
+    this.persist(next, true);
+    this.emit(this.key(projectId, nodeId), { type: 'notebook', revision: next.revision, reason: 'Brought back the earlier version' });
+    return { revision: next.revision };
+  }
+
+  /** Saves one cell output as a ros.ai result, so it can be used as input or in a report. */
+  saveOutput(projectId: string, nodeId: string, supplied: unknown): Artifact {
+    const node = this.node(projectId, nodeId);
+    const body = z.object({ cellId: cellIdSchema, index: z.number().int().nonnegative(), title: z.string().trim().min(1).max(200).optional() }).strict().parse(supplied);
+    const content = this.current(projectId, nodeId), cell = content.cells.find(item => item.id === body.cellId && item.cell_type === 'code'), output = cell?.outputs?.[body.index];
+    if (!cell || !output) throw new StoreError('That output is no longer in the notebook.', 404);
+    if (this.live.get(this.key(projectId, nodeId))?.running?.cellId === cell.id) throw new StoreError('Wait for the cell to finish before saving its output.', 409);
+    const saved = resultFor(output), sourceHash = sha(cell.source), path = this.folders?.notebookFile(projectId, nodeId) ?? null;
+    const execution = this.store.records<Execution>(EXECUTION, projectId).filter(item => item.nodeId === nodeId && item.cellId === cell.id && item.executionCount === cell.execution_count).at(-1);
+    // An output that came with a notebook file, or was changed in another app, is not one ros.ai saw this cell make.
+    const ran = Boolean(execution && execution.outputs[body.index]?.hash === outputHash(output));
+    const provenance = { notebookPath: path, cellId: cell.id, executionCount: cell.execution_count ?? null, sourceHash, session: ran ? execution!.session : null, executionId: ran ? execution!.id : null,
+      outputIndex: body.index, outputHash: outputHash(output), sourceMatchesRun: ran ? execution!.sourceHash === sourceHash : null };
+    return this.store.atomic(() => {
+      const at = now(), project = this.store.getProject(projectId);
+      const run: Run = { id: randomUUID(), projectId, nodeId, request: `Save ${saved.label.toLowerCase()} from ${node.title}, cell [${cell.execution_count ?? ' '}]`, useSearch: false, status: 'running', createdAt: at, startedAt: at,
+        projectRevision: project.revision, node: structuredClone(node), inputs: [], messages: [], provider: 'local', model: 'notebook-python', modelVersion: null,
+        configuration: { kind: 'notebook-cell', ...provenance }, tools: [{ name: 'notebook_python', sourceHash, session: provenance.session }],
+        events: [{ at, type: 'notebook-output', message: ran ? 'Saved a notebook cell output as a result. The cell ran in ros.ai\'s Docker sandbox; no model was called.'
+          : 'Saved a notebook cell output as a result. The output came with the notebook file or was changed in another app; ros.ai did not run it.' }], artifactIds: [],
+        cost: { estimatedUsd: 0, basis: 'Local execution only; no provider request or cloud charge.' } };
+      this.store.createRun(run);
+      const artifact = this.store.addArtifact({ projectId, nodeId, runId: run.id, kind: saved.kind, title: body.title ?? `${node.title} · ${typeof cell.execution_count === 'number' ? `cell ${cell.execution_count} · ` : ''}${saved.label}`, content: saved.content, mediaType: saved.mediaType,
+        capture: ran ? 'full-content' : 'external', metadata: { ...saved.metadata, origin: ran ? 'notebook-cell-output' : 'external-notebook-output', executionRole: 'output', ...provenance } });
+      this.store.updateRun(run.id, { status: 'completed', endedAt: at, artifactIds: [artifact.id] });
+      return artifact;
+    });
+  }
+  /** The figure the canvas card shows, by the hash in the notebook summary. */
+  figure(projectId: string, nodeId: string, hash: string): Buffer {
+    this.node(projectId, nodeId);
+    for (const cell of this.content(projectId, nodeId).cells) for (const output of cell.outputs ?? [])
+      if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && typeof output.data['image/png'] === 'string' && sha(output.data['image/png']) === hash)
+        return Buffer.from(output.data['image/png'].replace(/\s/gu, ''), 'base64');
+    throw new StoreError('That figure is no longer in the notebook.', 404);
+  }
+
+  subscribe(projectId: string, nodeId: string, listener: (event: NotebookEvent) => void): () => void {
+    this.node(projectId, nodeId);
+    const key = this.key(projectId, nodeId), set = this.listeners.get(key) ?? new Set();
+    set.add(listener); this.listeners.set(key, set);
+    return () => { set.delete(listener); if (!set.size) this.listeners.delete(key); };
+  }
+  private emit(key: string, event: NotebookEvent): void {
+    for (const listener of this.listeners.get(key) ?? []) try { listener(event); } catch { /* a closed connection is removed on close */ }
+  }
+  private emitKernel(live: Live): void { this.emit(live.key, { type: 'kernel', kernel: this.kernelState(live) }); }
+
+  private prune(projectId: string): void {
+    let nodes: CanvasNode[] = [];
+    try { nodes = this.store.getProject(projectId).canvas.nodes; } catch { /* a project in Trash keeps no running notebooks */ }
+    for (const live of this.live.values()) {
+      if (live.projectId !== projectId || nodes.some(node => node.id === live.nodeId && node.blockType === 'notebook' && node.kind !== 'group')) continue;
+      this.cancelQueue(live);
+      void this.stopKernel(live);
+      this.live.delete(live.key);
     }
   }
+  async shutdown(): Promise<void> {
+    this.closed = true;
+    this.stopListening();
+    for (const set of this.listeners.values()) for (const listener of set) try { listener({ type: 'kernel', kernel: { status: 'off', session: null, executionCount: 0, message: 'ros.ai stopped.' } }); } catch { /* closing */ }
+    await Promise.all([...this.live.values()].map(live => { clearTimeout(live.idle); clearTimeout(live.startup); return live.kernel?.stop(); }));
+  }
 }
 
-/** Only literal loopback destinations; no URL credentials, tokens, queries or redirects. */
-export function notebookEndpoint(supplied:string):string {
-  let url:URL;try{url=new URL(supplied);}catch{throw new StoreError('Enter a local Jupyter base URL, such as http://127.0.0.1:8888/.');}
-  if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash) {
-    throw new StoreError('Jupyter must use a literal loopback base URL without credentials, query parameters or a token. Enter the token separately.');
-  }
-  const port=Number(url.port||(url.protocol==='https:'?443:80));
-  if(port<1024||port>65535)throw new StoreError('Use an explicit local Jupyter port from 1024 to 65535.');
-  if(url.pathname.split('/').some(segment=>{try{return ['.','..'].includes(decodeURIComponent(segment))||/[\\\u0000-\u001f]/u.test(decodeURIComponent(segment));}catch{return true;}}))throw new StoreError('Use a valid Jupyter base path.');
-  return url.origin+url.pathname.replace(/\/?$/u,'/');
-}
-export function notebookPath(supplied:string):string {
-  if(!supplied||supplied.length>1000||supplied.startsWith('/')||/[\\\u0000-\u001f]/u.test(supplied)||supplied.split('/').some(segment=>!segment||segment==='.'||segment==='..')||!supplied.toLowerCase().endsWith('.ipynb')) {
-    throw new StoreError('Choose a relative .ipynb path inside the connected Jupyter root, without parent traversal.');
-  }
-  return supplied;
-}
-const encodedPath=(path:string)=>path.split('/').map(encodeURIComponent).join('/');
-const connectSchema=z.object({endpoint:z.string().min(1).max(1200),token:z.string().min(8).max(4096).regex(/^[A-Za-z0-9._~-]+$/u).optional(),
-  interface:z.enum(['lab','notebook']).default('lab'),name:z.string().trim().min(1).max(120).default('Local Jupyter'),path:z.string().min(1).max(1000)}).strict();
-const png = (supplied:string):string|null => {
-  const content=supplied.replace(/\s/gu,'');
-  if(content.length>NOTEBOOK_LIMITS.outputBytes||!/^[A-Za-z0-9+/]+={0,2}$/u.test(content)||content.length%4!==0)return null;
-  const data=Buffer.from(content,'base64');
-  if(data.length<33||!data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||data.toString('ascii',12,16)!=='IHDR')return null;
-  const width=data.readUInt32BE(16),height=data.readUInt32BE(20);
-  return width>0&&height>0&&width<=10000&&height<=10000&&width*height<=16_000_000?content:null;
-};
-const safeSvg = (content:string):boolean => {
-  if(!/^\s*<svg\b/u.test(content)||!/<\/svg>\s*$/u.test(content)||/<[!?]|\son[a-z]+\s*=|javascript:|data:|\b(?:src|style)\s*=|<style\b/iu.test(content))return false;
-  const tags=[...content.matchAll(/<\/?([A-Za-z][A-Za-z0-9:-]*)\b/gu)].map(match=>match[1]);
-  if(tags.some(tag=>!['svg','g','defs','path','rect','circle','ellipse','line','polyline','polygon','text','tspan','clipPath','marker','pattern','linearGradient','radialGradient','stop','title','desc','use'].includes(tag)))return false;
-  if([...content.matchAll(/(?:href|xlink:href)\s*=\s*([^\s>]+)/giu)].some(match=>!/^['"]#[A-Za-z0-9_.:-]+['"]$/u.test(match[1])))return false;
-  return !/url\(\s*[^#\s]/iu.test(content);
-};
-function output(value:unknown,index:number):Output {
-  const item=object(value),type=item?.output_type;
-  let kind:NotebookOutputPreview['kind']='unsupported',artifactKind:Artifact['kind']='result',content=JSON.stringify(value),mediaType='application/json',title=`Output ${index+1}`,reason:string|undefined;
-  if(type==='stream'&&text(item?.text)!==null){kind='text';artifactKind='log';content=text(item?.text)!;mediaType='text/plain';title=item?.name==='stderr'?'Saved stderr':'Saved stdout';}
-  else if(type==='error') {kind='text';artifactKind='log';content=[label(item?.ename,100),label(item?.evalue,4000),text(item?.traceback)].filter(Boolean).join('\n');mediaType='text/plain';title='Saved notebook error';}
-  else if(type==='display_data'||type==='execute_result') {
-    const data=object(item?.data),csv=text(data?.['text/csv']),image=text(data?.['image/png']),svg=text(data?.['image/svg+xml']),plain=text(data?.['text/plain']);
-    if(csv!==null&&csv!==undefined){try{parseCsv(csv,true);kind='csv';artifactKind='dataset';content=csv;mediaType='text/csv';title='Saved CSV table';}catch{reason='Invalid CSV remains an inert JSON output.';}}
-    else if(image){const validated=png(image);if(validated){kind='figure';artifactKind='plot';content=validated;mediaType='image/png';title='Saved PNG figure';}else reason='PNG exceeds image limits or has an unsupported header.';}
-    else if(svg&&safeSvg(svg)){kind='figure';artifactKind='plot';content=svg;mediaType='image/svg+xml';title='Saved SVG figure';}
-    else if(Object.hasOwn(data??{},'application/json')){kind='json';content=JSON.stringify(data!['application/json'],null,2);mediaType='application/json';title='Saved JSON output';}
-    else if(plain!==null&&plain!==undefined){kind='text';artifactKind='log';content=plain;mediaType='text/plain';title='Saved text representation';reason='Other representations remain in the exact notebook snapshot; HTML/scripts are never rendered.';}
-    else reason='Unsupported representations can be captured as an inert JSON download; they are not executed or rendered.';
-  } else reason='Unsupported notebook output can be captured as inert JSON only.';
-  const capturable=bytes(content)<=NOTEBOOK_LIMITS.outputBytes;
-  if(!capturable)reason=`This output exceeds the ${NOTEBOOK_LIMITS.outputBytes.toLocaleString()}-byte capture limit.`;
-  const truncated=kind!=='figure'&&content.length>NOTEBOOK_LIMITS.previewCharacters;
-  return {kind:artifactKind,content,mediaType,metadata:mediaType==='image/png'?{contentEncoding:'base64'}:undefined,
-    preview:{index,kind,title,mediaType,content:kind==='figure'?(capturable?content:undefined):content.slice(0,NOTEBOOK_LIMITS.previewCharacters),capturable,...(reason?{reason}:{}),...(truncated?{truncated:true}:{})}};
-}
-
-/** Parse bounded nbformat 4 without executing code, markup, attachments or outputs. */
-export function inspectNotebookSource(content:string,token?:string):Parsed {
-  if(bytes(content)>NOTEBOOK_LIMITS.snapshotBytes)throw new StoreError(`Notebook snapshots are limited to ${NOTEBOOK_LIMITS.snapshotBytes.toLocaleString()} bytes.`);
-  assertNotebookCredentialAbsent(content,token);
-  let document:Record<string,unknown>|null;try{document=object(JSON.parse(content));}catch{throw new StoreError('Upload valid notebook JSON.');}
-  if(document?.nbformat!==4||!Array.isArray(document.cells)||document.cells.length>NOTEBOOK_LIMITS.cells)throw new StoreError(`Use nbformat 4 with no more than ${NOTEBOOK_LIMITS.cells} cells.`);
-  const rawCells=document.cells,counts=new Map<string,number>();
-  for(const raw of rawCells){const cell=object(raw);if(typeof cell?.id==='string')counts.set(cell.id,(counts.get(cell.id)??0)+1);}
-  const allOutputs:Output[][]=[];
-  const cells=rawCells.map((raw,index):NotebookCellPreview=>{
-    const cell=object(raw),source=text(cell?.source);
-    if(!cell||!['code','markdown','raw'].includes(String(cell.cell_type))||source===null||source.length>NOTEBOOK_LIMITS.cellSourceCharacters)throw new StoreError('Notebook has an unsupported cell or oversized source.');
-    const cellId=typeof cell.id==='string'&&/^[A-Za-z0-9_-]{1,64}$/u.test(cell.id)&&counts.get(cell.id)===1?cell.id:null;
-    const outputs=cell.cell_type==='code'?cell.outputs??[]:[];
-    if(!Array.isArray(outputs)||outputs.length>NOTEBOOK_LIMITS.outputsPerCell)throw new StoreError('Notebook cell has too many outputs.');
-    const described=outputs.map(output);allOutputs.push(described);
-    const executionCount=typeof cell.execution_count==='number'&&Number.isSafeInteger(cell.execution_count)&&cell.execution_count>=0?cell.execution_count:null;
-    return {index,id:cellId,locator:cellId?`cell-id:${cellId}`:`cell-index:${index}`,cellType:cell.cell_type as NotebookCellPreview['cellType'],source,sourceHash:hash(source),executionCount,outputs:described.map(result=>result.preview)};
+export function attachNotebookRoutes(app: Express, store: Store, authority: Authority, options: { owner?: string } = {}): NotebookService {
+  const service = new NotebookService(store, authority, options);
+  app.locals.notebooks = service;
+  const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), owned = (req: Request) => [id.parse(req.params.id), id.parse(req.params.nodeId)] as const;
+  app.get(NOTEBOOK_ROUTE, async (req, res) => res.json(await service.state(...owned(req), req.query.check === '1')));
+  app.put(NOTEBOOK_ROUTE, (req, res) => res.json(service.save(...owned(req), req.body)));
+  app.post(`${NOTEBOOK_ROUTE}/run`, (req, res) => res.json(service.run(...owned(req), req.body)));
+  app.post(`${NOTEBOOK_ROUTE}/interrupt`, (req, res) => res.json(service.interrupt(...owned(req))));
+  app.post(`${NOTEBOOK_ROUTE}/restart`, async (req, res) => res.json(await service.restart(...owned(req))));
+  app.post(`${NOTEBOOK_ROUTE}/clear`, (req, res) => res.json(service.clear(...owned(req), req.body)));
+  app.post(`${NOTEBOOK_ROUTE}/import`, (req, res) => res.status(201).json(service.import(...owned(req), req.body)));
+  app.post(`${NOTEBOOK_ROUTE}/restore`, (req, res) => res.json(service.restore(...owned(req))));
+  app.post(`${NOTEBOOK_ROUTE}/outputs`, (req, res) => res.status(201).json(service.saveOutput(...owned(req), req.body)));
+  app.get(`${NOTEBOOK_ROUTE}/figure`, (req, res) => {
+    const image = service.figure(...owned(req), z.string().regex(/^[a-f0-9]{64}$/u).parse(req.query.h));
+    // Addressed by its hash, so the browser may keep it.
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.type('png').send(image);
   });
-  const metadata=object(document.metadata),kernel=object(metadata?.kernelspec),language=object(metadata?.language_info);
-  return {cells,outputs:allOutputs,kernelName:label(kernel?.name),language:label(language?.name),warnings:[...warnings,
-    ...(cells.some(cell=>!cell.id)?['Some cells have no unique stable ID; their locator is valid only within this exact snapshot.']:[])]};
-}
-
-export class NotebookService {
-  private readonly active=new Map<string,AbortController>();
-  private closed=false;
-  constructor(private readonly store:Store){}
-  private node(projectId:string,nodeId:string):CanvasNode {if(this.closed)throw new StoreError('Notebook service is shutting down.',503);const node=this.store.getProject(projectId).canvas.nodes.find(node=>node.id===nodeId);if(!node||node.blockType!=='notebook')throw new StoreError('Choose a Notebook block in this project.',404);return node;}
-  private session(projectId:string,nodeId:string):Session|null {
-    const node=this.node(projectId,nodeId),session=node.notebook?.sessionId?this.store.globalRecord<Session>('notebook-session-private',node.notebook.sessionId):undefined;
-    if(session&&(session.projectId!==projectId||session.nodeId!==nodeId))throw new StoreError('Notebook connection does not belong to this block.');
-    return session??null;
-  }
-  private publicSession(session:Session):NotebookSessionStatus {return {id:session.id,name:session.name,endpoint:session.endpoint,interface:session.interface,tokenConfigured:Boolean(session.token),
-    available:session.disabled?false:session.available,checkedAt:session.checkedAt,reason:session.disabled?'Connection was disconnected. Reconnect deliberately.':session.reason,runtimeOwner:'user-managed-jupyter',isolation:'external-unverified'};}
-  private summaries(projectId:string,nodeId:string){return this.store.records<SnapshotRecord>('notebook-snapshot',projectId).filter(snapshot=>snapshot.nodeId===nodeId).reverse();}
-  snapshot(projectId:string,nodeId:string,snapshotId:string):NotebookSnapshot {
-    this.node(projectId,nodeId);const saved=this.store.record<SnapshotRecord>('notebook-snapshot',snapshotId);
-    if(!saved||saved.projectId!==projectId||saved.nodeId!==nodeId)throw new StoreError('Notebook snapshot not found in this block.',404);
-    const artifact=this.store.getArtifact(saved.sourceArtifactId);
-    if(artifact.projectId!==projectId||artifact.nodeId!==nodeId||artifact.hash!==saved.hash||artifact.kind!=='notebook')throw new StoreError('Notebook source version failed its integrity check.',500);
-    return {...saved,cells:inspectNotebookSource(artifact.content,this.session(projectId,nodeId)?.token).cells};
-  }
-  state(projectId:string,nodeId:string):NotebookState {
-    const session=this.session(projectId,nodeId),snapshots=this.summaries(projectId,nodeId).slice(0,20),latest=snapshots[0];
-    return {session:session?this.publicSession(session):null,snapshot:latest?this.snapshot(projectId,nodeId,latest.id):null,snapshots,
-      captures:this.store.records<NotebookCaptureSummary&{nodeId:string}>('notebook-output-capture',projectId).filter(capture=>capture.nodeId===nodeId).slice(-40).reverse().map(({nodeId:_,...capture})=>capture),limits:NOTEBOOK_LIMITS,
-      reason:session?'Open Jupyter to edit/run with its own permissions. Save there, then deliberately read a new snapshot here.':'Connect an existing local Jupyter server to open/use a notebook. Uploading a snapshot provides capture only.'};
-  }
-  private matching(session:Session,path:string) {const current=this.session(session.projectId,session.nodeId);if(this.closed||!current||current.disabled||current.id!==session.id||current.revision!==session.revision||this.node(session.projectId,session.nodeId).notebook?.path!==path)throw new StoreError('Notebook connection or path changed. Review the current block before trying again.',409);}
-  private async request(session:Session,path:string,query:string,signal:AbortSignal):Promise<unknown> {
-    const url=new URL(path+query,session.endpoint);
-    // Rewrite localhost for the API transport, preventing DNS from changing the
-    // destination. The native browser URL retains the user's chosen hostname.
-    if(url.hostname==='localhost')url.hostname='127.0.0.1';
-    const response=await fetch(url,{method:'GET',headers:session.token?{Authorization:`token ${session.token}`,Accept:'application/json'}:{Accept:'application/json'},redirect:'error',signal});
-    if(!response.ok){await response.body?.cancel();throw new StoreError(response.status===401||response.status===403?'Jupyter rejected API authentication. Enter its current token, or authenticate in its native UI.':`Jupyter read returned HTTP ${response.status}. Check the notebook path and local session.`);}
-    const reader=response.body?.getReader();if(!reader)throw new StoreError('Jupyter returned no JSON body.');
-    const chunks:Uint8Array[]=[];let length=0;
-    try{for(;;){const part=await reader.read();if(part.done)break;length+=part.value.byteLength;if(length>NOTEBOOK_LIMITS.responseBytes)throw new StoreError('Jupyter response exceeds the bounded capture limit.');chunks.push(part.value);}}
-    finally{await reader.cancel().catch(()=>undefined);}
-    const raw=Buffer.concat(chunks).toString('utf8');
-    assertNotebookCredentialAbsent(raw,session.token);
-    try{return JSON.parse(raw);}catch{throw new StoreError('Jupyter returned an unsupported response. Check its base URL and API authentication.');}
-  }
-  private async read(session:Session,path:string,content:boolean):Promise<Record<string,unknown>> {
-    if(this.closed)throw new StoreError('Notebook service is shutting down.',503);
-    const key=`${session.projectId}:${session.nodeId}`;if(this.active.has(key))throw new StoreError('A notebook read is already pending for this block.',409);
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),NOTEBOOK_LIMITS.timeoutMs);this.active.set(key,controller);
-    try{
-      this.matching(session,path);const model=object(await this.request(session,'api/contents/'+encodedPath(path),`?type=notebook&content=${content?1:0}`,controller.signal));this.matching(session,path);
-      if(!model||model.type!=='notebook'||model.path!==path)throw new StoreError('Jupyter did not return the requested notebook path.');
-      return model;
-    }catch(error){if(error instanceof StoreError)throw error;throw new StoreError('The local Jupyter read failed or timed out. No cell was executed or retried.');}
-    finally{clearTimeout(timer);if(this.active.get(key)===controller)this.active.delete(key);}
-  }
-  async connect(projectId:string,nodeId:string,supplied:unknown):Promise<NotebookState> {
-    const body=connectSchema.parse(supplied),endpoint=notebookEndpoint(body.endpoint),path=notebookPath(body.path);this.node(projectId,nodeId);
-    if(body.token&&[endpoint,decodeURIComponent(new URL(endpoint).pathname),path,body.name].some(value=>value.includes(body.token!)))throw new StoreError('Keep the token in its private field, outside names, paths and URLs.');
-    const previous=this.session(projectId,nodeId);
-    const session:Session={id:randomUUID(),projectId,nodeId,name:body.name,endpoint,interface:body.interface,token:body.token,revision:0,available:null,checkedAt:null,reason:'Configured only. Check read-only notebook access; this does not start a kernel.'};
-    this.store.atomic(()=>{this.store.saveGlobalRecord('notebook-session-private',session.id,session);this.store.mutate(projectId,[{type:'updateNode',id:nodeId,patch:{notebook:{sessionId:session.id,path}}}],'Connect local Notebook');
-      if(previous)this.store.saveGlobalRecord('notebook-session-private',previous.id,{...previous,token:undefined,disabled:true,available:false});});
-    return this.check(projectId,nodeId);
-  }
-  async check(projectId:string,nodeId:string):Promise<NotebookState> {
-    const session=this.session(projectId,nodeId),path=this.node(projectId,nodeId).notebook?.path;
-    if(!session||session.disabled||!path)throw new StoreError('Connect a local notebook first.');
-    let available=false,reason='';try{await this.read(session,notebookPath(path),false);available=true;reason='Jupyter authenticated the read-only notebook path. No cell or kernel was started.';}catch(error){reason=error instanceof StoreError?error.message:'Local Jupyter is unavailable.';}
-    this.matching(session,path);this.store.saveGlobalRecord('notebook-session-private',session.id,{...session,available,checkedAt:now(),reason});return this.state(projectId,nodeId);
-  }
-  open(projectId:string,nodeId:string):NotebookOpen {
-    const session=this.session(projectId,nodeId),path=this.node(projectId,nodeId).notebook?.path;
-    if(!session||session.disabled||!path)throw new StoreError('Connect an existing local notebook first.');
-    const suffix=session.interface==='lab'?'lab/tree/':'notebooks/';
-    return {url:new URL(suffix+encodedPath(notebookPath(path)),session.endpoint).href,nativeAuthentication:true,
-      reason:'Token-free native Jupyter tab. Sign in there if needed; its kernel executes with its own permissions, outside ros.ai isolation.'};
-  }
-  private saveSnapshot(projectId:string,nodeId:string,content:string,path:string,origin:NotebookSnapshotSummary['origin'],session?:Session):NotebookState {
-    const parsed=inspectNotebookSource(content,session?.token??this.session(projectId,nodeId)?.token);const node=this.node(projectId,nodeId);
-    return this.store.atomic(()=>{
-      const project=this.store.getProject(projectId),at=now(),run=this.captureRun(projectId,node,at,'Read saved notebook source',{origin,notebookPath:path,sessionId:session?.id??null,executionEvidence:'No execution observed; saved notebook snapshot only'});
-      this.store.createRun(run);
-      const artifact=this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'notebook',title:path.split('/').at(-1)??'Notebook snapshot',content,mediaType:'application/x-ipynb+json',capture:'external',
-        metadata:{origin:'external-notebook-source',notebookPath:path,sessionId:session?.id??null,runtimeOwner:origin==='jupyter'?'user-managed-jupyter':'unknown-external-notebook',sourceSerialization:origin==='jupyter'?'Serialized exact Contents API notebook JSON':'Uploaded exact UTF-8 snapshot',executionObserved:false,warnings:parsed.warnings}});
-      this.store.updateRun(run.id,{status:'completed',endedAt:at,artifactIds:[artifact.id]});
-      const snapshot:SnapshotRecord={id:randomUUID(),projectId,nodeId,hash:artifact.hash,sourceArtifactId:artifact.id,runId:run.id,capturedAt:at,path,origin,...(session?{sessionId:session.id}:{}),cells:parsed.cells.length,kernelName:parsed.kernelName,language:parsed.language,warnings:parsed.warnings};
-      this.store.saveRecord('notebook-snapshot',snapshot.id,projectId,snapshot);return this.state(projectId,nodeId);
-    });
-  }
-  async readSnapshot(projectId:string,nodeId:string):Promise<NotebookState> {
-    const session=this.session(projectId,nodeId),path=this.node(projectId,nodeId).notebook?.path;
-    if(!session||session.disabled||!path)throw new StoreError('Connect an existing local notebook first.');
-    const model=await this.read(session,notebookPath(path),true);this.matching(session,path);
-    if(!object(model.content))throw new StoreError('Jupyter did not return notebook JSON content.');
-    return this.saveSnapshot(projectId,nodeId,JSON.stringify(model.content),path,'jupyter',session);
-  }
-  import(projectId:string,nodeId:string,supplied:unknown):NotebookState {
-    const body=z.object({name:z.string().min(1).max(200),content:z.string().min(1).max(NOTEBOOK_LIMITS.snapshotBytes)}).strict().parse(supplied);
-    if(body.name.includes('/')||body.name.includes('\\'))throw new StoreError('Use an .ipynb filename, not a filesystem path.');
-    assertNotebookCredentialAbsent(body.content,this.session(projectId,nodeId)?.token);
-    return this.saveSnapshot(projectId,nodeId,body.content,notebookPath(body.name),'uploaded-ipynb');
-  }
-  private captureRun(projectId:string,node:CanvasNode,at:string,title:string,configuration:Record<string,unknown>):Run {
-    const project=this.store.getProject(projectId);
-    return {id:randomUUID(),projectId,nodeId:node.id,request:title,useSearch:false,status:'running',createdAt:at,startedAt:at,projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'external-notebook',model:'not-applicable',modelVersion:null,
-      configuration:{kind:'external-notebook-capture',runtimeOwner:configuration.origin==='jupyter'?'user-managed-jupyter':'unknown-external-notebook',executionObserved:false,...configuration},tools:[],events:[{at,type:'external-capture',message:'User requested a saved external notebook capture. This local record describes capture only; ros.ai did not execute code, start a kernel or call a model.'}],artifactIds:[]};
-  }
-  capture(projectId:string,nodeId:string,supplied:unknown):NotebookCaptureSummary {
-    const body=z.object({snapshotId:id,cellIndex:z.number().int().nonnegative(),outputIndices:z.array(z.number().int().nonnegative()).min(1).max(NOTEBOOK_LIMITS.selectedOutputs)}).strict().parse(supplied);
-    if(new Set(body.outputIndices).size!==body.outputIndices.length)throw new StoreError('Select each output once.');
-    const snapshot=this.snapshot(projectId,nodeId,body.snapshotId),source=this.store.getArtifact(snapshot.sourceArtifactId),parsed=inspectNotebookSource(source.content,this.session(projectId,nodeId)?.token),cell=parsed.cells[body.cellIndex];
-    if(!cell)throw new StoreError('Choose a cell from this exact saved snapshot.');
-    const selected=body.outputIndices.map(index=>{const value=parsed.outputs[body.cellIndex][index];if(!value||!value.preview.capturable)throw new StoreError('Choose bounded capturable outputs from this cell.');return value;});
-    return this.store.atomic(()=>{
-      const node=this.node(projectId,nodeId),at=now(),run=this.captureRun(projectId,node,at,`Capture saved cell ${body.cellIndex+1} outputs`,{origin:snapshot.origin,notebookSnapshotId:snapshot.id,notebookSourceArtifactId:source.id,sourceHash:source.hash,cellIndex:cell.index,cellId:cell.id,cellLocator:cell.locator,cellSourceHash:cell.sourceHash,executionCount:cell.executionCount,outputIndices:body.outputIndices,executionOrder:'unverified',dependencies:'unverified'});
-      this.store.createRun(run);
-      const artifacts=selected.map((value,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:value.kind,title:`${snapshot.path.split('/').at(-1)} · cell ${cell.index+1} · ${value.preview.title}`,content:value.content,mediaType:value.mediaType,capture:'external',
-        locator:`notebook:${snapshot.hash}/${cell.locator}/output:${body.outputIndices[index]}`,metadata:{...value.metadata,origin:'external-notebook-output',notebookOutputKind:value.preview.kind,notebookPath:snapshot.path,notebookSnapshotId:snapshot.id,notebookSourceArtifactId:source.id,sourceHash:source.hash,cellIndex:cell.index,cellId:cell.id,cellLocator:cell.locator,cellSourceHash:cell.sourceHash,outputIndex:body.outputIndices[index],executionCount:cell.executionCount,executionObserved:false,executionOrder:'unverified',dependencies:'unverified',runtimeOwner:snapshot.origin==='jupyter'?'user-managed-jupyter':'unknown-external-notebook',warnings:snapshot.warnings}}));
-      this.store.updateRun(run.id,{status:'completed',endedAt:at,artifactIds:artifacts.map(artifact=>artifact.id)});
-      const capture:NotebookCaptureSummary={runId:run.id,snapshotId:snapshot.id,snapshotHash:snapshot.hash,cellIndex:cell.index,cellId:cell.id,cellLocator:cell.locator,outputIndices:body.outputIndices,artifactIds:artifacts.map(artifact=>artifact.id),capturedAt:at};
-      this.store.saveRecord('notebook-output-capture',run.id,projectId,{...capture,nodeId});return capture;
-    });
-  }
-  disconnect(projectId:string,nodeId:string):NotebookState {
-    const session=this.session(projectId,nodeId),node=this.node(projectId,nodeId);
-    this.store.atomic(()=>{if(session)this.store.saveGlobalRecord('notebook-session-private',session.id,{...session,token:undefined,disabled:true,available:false,reason:'Disconnected by user.'});
-      this.store.mutate(projectId,[{type:'updateNode',id:nodeId,patch:{notebook:{path:node.notebook?.path??''}}}],'Disconnect local Notebook');});return this.state(projectId,nodeId);
-  }
-  shutdown(){this.closed=true;for(const controller of this.active.values())controller.abort();}
-}
-
-export function attachNotebookRoutes(app:Express,store:Store):NotebookService {
-  const service=new NotebookService(store);app.locals.notebooks=service;
-  const base='/api/projects/:id/nodes/:nodeId/notebook';
-  const owned=(req:Request)=>[id.parse(req.params.id),id.parse(req.params.nodeId)] as const;
-  const json=(req:Request)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON notebook request.',415);};
-  app.get(base,(req,res)=>res.json(service.state(...owned(req))));
-  app.post(base+'/connect',async(req,res)=>{json(req);res.json(await service.connect(...owned(req),req.body));});
-  app.post(base+'/check',async(req,res)=>{json(req);z.object({}).strict().parse(req.body);res.json(await service.check(...owned(req)));});
-  app.get(base+'/open',(req,res)=>res.json(service.open(...owned(req))));
-  app.post(base+'/snapshot',async(req,res)=>{json(req);z.object({}).strict().parse(req.body);res.status(201).json(await service.readSnapshot(...owned(req)));});
-  app.post(base+'/import',(req,res)=>{json(req);res.status(201).json(service.import(...owned(req),req.body));});
-  app.get(base+'/snapshots/:snapshotId',(req,res)=>res.json(service.snapshot(...owned(req),id.parse(req.params.snapshotId))));
-  app.post(base+'/capture',(req,res)=>{json(req);res.status(201).json(service.capture(...owned(req),req.body));});
-  app.delete(base+'/connect',(req,res)=>res.json(service.disconnect(...owned(req))));
+  app.get(`${NOTEBOOK_ROUTE}/events`, (req: Request, res: Response) => {
+    const unsubscribe = service.subscribe(...owned(req), event => { res.write(`data: ${JSON.stringify(event)}\n\n`); });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.write('retry: 2000\n\n');
+    const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
+    req.on('close', () => { clearInterval(keepAlive); unsubscribe(); });
+  });
   return service;
 }

@@ -98,11 +98,8 @@ function capturedDataset(store: Store, projectId: string): Artifact {
 }
 
 type Fixture = ReturnType<typeof fixture>;
-function configure(f: Fixture, mode: ApprovalMode, experiments = 10) {
-  new Authority(f.store).configure(f.project.id, {
-    mode, scope: 'Fixture rainfall analysis and seasonal comparison', nodeIds: ['a', 'b'], datasetIds: [f.dataset.id], allowActionCreation: true,
-    limits: { experiments, modelCalls: 10, createdActions: 3, runtimeSeconds: 100, spendUsd: 5 },
-  });
+function configure(f: Fixture, mode: ApprovalMode) {
+  new Authority(f.store).configure(f.project.id, { mode });
 }
 
 const plannedExperiment = {
@@ -214,33 +211,6 @@ test('a stopped session cannot accept a pending agent Action through the generic
   assert.equal(f.model.requests.length, 0);
 });
 
-test('an Auto Research group exceeding the shared limit rolls back every approval and resource reservation', async t => {
-  const f = fixture(t); configure(f, 'ask', 1);
-  const previews = ['a', 'b'].map(nodeId => f.experiments.preview(f.project.id, {
-    nodeId, request: 'Fixture group admission', datasetArtifactId: f.dataset.id, code: plannedExperiment.code, backend: 'docker-python',
-  }));
-  assert.throws(() => f.experiments.startAuto(f.project.id, {
-    scope: 'Two exact fixture experiments', outcome: 'Two labelled fixture metrics', runIds: previews.map(item => item.run.id),
-    fingerprints: Object.fromEntries(previews.map(item => [item.run.id, item.approval.fingerprint])), maxConcurrency: 2,
-  }), /Shared project experiments limit/);
-  for (const preview of previews) {
-    const stored = f.experiments.inspect(preview.run.id);
-    assert.equal(stored.approval.status, 'pending');
-    assert.equal(stored.run.configuration.autoResearch, undefined);
-    assert.equal(stored.run.events.some(event => event.type === 'auto-research-authorized' || event.type === 'process-start'), false);
-  }
-  assert.deepEqual(f.experiments.authority.policy(f.project.id).used, { experiments: 0, modelCalls: 0, createdActions: 0, runtimeSeconds: 0, spendUsd: 0 });
-  assert.equal(f.store.records('admission', f.project.id).length, 0);
-  assert.equal(f.sandbox.starts.length, 0);
-  assert.deepEqual(f.experiments.listAuto(f.project.id), []);
-  // The failed group must not leave a consumed deduplication key either.
-  f.experiments.decide(previews[0].run.id, previews[0].approval.fingerprint, 'allow');
-  assert.equal((await terminal(f.store, previews[0].run.id)).status, 'completed');
-  assert.equal(f.sandbox.starts.length, 1);
-  assert.equal(f.experiments.authority.policy(f.project.id).used.experiments, 1);
-  assert.equal(f.experiments.inspect(previews[1].run.id).approval.status, 'pending');
-});
-
 test('provider-ledger denial rolls back project model-count and spend admission before model submission', async t => {
   const f = fixture(t, new FakeModel(), .000001); configure(f, 'full');
   const before = f.experiments.authority.policy(f.project.id).used;
@@ -339,7 +309,6 @@ test('Action acceptance commits its child, inherited input, admission and resear
   assert.equal(detail.proposals.find(item => item.id === proposal.id)?.status, 'accepted');
   assert.ok(detail.inputs.some(input => input.nodeId === accepted.nodeId && input.artifactId === f.dataset.id));
   assert.equal(f.experiments.authority.policy(f.project.id).used.createdActions, 1);
-  assert.ok(f.experiments.authority.policy(f.project.id).nodeIds.includes(accepted.nodeId));
   assert.equal(f.store.records('admission', f.project.id).length, 1);
   assert.equal(f.model.requests.length, 0, 'Ask-mode child creation cannot start another paid step');
 });

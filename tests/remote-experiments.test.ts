@@ -22,7 +22,7 @@ function fixture(budget:SandboxBudgetOptions={}){
   const project=store.createProject('Remote contract fixture');
   store.mutate(project.id,['a','b'].map(id=>({type:'addNode' as const,node:{id,title:id,description:'',x:0,y:0}})),'fixture');
   const grant=new SandboxBudget(store,budget),service=new ExperimentService(store,{sandbox:remote.value,nebiusSandbox:remote.value,sandboxBudget:grant});
-  const policy=service.authority.policy(project.id);service.authority.configure(project.id,{mode:'ask',scope:'',nodeIds:[],datasetIds:[],allowActionCreation:false,limits:{...policy.limits,spendUsd:10}});
+  service.authority.configure(project.id, { mode: 'ask' });
   return {dir,store,project,remote,grant,service,async cleanup(){await service.shutdown();store.close();rmSync(dir,{recursive:true,force:true});}};
 }
 const preview=(f:ReturnType<typeof fixture>,nodeId='a')=>f.service.preview(f.project.id,{nodeId,request:'Offline remote fixture',backend:'nebius-sandbox',csv:'value\n2\n4\n',code:'metric("Mean", 3)'});
@@ -56,8 +56,7 @@ test('approved remote capture persists exact inputs, operation, results and sepa
 
 test('remote always asks under Full access and cannot enter local group; project denial rolls back remote admission',async()=>{
   const f=fixture(terms);try{
-    const p=f.service.authority.policy(f.project.id);
-    f.service.authority.configure(f.project.id,{mode:'full',scope:'Fixture remote test',nodeIds:['a','b'],datasetIds:[],allowActionCreation:false,limits:{...p.limits,spendUsd:0}});
+    f.service.authority.configure(f.project.id, { mode: 'full' });
     const attempt=preview(f);assert.equal(attempt.approval.status,'pending');assert.equal(f.remote.inputs.length,0);
     assert.throws(()=>f.service.startAuto(f.project.id,{scope:'fixture',outcome:'fixture',runIds:[attempt.run.id],fingerprints:{[attempt.run.id]:attempt.approval.fingerprint}}),/individual approval/);
     assert.throws(()=>f.service.decide(attempt.run.id,attempt.approval.fingerprint,'allow'),/spendUsd/);

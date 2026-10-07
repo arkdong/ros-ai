@@ -87,7 +87,6 @@ export class AgentBudget {
     const left = remaining(limits, used), policy = this.authority.policy(projectId);
     if (left.turns < 1 || left.runtimeSeconds < limits.perTurnSeconds || left.toolCalls < limits.perTurnToolCalls) return 'The cumulative Codex turn/time/tool allowance cannot admit another full turn.';
     if (policy.stopped) return 'Project research is stopped. Resume it deliberately before new Codex work.';
-    if (policy.used.modelCalls + 1 > policy.limits.modelCalls || policy.used.runtimeSeconds + limits.perTurnSeconds > policy.limits.runtimeSeconds) return 'The shared project model-call or runtime limit cannot admit another Codex turn. Its existing usage is retained separately.';
     return null;
   }
   allowance(projectId: string): Omit<CodexAllowanceStatus, 'isolationReady' | 'available'> {

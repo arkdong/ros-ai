@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { Authority } from '../src/server/authority.js';
 import { Highlights, LocalConnections } from '../src/server/connections.js';
 import { Store } from '../src/server/store.js';
-import type { ApprovalMode, ResearchLimits, ReviewDecision } from '../src/shared/research.js';
+import type { ApprovalMode, ReviewDecision } from '../src/shared/research.js';
 import type { Artifact, CanvasNode, Run } from '../src/shared/types.js';
 
 function fixture(t: TestContext) {
@@ -39,15 +39,11 @@ function artifact(store: Store, projectId: string, nodeId = 'analysis', content 
   return result;
 }
 
-const generous: ResearchLimits = { experiments: 10, modelCalls: 10, createdActions: 3, runtimeSeconds: 100, spendUsd: 2 };
-function grant(authority: Authority, projectId: string, mode: ApprovalMode = 'review', datasetIds: string[] = [], limits = generous) {
-  return authority.configure(projectId, {
-    mode, scope: 'Study rainfall, cycling and seasonal patterns', nodeIds: ['question', 'analysis'], datasetIds,
-    allowActionCreation: true, limits,
-  });
+function grant(authority: Authority, projectId: string, mode: ApprovalMode = 'review') {
+  return authority.configure(projectId, { mode });
 }
-const experiment = (datasetId: string, fingerprint = randomUUID()) => ({
-  kind: 'experiment' as const, nodeId: 'analysis', fingerprint, datasetId,
+const experiment = (fingerprint = randomUUID()) => ({
+  kind: 'experiment' as const, nodeId: 'analysis', fingerprint,
   code: 'import pandas as pd\nmetric("mean", df["rain_mm"].mean())', runtimeSeconds: 10,
 });
 
@@ -73,100 +69,58 @@ test('Actions inherit the project default, while overrides remain local and remo
   assert.equal(new Authority(f.store).mode(f.project.id, 'grandchild'), 'ask');
 });
 
-test('the reviewer allows captured analysis, escalates unfamiliar operations and scope changes, and records its decisions', t => {
+test('Approve for me runs plain analysis, escalates unfamiliar code and new blocks, and records its decisions', t => {
   const f = fixture(t), authority = new Authority(f.store);
-  const dataset = artifact(f.store, f.project.id);
-  grant(authority, f.project.id, 'review', [dataset.id]);
-  const safe = experiment(dataset.id);
+  grant(authority, f.project.id, 'review');
+  const safe = experiment();
   assert.equal(authority.review(f.project.id, safe).outcome, 'allow');
-  for (const code of ['import os\nprint(os.getcwd())', 'df = pd.read_csv("original.csv")', 'eval("1+1")', 'x = df.__class__']) {
+  for (const code of ['import os\nprint(os.getcwd())', 'df = pd.read_csv("original.csv")', 'eval("1+1")', 'x = df.__class__', 'x = 1; import os\nprint(os.getcwd())', 'if True: import socket']) {
     const decision = authority.review(f.project.id, { ...safe, fingerprint: randomUUID(), code });
     assert.equal(decision.outcome, 'escalate', code);
     assert.match(decision.reason, /review/i);
   }
-  assert.equal(authority.review(f.project.id, { ...safe, fingerprint: randomUUID(), datasetId: 'ungranted-copy' }).outcome, 'escalate');
-  assert.equal(authority.review(f.project.id, { ...safe, fingerprint: randomUUID(), nodeId: 'other' }).outcome, 'escalate');
-  const action = { kind: 'create-action' as const, nodeId: 'analysis', fingerprint: randomUUID(), relation: 'Compare seasonal rainfall patterns for this question' };
-  assert.equal(authority.review(f.project.id, action).outcome, 'allow');
-  assert.equal(authority.review(f.project.id, { ...action, fingerprint: randomUUID(), relation: 'A different task' }).outcome, 'escalate');
-  authority.configure(f.project.id, { mode: 'review', scope: 'Rainfall research', nodeIds: ['analysis'], datasetIds: [dataset.id], allowActionCreation: false, limits: generous });
-  assert.equal(authority.review(f.project.id, { ...action, fingerprint: randomUUID() }).outcome, 'escalate');
+  assert.equal(authority.review(f.project.id, { kind: 'create-action', nodeId: 'analysis', fingerprint: randomUUID() }).outcome, 'escalate');
   const decisions = f.store.records<ReviewDecision>('review', f.project.id);
-  assert.equal(decisions.length, 10);
+  assert.equal(decisions.length, 8);
   assert.equal(decisions[0].fingerprint, safe.fingerprint);
   assert.equal(decisions[0].mode, 'review');
   assert.equal(authority.policy(f.project.id).used.experiments, 0, 'Review itself does not consume an execution');
 });
 
-test('Ask escalates exact work; Full access still requires granted scope/data and respects shared denial', t => {
+test('Ask escalates exact work; Full access allows any code and new blocks without asking', t => {
   const f = fixture(t), authority = new Authority(f.store);
-  const dataset = artifact(f.store, f.project.id);
-  grant(authority, f.project.id, 'ask', [dataset.id]);
-  const action = experiment(dataset.id);
+  grant(authority, f.project.id, 'ask');
+  const action = experiment();
   assert.equal(authority.review(f.project.id, action).outcome, 'escalate');
-  assert.equal(authority.review(f.project.id, { kind: 'create-action', nodeId: 'analysis', fingerprint: randomUUID(), relation: 'Rainfall' }).outcome, 'escalate');
-  grant(authority, f.project.id, 'full', [dataset.id]);
+  assert.equal(authority.review(f.project.id, { kind: 'create-action', nodeId: 'analysis', fingerprint: randomUUID() }).outcome, 'escalate');
+  grant(authority, f.project.id, 'full');
   assert.equal(authority.review(f.project.id, action).outcome, 'allow');
-  assert.equal(authority.review(f.project.id, { ...action, nodeId: 'other' }).outcome, 'escalate');
-  assert.equal(authority.review(f.project.id, { ...action, datasetId: 'other-dataset' }).outcome, 'escalate');
-  grant(authority, f.project.id, 'full', [dataset.id], { ...generous, experiments: 0 });
-  const denied = authority.review(f.project.id, action);
-  assert.equal(denied.outcome, 'deny');
-  assert.match(denied.reason, /Shared project experiments limit/);
+  assert.equal(authority.review(f.project.id, { ...action, code: 'import os\nprint(os.getcwd())' }).outcome, 'allow');
+  assert.equal(authority.review(f.project.id, { kind: 'create-action', nodeId: 'other', fingerprint: randomUUID() }).outcome, 'allow');
 });
 
-test('the reviewer detects unfamiliar imports in valid inline Python statements', t => {
+test('usage tallies persist once per admission and changing mode or undoing structure never resets them', t => {
   const f = fixture(t), authority = new Authority(f.store);
-  const dataset = artifact(f.store, f.project.id);
-  grant(authority, f.project.id, 'review', [dataset.id]);
-  for (const code of ['x = 1; import os\nprint(os.getcwd())', 'if True: import socket']) {
-    const decision = authority.review(f.project.id, { ...experiment(dataset.id), code });
-    assert.equal(decision.outcome, 'escalate', `Inline unfamiliar import must not be automatically approved: ${code}`);
-  }
-});
-
-test('execution/model/creation/runtime/spend reservations persist and spawning or changing mode cannot reset them', t => {
-  const f = fixture(t), authority = new Authority(f.store);
-  const dataset = artifact(f.store, f.project.id);
-  const limits = { experiments: 1, modelCalls: 1, createdActions: 1, runtimeSeconds: 10, spendUsd: .5 };
-  grant(authority, f.project.id, 'full', [dataset.id], limits);
-  const first = { ...experiment(dataset.id), spendUsd: .2 };
+  grant(authority, f.project.id, 'full');
+  const first = { ...experiment(), spendUsd: .2 };
   authority.reserve(f.project.id, first);
   authority.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'model-1', spendUsd: .3 });
   authority.reserve(f.project.id, { kind: 'create-action', nodeId: 'analysis', fingerprint: 'child-1' });
-  assert.deepEqual(authority.policy(f.project.id).used, limits);
+  const used = { experiments: 1, modelCalls: 1, createdActions: 1, runtimeSeconds: 10, spendUsd: .5 };
+  assert.deepEqual(authority.policy(f.project.id).used, used);
   assert.throws(() => authority.reserve(f.project.id, first), /already consumed/);
-  f.store.mutate(f.project.id, [{ type: 'addNode', node: node('spawned', 'analysis') }], 'Granted related Action');
-  authority.includeCreatedNode(f.project.id, 'spawned');
-  assert.equal(authority.mode(f.project.id, 'spawned'), 'full');
-  const retry = { ...experiment(dataset.id), nodeId: 'spawned' };
-  assert.equal(authority.review(f.project.id, retry).outcome, 'deny');
-  assert.throws(() => authority.reserve(f.project.id, retry), /Shared project experiments limit/);
-  assert.throws(() => grant(authority, f.project.id, 'ask', [dataset.id], { ...limits, experiments: 0 }), /cannot be below already reserved usage/);
-  grant(authority, f.project.id, 'ask', [dataset.id], limits);
+  assert.throws(() => authority.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'negative', spendUsd: -1 }), /Invalid spendUsd/);
+  assert.throws(() => authority.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'infinite', runtimeSeconds: Infinity }), /Invalid runtimeSeconds/);
+  grant(authority, f.project.id, 'ask');
+  f.store.mutate(f.project.id, [{ type: 'addNode', node: node('spawned', 'analysis') }], 'Related Action');
   f.store.undo(f.project.id);
-  assert.deepEqual(authority.policy(f.project.id).used, limits, 'Undoing structure does not refund execution or spending');
+  assert.deepEqual(authority.policy(f.project.id).used, used, 'Undoing structure does not refund execution or spending');
   f.reopen();
-  const reopened = new Authority(f.store);
-  assert.deepEqual(reopened.policy(f.project.id).used, limits);
-  assert.throws(() => reopened.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'model-2' }), /modelCalls limit/);
-  assert.throws(() => reopened.reserve(f.project.id, { kind: 'create-action', nodeId: 'analysis', fingerprint: 'child-2' }), /createdActions limit/);
+  assert.deepEqual(new Authority(f.store).policy(f.project.id).used, used);
   assert.equal(f.store.records('admission', f.project.id).length, 3);
 });
 
-test('runtime and spend ceilings independently deny overages, including non-finite or negative reservations', t => {
-  const f = fixture(t), authority = new Authority(f.store);
-  grant(authority, f.project.id, 'full', [], { ...generous, runtimeSeconds: 5, spendUsd: .1 });
-  const action = { kind: 'model' as const, nodeId: 'analysis', fingerprint: 'oversized' };
-  assert.throws(() => authority.reserve(f.project.id, { ...action, runtimeSeconds: 6 }), /runtimeSeconds limit/);
-  assert.throws(() => authority.reserve(f.project.id, { ...action, spendUsd: .11 }), /spendUsd limit/);
-  assert.throws(() => authority.reserve(f.project.id, { ...action, spendUsd: -1 }), /spendUsd limit/);
-  assert.throws(() => authority.reserve(f.project.id, { ...action, runtimeSeconds: Infinity }), /runtimeSeconds limit/);
-  assert.equal(f.store.records('admission', f.project.id).length, 0, 'Rejected admissions are atomic');
-  assert.equal(authority.policy(f.project.id).used.modelCalls, 0);
-});
-
-test('stopped projects reject new work across modes until explicit resume and retain consumed limits', t => {
+test('stopped projects reject new work across modes until explicit resume and retain usage', t => {
   const f = fixture(t), authority = new Authority(f.store);
   grant(authority, f.project.id, 'full');
   const first = { kind: 'model' as const, nodeId: 'analysis', fingerprint: 'before-stop', spendUsd: .1 };

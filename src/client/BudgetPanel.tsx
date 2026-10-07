@@ -37,17 +37,15 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const changedPeriod = (value: BudgetPeriod) => { setPeriod(value); setVisible(12); setNow(new Date()); };
   return <aside id="research-budget-panel" className="assistant-panel budget-panel" aria-label="Project budget" data-testid="budget-panel">
-    <header className="assistant-heading budget-heading"><span className="budget-heading-icon"><BatteryMedium size={24}/></span><div><h2>Budget & usage</h2><p>Project allowance and provider usage</p></div><button className="icon-button" aria-label="Close budget panel" onClick={onClose}><PanelRightClose size={17}/></button></header>
+    <header className="assistant-heading budget-heading"><span className="budget-heading-icon"><BatteryMedium size={24}/></span><div><h2>Budget & usage</h2><p>Project spending and provider usage</p></div><button className="icon-button" aria-label="Close budget panel" onClick={onClose}><PanelRightClose size={17}/></button></header>
     <div className="budget-scroll">
       {error && <div className="budget-error" role="alert"><p>{error}</p><button className="text-button" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={13}/> Try again</button></div>}
       {!data && !error && <p className="budget-loading"><LoaderCircle size={16} className="spin"/> Reading saved usage…</p>}
       {data && <>
-        <section className="budget-remaining" aria-label="Project spending allowance">
-          <span className="budget-eyebrow">Project remaining · USD</span><strong className="budget-remaining-value">{money(data.remainingUsd)}</strong>
-          <div className="budget-meter" role="meter" aria-label="Project spending allowance reserved" aria-valuemin={0} aria-valuemax={Math.max(data.limits.spendUsd, 1)} aria-valuenow={Math.min(data.used.spendUsd, Math.max(data.limits.spendUsd, 1))} aria-valuetext={`${money(data.used.spendUsd)} retained from a ${money(data.limits.spendUsd)} ceiling`}><span style={{ width: `${data.limits.spendUsd ? Math.min(100, data.used.spendUsd / data.limits.spendUsd * 100) : 0}%` }}/></div>
-          <div className="budget-ceiling"><span>{money(data.used.spendUsd)} retained</span><span>{money(data.limits.spendUsd)} ceiling</span></div>
-          <p>{data.limits.spendUsd === 0 ? 'No project spending allowance is configured. ' : ''}Conservative reservations reduce the remaining allowance, including failed or uncertain requests.{data.stopped ? ' Project research is stopped.' : ''}</p>
-          <div className="budget-resource-counts"><span><strong>{data.used.modelCalls} / {data.limits.modelCalls}</strong>request slots reserved</span><span><strong>{data.used.experiments} / {data.limits.experiments}</strong>experiment slots reserved</span></div>
+        <section className="budget-remaining" aria-label="Project spending so far">
+          <span className="budget-eyebrow">Project spending so far · USD</span><strong className="budget-remaining-value">{money(data.used.spendUsd)}</strong>
+          <p>Conservative reservations, including failed or uncertain requests. Each connection's own allowance caps paid calls.{data.stopped ? ' Project research is stopped.' : ''}</p>
+          <div className="budget-resource-counts"><span><strong>{data.used.modelCalls}</strong>model requests</span><span><strong>{data.used.experiments}</strong>code runs</span></div>
         </section>
         <section className="budget-activity" aria-label="Recorded provider usage">
           <div className="budget-section-heading"><h3>Recorded usage</h3><span>{summary.entries.length} request{summary.entries.length === 1 ? '' : 's'}</span></div>
@@ -59,7 +57,7 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
           {summary.entries.length > visible && <button className="budget-more text-button" onClick={() => setVisible(value => value + 20)}>Show more requests <ChevronDown size={14}/></button>}
         </section>
         <AccountUsage accounts={data.providerAccounts}/>
-        <details className="budget-provider-details"><summary>App provider allowances <ChevronDown size={14}/></summary><p>These are app spending permissions shared across projects. They overlap with project reservations; do not add them to project spending or provider account credit.</p>
+        <details className="budget-provider-details"><summary>App provider allowances <ChevronDown size={14}/></summary><p>These are app spending permissions shared across projects. They overlap with project spending; do not add them to project spending or provider account credit.</p>
           {data.providerAllowances.map(allowance => <div className="budget-provider-row" key={allowance.name}><strong>{allowance.name}</strong><span>{money(allowance.remainingUsd)} available under ceiling</span><small>{money(allowance.accountedUsd)} retained · {money(allowance.ceilingUsd)} ceiling<br/>{allowance.scope}</small></div>)}
           <div className="budget-provider-row"><strong>Combined Nebius allowance</strong><span>{money(data.combined.remainingUsd)} remaining{!data.combined.enabled ? ' · currently blocked' : ''}</span><small>{money(data.combined.accountedUsd)} retained · {money(data.combined.ceilingUsd)} ceiling<br/>Inference and sandbox attempts share this additional gate.</small></div>
           {data.sandbox && <div className="budget-provider-row"><strong>Sandbox execution allowance</strong><span>{data.sandbox.perAttemptUsd === null ? 'Pricing / authorization unavailable' : `${money(data.sandbox.remainingUsd)} remaining · ${data.sandbox.remainingRuns} attempts`}</span><small>{data.sandbox.perAttemptUsd === null ? 'No verified USD ceiling per attempt.' : `${money(data.sandbox.perAttemptUsd)} retained per admitted attempt.`}{!data.sandbox.enabled && ' Execution is currently blocked.'}</small></div>}

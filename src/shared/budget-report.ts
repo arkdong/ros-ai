@@ -1,4 +1,4 @@
-import type { ResearchLimits } from './research.js';
+import type { ResearchUsage } from './research.js';
 
 export type BudgetPeriod = 'hour' | 'today' | 'day';
 export type BudgetUsage = {
@@ -46,9 +46,7 @@ export type ProviderAccounts = { tavily: TavilyAccountUsage; nebius: ManualProvi
 export type BudgetReport = {
   projectId: string;
   generatedAt: string;
-  limits: ResearchLimits;
-  used: ResearchLimits;
-  remainingUsd: number;
+  used: ResearchUsage;
   stopped: boolean;
   entries: BudgetUsage[];
   unattributedWorkspaceRequests: number;

@@ -39,8 +39,7 @@
   gap: 10px;
   pointer-events: none;
 }
-.single-canvas-shell .direct-canvas .canvas-header .canvas-context,
-.single-canvas-shell .direct-canvas .canvas-header .canvas-navigation {
+.single-canvas-shell .direct-canvas .canvas-header .canvas-context {
   position: static;
   max-width: 100%;
   pointer-events: auto;

@@ -6,7 +6,6 @@ import dotenv from 'dotenv';
 import {Store} from '../src/server/store.js';
 import {ExecutionService} from '../src/server/execution.js';
 import {NebiusAdapter,TavilyAdapter,DEFAULT_MODEL} from '../src/server/providers.js';
-import {Authority} from '../src/server/authority.js';
 import type {Run,ModelMessage} from '../src/shared/types.js';
 if(!process.argv.includes('--allow-authorized'))throw Error('Explicit scoped invocation required.');
 const step=process.argv[2];if(!['plan','interpret'].includes(step))throw Error('Use plan or interpret; no automatic retries.');
@@ -29,9 +28,7 @@ const save=()=>writeFileSync(file,JSON.stringify(report,null,2)+'\n');
 save();
 let inferenceRunId:string|undefined;
 try{
- const authority=new Authority(store),policy=authority.policy(projectId);
  if(!store.record('explicit-market-v2-authorization',id))store.saveRecord('explicit-market-v2-authorization',id,projectId,{...report,recordedAt:at(),maxInferenceRequests:2,maxInferenceUsd:3,maxSearchRequests:2,searchUsdIncrement:.016,searchCumulativeCeilingUsd:10,authorizationSource:'Direct user response relayed by root in this same active task; scope quoted above.'});
- if(step==='plan')authority.configure(projectId,{mode:policy.mode,scope:policy.scope||'User-authorized market-risk research extension on captured public index data, bounded inference/search and one local calculation.',nodeIds:policy.nodeIds,datasetIds:policy.datasetIds,allowActionCreation:policy.allowActionCreation,limits:{...policy.limits,spendUsd:Math.max(policy.limits.spendUsd,policy.used.spendUsd+3.016)}});
  if(step==='plan'){
   report.searches=[];save();
   const queries=[

@@ -551,12 +551,6 @@ blockquote {
   background: #171717;
 }
 .history-banner {
-  position: absolute;
-  top: 19px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100% - 35px);
-  z-index: 9;
   background: #f7f7f7;
   border: 1px solid #dedede;
   border-radius: 8px;
@@ -1247,14 +1241,10 @@ blockquote {
     display: none;
   }
   .proposal-preview {
-    top: 72px;
     padding: 12px;
   }
   .history-banner {
     white-space: normal;
-    width: calc(100% - 24px);
-    left: 12px;
-    transform: none;
     gap: 7px;
     padding: 9px;
   }
@@ -1473,12 +1463,6 @@ blockquote {
   }
   .inspector-tabs button {
     font-size: 14px;
-  }
-  .history-banner {
-    top: 58px;
-  }
-  .proposal-preview {
-    top: 62px;
   }
   .canvas-empty small {
     font-size: 14px;
@@ -2145,9 +2129,6 @@ a {
   color: #171717;
 }
 .proposal-preview {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   width: 470px;
   max-width: calc(100% - 40px);
   background: #ffffff;
@@ -2155,8 +2136,6 @@ a {
   padding: 14px 17px 17px;
   border-radius: 9px;
   box-shadow: 0 6px 18px #0000000c;
-  top: 15px;
-  z-index: 14;
   border-color: #dedede;
 }
 .proposal-preview h3 {
@@ -3039,12 +3018,6 @@ a {
   .history-panel {
     max-width: calc(100% - 20px);
   }
-  .proposal-preview {
-    top: 15px;
-  }
-  .history-banner {
-    top: 16px;
-  }
   .modal-actions {
     flex-wrap: wrap;
   }
@@ -3133,17 +3106,6 @@ a {
 .canvas-context .eyebrow {
   font-size: 13px;
   color: #171717;
-}
-.canvas-navigation {
-  position: absolute;
-  top: 17px;
-  right: 20px;
-  display: flex;
-  gap: 7px;
-}
-.canvas-navigation button {
-  background: #ffffffee;
-  box-shadow: 0 1px 3px #00000005;
 }
 .unified-canvas .canvas-tools {
   bottom: 22px;
@@ -3493,29 +3455,6 @@ a {
   top: 61px;
   z-index: 20;
 }
-.single-workspace .proposal-preview {
-  top: 80px;
-  left: 24px;
-  right: auto;
-  width: min(440px,calc(100% - 48px));
-}
-.stopped-banner {
-  position: absolute;
-  top: 85px;
-  left: 24px;
-  background: #f7f7f7;
-  border: 1px solid #dedede;
-  padding: 10px 13px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 14px;
-  border-radius: 6px;
-}
-.stopped-banner .text-button {
-  font-size: 14px;
-  text-decoration: underline;
-}
 .single-canvas-shell .modal-backdrop {
   background: #00000035;
   backdrop-filter: blur(2px);
@@ -3704,18 +3643,6 @@ a {
   color: #6b6b6b;
   font-size: 13px;
   margin-top: 3px;
-}
-.limit-grid {
-  display: grid;
-  grid-template-columns: repeat(2,1fr);
-  gap: 0 17px;
-}
-.limit-grid small {
-  display: block;
-  margin: 5px 0 0;
-  font-size: 13px;
-  font-weight: 400;
-  color: #6b6b6b;
 }
 .permission-note {
   display: flex;
@@ -3955,9 +3882,6 @@ a {
   .canvas-context {
     left: 18px;
   }
-  .canvas-navigation {
-    right: 15px;
-  }
   .project-floating-actions {
     left: 16px;
   }
@@ -4012,15 +3936,6 @@ a {
   }
   .canvas-context>span:last-child {
     display: none;
-  }
-  .canvas-navigation {
-    top: 49px;
-    left: 15px;
-    right: auto;
-  }
-  .canvas-navigation button {
-    font-size: 13px;
-    padding: 6px 8px;
   }
   .canvas-context .eyebrow {
     font-size: 13px;
@@ -4140,9 +4055,6 @@ a {
   .settings-modal .field-label {
     font-size: 13px;
   }
-  .limit-grid {
-    gap: 0 12px;
-  }
   .settings-modal .modal-description {
     font-size: 14px;
   }
@@ -4152,21 +4064,9 @@ a {
   .local-connection .tag {
     font-size: 13px;
   }
-  .stopped-banner {
-    left: 15px;
-    top: 99px;
-    max-width: calc(100% - 30px);
-    font-size: 13px;
-    align-items: flex-start;
-  }
   .single-workspace .history-panel {
     top: 95px;
     right: 10px;
-  }
-  .single-workspace .proposal-preview {
-    top: 100px;
-    left: 14px;
-    width: calc(100% - 28px);
   }
 }
 @media (prefers-reduced-motion:reduce) {
@@ -4616,14 +4516,6 @@ a {
 .single-canvas-shell .project-floating-actions {
   bottom: 21px;
   left: 20px;
-}
-.single-canvas-shell .single-workspace .proposal-preview {
-  transform: none;
-  left: 20px;
-  top: 100px;
-  max-width: calc(100% - 40px);
-  width: 430px;
-  border-color: #dedede;
 }
 .single-canvas-shell .proposal-preview h3 {
   font-size: 15px;
@@ -5604,9 +5496,6 @@ button.outline-title:hover {
   .single-canvas-shell .canvas-context {
     left: 19px;
   }
-  .single-canvas-shell .canvas-navigation {
-    right: 16px;
-  }
   .single-canvas-shell .canvas-context>span:last-child {
     display: none;
   }
@@ -5734,10 +5623,6 @@ button.outline-title:hover {
   }
   .single-canvas-shell .canvas-context .eyebrow {
     font-size: 13px;
-  }
-  .single-canvas-shell .canvas-navigation button {
-    font-size: 13px;
-    padding: 8px 10px;
   }
   .single-canvas-shell .canvas-tools .icon-button {
     width: 32px;

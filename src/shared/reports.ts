@@ -15,7 +15,7 @@ export function evidenceClaim(artifact: Artifact): ClaimType {
   if (metadata.contribution === 'model claim') return 'model claim';
   if (metadata.contribution === 'user interpretation') return 'user interpretation';
   if (metadata.tutorialOrigin !== undefined && ['table','metric','plot'].includes(artifact.kind)) return 'imported result';
-  if (metadata.origin === 'code-block-execution') return 'measured result';
+  if (metadata.origin === 'code-block-execution' || metadata.origin === 'notebook-cell-output') return 'measured result';
   if (artifact.kind === 'result' && artifact.capture === 'generated' && metadata.report !== true) return 'model claim';
   return ['table','metric','plot','dataset'].includes(artifact.kind) ? 'measured result' : 'user interpretation';
 }

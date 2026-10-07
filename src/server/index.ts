@@ -1,6 +1,8 @@
 import { config as loadEnv } from 'dotenv';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -19,12 +21,18 @@ import { ToolCredentials } from './tool-credentials.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import type { NotebookService } from './notebooks.js';
+import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
 if (!publicMode) loadEnv({ path: resolve(root, '.env.local'), quiet: true });
-const dataDir = resolve(process.env.ROS_DATA_DIR || resolve(root, '.ros-ai'));
+// ros.ai's own records live in the usual app-data place, so reinstalling the code keeps them.
+// An install that already keeps them next to the code goes on using that folder.
+const appData = process.platform === 'darwin' ? join(homedir(), 'Library', 'Application Support', 'ros.ai')
+  : process.platform === 'win32' ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'ros.ai')
+  : join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'ros.ai');
+const dataDir = resolve(process.env.ROS_DATA_DIR || (existsSync(resolve(root, '.ros-ai')) || publicMode ? resolve(root, '.ros-ai') : appData));
 const port = Number(process.env.ROS_PORT || (publicMode ? process.env.PORT || 8080 : 4310));
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('ROS_PORT must be an integer between 1024 and 65535.');
 // Lock before opening Store so concurrent startup cannot recover another process's work.
@@ -38,6 +46,7 @@ let agent:CodexAgentService|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
 let notebooks:NotebookService|undefined;
+let projectFolders:ProjectFolders|undefined;
 let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
@@ -47,7 +56,8 @@ async function shutdown() {
   stopping = true;
   // Release the data lock even if one service fails to stop cleanly.
   try {
-    notebooks?.shutdown();
+    projectFolders?.shutdown();
+    await notebooks?.shutdown();
     await guide?.shutdown();
     await assistant?.shutdown();
     await agent?.shutdown();
@@ -82,9 +92,10 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     assistant=new AssistantService(store,execution,experiments,agent);
     guide=new WorkspaceGuideService(store,execution);
-    app = createApp(store, execution, experiments,research,assistant,{},agent,{credentials,googleDrive},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive},guide);
   }
   notebooks=app.locals.notebooks;
+  projectFolders=app.locals.projectFolders;
   if (process.env.ROS_DEV !== '1') {
     if (!existsSync(resolve(root, 'dist/client/index.html'))) {
       console.log('Building the browser interface for first launch…');

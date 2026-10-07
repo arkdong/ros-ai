@@ -2,8 +2,9 @@
 
 /** What the editor knows about the program's runtime. Everything here is static and local. */
 export interface CodeContext {
-  /** Docker Python (pandas, NumPy, matplotlib, SciPy), the Nebius standard-library worker, or the legacy bounded interpreter. */
-  runtime: 'docker' | 'stdlib' | 'bounded';
+  /** Docker Python (pandas, NumPy, matplotlib, SciPy), a notebook's Python (the same libraries, no ros.ai helpers),
+   * the Nebius standard-library worker, or the legacy bounded interpreter. */
+  runtime: 'docker' | 'notebook' | 'stdlib' | 'bounded';
   /** Column names of the selected CSV; in Docker Python `df` exists only when one is selected. */
   columns: string[] | null;
   /** Keys of the current parameters JSON object. */
@@ -25,6 +26,7 @@ export function starters(context: CodeContext): { label: string; code: string }[
 /** Helpers shown as insert chips under the editor. */
 export const helperInserts = (runtime: CodeContext['runtime']) => ({
   docker: ['metric("Name", value)', 'table("Title", df)', 'plot("Title", fig)', 'export_csv("Title", df)', 'conclusion("Text")'],
+  notebook: [],
   stdlib: ['metric("Name", value)', 'table("Title", rows)', 'plot("Title", values)', 'export_csv("Title", rows)', 'conclusion("Text")'],
   bounded: ['column("name")', 'metric("Name", value)', 'table("Title", describe(values))', 'plot("Title", values)'],
 })[runtime];

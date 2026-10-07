@@ -20,14 +20,15 @@ import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-dr
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
-import { attachNotebookRoutes } from './notebooks.js';
+import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
+import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -42,6 +43,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     if (!options.publicDemo && origin && origin !== `http://${host}`) {
       return res.status(403).json({ error: 'Cross-origin requests are not permitted.' });
     }
+    // Changes arrive only as JSON from ros.ai's own page. A form or a request from another site cannot send that without permission.
+    if (!options.publicDemo && req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
+      if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
+      if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
+    }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -50,12 +56,16 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   });
   app.get(['/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302,'/app'));
   app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
+  // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
+  if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   attachTutorialRoutes(app,new TutorialService(store,experiments,options));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
   if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
-  if(!options.publicDemo)attachNotebookRoutes(app,store);
+  const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store,authority,options.notebooks);
+  const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
+  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
@@ -63,15 +73,23 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
-    const { title,start } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional() }).strict().parse(req.body);
+    const { title,start,folder } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
+    if(folder&&!folders)throw new StoreError('Project folders are available in the local app.');
+    // Check the folder before the project exists, so a refused folder leaves nothing behind.
+    if(folder)folders!.prepare(folder);
     const project=store.createProject(title);
-    res.status(201).json(start==='demo'?seedDemo(store,project.id):project);
+    if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
+    res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));
   });
   app.post('/api/projects/:id/trash',(req,res)=>res.json(store.trashProject(routeId(req.params.id))));
   app.post('/api/projects/:id/restore',(req,res)=>res.json(store.restoreProject(routeId(req.params.id))));
   app.get('/api/projects/:id/models', (req,res)=>res.json(modelSettings.read(routeId(req.params.id))));
   app.patch('/api/projects/:id/models', (req,res)=>res.json(modelSettings.update(routeId(req.params.id),req.body)));
-  app.get('/api/projects/:id', (req, res) => res.json(store.detail(routeId(req.params.id))));
+  app.get('/api/projects/:id', (req, res) => {
+    const detail = store.detail(routeId(req.params.id)), running = notebooks?.running(detail.project.id);
+    // Notebook cards show Python still working after their notebook closes, and the page keeps reading until it stops.
+    res.json(running?.size ? { ...detail, notebooks: detail.notebooks?.map(summary => running.has(summary.nodeId) ? { ...summary, running: true } : summary) } : detail);
+  });
   app.post('/api/projects/:id/mutations', (req, res) => {
     const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
     res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));
@@ -117,15 +135,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.json({ ...report, providerAccounts: await providerUsage.read() });
   });
   app.get('/api/projects/:id/policy',(req,res)=>res.json(authority.policy(routeId(req.params.id))));
-  if(!options.publicDemo)app.patch('/api/projects/:id/policy/spend',(req,res)=>{
-    if(!req.is('application/json'))throw new StoreError('A JSON request is required.',415);
-    const {spendUsd,expectedRevision}=z.object({spendUsd:z.number().finite().min(0).max(1000),expectedRevision:z.number().int().nonnegative()}).strict().parse(req.body);
-    res.json(store.atomic(()=>{
-      const id=routeId(req.params.id),policy=authority.policy(id);
-      if(policy.revision!==expectedRevision)throw new StoreError('Project permissions changed. Refresh the ceiling before saving.',409);
-      return authority.configure(id,{mode:policy.mode,scope:policy.scope,nodeIds:policy.nodeIds,datasetIds:policy.datasetIds,allowActionCreation:policy.allowActionCreation,limits:{...policy.limits,spendUsd}});
-    }));
-  });
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
   app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));

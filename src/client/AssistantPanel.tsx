@@ -11,7 +11,6 @@ import { presentAssistantResponse, type AssistantStructurePreview as StructurePr
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
 import { post } from './api';
 import { ModelSettings } from './ModelSettings';
-import { AssistantBudgetSetup } from './AssistantBudgetSetup';
 import { WorkspaceGuide } from './WorkspaceGuide';
 import { AssistantStructurePreview, proposalStructurePreview } from './AssistantStructurePreview';
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
@@ -31,7 +30,7 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
   const [tab, setTab] = useState<'conversation' | 'outline'>(() => readSaved(`assistant-tab:${detail.project.id}`, 'conversation'));
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
-  const [settingsOpen,setSettingsOpen]=useState(false),[budgetOpen,setBudgetOpen]=useState(false),[backendBusy,setBackendBusy]=useState(false),[guideOpen,setGuideOpen]=useState(false);
+  const [settingsOpen,setSettingsOpen]=useState(false),[backendBusy,setBackendBusy]=useState(false),[guideOpen,setGuideOpen]=useState(false);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
   const [preparedNotice, setPreparedNotice] = useState('');
   const settingsRef=useRef<HTMLDivElement>(null),settingsButton=useRef<HTMLButtonElement>(null);
@@ -66,11 +65,11 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
   useEffect(() => { saveLocal(`assistant-tab:${detail.project.id}`, tab); }, [tab, detail.project.id]);
   useEffect(() => { saveLocal(`assistant-draft:${detail.project.id}`, message); }, [message, detail.project.id]);
   useEffect(() => { if (prefill) { setTab('conversation'); setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
-  useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy, tab, budgetOpen]);
+  useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy, tab]);
   useEffect(()=>{const element=scroller.current;if(!element)return;const observer=new ResizeObserver(()=>{if(followConversation.current)element.scrollTop=element.scrollHeight;});observer.observe(element);return()=>observer.disconnect();},[tab]);
   useEffect(()=>{if(submission&&turns.some(turn=>turn.userMessage===submission.message&&turn.createdAt>=submission.at)){setSubmission(null);saveLocal(`assistant-submission:${detail.project.id}`,null);}},[state,detail.project.id,submission]);
   useEffect(()=>{if(!settingsOpen)return;const dismiss=(event:PointerEvent)=>{if(!settingsRef.current?.contains(event.target as Node)&&!settingsButton.current?.contains(event.target as Node))setSettingsOpen(false);};const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSettingsOpen(false);settingsButton.current?.focus();}};document.addEventListener('pointerdown',dismiss);document.addEventListener('keydown',key);return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);};},[settingsOpen]);
-  const changeBackend=async(backend:'provider'|'codex')=>{if(running||backendBusy)return;setBackendBusy(true);try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();setSettingsOpen(false);setBudgetOpen(false);}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}finally{setBackendBusy(false);}};
+  const changeBackend=async(backend:'provider'|'codex')=>{if(running||backendBusy)return;setBackendBusy(true);try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();setSettingsOpen(false);}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}finally{setBackendBusy(false);}};
   const submit = async (event: FormEvent) => {
     event.preventDefault(); if (!message.trim() || running || modelBlocked || backendBusy || submission?.status==='pending') return;
     setPreparedNotice('');
@@ -113,8 +112,7 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
     </div>
-    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='budget'){setBudgetOpen(!budgetOpen);setSettingsOpen(false);}else if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}} disabled={backendBusy}>{blocker.action==='budget'?'Set project budget':blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open connections'}<ArrowRight size={12}/></button></div></div>}
-    {budgetOpen&&<AssistantBudgetSetup projectId={detail.project.id} nodeId={focusedNode?.id} onChanged={onRefresh} onConnections={onConnections} onClose={()=>setBudgetOpen(false)}/>}
+    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}} disabled={backendBusy}>{blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open connections'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
     <form className="assistant-composer" onSubmit={event => void submit(event)}><label className="sr-only" htmlFor="assistant-message">Message research assistant</label><textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={3} placeholder={focusedNode ? `Ask about ${focusedNode.title}…` : 'Ask, explore, or change direction…'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/><div className="assistant-composer-actions"><button type="button" className="assistant-permissions" onClick={onPermissions}><ShieldCheck size={13}/><span>Permissions</span></button>{active ? <button type="button" className="assistant-stop" aria-label="Stop assistant" onClick={() => void onCancel(active.id)}><Square size={13}/> Stop</button> : <button className="send-button" data-testid="send-project-message" aria-label="Send project message" title={blocker?.summary||'Send project message'} disabled={!message.trim() || running || !state || modelBlocked || backendBusy}><ArrowUp size={18}/></button>}</div></form><div className="assistant-provider-status"><span className={`status-dot ${state?.modelAvailable ? 'available' : ''}`}/>{!state ? 'Opening saved conversation…' : state.modelAvailable ? state.backend==='codex'?'Codex admission enabled':'Model requests enabled' : 'Model unavailable · draft stays saved'}</div></> : <ResearchOutline state={state} detail={detail} onReference={onReference}/>}
   </aside>;
@@ -122,11 +120,9 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
 
 function HistoryLabel() { return <BookOpen size={13}/>; }
 
-function assistantBlocker(reason:string,backend?:'provider'|'codex'):{summary:string;action:'budget'|'model'|'connections'|'permissions'} {
+function assistantBlocker(reason:string,backend?:'provider'|'codex'):{summary:string;action:'model'|'connections'|'permissions'} {
   if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
-  if(/project spending ceiling|project.*spend.*allowance/i.test(reason))return {summary:'This project has no remaining model budget.',action:'budget'};
   if(/stopped|stop flag/i.test(reason))return {summary:'Research is stopped for this project.',action:'permissions'};
-  if(/project model-request limit/i.test(reason))return {summary:'This project has used its model-request limit.',action:'permissions'};
   if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
   if(/credential|api key|configured/i.test(reason))return {summary:'Connect the selected model provider.',action:'connections'};
   return {summary:backend==='codex'?'Codex cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};

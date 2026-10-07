@@ -1,0 +1,92 @@
+/* Vertical canvas tools on the left edge. Items magnify towards the pointer;
+   --dock-grow/--dock-widen let the pill grow evenly around its centre. */
+.canvas-dock {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: calc(6px + var(--dock-grow, 0px)) calc(6px + var(--dock-widen, 0px)) calc(6px + var(--dock-grow, 0px)) 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffffef;
+  box-shadow: 0 4px 16px #00000010;
+  transition: padding .12s ease-out;
+}
+.canvas-dock-item {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  transform-origin: left center;
+  transition: scale .12s ease-out, translate .12s ease-out, background .12s;
+}
+.canvas-dock-item:hover:not(:disabled), .canvas-dock-item:focus-visible { background: #f2f2f2; }
+.canvas-dock-item.active { background: var(--ink); color: #ffffff; }
+.canvas-dock-item:disabled { color: #b5b5b5; }
+.canvas-dock-tip {
+  position: absolute;
+  left: calc(100% + 14px);
+  top: 50%;
+  translate: 0 -50%;
+  transform-origin: left center;
+  width: max-content;
+  max-width: 230px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.canvas-dock-tip strong { display: block; font-size: 13px; font-weight: 600; }
+.canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .canvas-dock, .canvas-dock-item { transition: none; }
+}
+
+/* Transient canvas notices sit above every canvas control, centred at the top. */
+.canvas-notices {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+.canvas-notices > * { pointer-events: auto; max-width: 100%; }
+.canvas-notices .canvas-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f7f7;
+  box-shadow: 0 4px 14px #00000012;
+  font-size: 14px;
+  color: var(--ink);
+}
+.canvas-notices .canvas-notice .text-button { font-size: 14px; text-decoration: underline; }
+.canvas-notices .canvas-feedback { background: #ffffff; pointer-events: none; }
+.canvas-notices .proposal-preview { position: static; translate: none; transform: none; width: min(440px, calc(100vw - 48px)); }

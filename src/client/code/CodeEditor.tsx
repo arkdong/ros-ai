@@ -3,7 +3,7 @@ import { Annotation, Compartment, EditorState, Prec, StateEffect, type Extension
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as placeholderText } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { bracketMatching, ensureSyntaxTree, indentOnInput, syntaxHighlighting } from '@codemirror/language';
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, completionStatus } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { python, pythonLanguage } from '@codemirror/lang-python';
@@ -14,7 +14,7 @@ import type { CodeContext } from './context';
 import type { TracebackLine } from './traceback';
 import './code-editor.css';
 
-export interface CodeEditorApi { insert(text: string): void; focus(): void }
+export interface CodeEditorApi { insert(text: string): void; focus(at?: 'start' | 'end'): void }
 export interface ErrorMark extends TracebackLine { message: string; primary: boolean }
 export interface CodeEditorProps {
   value: string;
@@ -28,8 +28,14 @@ export interface CodeEditorProps {
   placeholder?: string;
   maxLength?: number;
   compact?: boolean;
+  /** Line numbers show by default; notebook cells leave them out, as Jupyter does. */
+  lineNumbers?: boolean;
   onRun?(): void;
   onSave?(): void;
+  /** Notebook keys: Shift+Enter, Escape, and arrow keys that leave the first or last line. */
+  onShiftEnter?(): void;
+  onEscape?(): void;
+  onEdge?(direction: 'up' | 'down'): boolean;
   apiRef?: MutableRefObject<CodeEditorApi | null>;
 }
 
@@ -86,14 +92,24 @@ export default function CodeEditor(props: CodeEditorProps) {
       { key: 'Mod-Enter', run: () => { latest.current.onRun?.(); return Boolean(latest.current.onRun); } },
       // Saving the page itself is never useful here, so Mod-s is always consumed.
       { key: 'Mod-s', run: () => { latest.current.onSave?.(); return true; }, preventDefault: true },
+      { key: 'Shift-Enter', run: () => { latest.current.onShiftEnter?.(); return Boolean(latest.current.onShiftEnter); } },
+      // An open suggestion list keeps Escape and the arrow keys.
+      { key: 'Escape', run: current => { if (!latest.current.onEscape || completionStatus(current.state) === 'active') return false; latest.current.onEscape(); return true; } },
+      { key: 'ArrowUp', run: current => edge(current, 'up') },
+      { key: 'ArrowDown', run: current => edge(current, 'down') },
     ]));
+    const edge = (current: EditorView, direction: 'up' | 'down') => {
+      const { main } = current.state.selection, line = current.state.doc.lineAt(main.head);
+      if (!latest.current.onEdge || !main.empty || completionStatus(current.state) === 'active' || line.number !== (direction === 'up' ? 1 : current.state.doc.lines)) return false;
+      return latest.current.onEdge(direction);
+    };
     const created = new EditorView({
       parent: host.current!,
       state: EditorState.create({
         doc: props.value,
         extensions: [
           shortcuts,
-          lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
+          props.lineNumbers === false ? [] : lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
           indentOnInput(), bracketMatching(), closeBrackets(), highlightActiveLine(), highlightSelectionMatches(),
           syntaxHighlighting(classHighlighter),
           autocompletion({ activateOnTyping: true, icons: false }),
@@ -116,7 +132,10 @@ export default function CodeEditor(props: CodeEditorProps) {
     view.current = created;
     if (props.autoFocus) created.focus();
     if (props.apiRef) props.apiRef.current = {
-      focus: () => created.focus(),
+      focus: at => {
+        if (at) created.dispatch({ selection: { anchor: at === 'start' ? 0 : created.state.doc.length }, scrollIntoView: true });
+        created.focus();
+      },
       insert: text => {
         if (latest.current.readOnly) return;
         const { from, to } = created.state.selection.main;

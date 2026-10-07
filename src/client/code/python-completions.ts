@@ -40,7 +40,11 @@ const boundedHelpers: Helper[] = [
   { label: 'plot', detail: '(title, values, labels=None)', info: 'Save a simple SVG chart of numeric values.' },
   { label: 'params', detail: 'dict', info: 'The JSON parameters saved with this attempt.', type: 'variable' },
 ];
-const runtimeHelpers = { docker: dockerHelpers, stdlib: stdlibHelpers, bounded: boundedHelpers };
+// Notebook cells import libraries themselves, as in Jupyter; display() is the one name provided.
+const notebookHelpers: Helper[] = [
+  { label: 'display', detail: '(value)', info: 'Show a value, table or figure below the cell, as in Jupyter.' },
+];
+const runtimeHelpers = { docker: dockerHelpers, notebook: notebookHelpers, stdlib: stdlibHelpers, bounded: boundedHelpers };
 
 const members: Record<string, string[]> = {
   pd: ['DataFrame', 'Series', 'read_csv', 'concat', 'merge', 'to_datetime', 'to_numeric', 'date_range', 'Timestamp', 'Timedelta', 'cut', 'qcut', 'crosstab', 'pivot_table', 'get_dummies', 'isna', 'notna', 'unique', 'value_counts', 'melt', 'NA'],
@@ -68,7 +72,11 @@ const notAttributes = new Set([
   'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield',
   ...members.df, 'T', 'at', 'axes', 'empty', 'iat', 'index', 'ndim', 'size', 'str', 'style', 'values',
 ]);
-const snippets = (context: CodeContext) => context.runtime !== 'docker' ? [] : context.columns ? [figureSnippet, ...csvSnippets] : [figureSnippet];
+const notebookSnippets: Completion[] = [
+  ...[['pandas', 'pd'], ['numpy', 'np'], ['matplotlib.pyplot', 'plt']].map(([module, name]) => snippetCompletion(`import ${module} as ${name}`, { label: `import ${module} as ${name}`, type: 'text' })),
+  snippetCompletion('fig, ax = plt.subplots()\nax.${}', { label: 'figure', detail: 'new matplotlib figure', type: 'text' }),
+];
+const snippets = (context: CodeContext) => context.runtime === 'notebook' ? notebookSnippets : context.runtime !== 'docker' ? [] : context.columns ? [figureSnippet, ...csvSnippets] : [figureSnippet];
 const helpers = (context: CodeContext) => runtimeHelpers[context.runtime]
   .map<Completion>(helper => ({ label: helper.label, detail: helper.detail, info: helper.info, type: helper.type ?? 'function', boost: 2 }))
   .concat(context.runtime === 'docker' && context.columns ? [{ label: 'df', detail: 'DataFrame', info: `The selected CSV · ${context.columns.length} columns`, type: 'variable', boost: 2 }] : []);

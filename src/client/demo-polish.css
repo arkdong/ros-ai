@@ -52,12 +52,13 @@
   .single-canvas-shell .workspace-actions .assistant-toggle { margin-left: auto; padding: 5px 9px; min-height: 36px; }
   .single-canvas-shell .assistant-panel { width: 100%; }
 }
+/* Demo panels sit right of the canvas tools dock on the left edge (16px inset, 54px wide). */
 .single-canvas-shell .canvas-stage > .executable-demo,
 .single-canvas-shell .canvas-stage > .demo-tour {
   position: absolute;
-  left: 16px;
+  left: 82px;
   bottom: 72px;
-  width: min(402px, calc(100% - 32px));
+  width: min(402px, calc(100% - 98px));
   max-height: min(70dvh, calc(100% - 96px));
 }
 @media (max-width: 850px) {
