@@ -54,6 +54,6 @@ Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 - Keys in the OS keychain instead of a 0600 JSON file (`tool-credentials.ts:45`).
 - Search across projects.
 - A web search adapter besides Tavily.
-- Check whether current Codex CLI supports restricted read roots (`codex-agent.ts:67`); a Claude Code adapter.
+- Check whether current Codex CLI supports restricted read roots (`codex-agent.ts:67`).
 - C and Haskell: real runtimes, or remove them from the language list.
 - A prebuilt sandbox image on GHCR ⚑, Homebrew, a desktop app, a headless CLI mode.

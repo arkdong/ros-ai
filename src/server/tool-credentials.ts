@@ -84,6 +84,21 @@ export class ToolCredentials {
     this.checks.set('nebius', { checkedAt: new Date().toISOString(), verified, checkMessage });
     return this.status('nebius');
   }
+  async checkClaude() {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new StoreError('Connect an Anthropic API key first.');
+    let verified = false, checkMessage = 'Could not reach Anthropic. The saved key has not been verified.';
+    try {
+      // Listing models authenticates the key without a model turn or charge.
+      const response = await fetch('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, redirect: 'error', signal: AbortSignal.timeout(10000) });
+      verified = response.ok;
+      checkMessage = response.ok ? 'Anthropic accepted the key. No model turn was started.' : response.status === 401 || response.status === 403 ? 'Anthropic rejected this key. Check the key in the Claude Console.' : `Anthropic returned HTTP ${response.status}. No model turn was started.`;
+      await response.body?.cancel();
+    } catch { /* Keep a bounded, credential-free diagnostic. */ }
+    if (process.env.ANTHROPIC_API_KEY !== key) throw new StoreError('The key changed during this check. Check the current key again.');
+    this.checks.set('claude', { checkedAt: new Date().toISOString(), verified, checkMessage });
+    return this.status('claude');
+  }
 }
 
 export function attachToolCredentialRoutes(app: Express, credentials: ToolCredentials) {
@@ -94,4 +109,5 @@ export function attachToolCredentialRoutes(app: Express, credentials: ToolCreden
   });
   app.delete('/api/connections/credentials/:provider', (req, res) => res.json(credentials.disconnect(providerSchema.parse(req.params.provider))));
   app.post('/api/connections/nebius/check', async (_req, res) => res.json(await credentials.checkNebius()));
+  app.post('/api/connections/claude/check', async (_req, res) => res.json(await credentials.checkClaude()));
 }
