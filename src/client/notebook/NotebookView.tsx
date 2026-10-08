@@ -306,7 +306,8 @@ export function NotebookView({ node, detail, file, mode: chosenMode, onClose, on
   // Jupyter's command mode: keys act on the selected cell while no editor has focus.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (event.key === 'Escape' && target.closest('.nb-cell') && !target.closest('.cm-editor')) { event.preventDefault(); if (selected) focusCell(selected); return; }
+    // Escape from an editor selects its cell (command mode); Escape in command mode returns to the canvas.
+    if (event.key === 'Escape' && target.closest('.nb-cell') && !target.closest('.cm-editor') && !target.classList.contains('nb-cell')) { event.preventDefault(); if (selected) focusCell(selected); return; }
     if (!selected || !target.classList.contains('nb-cell') || event.altKey) return;
     const index = cellsRef.current.findIndex(cell => cell.id === selected), key = event.key.toLowerCase(), modified = event.metaKey || event.ctrlKey;
     const go = (by: number) => { const next = cellsRef.current[index + by]; if (next) focusCell(next.id); };

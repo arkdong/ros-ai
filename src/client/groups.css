@@ -33,8 +33,8 @@
 .direct-canvas .block-work-state.running,.direct-canvas .block-work-state.queued{color:#3d6990}
 .direct-canvas .block-primary-preview{display:block;flex:1;min-height:64px;max-height:195px;overflow:hidden;margin:0 0 8px}
 .direct-canvas .block-figure-preview{display:block;width:100%;height:172px;object-fit:contain;background:#fafafa}
-/* A figure card grows to show its figure, up to the card's height limit, instead of keeping its first estimated height. */
-.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-figure-preview){flex-shrink:0}
+/* A figure or Code card grows to show its figure or code, up to the card's height limit, instead of keeping its first estimated height. */
+.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-figure-preview),.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-code-source){flex-shrink:0}
 .direct-canvas .block-metric-preview{font-size:42px;line-height:1.3;overflow-wrap:anywhere}
 .direct-canvas .block-text-preview{font-size:14px;line-height:1.6;margin:0;color:#555f59}
 .direct-canvas .block-code-preview{font-family:monospace;font-size:11px;line-height:1.6;margin:0;white-space:pre-wrap;max-height:170px;overflow:hidden;background:#f5f5f5;padding:10px}
@@ -54,3 +54,13 @@
 .group-highlight-picker small{display:block;color:#6e7971}
 .group-highlight-picker input{width:15px;flex:0 0 auto}
 .group-highlight-picker button{flex:0 0 auto}
+/* A Code block shows its source; long code scrolls inside the card instead of zooming the canvas. */
+.direct-canvas .block-code-source{max-height:187px;box-sizing:border-box;font-size:11.5px;line-height:1.55;padding:8px 10px;cursor:text;overscroll-behavior:contain}
+.direct-canvas .block-empty-hint{margin:0;font-size:13px;color:#9aa29d}
+.direct-canvas .outcome-footer{gap:10px;font-size:11px;color:#758079}
+/* The open button explains itself on hover or keyboard focus. */
+.direct-canvas .research-card .card-controls .card-open{position:relative}
+.direct-canvas .research-card .card-controls .card-open:hover,.direct-canvas .research-card .card-controls .card-open:focus-visible{background:#eef3ea;color:#25332c}
+.direct-canvas .card-open::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:6px 9px;border-radius:7px;background:#25332c;color:#fff;font-size:12px;font-weight:500;line-height:1.35;letter-spacing:0;text-transform:none;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s,transform .12s}
+.direct-canvas .card-open[data-hint]::after{content:attr(data-tip) '\A' attr(data-hint);white-space:pre;color:#fff}
+.direct-canvas .card-open:hover::after,.direct-canvas .card-open:focus-visible::after{opacity:1;transform:none;transition-delay:.15s}
