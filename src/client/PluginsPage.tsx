@@ -4,14 +4,12 @@ import type { CredentialProvider, CredentialStatus } from '../shared/tool-connec
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, type PluginDefinition, type PluginStatus, type TokenPluginId } from '../shared/plugins';
-import { ConnectionCard, ConnectionSymbol, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
+import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
+import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
 
-const marks:Record<string,{text:string;color:string}>={ 'google-docs':{text:'D',color:'#4285f4'}, zotero:{text:'Z',color:'#cc2936'}, slack:{text:'#',color:'#611f69'}, notion:{text:'N',color:'#191919'}, github:{text:'GH',color:'#24292f'}, tavily:{text:'T',color:'#2f6fdb'}, overleaf:{text:'O',color:'#138a36'} };
 function PluginMark({id}:{id:string}) {
-  if(id==='google-drive')return <ConnectionSymbol name="drive"/>;
-  const mark=marks[id]??{text:'?',color:'#555'};
-  return <span className="plugin-mark" style={{background:mark.color}} aria-hidden="true">{mark.text}</span>;
+  return hasBrandLogo(id)?<BrandLogo id={id}/>:<Plug size={18}/>;
 }
 
 /** Tools outside ros.ai, each connected with something the person already has. Using them from the canvas comes later. */
