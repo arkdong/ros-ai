@@ -1,0 +1,24 @@
+.agent-view { display: grid; gap: 16px; padding: 4px 2px 8px; }
+.agent-view header { display: flex; align-items: center; gap: 10px; }
+.agent-view header > div { display: grid; flex: 1; }
+.agent-view header small { color: #6b6b67; }
+.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #f1f1ef; box-shadow: 0 0 0 1px #e1e1df; }
+.agent-goal { margin: 0; color: #3d3d3a; white-space: pre-wrap; }
+.agent-view h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #6b6b67; }
+.agent-timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid #e6e6e3; display: grid; gap: 8px; }
+.agent-step-thought span { display: block; font-style: italic; color: #4a4a46; white-space: pre-wrap; }
+.agent-step-tool { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.agent-step-tool time { margin-left: auto; font-weight: 400; color: #8a8a85; font-size: 12px; }
+.agent-made { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.agent-made li { display: flex; align-items: center; gap: 8px; }
+.agent-made button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 2px 0; cursor: pointer; color: inherit; text-align: left; }
+.agent-made button:hover { text-decoration: underline; }
+.agent-made small { color: #8a8a85; }
+.agent-error { color: #a33; margin: 0; }
+.agent-thought { font-style: italic; }
+.search-face { display: grid; gap: 8px; }
+.search-queries, .search-sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.search-queries li { display: flex; align-items: flex-start; gap: 6px; color: #3d3d3a; }
+.search-queries li svg { flex: none; margin-top: 3px; color: #8a8a85; }
+.search-sources button { border: 0; background: #f4f4f2; border-radius: 6px; padding: 3px 8px; width: 100%; text-align: left; cursor: pointer; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.search-sources button:hover { background: #ebebe8; }

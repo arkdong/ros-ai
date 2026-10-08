@@ -10,7 +10,7 @@ export type AgentConnectionStatus = {
   enforcement: string[]; limitations: string[];
   grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
 };
-export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage'; message: string; data?: unknown };
+export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage' | 'thought'; message: string; data?: unknown };
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };
 export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; signal: AbortSignal; onEvent: (event: AgentEvent) => void };

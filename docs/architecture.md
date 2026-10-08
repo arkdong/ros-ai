@@ -245,3 +245,14 @@ Runs queue per notebook. Before a cell is queued it passes `Authority` under the
 The browser follows a notebook through `GET …/notebook/events`, a server-sent event stream of kernel state, cell states (queued, running, done, cancelled), outputs, streamed text, clears and new revisions. Saves are `PUT …/notebook` with the revision they started from; an outdated one gets 409, and the screen asks which version to keep. The other routes are `run`, `interrupt`, `restart`, `clear`, `import`, `restore`, `outputs` (save one output as a result) and `figure` (the card's newest figure, by hash). None exist in public demo mode.
 
 Saving an output as a result compares its hash with the recorded execution. A match becomes a `notebook-cell-output` (a measured result, with session and execution ids); anything else becomes an `external-notebook-output`, like the October 2 captures. The screen never inserts HTML: Markdown and outputs are drawn as React elements, HTML tables are read through an inert `DOMParser`, SVG is shown as an image, and pictures on the web stay links.
+
+## Agent blocks and search fan-out · October 8, 2026
+
+Design: `/mnt/project-files/research/knowledge-action-redesign-2026-10-08.md` in the project files (Knowledge, Action, Agent, Playground and Connector nodes). This first step makes an assistant turn run by Claude Code or Codex visible on the canvas.
+
+- `blockType: 'agent'` (with `agent: {runtime, turnId}`) and `blockType: 'search'` are new block kinds. Both are written as Markdown notes in a project folder. An Agent block's status and timeline are read from its assistant turn; nothing about the turn's progress enters canvas history.
+- `ros_fan_out_search` (agent-tools.ts) takes 1–7 directions with 1–3 queries each (at most 14). It proposes one Agent block, a Search block and a Result note per direction, and their relationships, as one proposal that follows the permission choice: Full access adds it at once, and the other modes wait (up to eight minutes, ended by Stop) for the researcher to accept the plan. Searches then run through `ExecutionService.agentSearch`, one block at a time and two at once, each a saved Tavily run with its own allowance reservation. Hits stay `source` artifacts on the Search block.
+- `ros_write_result` fills only Result notes from that turn's accepted plan, only while they still hold the placeholder text, and only with source numbers the search returned. It is one undoable change per note.
+- The text a runtime writes before each ros.ai tool call is saved as a `thought` event on the turn and shown on the Agent block and in its timeline. It is the text the model sent, not hidden reasoning.
+- Within one turn, tools may build on blocks the turn itself added, and the expected canvas revision moves forward with the turn's own accepted changes.
+- `TAVILY_BASE_URL`, like `ANTHROPIC_BASE_URL`, lets a person route search through a compatible gateway of their own.
