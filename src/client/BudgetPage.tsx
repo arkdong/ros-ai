@@ -1,16 +1,49 @@
-import { useEffect, useState } from 'react';
-import { BatteryMedium, ChevronDown, Clock3, LoaderCircle, PanelRightClose, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ChevronDown, Clock3, LoaderCircle, RefreshCw, Terminal } from 'lucide-react';
 import { api } from './api';
-import type { InferenceConnectionsResponse } from '../shared/inference';
+import type { InferenceConnectionsResponse, InferenceConnectionStatus } from '../shared/inference';
+import type { ConnectionBudgetProvider, ConnectionBudgetStatus } from '../shared/connection-budgets';
+import { CodexAllowance, ConnectionAllowance } from './ConnectionAllowance';
+import { InferenceAllowance } from './InferenceConnections';
+import { ConnectionCard, ConnectionSymbol } from './ModelPage';
 import { summarizeBudgetPeriod, type BudgetPeriod, type BudgetReport, type BudgetUsage, type ProviderAccounts, type TavilyUsageScope } from '../shared/budget-report';
-import './BudgetPanel.css';
+import './BudgetPage.css';
 
 const money = (value: number) => value > 0 && value < .000001 ? '< US$0.000001' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < .01 ? 6 : 2 }).format(value);
 const count = (value: number) => new Intl.NumberFormat().format(value);
 const periods: { value: BudgetPeriod; label: string }[] = [{ value: 'hour', label: 'Last hour' }, { value: 'today', label: 'Today' }, { value: 'day', label: 'Last 24h' }];
 const providerName:Record<string,string> = { nebius: 'Nebius', openai: 'OpenAI', tavily: 'Tavily', 'nebius-sandbox': 'Nebius Sandbox' };
 
-export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+/** Budget holds every spending allowance plus what this project has used. */
+export function BudgetPage({ projectId, publicDemo }: { projectId: string | null; publicDemo: boolean }) {
+  return <div className="budget-page">{!publicDemo && <Allowances projectId={projectId}/>}{projectId ? <ProjectUsage projectId={projectId}/> : <p className="rail-page-note">Open a project to see what it has used.</p>}</div>;
+}
+
+const allowanceProviders: { provider: ConnectionBudgetProvider; label: string; icon: ReactNode }[] = [
+  { provider: 'nebius', label: 'Nebius Token Factory', icon: <ConnectionSymbol name="nebius"/> },
+  { provider: 'claude', label: 'Claude Code', icon: <ConnectionSymbol name="claude"/> },
+  { provider: 'openai', label: 'OpenAI API', icon: <span className="plugin-mark" style={{ background: '#111' }}>AI</span> },
+  { provider: 'tavily', label: 'Tavily web search', icon: <span className="plugin-mark" style={{ background: '#2f6fdb' }}>T</span> },
+];
+function Allowances({ projectId }: { projectId: string | null }) {
+  const [budgets, setBudgets] = useState<ConnectionBudgetStatus[]>([]), [servers, setServers] = useState<InferenceConnectionStatus[]>([]), [error, setError] = useState('');
+  const load = useCallback(async () => {
+    try { const [limits, inference] = await Promise.all([api<{ budgets: ConnectionBudgetStatus[] }>('/api/connections/budgets'), api<InferenceConnectionsResponse>('/api/connections/inference')]); setBudgets(limits.budgets); setServers(inference.connections.filter(item => !item.deleted)); setError(''); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const changed = async () => { await load(); window.dispatchEvent(new Event('ros-ai-model-settings')); };
+  return <section className="budget-allowances" aria-label="Allowances">
+    <div className="budget-section-heading"><h3>Allowances</h3></div>
+    <p className="budget-estimate-note">Each allowance is shared across projects and caps paid calls. Saving one starts nothing.</p>
+    {error && <p className="inline-error" role="alert">{error}</p>}
+    {allowanceProviders.map(item => { const status = budgets.find(budget => budget.provider === item.provider); return <ConnectionCard key={item.provider} label={item.label} icon={item.icon} connected={status?.ready} subtitle={status ? `${money(status.remainingUsd)} left · ${status.remainingRequests} requests` : undefined} status={!status ? 'Checking…' : status.ready ? 'Enabled' : status.enabled ? 'Limit reached' : 'Not enabled'}><ConnectionAllowance provider={item.provider} status={status} onChanged={changed}/></ConnectionCard>; })}
+    {projectId && <ConnectionCard label="Codex" icon={<Terminal size={20}/>} subtitle="Turn, time and tool limits for this project" status="Per project"><CodexAllowance key={projectId} projectId={projectId} onChanged={changed}/></ConnectionCard>}
+    {servers.map(server => <ConnectionCard key={`${server.id}:${server.revision}`} label={server.name} icon={<span className="plugin-mark" style={{ background: '#4b5563' }}>M</span>} connected={server.ready} subtitle={`${server.remainingRequests} requests left`} status={server.ready ? 'Enabled' : 'Not enabled'}><InferenceAllowance connection={server} onChanged={changed}/></ConnectionCard>)}
+  </section>;
+}
+
+function ProjectUsage({ projectId }: { projectId: string }) {
   const [report, setReport] = useState<BudgetReport | null>(null);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<BudgetPeriod>('today');
@@ -36,8 +69,8 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
   const hasKnownEstimates = summary.entries.length > summary.unknownEstimates;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const changedPeriod = (value: BudgetPeriod) => { setPeriod(value); setVisible(12); setNow(new Date()); };
-  return <aside id="research-budget-panel" className="assistant-panel budget-panel" aria-label="Project budget" data-testid="budget-panel">
-    <header className="assistant-heading budget-heading"><span className="budget-heading-icon"><BatteryMedium size={24}/></span><div><h2>Budget & usage</h2><p>Project spending and provider usage</p></div><button className="icon-button" aria-label="Close budget panel" onClick={onClose}><PanelRightClose size={17}/></button></header>
+  return <section className="budget-panel" aria-label="Project budget" data-testid="budget-panel">
+    <div className="budget-section-heading budget-usage-heading"><h3>This project</h3></div>
     <div className="budget-scroll">
       {error && <div className="budget-error" role="alert"><p>{error}</p><button className="text-button" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={13}/> Try again</button></div>}
       {!data && !error && <p className="budget-loading"><LoaderCircle size={16} className="spin"/> Reading saved usage…</p>}
@@ -66,7 +99,7 @@ export function BudgetPanel({ projectId, onClose }: { projectId: string; onClose
       </>}
     </div>
     {data && <footer className="budget-footer">Local records updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<button className="icon-button" aria-label="Refresh budget and provider usage" title="Provider usage refreshes at most once per minute" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={13}/></button></footer>}
-  </aside>;
+  </section>;
 }
 
 const credits = (value: number | null | undefined) => value == null ? 'Unknown' : `${count(value)} credits`;

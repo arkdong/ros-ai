@@ -18,6 +18,7 @@ import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
 import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
+import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
@@ -29,7 +30,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -68,7 +69,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);

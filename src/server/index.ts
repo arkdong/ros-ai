@@ -19,6 +19,7 @@ import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
+import { PluginTokens } from './plugins.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import type { NotebookService } from './notebooks.js';
@@ -96,7 +97,7 @@ try {
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     assistant=new AssistantService(store,execution,experiments,agent,claude);
     guide=new WorkspaceGuideService(store,execution);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir)},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

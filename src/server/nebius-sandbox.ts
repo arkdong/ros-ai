@@ -91,7 +91,7 @@ function validateOutput(output: SandboxOutput): void {
  * the caller's responsibility. Construction never probes or starts cloud work.
  */
 export class NebiusSandboxBackend implements ExecutionBackend {
-  // Keys saved from Connections update process.env at runtime, so read them per use.
+  // Keys saved from the Model page update process.env at runtime, so read them per use.
   private readonly options: { apiKey?: string; projectId?: string };
   private get apiKey() { return this.options.apiKey ?? process.env.NEBIUS_SANDBOX_API_KEY ?? process.env.NEBIUS_API_KEY ?? ''; }
   private get projectId() { return this.options.projectId ?? process.env.NEBIUS_SANDBOX_PROJECT_ID ?? process.env.NEBIUS_PROJECT_ID ?? process.env.NEBIUS_AI_PROJECT ?? process.env.CONTREE_PROJECT ?? ''; }
