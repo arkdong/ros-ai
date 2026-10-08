@@ -4301,7 +4301,7 @@ a {
 }
 .project-row.active {
   background: #ffffff;
-  box-shadow: inset 2px 0 #b7ef32;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px #e1e1df;
 }
 .single-canvas-shell .project-menu-toggle {
   width: 27px;
@@ -4356,16 +4356,7 @@ a {
 .note-tree-row.selected {
   color: #171717;
   background: #ffffff;
-}
-.note-tree-row.selected:after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 2px;
-  border-radius: 2px;
-  background: #b7ef32;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px #e1e1df;
 }
 .note-tree-title {
   min-width: 0;
@@ -4713,7 +4704,7 @@ a {
 }
 .assistant-focus.has-focus {
   background: #ffffff;
-  box-shadow: inset 2px 0 #b7ef32;
+  box-shadow: inset 0 0 0 1px #e1e1df;
 }
 .assistant-focus.has-focus strong {
   color: #171717;
