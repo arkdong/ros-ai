@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Folder, FolderOpen, FolderSearch, LoaderCircle, Plus, RotateCcw } from 'lucide-react';
-import type { FolderChoice, FolderFile, FolderSuggestion, ProjectFolderStatus, UnplacedFile } from '../shared/project-folders';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, AppWindow, ChevronDown, Code2, Folder, FolderOpen, FolderSearch, LoaderCircle, Plus, RotateCcw, SquareTerminal } from 'lucide-react';
+import type { FolderChoice, FolderFile, FolderSuggestion, OpenApp, ProjectFolderStatus, UnplacedFile } from '../shared/project-folders';
 import type { CanvasNode } from '../shared/types';
 import { api, post } from './api';
 import './project-folder.css';
@@ -114,7 +114,7 @@ export function FolderPanel({ projectId, projectTitle, status, nodes, onStatus, 
   </div>;
 
   return <div className="folder-panel">
-    <div className="folder-location"><code title={status.path}>{status.path}</code><button className="secondary small" disabled={Boolean(busy)} onClick={() => void work('open', () => post(`/api/projects/${projectId}/folder/open`, {}))}><FolderOpen size={13}/> Open in {fileApp}</button></div>
+    <div className="folder-location"><code title={status.path}>{status.path}</code><OpenIn projectId={projectId} onError={cause => setError(cause instanceof Error ? cause.message : String(cause))}/></div>
     <p className="subtle">Each block is a file here. Edits you save in other apps appear in ros.ai within a few seconds and can be undone.</p>
     {error && <p className="inline-error" role="alert">{error}</p>}
     {missing.length > 0 && <section className="folder-section"><h3>Missing files</h3><p className="subtle">These files were deleted or moved out of the folder. The blocks keep their content.</p>
@@ -134,8 +134,33 @@ export function FolderPanel({ projectId, projectTitle, status, nodes, onStatus, 
 
 /** The block's file, with ways to open it outside ros.ai. */
 export function FileBar({ projectId, file, onError }: { projectId: string; file: FolderFile; onError: (cause: unknown) => void }) {
-  const open = (reveal: boolean) => void post(`/api/projects/${projectId}/folder/open`, { nodeId: file.nodeId, reveal }).catch(onError);
   return <div className="file-bar"><FolderOpen size={13}/><code title={file.path}>{file.path}</code>
-    {file.missing ? <span className="file-missing">File missing</span> : <><button className="text-button small" onClick={() => open(false)}>Open in another app</button><button className="text-button small" onClick={() => open(true)}>Show in {fileApp}</button></>}
+    {file.missing ? <span className="file-missing">File missing</span> : <OpenIn projectId={projectId} nodeId={file.nodeId} onError={onError}/>}
+  </div>;
+}
+
+// Installed apps change rarely, so one lookup serves the whole session.
+let apps: Promise<OpenApp[]> | null = null;
+/** One "Open in" button whose menu lists the editors and terminals on this computer, the default app and the file manager. */
+export function OpenIn({ projectId, nodeId, onError, label = 'Open in' }: { projectId: string; nodeId?: string; onError: (cause: unknown) => void; label?: string }) {
+  const [open, setOpen] = useState(false), [list, setList] = useState<OpenApp[]>([]), box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) void (apps ??= api<OpenApp[]>('/api/open-apps').catch(() => { apps = null; return []; })).then(setList); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', away); return () => document.removeEventListener('pointerdown', away);
+  }, [open]);
+  const go = (how: string) => { setOpen(false); void post(`/api/projects/${projectId}/folder/open`, { ...(nodeId ? { nodeId } : {}), with: how }).catch(onError); };
+  const item = (how: string, icon: ReactNode, text: string) => <button key={how} type="button" role="menuitem" onClick={() => go(how)}>{icon}{text}</button>;
+  const editors = list.filter(app => app.kind === 'editor'), terminals = list.filter(app => app.kind === 'terminal');
+  return <div className="open-in" ref={box} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); } }}>
+    <button type="button" className="secondary small open-in-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><FolderOpen size={13}/> {label} <ChevronDown size={13}/></button>
+    {open && <div className="open-in-menu" role="menu">
+      {editors.map(app => item(app.id, <Code2 size={15}/>, app.label))}
+      {item('default', <AppWindow size={15}/>, 'Default app')}
+      {terminals.map(app => item(app.id, <SquareTerminal size={15}/>, app.label))}
+      <hr/>
+      {item('reveal', <Folder size={15}/>, `Show in ${fileApp}`)}
+    </div>}
   </div>;
 }

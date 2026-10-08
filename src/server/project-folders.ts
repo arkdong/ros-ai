@@ -9,7 +9,7 @@ import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
 import { CARD_DEFAULT_HEIGHT, cardWidth } from '../shared/card-size.js';
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
-import { FOLDER_DIRECTORIES, type FolderChoice, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
+import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
@@ -26,6 +26,26 @@ const CODE_TYPES: [language: string, extension: string][] = [['python', '.py'], 
 const NOTE_EXTENSIONS = ['.md', '.markdown', '.txt'];
 const SKIPPED_FOLDERS = new Set(['node_modules', '__pycache__', 'venv', 'site-packages']);
 const SYSTEM_FOLDERS = ['/bin', '/boot', '/dev', '/etc', '/lib', '/lib32', '/lib64', '/proc', '/run', '/sbin', '/srv', '/sys', '/usr', '/var', '/System', '/Library', '/Applications', '/private', '/cores'];
+// Apps offered in "Open in". Only these fixed, known apps are launched, never a command from the browser.
+const OPEN_APPS: { id: string; label: string; kind: OpenApp['kind']; mac: string[]; command?: string }[] = [
+  { id: 'vscode', label: 'VS Code', kind: 'editor', mac: ['Visual Studio Code.app'], command: 'code' },
+  { id: 'cursor', label: 'Cursor', kind: 'editor', mac: ['Cursor.app'], command: 'cursor' },
+  { id: 'zed', label: 'Zed', kind: 'editor', mac: ['Zed.app'], command: 'zed' },
+  { id: 'pycharm', label: 'PyCharm', kind: 'editor', mac: ['PyCharm.app', 'PyCharm CE.app', 'PyCharm Community Edition.app', 'PyCharm Professional Edition.app'], command: 'pycharm' },
+  { id: 'sublime', label: 'Sublime Text', kind: 'editor', mac: ['Sublime Text.app'], command: 'subl' },
+  { id: 'jupyterlab', label: 'JupyterLab', kind: 'editor', mac: ['JupyterLab.app'], command: 'jlab' },
+  { id: 'terminal', label: 'Terminal', kind: 'terminal', mac: ['Utilities/Terminal.app'] },
+  { id: 'iterm', label: 'iTerm', kind: 'terminal', mac: ['iTerm.app'] },
+];
+function installedApps(): (OpenApp & { path: string })[] {
+  const roots = ['/Applications', join(homedir(), 'Applications'), '/System/Applications'];
+  const onPath = (name: string) => (process.env.PATH ?? '').split(delimiter).map(folder => join(folder, name)).find(path => existsSync(path));
+  return OPEN_APPS.flatMap(({ id, label, kind, mac, command }) => {
+    const path = process.platform === 'darwin' ? roots.flatMap(root => mac.map(name => join(root, name))).find(path => existsSync(path))
+      : process.platform === 'linux' && command ? onPath(command) : undefined;
+    return path ? [{ id, label, kind, path }] : [];
+  });
+}
 const HOME_FOLDERS = ['Documents', 'Desktop', 'Downloads', 'Library', 'Pictures', 'Movies', 'Music', 'Public', 'Applications'];
 
 type Observed = { hash: string; mtimeMs: number; size: number };
@@ -483,13 +503,22 @@ export class ProjectFolders implements NotebookFolders {
     return this.status(projectId);
   }
 
-  async open(projectId: string, nodeId: string | undefined, reveal: boolean): Promise<{ path: string }> {
+  /** Apps found on this computer that can open a block's file or the project folder. */
+  apps(): OpenApp[] { return installedApps().map(({ id, label, kind }) => ({ id, label, kind })); }
+
+  /** Opens a block's file (or the project folder) in the default app, a named installed app, or the file manager. */
+  async open(projectId: string, nodeId: string | undefined, how: 'default' | 'reveal' | string): Promise<{ path: string }> {
     const { record, files } = this.require(projectId), entry = nodeId ? record.files[nodeId] : undefined;
     if (nodeId && (!entry || entry.removed)) throw new StoreError('This block has no file in the project folder yet.', 404);
     if (entry && !files.exists(entry.path)) throw new StoreError(`${entry.path} is missing from the project folder.`, 404);
-    const target = entry ? files.resolve(entry.path) : files.root;
+    const target = entry ? files.resolve(entry.path) : files.root, reveal = how === 'reveal';
+    const app = how === 'default' || reveal ? undefined : installedApps().find(item => item.id === how);
+    if (how !== 'default' && !reveal && !app) throw new StoreError('That app is not available on this computer.', 404);
+    // Terminals open in the file's folder.
+    const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
     // Code opens in a text editor: the default app for .py or .sh files can run them instead.
-    const [command, args] = process.platform === 'darwin' ? ['/usr/bin/open', reveal ? ['-R', target] : entry?.kind === 'code' ? ['-t', target] : [target]]
+    const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
+      : process.platform === 'darwin' ? ['/usr/bin/open', reveal ? ['-R', target] : entry?.kind === 'code' ? ['-t', target] : [target]]
       : process.platform === 'win32' ? ['explorer.exe', [reveal ? `/select,${target}` : target]] : ['xdg-open', [reveal && entry ? dirname(target) : target]];
     await new Promise<void>((done, fail) => {
       const child = spawn(command, args, { detached: true, stdio: 'ignore' });
@@ -876,9 +905,10 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
   app.get('/api/projects/:id/folder', (req, res) => res.json(folders.status(id.parse(req.params.id))));
   app.post('/api/projects/:id/folder', (req, res) => res.json(folders.attach(id.parse(req.params.id), z.object({ path }).strict().parse(req.body).path)));
   app.post('/api/projects/:id/folder/open', async (req, res) => {
-    const body = z.object({ nodeId: id.optional(), reveal: z.boolean().default(false) }).strict().parse(req.body ?? {});
-    res.json(await folders.open(id.parse(req.params.id), body.nodeId, body.reveal));
+    const body = z.object({ nodeId: id.optional(), with: z.string().max(40).default('default') }).strict().parse(req.body ?? {});
+    res.json(await folders.open(id.parse(req.params.id), body.nodeId, body.with));
   });
+  app.get('/api/open-apps', (_req, res) => res.json(folders.apps()));
   app.post('/api/projects/:id/folder/restore', (req, res) => res.json(folders.restore(id.parse(req.params.id), z.object({ nodeId: id }).strict().parse(req.body).nodeId)));
   app.post('/api/projects/:id/folder/add', (req, res) => res.status(201).json(folders.add(id.parse(req.params.id), z.object({ path: z.string().min(1).max(1000) }).strict().parse(req.body).path)));
 }
