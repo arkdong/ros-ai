@@ -11,6 +11,7 @@ import { ExecutionService } from './execution.js';
 import { ExperimentService } from './experiments.js';
 import { ResearchService } from './research.js';
 import { CodexAgentService } from './codex-agent.js';
+import { ClaudeAgentService } from './claude-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
@@ -43,6 +44,7 @@ let experiments: ExperimentService | undefined;
 let research:ResearchService|undefined;
 let assistant:AssistantService|undefined;
 let agent:CodexAgentService|undefined;
+let claude:ClaudeAgentService|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
 let notebooks:NotebookService|undefined;
@@ -61,6 +63,7 @@ async function shutdown() {
     await guide?.shutdown();
     await assistant?.shutdown();
     await agent?.shutdown();
+    await claude?.shutdown();
     await execution?.shutdown();
     await experiments?.shutdown();
     await research?.shutdown();
@@ -90,9 +93,10 @@ try {
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
-    assistant=new AssistantService(store,execution,experiments,agent);
+    claude=new ClaudeAgentService(store,execution,experiments,dataDir);
+    assistant=new AssistantService(store,execution,experiments,agent,claude);
     guide=new WorkspaceGuideService(store,execution);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

@@ -143,6 +143,7 @@ export class ExecutionService {
     return provider==='nebius' ? this.customModel || Boolean(this.authorization && this.authorization.nebiusUsd>0) : !(this.search instanceof TavilyAdapter) || Boolean(this.authorization && this.authorization.tavilyUsd>0);
   }
   private environmentBudget(provider:ConnectionBudgetProvider):EnvironmentConnectionBudget {
+    if(provider==='claude')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:'Save a Claude Code allowance before paid turns. A saved API key does not authorize spending.'};
     const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.listUsage();
     const enabled=this.legacyCloudAllowed(provider),limitUsd=ledger.limits[provider]??0,accountedUsd=ledger.accounted(provider);
     const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;

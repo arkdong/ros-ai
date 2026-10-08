@@ -191,6 +191,16 @@ type Manifest = z.infer<typeof manifestSchema>;
  * Keeps each project's blocks as ordinary files in a folder the person chose. ros.ai writes a file after every saved
  * change; a file changed in another app comes back as an undoable canvas change. Run history stays in ros.ai's database.
  */
+/** The project's folder on disk, or null when it has none or it moved. */
+export function projectFolderRoot(store: Store, projectId: string): string | null {
+  const record = store.record<FolderRecord>(RECORD, projectId);
+  if (!record) return null;
+  try {
+    const real = realpathSync(record.path), info = statSync(real);
+    return real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode ? real : null;
+  } catch { return null; }
+}
+
 export class ProjectFolders implements NotebookFolders {
   private readonly active = new Set<string>();
   private readonly watchers = new Map<string, FSWatcher>();

@@ -9,7 +9,6 @@ export type AgentConnectionStatus = {
   features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean };
   enforcement: string[]; limitations: string[];
   grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
-  alternative: { id: 'claude'; installed: boolean; version: string | null; signedIn: boolean; detail: string };
 };
 export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage'; message: string; data?: unknown };
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };

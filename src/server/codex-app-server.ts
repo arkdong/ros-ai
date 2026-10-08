@@ -50,37 +50,11 @@ export function readCliStatus() {
   const run = (file: string, args: string[]) => spawnSync(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 20000, env: childEnvironment() });
   const version = run(codexBinary(), ['--version']), login = version.status === 0 ? run(codexBinary(), ['login', 'status']) : null;
   const output = `${login?.stdout ?? ''}\n${login?.stderr ?? ''}`;
-  const claudeBinary = process.env.ROS_CLAUDE_BINARY || 'claude';
-  const claudeVersion = run(claudeBinary, ['--version']);
-  const claudeAuth = claudeVersion.status === 0 ? run(claudeBinary, ['auth', 'status']) : null;
-  let claudeSignedIn = false;
-  try { claudeSignedIn = JSON.parse(claudeAuth?.stdout || '{}').loggedIn === true; } catch { /* Unavailable status is not signed in. */ }
   return {
     installed: version.status === 0, version: version.status === 0 ? version.stdout.trim().slice(0, 100) : null,
     signedIn: login?.status === 0 && /logged in/i.test(output),
     authMethod: /using ChatGPT/i.test(output) ? 'chatgpt' as const : /API key/i.test(output) ? 'api-key' as const : null,
-    alternative: { id: 'claude' as const, installed: claudeVersion.status === 0, version: claudeVersion.status === 0 ? claudeVersion.stdout.trim().slice(0, 100) : null, signedIn: claudeSignedIn, detail: 'External CLI/MCP is separate from an embedded SDK. Anthropic requires API authentication or prior approval for third-party claude.ai login/limits; no embedded Claude adapter is claimed.' },
   };
-}
-
-/** Bare auth status neither reads native OAuth/keychain credentials nor sends
- * inference. Only the explicitly configured Anthropic API key is forwarded.
- */
-export function readClaudeApiStatus() {
-  const binary = process.env.ROS_CLAUDE_BINARY || 'claude';
-  const env = childEnvironment(), apiKeyConfigured = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-  if (apiKeyConfigured) env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  const run = (args: string[]) => spawnSync(binary, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 20000, env });
-  const version = run(['--version']), installed = version.status === 0;
-  const help = installed ? run(['--help']) : null;
-  const bareStatusSupported = Boolean(help?.status === 0 && help.stdout.includes('--bare') && help.stdout.includes('--setting-sources'));
-  const auth = bareStatusSupported ? run(['--bare', '--setting-sources', '', 'auth', 'status']) : null;
-  let apiAuthenticationSelected = false;
-  try {
-    const value = JSON.parse(auth?.stdout || '{}');
-    apiAuthenticationSelected = apiKeyConfigured && value.loggedIn === true && /api.?key/i.test(String(value.authMethod ?? ''));
-  } catch { /* A missing/unreadable status never becomes authenticated. */ }
-  return { installed, version: installed ? version.stdout.trim().slice(0, 100) : null, apiKeyConfigured, apiAuthenticationSelected, bareStatusSupported };
 }
 
 /** Bounded newline JSON-RPC transport. No automatic replay of any request. */

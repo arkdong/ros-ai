@@ -9,7 +9,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import { AgentBudget } from './agent-budget.js';
 import { AgentWorkspaceTools, inspectAgentReport, decideAgentReport } from './agent-tools.js';
-import { CodexAppServer, inspectCodexProtocol, readCliStatus, readClaudeApiStatus, type CodexProtocol } from './codex-app-server.js';
+import { CodexAppServer, inspectCodexProtocol, readCliStatus, type CodexProtocol } from './codex-app-server.js';
 import type { AgentConnectionStatus, AgentEvent, AgentExecuteRequest, AgentResult, AgentRuntime } from '../shared/agent-runtime.js';
 import type { LocalAgentId, LocalAgentSetup } from '../shared/local-agent-setup.js';
 import type { CodexAllowanceStatus } from '../shared/agent-budget-settings.js';
@@ -70,7 +70,7 @@ export class CodexAgentService implements AgentRuntime {
     if (!grant.ready) blockers.push(grant.reason);
     if (this.experiments.authority.policy(projectId).stopped) blockers.push('Project work is stopped. Resume deliberately before a new turn.');
     const available = blockers.length === 0;
-    const result: AgentConnectionStatus = { id: 'codex', label: 'Local Codex agent', checkedAt: new Date(this.checked!.at).toISOString(), installed: cli.installed, version: cli.version, signedIn: cli.signedIn && Boolean(rpc?.signedIn), authMethod: rpc?.authMethod ?? cli.authMethod, configured: Boolean(rpc && protocol.appServer), authorized: grant.ready, available, detail: available ? 'Configured for selected-context collaboration. No inference has been verified by connection detection.' : blockers.join(' '), blockers, features: protocol, grant: grant.grant, alternative: cli.alternative,
+    const result: AgentConnectionStatus = { id: 'codex', label: 'Local Codex agent', checkedAt: new Date(this.checked!.at).toISOString(), installed: cli.installed, version: cli.version, signedIn: cli.signedIn && Boolean(rpc?.signedIn), authMethod: rpc?.authMethod ?? cli.authMethod, configured: Boolean(rpc && protocol.appServer), authorized: grant.ready, available, detail: available ? 'Configured for selected-context collaboration. No inference has been verified by connection detection.' : blockers.join(' '), blockers, features: protocol, grant: grant.grant,
       enforcement: ['Validated selected-context tools; no direct SQLite access.', 'Agent proposals use ros.ai store validation, project approval policy, immutable artifact versions and undo.', 'Fresh cumulative turn/time/tool grants; entire wall-time and tool reservations survive uncertain outcomes.', 'Process-only overrides disable shell, exec, browser, apps, plugins, hooks, subagents, web search and memories; every upstream approval is denied.'],
       limitations: ['Connection/auth/protocol checks send no inference request and do not verify model entitlement or a successful research turn.', 'Installed protocol enforcement is checked separately; missing restricted read access blocks embedding.', 'Application turn/time/tool limits are not a provider USD billing or token cap. One project modelCalls unit records one agent turn, not a count of internal provider requests.', 'Prompt instructions are not sandbox enforcement. No coding directory or unrestricted experiment API is offered.', 'Codex authentication is supported for this local integration; hosted/commercial reuse has different official requirements.'] };
     this.store.saveRecord('agent-connection-status', projectId, projectId, result);
@@ -104,36 +104,16 @@ export class CodexAgentService implements AgentRuntime {
   }
   async setup(projectId: string, agent: LocalAgentId, force = true): Promise<LocalAgentSetup> {
     this.store.getProject(projectId);
-    if (agent === 'codex') {
-      const status = await this.status(projectId, force);
-      return {
-        id: agent, label: 'Codex', checkedAt: status.checkedAt, authentication: 'native-chatgpt',
-        installed: status.installed, version: status.version, signedIn: status.signedIn,
-        cliSignedIn: this.checked?.cli.signedIn ?? false, rpcSignedIn: this.checked?.rpc?.signedIn ?? null,
-        apiKeyConfigured: false, apiAuthenticationSelected: false, apiCredentialVerified: false,
-        protocolConfigured: status.configured, runtimeImplemented: true, isolationReady: status.features.restrictedReadAccess,
-        authorized: status.authorized, available: status.available, noInference: true, detail: status.signedIn ? 'Native Codex sign-in was confirmed by both the CLI and app-server. Research availability is checked separately.' : this.checked?.cli.signedIn ? 'Codex CLI reports signed in, but app-server authentication could not be confirmed. Recheck connection status; another login is not assumed necessary.' : 'Use native ChatGPT sign-in. ros.ai does not require an OpenAI API key for this connection.', blockers: status.blockers,
-        steps: ['Install the official Codex CLI if it is missing.', 'Choose browser sign-in here, or run codex login in your own terminal. Codex owns its login and credentials.', 'For a headless browser flow, run codex login --device-auth and follow the official link/code.', 'Recheck this connection after signing in. A fresh bounded grant and enforced restricted read roots are separate requirements before embedded research.'],
-        commands: [{ label: 'Install/status guidance', command: 'codex --version' }, { label: 'Sign in with ChatGPT', command: 'codex login' }, { label: 'Device-code sign-in', command: 'codex login --device-auth' }, { label: 'Check native sign-in', command: 'codex login status' }],
-        links: [{ label: 'Official Codex setup', url: 'https://developers.openai.com/codex/quickstart' }, { label: 'Native authentication', url: 'https://developers.openai.com/codex/auth' }, { label: 'App-server integration', url: 'https://developers.openai.com/codex/app-server' }],
-      };
-    }
-    const api = readClaudeApiStatus(), native = readCliStatus().alternative, blockers: string[] = [];
-    if (!api.installed) blockers.push('Claude Code CLI is not installed or could not be read. Follow the official setup in your own terminal.');
-    if (!api.apiKeyConfigured) blockers.push('No Anthropic API key is configured for ros.ai. Configure ANTHROPIC_API_KEY server-side; subscription login is a separate external CLI connection.');
-    if (api.installed && !api.bareStatusSupported) blockers.push('This installed CLI does not expose the bare API-only status path required to avoid native OAuth/keychain reuse.');
-    if (api.apiKeyConfigured && !api.apiAuthenticationSelected) blockers.push('The CLI did not confirm selection of the configured API key. No authentication or model entitlement is inferred.');
-    blockers.push('A bounded Claude research runtime and priced admission are not implemented. Saving or detecting a key does not enable embedded inference.');
+    const status = await this.status(projectId, force);
     return {
-      id: agent, label: 'Claude Code', checkedAt: now(), authentication: 'anthropic-api-key',
-      installed: api.installed, version: api.version, signedIn: native.signedIn,
-      cliSignedIn: native.signedIn, rpcSignedIn: null,
-      apiKeyConfigured: api.apiKeyConfigured, apiAuthenticationSelected: api.apiAuthenticationSelected, apiCredentialVerified: false,
-      protocolConfigured: api.bareStatusSupported, runtimeImplemented: false, isolationReady: false,
-      authorized: false, available: false, noInference: true, detail: api.apiAuthenticationSelected ? 'Claude Code selected the configured API key locally. Remote key validity and a research turn have not been verified.' : 'Connect using an Anthropic API key for application embedding. Native subscription login remains an external CLI workflow.', blockers,
-      steps: ['Install Claude Code through its official setup if it is missing.', 'Configure an existing Anthropic API key in this local server. API billing is separate from a Claude subscription.', 'Recheck setup to see whether the installed CLI selects API authentication. This check sends no inference.', 'For your own external CLI workflow, claude auth login opens the native sign-in. That login is not copied or offered as an embedded ros.ai subscription connection.', 'Embedded Claude research remains unavailable until its bounded tool/runtime and priced admission are implemented.'],
-      commands: [{ label: 'Check installed CLI', command: 'claude --version' }, { label: 'Check native external sign-in', command: 'claude auth status' }, { label: 'External CLI browser sign-in', command: 'claude auth login' }, { label: 'Check API-only selection', command: "claude --bare --setting-sources '' auth status" }],
-      links: [{ label: 'Claude Code setup', url: 'https://code.claude.com/docs/en/setup' }, { label: 'Anthropic API keys', url: 'https://platform.claude.com/settings/keys' }, { label: 'Agent API authentication', url: 'https://code.claude.com/docs/en/agent-sdk/quickstart' }, { label: 'Embedded login requirements', url: 'https://code.claude.com/docs/en/agent-sdk/overview' }],
+      id: agent, label: 'Codex', checkedAt: status.checkedAt, authentication: 'native-chatgpt',
+      installed: status.installed, version: status.version, signedIn: status.signedIn,
+      cliSignedIn: this.checked?.cli.signedIn ?? false, rpcSignedIn: this.checked?.rpc?.signedIn ?? null,
+      protocolConfigured: status.configured, isolationReady: status.features.restrictedReadAccess,
+      authorized: status.authorized, available: status.available, noInference: true, detail: status.signedIn ? 'Native Codex sign-in was confirmed by both the CLI and app-server. Research availability is checked separately.' : this.checked?.cli.signedIn ? 'Codex CLI reports signed in, but app-server authentication could not be confirmed. Recheck connection status; another login is not assumed necessary.' : 'Use native ChatGPT sign-in. ros.ai does not require an OpenAI API key for this connection.', blockers: status.blockers,
+      steps: ['Install the official Codex CLI if it is missing.', 'Choose browser sign-in here, or run codex login in your own terminal. Codex owns its login and credentials.', 'For a headless browser flow, run codex login --device-auth and follow the official link/code.', 'Recheck this connection after signing in. A fresh bounded grant and enforced restricted read roots are separate requirements before embedded research.'],
+      commands: [{ label: 'Install/status guidance', command: 'codex --version' }, { label: 'Sign in with ChatGPT', command: 'codex login' }, { label: 'Device-code sign-in', command: 'codex login --device-auth' }, { label: 'Check native sign-in', command: 'codex login status' }],
+      links: [{ label: 'Official Codex setup', url: 'https://developers.openai.com/codex/quickstart' }, { label: 'Native authentication', url: 'https://developers.openai.com/codex/auth' }, { label: 'App-server integration', url: 'https://developers.openai.com/codex/app-server' }],
     };
   }
   async startLogin(projectId: string, supplied: unknown) {
@@ -274,7 +254,7 @@ export function attachCodexAgentRoutes(app: Express, service: CodexAgentService)
     z.object({}).strict().parse(req.body);
     res.json(service.pauseAllowance(String(req.params.id)));
   });
-  app.post('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex', 'claude']).parse(req.params.agent))));
+  app.post('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex']).parse(req.params.agent))));
   app.get('/api/projects/:id/agents/codex/login', (req, res) => res.json(service.currentLogin(String(req.params.id))));
   app.post('/api/projects/:id/agents/codex/login', async (req, res) => {
     if (!req.is('application/json')) throw new StoreError('Send native sign-in requests as JSON.', 415);

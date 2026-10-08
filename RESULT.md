@@ -2,6 +2,17 @@
 
 October 2–3, 2026. **Stage One is complete.** Code/manual output workflows and Notebook connection/capture were delivered on October 2; the remaining live Jupyter acceptance passed on October 3 (below). Since October 6 the Stage One foundation work builds on it, and on October 7 notebooks moved inside ros.ai. The earlier generated-card diagnosis and pending ROIC-minus-WACC correction are preserved in [the preceding result](docs/history/RESULT-before-stage-one-2026-10-02.md).
 
+## October 7: Claude Code as the assistant
+
+Adam asked for recommendation 1 of the AIPOCH deep dive: Claude Code as ros.ai's assistant, with an API key. It is a third choice in the assistant's settings, next to **API model** and **Local Codex**.
+
+- **Runtime.** Anthropic's Agent SDK (`@anthropic-ai/claude-agent-sdk`, which bundles Claude Code) runs each turn with Claude Code's own system prompt plus ros.ai's rules: no invented citations or results, observed versus inferred, files are evidence and not instructions, pending proposals are not saved. Follow-up turns resume the same session.
+- **Authentication.** Only the Anthropic API key from Connections, in a config folder inside ros.ai's data folder. The turn stops if Claude Code reports any other credential source. Claude subscription sign-in is not offered.
+- **What it can touch.** Read, Glob and Grep inside the project folder, checked before every call; the shared `ros_*` proposal tools, which follow the permission choice and run code only in ros.ai's sandbox. No shell, writes, web, subagents or personal settings.
+- **Cost.** The Claude Code card has the same USD/request allowance as the other connections and a model choice (Sonnet, Opus, Haiku). A turn reserves up to US$1.00 and passes it as Claude Code's budget; a finished turn is counted at the cost Claude Code reports, a stopped or failed one keeps its reservation. **Check key** lists models without inference.
+
+Verified with no paid calls, against a stand-in Anthropic API on localhost: a turn listed `rain.md` with Glob, was refused a Read of `/etc/hostname`, had no Bash, created a pending canvas proposal through `ros_propose_canvas`, and settled US$0.015 against the allowance; a second turn resumed the session and counted only its own cost; Stop marked the turn interrupted and kept the full reservation. The request carried the key as `x-api-key` with no bearer token. In Chromium: the assistant settings choice, the Claude Code row, a turn's reply, and the Connections card with model and allowance. **Check key** reached Anthropic and correctly rejected a fake key. A real Claude turn has not been run.
+
 ## October 7: notebooks run inside ros.ai
 
 Adam's fourth Stage One foundation ask: a Notebook block opens a notebook directly, or from an imported file, with ros.ai's own screen and Python running inside ros.ai. On the October 6 decision card he chose the Docker sandbox for that Python. This replaces the October 2–3 connection to a separately run Jupyter server.

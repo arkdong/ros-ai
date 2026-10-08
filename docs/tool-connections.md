@@ -6,18 +6,18 @@ Open **Connections** in the local ros.ai workspace. Each tool is a collapsible r
 | --- | --- | --- |
 | Nebius Token Factory | Save an existing Token Factory API key, or set `NEBIUS_API_KEY` in `.env.local`. | Key presence; **Check key** requests the authenticated model catalog without starting inference. |
 | Codex | Install the official CLI, then choose browser or device-code sign-in in the panel. | Native CLI/app-server sign-in and protocol support; research availability is checked separately. |
-| Claude | Save an existing Anthropic API key, or set `ANTHROPIC_API_KEY` in `.env.local`. | Local key presence and, where supported, CLI selection of API authentication. Embedded Claude research remains unavailable. |
+| Claude Code | Save an existing Anthropic API key, or set `ANTHROPIC_API_KEY` in `.env.local`, then save a Claude Code allowance. | Key presence; **Check key** lists models without starting inference. Choosing Claude Code in the assistant's settings runs turns. |
 | Google Drive | Configure a local Google OAuth Web application, then complete Google consent yourself. | A saved read-only grant; CSV listing and explicitly selected captures use that grant. |
 
 ## Visible usage allowances
 
-Nebius, direct OpenAI, and Tavily show their local ros.ai **total USD ceiling**, **retained usage**, **remaining USD**, and **request ceiling/remaining requests**. These allowances cover inference or search across all ros.ai projects in this data directory. They are application admission limits, not provider account balances, invoices, or account-wide billing caps. Account credits and reported token/search-credit usage remain separate.
+Nebius, direct OpenAI, Tavily and Claude Code show their local ros.ai **total USD ceiling**, **retained usage**, **remaining USD**, and **request ceiling/remaining requests**. These allowances cover inference or search across all ros.ai projects in this data directory. They are application admission limits, not provider account balances, invoices, or account-wide billing caps. Account credits and reported token/search-credit usage remain separate.
 
 To authorize application use, enter a total ceiling and maximum request count, acknowledge that the allowance permits external requests, and explicitly save it. Your first save creates a separate fresh app allowance; its **Reserved** figure covers that allowance, while historical environment usage stays preserved in **Budget & usage**. Later edits, pause, credential replacement, restart, and project switching do not reset its retained use; failed, cancelled, or uncertain dispatched requests retain conservative reservations. USD/request ceilings cannot be below retained use. **Pause usage** blocks new admissions without refunding previous use or falling back to an environment grant. Already dispatched provider requests can still finish. Historical comparison mode cannot use an app allowance; its exact environment scope remains enforced until that mode is removed from server configuration. The separate legacy combined Nebius/sandbox ceiling and remote execution's pricing/approval gates are unchanged: saving an inference allowance does not authorize a remote sandbox attempt.
 
 Codex instead shows **turns, runtime seconds, and tool-call allowances**, with per-turn time/tool limits and an explicit authorization acknowledgement. First enable snapshots the current project's saved notes and immutable artifact IDs; later numeric edits retain that scope. New cards and artifact versions are not automatically included, and grouping or focus does not broaden it. **Pause usage** blocks new turns and requests Stop for an active turn; full reservations remain. Ceilings cannot be below retained use, including earlier Codex admissions in this project, and edits/restart never reset them. These units are not dollars or a cap on hidden provider requests or subscription billing. One admitted agent turn consumes one project model-request unit and its reserved runtime/tool allowance. A USD ceiling alone neither authorizes Codex nor resolves a missing isolation boundary.
 
-Claude has no spending editor because embedded research is unavailable. Google Drive has no model allowance: the visible limits describe read-only CSV access and the 500,000-byte capture maximum. Connecting either tool does not create a model-research budget.
+Google Drive has no model allowance: the visible limits describe read-only CSV access and the 500,000-byte capture maximum. Connecting it does not create a model-research budget.
 
 ## Assistant model selection and project setup
 
@@ -41,11 +41,23 @@ Follow the [official CLI setup](https://developers.openai.com/codex/quickstart),
 
 Codex owns its credentials; ros.ai does not copy its auth cache or treat its subscription token as an API key. Signed-in, protocol-configured, authorized, and available are distinct states. Embedded research requires enforced restricted read roots, disabled host tools, and the explicitly saved bounded turn/time/tool allowance. Missing isolation keeps turns blocked even after you save an allowance. Status checks submit no inference and do not verify model entitlement; application turn limits are not a provider billing cap. The current adapter supports native ChatGPT authentication, with direct OpenAI API access kept separate. The [official app-server documentation](https://learn.chatgpt.com/docs/app-server) describes different requirements for hosted or commercial integrations; this connection is local. See [the dated implementation record](codex-local-agent-2026-09-30.md).
 
-## Claude
+## Claude Code
 
-Use an existing [Anthropic API key](https://platform.claude.com/settings/keys) for the panel's Claude connection. If you also install the CLI, follow [Claude Code setup](https://code.claude.com/docs/en/setup); the setup panel reports whether its API-only status command selects the configured key. No remote key check or inference is performed by that status command.
+Claude Code can be the project assistant. It runs through Anthropic's [Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), which ships with ros.ai (`npm ci` installs it), so no separate `claude` install is needed.
 
-Saving the key does not enable embedded Claude turns: the bounded runtime and priced admission are not implemented. A native `claude auth login` is an external CLI workflow, separate from this connection. Anthropic's [Agent SDK guidance](https://code.claude.com/docs/en/agent-sdk/overview) requires API authentication for third-party applications unless subscription-login use has prior approval.
+1. Save an [Anthropic API key](https://platform.claude.com/settings/keys) under **Connections → Claude Code**. API billing is separate from a Claude subscription.
+2. Save a usage allowance (total USD and requests) on the same card, and pick the model (Sonnet by default, Opus or Haiku).
+3. In the assistant, open settings and choose **Claude Code**.
+
+Each turn reserves up to US$1.00 of the allowance (`ROS_CLAUDE_TURN_USD` changes it, up to 20) and passes that amount to Claude Code as the turn's budget. A turn that finishes is then counted at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice. A stopped, failed or uncertain turn keeps its full reservation.
+
+What it can do, enforced by ros.ai rather than by instructions:
+
+- Read, Glob and Grep inside the project folder only. A check before every tool call refuses paths outside the folder; a project without a folder gets no file tools.
+- Propose canvas changes, artifact reuse, analysis code and report revisions through the same `ros_*` tools as Codex. They follow the project's permission choice, and code runs only in ros.ai's sandbox.
+- No shell, file writes, web access, subagents, skills or MCP servers from your own Claude Code setup.
+
+The session gets its own config folder inside ros.ai's data folder and only the saved API key. ros.ai stops the turn if Claude Code reports any other credential source. Claude subscription sign-in is deliberately not offered: Anthropic requires API authentication for third-party applications unless subscription-login use has prior approval. Each turn's prompt, tools, model, reported cost and events are saved with the turn. Follow-up turns in the same project resume the same Claude Code session.
 
 ## Google Drive
 

@@ -13,7 +13,8 @@ const UNITS_PER_USD = 1_000_000_000;
 // gate; floating-point tolerances never authorize additional spending.
 const chargeUnits = (usd: number) => Number.isFinite(usd) && usd >= 0 ? Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(usd * UNITS_PER_USD)) : Number.MAX_SAFE_INTEGER;
 const limitUnits = (usd: number) => Math.floor(usd * UNITS_PER_USD);
-type Admission = { usageId: string; reservedUnits: number; createdAt: string };
+// settledUnits is set only when the provider reported a completed request's cost (see settle).
+type Admission = { usageId: string; reservedUnits: number; createdAt: string; settledUnits?: number };
 type Allowance = { provider: ConnectionBudgetProvider; grantId: string; limitUsd: number; maxRequests: number; enabled: boolean; revision: number; createdAt: string; updatedAt: string; admissions: Admission[] };
 export type EnvironmentConnectionBudget = Pick<ConnectionBudgetStatus, 'source' | 'enabled' | 'ready' | 'limitUsd' | 'accountedUsd' | 'maxRequests' | 'usedRequests' | 'reason'>;
 type Reservation = { provider: ConnectionBudgetProvider; amountUsd: number; purpose: string; basis: string; runId?: string; trace?: Record<string, unknown> };
@@ -30,6 +31,7 @@ export class ConnectionBudgets {
     const usage = new Map(this.store.listUsage().filter(row => row.provider === saved.provider).map(row => [row.id, row]));
     return saved.admissions.reduce((total, admission) => {
       const row = usage.get(admission.usageId);
+      if (admission.settledUnits !== undefined) return Math.min(Number.MAX_SAFE_INTEGER, total + Math.max(admission.settledUnits, chargeUnits(row?.estimatedUsd ?? 0)));
       return Math.min(Number.MAX_SAFE_INTEGER, total + Math.max(admission.reservedUnits, chargeUnits(row?.reservedUsd ?? 0), chargeUnits(row?.estimatedUsd ?? 0)));
     }, 0);
   }
@@ -91,6 +93,19 @@ export class ConnectionBudgets {
       this.store.addUsage(usage);
       this.store.saveGlobalRecord(namespace, input.provider, { ...saved, admissions: [...saved.admissions, { usageId: usage.id, reservedUnits: units, createdAt: at }] } satisfies Allowance);
       return usage;
+    });
+  }
+  /** Replaces a reservation by the cost the provider reported for a request that
+   * completed. Failed, stopped and uncertain requests keep their full reservation. */
+  settle(provider: ConnectionBudgetProvider, usageId: string, reportedUsd: number, reportedUsage: Record<string, unknown>) {
+    if (!Number.isFinite(reportedUsd) || reportedUsd < 0) throw new StoreError('Reported request cost is unreadable; the full reservation stays counted.', 500);
+    return this.store.atomic(() => {
+      const saved = this.saved(provider), admission = saved?.admissions.find(item => item.usageId === usageId);
+      if (!saved || !admission || admission.settledUnits !== undefined) throw new StoreError('This request reservation is missing or already settled.', 409);
+      const row = this.store.listUsage().find(item => item.id === usageId);
+      this.store.updateUsage(usageId, { estimatedUsd: reportedUsd, status: 'settled', reportedUsage: { ...(row?.reportedUsage as Record<string, unknown> | null ?? {}), ...reportedUsage } });
+      this.store.saveGlobalRecord(namespace, provider, { ...saved, admissions: saved.admissions.map(item => item === admission ? { ...item, settledUnits: chargeUnits(reportedUsd) } : item) } satisfies Allowance);
+      return this.status(provider);
     });
   }
 }
