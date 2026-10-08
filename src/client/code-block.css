@@ -45,3 +45,17 @@
 .attempt-outcome{color:#6c7670;font-size:12px}
 .attempt-dot{width:8px;height:8px;border-radius:50%;background:#b8c0ba}
 .attempt-dot.completed{background:#5d9a3a}.attempt-dot.failed,.attempt-dot.interrupted{background:#c2412d}.attempt-dot.running,.attempt-dot.queued{background:#3d6990}
+/* Hover guide for the output helpers. */
+.helper-chip{position:relative;display:inline-flex}
+.helper-tip{position:absolute;bottom:calc(100% + 8px);left:0;z-index:40;width:300px;display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:10px;background:#25332c;color:#eef2ee;font-size:12px;line-height:1.45;box-shadow:0 10px 28px rgba(20,30,25,.22);opacity:0;visibility:hidden;transform:translateY(3px);transition:opacity .12s,transform .12s,visibility .12s;pointer-events:none}
+.helper-chip:hover .helper-tip,.helper-chip:focus-within .helper-tip{opacity:1;visibility:visible;transform:none;transition-delay:.12s}
+.helper-tip>code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9e6b0;background:none;border:0;padding:0}
+.helper-tip strong{font-weight:600;color:#fff}
+.helper-example{display:flex;flex-direction:column;gap:3px}
+.helper-example code{white-space:pre;font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,.08);border-radius:5px;padding:5px 7px;color:#eef2ee}
+.helper-tip small{color:#a9b5ad;font-size:11px}
+.params-guide small{display:block;line-height:1.5}
+.params-guide code{font:11px ui-monospace,monospace;background:#f1f3f0;border-radius:4px;padding:0 4px;color:#25332c}
+.params-guide code.params-missing{background:#fbf1de;color:#8d601f}
+.params-guide .text-button{padding:0;font-size:11px;text-decoration:underline}
+.params-warning{color:#8d601f}

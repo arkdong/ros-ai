@@ -23,10 +23,24 @@ export function starters(context: CodeContext): { label: string; code: string }[
   return list;
 }
 
-/** Helpers shown as insert chips under the editor. */
-export const helperInserts = (runtime: CodeContext['runtime']) => ({
-  docker: ['metric("Name", value)', 'table("Title", df)', 'plot("Title", fig)', 'export_csv("Title", df)', 'conclusion("Text")'],
-  notebook: [],
-  stdlib: ['metric("Name", value)', 'table("Title", rows)', 'plot("Title", values)', 'export_csv("Title", rows)', 'conclusion("Text")'],
-  bounded: ['column("name")', 'metric("Name", value)', 'table("Title", describe(values))', 'plot("Title", values)'],
-})[runtime];
+/** ros.ai's output helpers, shown as insert chips under the Code editor with a short guide on hover. */
+export const outputHelpers: { name: string; insert: string; what: string; shows: string; example: string }[] = [
+  { name: 'metric', insert: 'metric("Name", value)', what: 'Saves one named number or short value.', shows: 'A large number on the card and in Results.', example: 'metric("Mean price", df["price"].mean())' },
+  { name: 'table', insert: 'table("Title", df)', what: 'Saves a DataFrame, Series or list of rows as a table (up to 10,000 rows).', shows: 'A table you can sort and inspect.', example: 'table("Summary", df.describe())' },
+  { name: 'plot', insert: 'plot("Title", fig)', what: 'Saves a matplotlib figure as an image. Leave out fig to save the current one.', shows: 'A figure on the card and in Results.', example: 'fig, ax = plt.subplots()\nax.hist(df["price"])\nplot("Price spread", fig)' },
+  { name: 'export_csv', insert: 'export_csv("Title", df)', what: 'Saves a DataFrame as a new CSV dataset.', shows: 'A dataset another block can use as its Data input.', example: 'export_csv("Clean prices", df.dropna())' },
+  { name: 'conclusion', insert: 'conclusion("Text")', what: 'Saves a short written takeaway from this run.', shows: 'Text in Results, ready for a report.', example: 'conclusion("Prices rose 4% after 2020.")' },
+];
+
+/** Parameter keys the program reads, as `params["key"]` or `params.get("key", default)`, with any literal default. */
+export function paramsRead(source: string): { key: string; fallback?: unknown }[] {
+  const found = new Map<string, unknown>();
+  for (const match of source.matchAll(/params\s*(?:\[\s*(["'])([^"'\]]+)\1\s*\]|\.get\(\s*(["'])([^"']+)\3\s*(?:,\s*([^)]+?))?\s*\))/gu)) {
+    const key = match[2] ?? match[4];
+    if (found.has(key) && found.get(key) !== undefined) continue;
+    let fallback: unknown;
+    try { if (match[5]) fallback = JSON.parse(match[5].replace(/^'(.*)'$/u, '"$1"').replace(/^True$/u, 'true').replace(/^False$/u, 'false').replace(/^None$/u, 'null')); } catch { /* Not a literal: no default to offer. */ }
+    found.set(key, fallback);
+  }
+  return [...found].map(([key, fallback]) => ({ key, ...(fallback === undefined ? {} : { fallback }) }));
+}
