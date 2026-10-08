@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, LoaderCircle, Play, ShieldCheck, Square } from 'lucide-react';
-import type { Artifact, CanvasNode, CodeDocument, ProjectDetail } from '../shared/types';
+import { Check, ChevronDown, LoaderCircle, Play, ShieldCheck, Square } from 'lucide-react';
+import type { Artifact, CanvasNode, CodeDocument, ProjectDetail, Run } from '../shared/types';
 import type { ExperimentCapabilities, ExperimentPreview } from '../shared/experiments';
 import type { ResearchPolicy } from '../shared/research';
 import { api, post } from './api';
@@ -83,8 +83,24 @@ export function CodeBlock({initialRunId,node,detail,policy,onRefresh,onUpdate,on
       <label className="code-field"><span>Language</span><input aria-label="Code language" value={language} maxLength={50} list="code-languages" onChange={event=>setLanguage(event.target.value)}/><datalist id="code-languages"><option value="python"/><option value="c"/><option value="haskell"/></datalist></label>
     </div></section>
     <details className="code-runtime-details"><summary>Runtime and permissions</summary><p>{modeLabel(policy?.overrides[node.id]??policy?.mode??'ask')} · {policy?.used.experiments??0} code runs in this project so far.</p>{capabilities?.sandbox?.enforcement.map(value=><p key={value}>{value}</p>)}{capabilities?.sandbox?.limitations.map(value=><p key={value}>{value}</p>)}</details>
-  </div><div className="code-results"><div className="code-results-head"><h4>Results</h4>{runs.length>1?<select aria-label="Code attempt" value={run!.id} onChange={event=>setSelected(event.target.value)}>{runs.map(value=><option key={value.id} value={value.id}>{date(value.createdAt)} · {value.status}</option>)}</select>:run&&<small>{date(run.createdAt)}</small>}</div>{run?<><p className={`run-status-line code-run-status ${run.status}`}><strong>{status}</strong> <span>{run.events.at(-1)?.message}</span></p>{run.error&&<p className="inline-error">{run.error}</p>}{results.length?results.map(value=><section className="code-output" key={value.id}><div className="row between"><strong>{value.title}</strong><small>{value.kind}</small></div>{value.kind==='log'?<details><summary>Console output and errors</summary><CodeConsole artifact={value}/></details>:<ArtifactContent artifact={value}/>}<ResultActions artifact={value} detail={detail} onChanged={onRefresh} onOpen={onOpenArtifact} onReport={onReport} onInterpret={onInterpret}/></section>):!active&&<p className="subtle">This attempt saved no outputs.</p>}<details className="code-attempt-trace"><summary>Full attempt record</summary><pre>{JSON.stringify(run,null,2)}</pre><p>Observable execution records; no guarantee of deterministic replay.</p></details></>:<div className="code-output-empty"><p>Run the code to see results here.</p></div>}</div></div>;
+  </div><div className="code-results"><div className="code-results-head"><h4>Results</h4>{run&&<AttemptPicker runs={runs} selected={run} onSelect={setSelected}/>}</div>{run?<>{(active||pending||!['completed'].includes(run.status))&&<p className={`run-status-line code-run-status ${run.status}`}><strong>{status}</strong> {active&&<span>{run.events.at(-1)?.message}</span>}</p>}{run.error&&<p className="inline-error">{run.error}</p>}{results.length?[...results].sort((a,b)=>Number(a.kind==='log')-Number(b.kind==='log')).map(value=><section className="code-output" key={value.id}>{value.kind==='log'?<><div className="code-output-head"><strong>Console</strong></div><CodeConsole artifact={value}/></>:<><div className="code-output-head"><strong>{value.title}</strong><small>{value.kind}</small></div><ArtifactContent artifact={value}/></>}<ResultActions artifact={value} detail={detail} onChanged={onRefresh} onOpen={onOpenArtifact} onReport={onReport} onInterpret={onInterpret}/></section>):!active&&<p className="subtle">This attempt saved no outputs.</p>}<details className="code-attempt-trace"><summary>Full attempt record</summary><pre>{JSON.stringify(run,null,2)}</pre><p>Observable execution records; no guarantee of deterministic replay.</p></details></>:<div className="code-output-empty"><p>Run the code to see results here.</p></div>}</div></div>;
+}
+
+/** The attempt menu: newest first, each with its time and outcome. */
+function AttemptPicker({runs,selected,onSelect}:{runs:Run[];selected:Run;onSelect:(id:string)=>void}){
+  const [open,setOpen]=useState(false),box=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!open)return;const away=(event:PointerEvent)=>{if(!box.current?.contains(event.target as Node))setOpen(false);};document.addEventListener('pointerdown',away);return()=>document.removeEventListener('pointerdown',away);},[open]);
+  const label=(run:Run)=>run.status==='cancelled'?'Stopped':run.status[0].toUpperCase()+run.status.slice(1);
+  if(runs.length<2)return <small className="attempt-time">{date(selected.createdAt)}</small>;
+  return <div className="attempt-picker" ref={box} onKeyDown={event=>{if(event.key==='Escape'&&open){event.preventDefault();event.stopPropagation();setOpen(false);}}}>
+    <button type="button" className="attempt-trigger" aria-haspopup="listbox" aria-expanded={open} aria-label="Code attempt" onClick={()=>setOpen(value=>!value)}><span className={`attempt-dot ${selected.status}`}/>{date(selected.createdAt)}<ChevronDown size={14}/></button>
+    {open&&<div className="attempt-menu" role="listbox" aria-label="Attempts">{runs.map((run,index)=><button key={run.id} type="button" role="option" aria-selected={run.id===selected.id} className={run.id===selected.id?'selected':''} onClick={()=>{onSelect(run.id);setOpen(false);}}><span className={`attempt-dot ${run.status}`}/><span className="attempt-when">{date(run.createdAt)}</span><span className="attempt-outcome">{index===0?'Latest · ':''}{label(run)}</span>{run.id===selected.id&&<Check size={14}/>}</button>)}</div>}
+  </div>;
 }
 function draftSafe(value:string){try{return JSON.parse(value);}catch{return null;}}
 
-function CodeConsole({artifact}:{artifact:Artifact}){let content=artifact.content;try{const data=JSON.parse(content);content=[data.stdout,data.stderr,data.error].filter(Boolean).join('\n')||'No stdout or stderr.';}catch{}return <pre>{content}</pre>;}
+function CodeConsole({artifact}:{artifact:Artifact}){
+  let out=artifact.content,err='';
+  try{const data=JSON.parse(artifact.content);out=data.stdout??'';err=[data.stderr,data.error].filter(Boolean).join('\n');}catch{}
+  return <pre className="code-console">{out||(!err&&<span className="subtle">No printed output.</span>)}{err&&<span className="code-console-error">{err}</span>}</pre>;
+}
