@@ -14,10 +14,11 @@ const canvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rati
 const reuseSchema = z.object({ artifactId: id, targetNodeId: id, reason: z.string().trim().min(1).max(1000) }).strict();
 const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python', 'nebius-sandbox']) }).strict();
 const reportSchema = z.object({ nodeId: id, sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
-export type AgentName = 'codex' | 'claude';
+/** 'outside' is the person's own agent (their Claude Code, Codex or another MCP client) reaching ros.ai over MCP. */
+export type AgentName = 'codex' | 'claude' | 'outside';
 /** Tool input contracts, shared by every agent transport. */
 export const agentToolSchemas = { ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema };
-export type AgentReportProposal = { agent?: AgentName; id: string; projectId: string; assistantTurnId: string; status: 'pending' | 'accepted' | 'dismissed'; createdAt: string; captureHash: string; expectedRevision: number; draft: z.infer<typeof reportSchema>; evidence: { id: string; hash: string }[]; sourceHash?: string; resultArtifactId?: string; nodeId: string };
+export type AgentReportProposal = { agent?: AgentName; client?: string; id: string; projectId: string; assistantTurnId: string; status: 'pending' | 'accepted' | 'dismissed'; createdAt: string; captureHash: string; expectedRevision: number; draft: z.infer<typeof reportSchema>; evidence: { id: string; hash: string }[]; sourceHash?: string; resultArtifactId?: string; nodeId: string };
 
 export type AgentCapture = {
   projectId: string; projectTitle: string; revision: number; at: string; hash: string;
@@ -40,7 +41,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_propose_analysis', description: 'Propose bounded analysis code for an existing selected block and exact selected dataset. Existing runtime isolation, exact approvals and cumulative limits govern execution. Never run host code.', inputSchema: z.toJSONSchema(experimentSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_propose_report', description: 'Propose an immutable report revision for a selected block using exact selected evidence versions. The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
   ];
-  constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, readonly scope: AgentScope, private readonly turnId: string, private readonly agent: AgentName = 'codex') {
+  constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, readonly scope: AgentScope, private readonly turnId: string, private readonly agent: AgentName = 'codex', private readonly client?: string) {
     const project = store.getProject(scope.projectId);
     const nodeIds = [...new Set(scope.nodeIds)], artifactIds = [...new Set(scope.artifactIds)];
     if (nodeIds.length > 50 || artifactIds.length > 30) throw new StoreError('Select at most 50 blocks and 30 exact artifacts for an agent turn.');
@@ -101,18 +102,18 @@ export class AgentWorkspaceTools {
       }
       // The validated store enforces cycles, identity preservation and undo.
       const proposal = this.execution.assistantProposal(this.scope.projectId, `${value.summary}\nWhy: ${value.rationale}`, value.operations as Mutation[]);
-      this.store.saveRecord('agent-proposal', proposal.id, this.scope.projectId, { proposalId: proposal.id, agent: this.agent, turnId: this.turnId, captureHash: this.capture.hash, selectedArtifactVersions: this.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })), rationale: value.rationale });
+      this.store.saveRecord('agent-proposal', proposal.id, this.scope.projectId, { proposalId: proposal.id, agent: this.agent, client: this.client, turnId: this.turnId, captureHash: this.capture.hash, selectedArtifactVersions: this.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })), rationale: value.rationale });
       action = { id: randomUUID(), type: 'proposal', title: value.summary, proposalId: proposal.id, status: proposal.status === 'accepted' ? 'completed' : 'pending' };
     } else if (name === 'ros_propose_reuse') {
       const value = reuseSchema.parse(supplied); this.node(value.targetNodeId); const artifact = this.artifact(value.artifactId);
       action = { id: randomUUID(), type: 'reuse', title: value.reason, targetNodeId: value.targetNodeId, nodeId: value.targetNodeId, artifactId: artifact.id, status: 'pending' };
-      this.store.saveRecord('agent-reuse', action.id, this.scope.projectId, { action, agent: this.agent, turnId: this.turnId, sourceVersion: { id: artifact.id, hash: artifact.hash }, captureHash: this.capture.hash });
+      this.store.saveRecord('agent-reuse', action.id, this.scope.projectId, { action, agent: this.agent, client: this.client, turnId: this.turnId, sourceVersion: { id: artifact.id, hash: artifact.hash }, captureHash: this.capture.hash });
     } else if (name === 'ros_propose_report') {
       const value = reportSchema.parse(supplied); this.node(value.nodeId); this.current();
       const source = value.sourceArtifactId ? this.artifact(value.sourceArtifactId) : undefined;
       if (source && source.nodeId !== value.nodeId) throw new StoreError('Report revision must remain in the original selected block.');
       const evidence = [...new Set(value.evidenceIds)].map(id => this.artifact(id));
-      const proposal: AgentReportProposal = { agent: this.agent, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.capture.revision, draft: value, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId: value.nodeId };
+      const proposal: AgentReportProposal = { agent: this.agent, client: this.client, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.capture.revision, draft: value, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId: value.nodeId };
       this.store.saveRecord('agent-report-proposal', proposal.id, this.scope.projectId, proposal);
       action = { id: proposal.id, type: 'proposal', title: `Review report: ${value.title}`, nodeId: value.nodeId, reportProposalId: proposal.id, status: 'pending' } as AssistantAction;
     } else if (name === 'ros_propose_analysis') {
@@ -120,7 +121,7 @@ export class AgentWorkspaceTools {
       if (a.kind !== 'dataset') throw new StoreError('Analysis requires an exact selected dataset artifact.');
       this.current();
       const project = this.store.getProject(this.scope.projectId), target = project.canvas.nodes.find(n => n.id === value.nodeId)!;
-      const plan = this.store.createRun({ id: randomUUID(), projectId: this.scope.projectId, nodeId: target.id, request: value.request, useSearch: false, status: 'completed', createdAt: new Date().toISOString(), endedAt: new Date().toISOString(), projectRevision: project.revision, node: target, inputs: [], messages: [], provider: `${this.agent}-agent`, model: this.agent === 'claude' ? 'claude-code' : 'local-app-server', modelVersion: null, configuration: { purpose: 'experiment-plan', backend: value.backend, datasetArtifactId: a.id, assistantTurnId: this.turnId, captureHash: this.capture.hash, experimentPlan: { explanation: value.explanation, code: value.code, parameters: value.parameters } }, tools: [{ name, arguments: value }], events: [{ at: new Date().toISOString(), type: 'agent-proposal', message: `Observable ${this.agent === 'claude' ? 'Claude Code' : 'Codex'} tool call captured. The code proposal itself does not authorize execution.` }], artifactIds: [] });
+      const plan = this.store.createRun({ id: randomUUID(), projectId: this.scope.projectId, nodeId: target.id, request: value.request, useSearch: false, status: 'completed', createdAt: new Date().toISOString(), endedAt: new Date().toISOString(), projectRevision: project.revision, node: target, inputs: [], messages: [], provider: `${this.agent}-agent`, model: this.agent === 'claude' ? 'claude-code' : this.agent === 'outside' ? this.client ?? 'outside agent' : 'local-app-server', modelVersion: null, configuration: { purpose: 'experiment-plan', backend: value.backend, datasetArtifactId: a.id, assistantTurnId: this.turnId, captureHash: this.capture.hash, experimentPlan: { explanation: value.explanation, code: value.code, parameters: value.parameters } }, tools: [{ name, arguments: value }], events: [{ at: new Date().toISOString(), type: 'agent-proposal', message: `Observable ${this.agent === 'claude' ? 'Claude Code' : this.agent === 'outside' ? this.client ?? 'outside agent' : 'Codex'} tool call captured. The code proposal itself does not authorize execution.` }], artifactIds: [] });
       const preview = this.experiments.preview(this.scope.projectId, { nodeId: target.id, request: value.request, datasetArtifactId: a.id, code: value.code, parameters: value.parameters, backend: value.backend, planRunId: plan.id });
       action = { id: randomUUID(), type: 'experiment', title: value.request, nodeId: target.id, runId: preview.run.id, status: preview.approval.status === 'pending' ? 'pending' : preview.approval.status === 'allowed' ? 'running' : 'failed' };
     } else throw new StoreError('This agent tool is not available in the ros.ai selection boundary.', 403);
@@ -145,7 +146,7 @@ export function decideAgentReport(store: Store, projectId: string, proposalId: s
       for (const selected of proposal.evidence) if (store.getArtifact(selected.id).hash !== selected.hash) throw new StoreError('Selected report evidence differs from its captured version.', 409);
       if (proposal.draft.sourceArtifactId && store.getArtifact(proposal.draft.sourceArtifactId).hash !== proposal.sourceHash) throw new StoreError('Report source differs from the captured version.', 409);
       const { rationale: _rationale, ...draft } = proposal.draft;
-      const saved = new ArtifactEditingService(store).saveReport(projectId, { ...draft, expectedRevision: proposal.expectedRevision }, { agent: proposal.agent ?? 'codex', assistantTurnId: proposal.assistantTurnId, captureHash: proposal.captureHash });
+      const saved = new ArtifactEditingService(store).saveReport(projectId, { ...draft, expectedRevision: proposal.expectedRevision }, { agent: proposal.agent ?? 'codex', ...(proposal.client ? { client: proposal.client } : {}), assistantTurnId: proposal.assistantTurnId, captureHash: proposal.captureHash });
       proposal.status = 'accepted'; proposal.resultArtifactId = saved.artifact.id;
     } else proposal.status = 'dismissed';
     store.saveRecord('agent-report-proposal', proposal.id, projectId, proposal);

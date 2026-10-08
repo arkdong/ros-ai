@@ -11,7 +11,7 @@ import { Store, StoreError } from './store.js';
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), hash = z.string().regex(/^[a-f0-9]{64}$/u);
 const operationSchema = z.object({ trim:z.boolean(), dropEmptyRows:z.boolean(), deduplicate:z.boolean(), dropMissing:z.array(z.string()).max(500), search:z.string().max(2000), filterColumn:z.number().int().nonnegative().nullable(), filter:z.string().max(2000), sortColumn:z.number().int().nonnegative().nullable(), descending:z.boolean() }).strict();
 const now = () => new Date().toISOString();
-export type AgentReportProvenance = {agent:'codex'|'claude';assistantTurnId:string;captureHash:string};
+export type AgentReportProvenance = {agent:'codex'|'claude'|'outside';client?:string;assistantTurnId:string;captureHash:string};
 /** Manual, fixed-operation edits. No model, code execution, source writes or
  * authority changes occur here. Each save creates a new immutable artifact. */
 export class ArtifactEditingService {
@@ -73,7 +73,7 @@ export class ArtifactEditingService {
     });
   }
   saveReport(projectId: string, supplied: unknown, agent?:AgentReportProvenance) {
-    if(agent) z.object({agent:z.enum(['codex','claude']),assistantTurnId:id,captureHash:hash}).strict().parse(agent);
+    if(agent) z.object({agent:z.enum(['codex','claude','outside']),client:z.string().max(40).optional(),assistantTurnId:id,captureHash:hash}).strict().parse(agent);
     const body = z.object({ nodeId:id.optional(),sourceArtifactId:id.optional(),title:z.string().trim().min(1).max(200),text:z.string().max(200000),evidenceIds:z.array(id).max(100),aiUse:z.string().trim().max(2000).optional(),expectedRevision:z.number().int().nonnegative().optional() }).strict().parse(supplied);
     const project = this.store.getProject(projectId);
     if (body.expectedRevision !== undefined && project.revision !== body.expectedRevision) throw new StoreError('The project changed. Reload and review before saving the report.',409);

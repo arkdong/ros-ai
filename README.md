@@ -108,6 +108,17 @@ export_csv("Data used", df)
 
 The container has no external network, no original source/user folder mounts, read-only root/input files, non-root identity, dropped capabilities, seccomp, 512 MB memory, one CPU, process/output limits and a 30-second wall deadline. Python can access installed container files and create processes within those limits; this is not a VM per run or proof against kernel vulnerabilities. See [the precise runtime boundary](docs/python-sandbox.md). The earlier closed numerical interpreter remains an explicitly selectable compatibility backend.
 
+## Use your own Claude Code or Codex
+
+ros.ai is also an MCP server, so you can keep researching in your own Claude Code or Codex, signed in with your own plan or key. ros.ai never sees or handles that login. With ros.ai running, paste once in a terminal (the **Model** page shows the exact path):
+
+```bash
+claude mcp add --scope user ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
+codex mcp add ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
+```
+
+The agent can then read the canvas and artifacts and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; set `ROS_DATA_DIR` for the bridge too if you set it for ros.ai.
+
 ## Models and spending
 
 The library, battery and assistant ring open mutually exclusive **Resources**, **Budget & usage** and **Research assistant** panels in the same right-side space. Resources shows source/owner/date, preview, file import and exports. Explicitly related captures expand into exact versions; matching names or URLs alone never merge data.
