@@ -12,3 +12,6 @@ export type ProjectFolderStatus = {
 };
 export type FolderSuggestion = { path:string; exists:boolean; picker:boolean };
 export type FolderChoice = { path:string } | { cancelled:true };
+
+/** An installed app that "Open in" offers. */
+export type OpenApp = { id: string; label: string; kind: 'editor' | 'terminal' };

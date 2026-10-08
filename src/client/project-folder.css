@@ -42,3 +42,11 @@
   .folder-row { flex-wrap: wrap; }
   .file-bar { flex-wrap: wrap; }
 }
+/* "Open in": one button, a menu of the apps found on this computer. */
+.open-in { position: relative; flex-shrink: 0; }
+.open-in-trigger { display: inline-flex; align-items: center; gap: 6px; }
+.open-in-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 200px; padding: 6px; border-radius: 12px; background: #fff; border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(20, 30, 25, .16); display: flex; flex-direction: column; }
+.open-in-menu button { display: flex; align-items: center; justify-content: flex-start; min-height: 0; box-shadow: none; font-weight: 450; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; font-size: 13px; color: var(--ink); text-align: left; cursor: pointer; }
+.open-in-menu button:hover, .open-in-menu button:focus-visible { background: #f1f3f0; }
+.open-in-menu button svg { color: var(--muted); }
+.open-in-menu hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
