@@ -1,11 +1,12 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, FileText, Focus, GitBranch, ListTree, LoaderCircle, MessageSquare, PanelRightClose, Plug, Settings2, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronDown, ChevronRight, CircleHelp, FileText, Focus, GitBranch, ListTree, LoaderCircle, MessageSquare, PanelRightClose, Plug, Settings2, ShieldCheck, Square, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn, OutlineEntry } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
+import { agentDirections } from '../shared/agent-work';
 import { buildOutlineHierarchy, type OutlineBranch } from '../shared/outline-hierarchy';
 import { presentAssistantResponse, type AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
@@ -141,21 +142,40 @@ function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer
   // remain intact; an identical failure should not appear as two responses.
   const reply = turn.reply.trim() === turn.error?.trim() ? '' : turn.reply;
   const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable/i.test(reply);
+  const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
+  // The summary below says what an agent's search plan did; its approval card stays only while it waits.
+  const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && operation.node.blockType === 'search'));
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
   });
   return <section className="assistant-turn" data-turn-id={turn.id}>
     <article className="assistant-message user"><div className="message-meta"><span>You</span><time>{time(turn.createdAt)}</time>{focus && <span className="turn-focus" title={focus.title}>{focus.title}</span>}</div><RichText text={turn.userMessage}/></article>
-    <article className="assistant-message response"><div className="message-meta"><span className="assistant-message-mark" aria-hidden="true"/><span>ros.ai</span><span className="response-source">{turn.source === 'local-records' ? 'Saved context' : turn.source==='codex-agent'?'Codex connection':turn.source==='claude-agent'?'Claude Code':'Research model'}</span></div>{turn.model&&<p className="assistant-actual-model">{turn.model}{turn.destination&&<> · {turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`}</>}</p>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
+    <article className="assistant-message response"><div className="message-meta"><span className="assistant-message-mark" aria-hidden="true"/><span>ros.ai</span><span className="response-source">{turn.source === 'local-records' ? 'Saved context' : turn.source==='codex-agent'?'Codex connection':turn.source==='claude-agent'?'Claude Code':'Research model'}</span></div>{turn.model&&<p className="assistant-actual-model">{turn.model}{turn.destination&&<> · {turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`}</>}</p>}{agentNode && <AgentWorkSummary node={agentNode} turn={turn} detail={detail} onReference={onReference}/>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
       {turn.warning&&<details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Reply saved · proposal details</span></summary><p>{turn.warning}</p><p>Unvalidated actions were not applied.</p></details>}
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
-      {turn.actions.map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onInspectAction={onInspectAction}/>)}
+      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onInspectAction={onInspectAction}/>)}
       {turn.events.length > 0 && <details className="assistant-turn-events"><summary>Activity · {turn.events.length}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}
     </article>
   </section>;
+}
+
+/** What an agent turn left on the canvas, so the answer below does not have to list it. */
+function AgentWorkSummary({ node, turn, detail, onReference }: { node: ProjectDetail['project']['canvas']['nodes'][number]; turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference'] }) {
+  const work = agentDirections(detail.project.canvas, detail.artifacts, node.id), running = turn.status === 'running';
+  const waiting = turn.actions.filter(action => action.status === 'pending' && (!action.proposalId || detail.proposals.find(item => item.id === action.proposalId)?.status === 'pending')).length;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  if (!work.directions.length && !waiting) return null;
+  return <div className="agent-work-summary">
+    <ul>
+      {work.directions.length > 0 && <li><Search size={13}/>{running && !work.sources ? `Searching ${plural(work.directions.length, 'direction')}…` : `Searched ${plural(work.directions.length, 'direction')} · ${plural(work.sources, 'source')}`}</li>}
+      {work.directions.length > 0 && <li><BookOpen size={13}/>{work.written === work.directions.length ? `Wrote ${plural(work.written, 'result note')}` : `Wrote ${work.written} of ${plural(work.directions.length, 'result note')}`}</li>}
+      {waiting > 0 && <li className="waiting"><GitBranch size={13}/>{plural(waiting, 'change')} waiting for your review</li>}
+    </ul>
+    <button className="text-button" onClick={() => onReference({ kind: 'node', id: node.id, label: node.title })}>Show on canvas<ArrowRight size={12}/></button>
+  </div>;
 }
 
 function AssistantResponse({ content, question, clarifications, structure, detail, hideStructure = false, blockedRecord = false, onAnswer }: { content: string; question?: string | null; clarifications?: AssistantClarificationQuestion[]; structure?: StructurePreview; detail: ProjectDetail; hideStructure?: boolean; blockedRecord?: boolean; onAnswer?: (questions: AssistantClarificationQuestion[]) => void }) {

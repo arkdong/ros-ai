@@ -1,5 +1,5 @@
 import { decideAgentReport } from './agent-tools.js';
-import type { AgentRuntime } from '../shared/agent-runtime.js';
+import type { AgentRuntime, AgentStep } from '../shared/agent-runtime.js';
 import type { ClaudeAgentService } from './claude-agent.js';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -52,7 +52,7 @@ export class AssistantService {
   private turns(projectId:string){return this.store.records<SavedTurn>('assistant-turn',projectId);}
   private getTurn(projectId:string,turnId:string){const turn=this.store.record<SavedTurn>('assistant-turn',turnId);if(!turn||turn.projectId!==projectId)throw new StoreError('Assistant turn not found.',404);this.store.getProject(projectId);return turn;}
   private save(turn:SavedTurn){return this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});}
-  private event(projectId:string,turnId:string,message:string,kind?:'thought'|'tool'){const turn=this.getTurn(projectId,turnId);turn.events.push({at:now(),message,...(kind?{kind}:{})});this.save(turn);}
+  private event(projectId:string,turnId:string,message:string,kind?:'thought'|'tool',step?:AgentStep){const turn=this.getTurn(projectId,turnId);turn.events.push({at:now(),message,...(kind?{kind}:{}),...(step?{step}:{})});this.save(turn);}
   private memory(projectId:string):ResearchMemory {
     const saved=this.store.record<ResearchMemory>('research-memory',projectId);if(saved)return saved;
     const first=this.store.listMessages(projectId,null).find(m=>m.role==='user');
@@ -236,7 +236,7 @@ export class AssistantService {
         const detail=this.store.detail(projectId),nodeIds=turn.focus.nodeId?[turn.focus.nodeId]:[];
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
         this.event(projectId,turnId,claude?'Starting Claude Code with the API key from the Model page.':'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
-        const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined);}}});
+        const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.store.addMessage(projectId,null,'assistant',result.reply);
         this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${this.claude!.settings().model}`,destination:'Anthropic API',location:'external' as const}:{}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});return;
