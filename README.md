@@ -152,5 +152,5 @@ The curated public mode is separate from your local workspace and provider crede
 ros.ai's code and documentation are released under the [MIT licence](LICENSE). The licence does not cover:
 
 - the ros.ai name and logo (`public/brand/`);
-- other organisations' logos and marks, in `public/deck/assets/` and drawn in `src/client/ModelMakerSymbol.tsx` and `src/client/ModelPage.tsx`; they belong to their owners and are shown only to identify their services;
+- other organisations' logos and marks, in `public/deck/assets/` and in `src/client/brand-logos/` (sources in its `SOURCES.md`) and drawn in `src/client/ModelMakerSymbol.tsx`; they belong to their owners and are shown only to identify their services;
 - third-party data in `examples/`: KNMI weather observations and the datasets derived from them ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), Royal Netherlands Meteorological Institute), CBS statistics in `examples/dutch-ai-adoption/` (CBS's own reuse terms), and NDW counter-site records (ODC PDDL).

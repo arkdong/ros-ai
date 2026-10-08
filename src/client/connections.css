@@ -11,7 +11,6 @@
 .tool-connection-name small { display:block; font-size:10px; color:#778079; line-height:1.5; margin-top:2px; }
 .tool-connection-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; color:#364a3d; border:1px solid #e8ece5; border-radius:8px; background:#f7f9f4; }
 .tool-connection-icon svg { width:22px; height:22px; }
-.tool-connection-icon .claude-symbol { color:#c47050; }
 .connection-chevron { flex-shrink:0; color:#869086; transition:transform .15s ease; }
 .tool-connection > details[open] > summary .connection-chevron { transform:rotate(180deg); }
 .tool-connection > details[open] > summary { border-bottom:1px solid #edf0e9; }

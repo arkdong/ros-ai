@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { ChevronDown, Clock3, LoaderCircle, RefreshCw, Terminal } from 'lucide-react';
+import { ChevronDown, Clock3, LoaderCircle, RefreshCw, Server } from 'lucide-react';
 import { api } from './api';
 import type { InferenceConnectionsResponse, InferenceConnectionStatus } from '../shared/inference';
 import type { ConnectionBudgetProvider, ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { CodexAllowance, ConnectionAllowance } from './ConnectionAllowance';
 import { InferenceAllowance } from './InferenceConnections';
-import { ConnectionCard, ConnectionSymbol } from './ModelPage';
+import { ConnectionCard } from './ModelPage';
+import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { summarizeBudgetPeriod, type BudgetPeriod, type BudgetReport, type BudgetUsage, type ProviderAccounts, type TavilyUsageScope } from '../shared/budget-report';
 import './BudgetPage.css';
 
@@ -20,10 +21,10 @@ export function BudgetPage({ projectId, publicDemo }: { projectId: string | null
 }
 
 const allowanceProviders: { provider: ConnectionBudgetProvider; label: string; icon: ReactNode }[] = [
-  { provider: 'nebius', label: 'Nebius Token Factory', icon: <ConnectionSymbol name="nebius"/> },
-  { provider: 'claude', label: 'Claude Code', icon: <ConnectionSymbol name="claude"/> },
-  { provider: 'openai', label: 'OpenAI API', icon: <span className="plugin-mark" style={{ background: '#111' }}>AI</span> },
-  { provider: 'tavily', label: 'Tavily web search', icon: <span className="plugin-mark" style={{ background: '#2f6fdb' }}>T</span> },
+  { provider: 'nebius', label: 'Nebius Token Factory', icon: <BrandLogo id="nebius"/> },
+  { provider: 'claude', label: 'Claude Code', icon: <BrandLogo id="claude"/> },
+  { provider: 'openai', label: 'OpenAI API', icon: <BrandLogo id="openai"/> },
+  { provider: 'tavily', label: 'Tavily web search', icon: <BrandLogo id="tavily"/> },
 ];
 function Allowances({ projectId }: { projectId: string | null }) {
   const [budgets, setBudgets] = useState<ConnectionBudgetStatus[]>([]), [servers, setServers] = useState<InferenceConnectionStatus[]>([]), [error, setError] = useState('');
@@ -38,9 +39,15 @@ function Allowances({ projectId }: { projectId: string | null }) {
     <p className="budget-estimate-note">Each allowance is shared across projects and caps paid calls. Saving one starts nothing.</p>
     {error && <p className="inline-error" role="alert">{error}</p>}
     {allowanceProviders.map(item => { const status = budgets.find(budget => budget.provider === item.provider); return <ConnectionCard key={item.provider} label={item.label} icon={item.icon} connected={status?.ready} subtitle={status ? `${money(status.remainingUsd)} left · ${status.remainingRequests} requests` : undefined} status={!status ? 'Checking…' : status.ready ? 'Enabled' : status.enabled ? 'Limit reached' : 'Not enabled'}><ConnectionAllowance provider={item.provider} status={status} onChanged={changed}/></ConnectionCard>; })}
-    {projectId && <ConnectionCard label="Codex" icon={<Terminal size={20}/>} subtitle="Turn, time and tool limits for this project" status="Per project"><CodexAllowance key={projectId} projectId={projectId} onChanged={changed}/></ConnectionCard>}
-    {servers.map(server => <ConnectionCard key={`${server.id}:${server.revision}`} label={server.name} icon={<span className="plugin-mark" style={{ background: '#4b5563' }}>M</span>} connected={server.ready} subtitle={`${server.remainingRequests} requests left`} status={server.ready ? 'Enabled' : 'Not enabled'}><InferenceAllowance connection={server} onChanged={changed}/></ConnectionCard>)}
+    {projectId && <ConnectionCard label="Codex" icon={<BrandLogo id="codex"/>} subtitle="Turn, time and tool limits for this project" status="Per project"><CodexAllowance key={projectId} projectId={projectId} onChanged={changed}/></ConnectionCard>}
+    {servers.map(server => <ConnectionCard key={`${server.id}:${server.revision}`} label={server.name} icon={<ServerLogo name={server.name}/>} connected={server.ready} subtitle={`${server.remainingRequests} requests left`} status={server.ready ? 'Enabled' : 'Not enabled'}><InferenceAllowance connection={server} onChanged={changed}/></ConnectionCard>)}
   </section>;
+}
+
+/** A model server named after Ollama or LM Studio shows that company's logo. */
+function ServerLogo({ name }: { name: string }) {
+  const id = /ollama/i.test(name) ? 'ollama' : /lm ?studio/i.test(name) ? 'lm-studio' : '';
+  return hasBrandLogo(id) ? <BrandLogo id={id}/> : <Server size={18}/>;
 }
 
 function ProjectUsage({ projectId }: { projectId: string }) {
