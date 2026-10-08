@@ -1,51 +1,48 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, ExternalLink, LoaderCircle, PanelRightClose, Plug, RefreshCw, Terminal } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, LoaderCircle, Plug, RefreshCw, Terminal } from 'lucide-react';
 import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-setup';
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
-import { ConnectionAllowance, CodexAllowance } from './ConnectionAllowance';
 import { InferenceConnections } from './InferenceConnections';
 import { api, post } from './api';
 import './connections.css';
 
-type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; onChanged:()=>Promise<unknown>; onResources:()=>void; onClose:()=>void };
-export function ConnectionsPanel({projectId,connections,publicDemo,onChanged,onResources,onClose}:Props) {
-  const [credentials,setCredentials]=useState<CredentialStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[codex,setCodex]=useState<LocalAgentSetup>(),[claude,setClaude]=useState<ClaudeAgentSettings>();
+type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; onChanged:()=>Promise<unknown>; onBudget:()=>void };
+/** Model holds only AI model connections. Their spending allowances live on the Budget page. */
+export function ModelPage({projectId,connections,publicDemo,onChanged,onBudget}:Props) {
+  const [credentials,setCredentials]=useState<CredentialStatus[]>([]),[codex,setCodex]=useState<LocalAgentSetup>(),[claude,setClaude]=useState<ClaudeAgentSettings>();
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
   const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]);
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const paths=['/api/connections/credentials','/api/connections/google-drive',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets'];
+    const paths=['/api/connections/credentials',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets'];
     const values=await Promise.allSettled(paths.map(path=>!path?Promise.resolve(null):path.includes('/agents/setup/')?post<unknown>(path):api<unknown>(path)));
     const failures:Record<string,string>={};
-    values.forEach((result,index)=>{const id=['credentials','google','codex','claude','budgets'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1)setGoogle(result.value as GoogleDriveStatus);if(index===2&&result.value)setCodex(result.value as LocalAgentSetup);if(index===3)setClaude(result.value as ClaudeAgentSettings);if(index===4)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);});
+    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);});
     setErrors(failures);setLoading(false);
   },[projectId,publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
   const changed=async()=>{await refresh();await onChanged();};
-  const saved=async(provider:CredentialProvider,key:string)=>{await api(`/api/connections/credentials/${provider}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Key saved on this computer. Usage permissions and limits are unchanged.');await changed();};
+  const saved=async(provider:CredentialProvider,key:string)=>{await api(`/api/connections/credentials/${provider}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Key saved on this computer. Set or check its allowance in Budget.');await changed();};
   const disconnected=async(provider:CredentialProvider)=>{await api(`/api/connections/credentials/${provider}`,{method:'DELETE'});setNotice('Locally saved key removed. Any environment configuration remains active.');await changed();};
-  return <aside id="research-connections-panel" className="assistant-panel connections-panel" aria-label="External tool connections">
-    <header className="assistant-heading"><Plug size={23}/><div><h2>Connections</h2><p>Accounts, tools & research access</p></div><button className="icon-button" aria-label="Close connections panel" onClick={onClose}><PanelRightClose size={17}/></button></header>
-    <div className="connections-scroll">
-      {publicDemo?<p>This demo cannot connect private accounts. Launch the local workspace to connect your tools.</p>:<>
-        <div className="connections-intro"><p>Your tools, on this computer. Open a connection to set it up or manage usage.</p><button className="icon-button" disabled={loading} aria-label="Refresh connection status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></div>
-        {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
-        {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
-        <KeyConnection provider="nebius" label="Nebius Token Factory" icon={<ConnectionSymbol name="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} onChanged={changed} description="Model access through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>
-        <CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>
-        <KeyConnection provider="claude" label="Claude Code" icon={<ConnectionSymbol name="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} onChanged={changed} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>
-        <GoogleDriveConnectionCard projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>
-        <InferenceConnections onChanged={changed}/>
-        <details className="other-connections"><summary>Other API connections <ChevronDown size={14}/></summary>{(['openai','tavily'] as const).map(provider=><KeyConnection key={provider} provider={provider} label={provider==='openai'?'OpenAI API':'Tavily search'} icon={<Plug size={18}/>} credential={credentials.find(item=>item.provider===provider)} usage={connections.find(item=>item.provider===provider)} budget={budgets.find(item=>item.provider===provider)} onChanged={changed} description={provider==='openai'?'Direct model API access, separate from Codex sign-in.':'Web search for explicitly enabled research.'} keyLink={provider==='openai'?'https://platform.openai.com/api-keys':'https://app.tavily.com/'} onSave={saved} onDisconnect={disconnected}/>)}</details>
-        <p className="connections-footnote">Keys stay on the local server. Connect a tool, set its allowance, then choose when to start research.</p>
-      </>}
-    </div>
-  </aside>;
+  if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
+  return <div className="connections-page">
+    <div className="connections-intro"><p>The AI models ros.ai can use, on this computer. Choose which one the assistant uses in its settings.</p><button className="icon-button" disabled={loading} aria-label="Refresh model status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></div>
+    {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
+    {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
+    <h3 className="rail-section-title">Model providers</h3>
+    <KeyConnection provider="nebius" label="Nebius Token Factory" icon={<ConnectionSymbol name="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} onBudget={onBudget} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>
+    <KeyConnection provider="claude" label="Claude Code" icon={<ConnectionSymbol name="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} onBudget={onBudget} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>
+    <CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed} onBudget={onBudget}/>
+    <KeyConnection provider="openai" label="OpenAI API" icon={<Plug size={18}/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} onBudget={onBudget} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>
+    <h3 className="rail-section-title">Local models and other servers</h3>
+    <InferenceConnections onChanged={changed} onBudget={onBudget}/>
+    <p className="connections-footnote">Keys stay on the local server. Connect a model here, then set what it may spend in Budget.</p>
+  </div>;
 }
 
 function ClaudeModelChoice({settings,onChanged}:{settings:ClaudeAgentSettings;onChanged:(value:ClaudeAgentSettings)=>void}) {
@@ -55,17 +52,17 @@ function ClaudeModelChoice({settings,onChanged}:{settings:ClaudeAgentSettings;on
     <p className="subtle">Each turn may use up to US${settings.turnUsd.toFixed(2)} of the allowance below, then counts what Claude Code reports it cost. It reads this project's folder and proposes changes; code runs in ros.ai's sandbox under your permission choice. A Claude subscription login is not used.</p>{error&&<p className="inline-error" role="alert">{error}</p>}</div>;
 }
 
-function ConnectionSymbol({name}:{name:'nebius'|'claude'|'drive'}) {
+export function ConnectionSymbol({name}:{name:'nebius'|'claude'|'drive'}) {
   if(name==='nebius')return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 18V6h4l6 12h4V6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinejoin="round"/></svg>;
   if(name==='claude')return <svg aria-hidden="true" viewBox="0 0 24 24" className="claude-symbol">{Array.from({length:8},(_,i)=><path key={i} d="M12 3v6" transform={`rotate(${i*45} 12 12)`} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>)}</svg>;
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path fill="#2684fc" d="M4 17h16l-3 5H1z"/><path fill="#ffba00" d="M9 2h6l9 15h-6z"/><path fill="#00ac47" d="M9 2L0 17l3 5L12 7z"/></svg>;
 }
-function ConnectionCard({label,icon,status,subtitle,connected,forceOpen,children}:{label:string;icon:ReactNode;status:string;subtitle?:string;connected?:boolean;forceOpen?:boolean;children:ReactNode}) {
+export function ConnectionCard({label,icon,status,subtitle,connected,forceOpen,children}:{label:string;icon:ReactNode;status:string;subtitle?:string;connected?:boolean;forceOpen?:boolean;children:ReactNode}) {
   const [expanded,setExpanded]=useState(false);
   useEffect(()=>{if(forceOpen)setExpanded(true);},[forceOpen]);
   return <section className="tool-connection" aria-label={`${label} connection`}><details open={expanded} onToggle={event=>setExpanded(event.currentTarget.open)}><summary className="tool-connection-heading"><span className="tool-connection-icon">{icon}</span><span className="tool-connection-name"><strong>{label}</strong>{subtitle&&<small>{subtitle}</small>}</span><span className={`connection-state ${connected?'connected':''}`}><i/>{status}</span><ChevronDown size={14} className="connection-chevron"/></summary><div className="tool-connection-body">{children}</div></details></section>;
 }
-function KeyConnection({provider,label,icon,credential,usage,budget,onChanged,description,keyLink,loadError,onSave,onDisconnect,onCheck,children}:{provider:CredentialProvider;label:string;icon:ReactNode;credential?:CredentialStatus;usage?:ConnectionStatus;budget?:ConnectionBudgetStatus;onChanged?:()=>Promise<void>;description:string;keyLink:string;loadError?:string;children?:ReactNode;onSave:(provider:CredentialProvider,key:string)=>Promise<void>;onDisconnect:(provider:CredentialProvider)=>Promise<void>;onCheck?:()=>Promise<void>}) {
+export function KeyConnection({provider,label,icon,credential,budget,onBudget,description,keyLink,loadError,onSave,onDisconnect,onCheck,children}:{provider:CredentialProvider;label:string;icon:ReactNode;credential?:CredentialStatus;usage?:ConnectionStatus;budget?:ConnectionBudgetStatus;onBudget:()=>void;description:string;keyLink:string;loadError?:string;children?:ReactNode;onSave:(provider:CredentialProvider,key:string)=>Promise<void>;onDisconnect:(provider:CredentialProvider)=>Promise<void>;onCheck?:()=>Promise<void>}) {
   const [open,setOpen]=useState(false),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const configured=credential?.configured??false;
@@ -81,12 +78,12 @@ function KeyConnection({provider,label,icon,credential,usage,budget,onChanged,de
       {credential?.canDisconnect&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>onDisconnect(provider))}>Remove saved key</button>}
 
     </div>}
-    {onChanged&&<ConnectionAllowance provider={provider} status={budget} onChanged={onChanged}/>}
+    {configured&&budget&&!ready&&<p className="connection-limit">{budget.reason||'Usage is not enabled yet.'} <button className="text-button" onClick={onBudget}>Set its allowance in Budget</button></p>}
     {(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
 }
 
-function CodexConnection({projectId,setup,error:loadError,onChanged}:{projectId:string|null;setup?:LocalAgentSetup;error?:string;onChanged:()=>Promise<void>}) {
+function CodexConnection({projectId,setup,error:loadError,onChanged,onBudget}:{projectId:string|null;setup?:LocalAgentSetup;error?:string;onChanged:()=>Promise<void>;onBudget:()=>void}) {
   const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[login,setLogin]=useState<CodexLoginStatus|null>(null);
   useEffect(()=>{if(!projectId)return;let current=true;void api<CodexLoginStatus|null>(`/api/projects/${projectId}/agents/codex/login`).then(value=>{if(current){setLogin(value);if(value)setOpen(true);}}).catch(cause=>{if(current)setError(message(cause));});return()=>{current=false;};},[projectId]);
   useEffect(()=>{
@@ -103,11 +100,11 @@ function CodexConnection({projectId,setup,error:loadError,onChanged}:{projectId:
       {setup?.installed&&!setup.signedIn&&login?.state!=='waiting'&&<div className="connection-actions"><button className="primary small" disabled={busy} onClick={()=>void start('browser')}>Sign in with Codex</button><button className="secondary small" disabled={busy} onClick={()=>void start('device')}>Use device code</button></div>}
       {login&&<div className="connection-login" role="status"><p>{login.message}</p>{login.state==='waiting'&&<>{login.authUrl&&<a className="primary small" href={login.authUrl} target="_blank" rel="noreferrer">Open Codex sign-in <ExternalLink size={12}/></a>}{login.userCode&&<p>Enter code <strong>{login.userCode}</strong> in the Codex sign-in page.</p>}<button className="text-button" onClick={async()=>{try{setLogin(await post<CodexLoginStatus>(`/api/projects/${projectId}/agents/codex/login/${login.id}/cancel`,{}));}catch(cause){setError(message(cause));}}}>Cancel sign-in</button></>}</div>}
       {setup&&<><dl className="connection-facts"><dt>Sign-in</dt><dd>{setup.signedIn?'Detected':'Required'}</dd><dt>Workspace isolation</dt><dd>{setup.isolationReady?'Supported':'Unavailable in installed CLI'}</dd><dt>Usage permission</dt><dd>{setup.authorized?'Bounded grant configured':'No fresh grant'}</dd><dt>Research turns</dt><dd>{setup.available?'Available':'Blocked'}</dd></dl><details><summary>Setup and enforcement details</summary>{setup.blockers.map((blocker,index)=><p key={index}>{blocker}</p>)}{setup.commands.map(item=><div key={item.command}><span>{item.label}</span><pre>{item.command}</pre></div>)}</details>{setup.links.map(link=><a className="connection-doc" key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label}<ExternalLink size={11}/></a>)}</>}
-    </div>}{projectId&&<CodexAllowance key={projectId} projectId={projectId} onChanged={onChanged}/>}{(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
+    </div>}{setup?.signedIn&&!setup.authorized&&<p className="connection-limit">Codex needs a usage allowance for this project. <button className="text-button" onClick={onBudget}>Set it in Budget</button></p>}{(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
 }
 
-function GoogleDriveConnectionCard({projectId,status,loadError,onChanged,onImported,onResources}:{projectId:string|null;status:GoogleDriveStatus|null;loadError?:string;onChanged:()=>Promise<void>;onImported:()=>Promise<void>;onResources:()=>void}) {
+export function GoogleDriveConnectionCard({projectId,status,loadError,onChanged,onImported,onResources}:{projectId:string|null;status:GoogleDriveStatus|null;loadError?:string;onChanged:()=>Promise<void>;onImported:()=>Promise<void>;onResources:()=>void}) {
   const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[consent,setConsent]=useState(false),[query,setQuery]=useState(''),[files,setFiles]=useState<GoogleDriveFiles|null>(null),[imported,setImported]=useState<string[]>([]);
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const browse=async(pageToken?:string)=>{const result=await api<GoogleDriveFiles>(`/api/connections/google-drive/files?${new URLSearchParams({query,...(pageToken?{pageToken}:{})})}`);setFiles(result);};
@@ -125,4 +122,4 @@ function GoogleOAuthForm({busy,onSave}:{busy:boolean;onSave:(value:{clientId:str
   const [clientId,setClientId]=useState(''),[clientSecret,setClientSecret]=useState('');
   return <form onSubmit={event=>{event.preventDefault();void onSave({clientId:clientId.trim(),clientSecret:clientSecret.trim()}).then(()=>{setClientId('');setClientSecret('');});}}><label className="field-label" htmlFor="google-client-id">OAuth client ID</label><input id="google-client-id" value={clientId} onChange={event=>setClientId(event.target.value)} autoComplete="off" required maxLength={1000}/><label className="field-label" htmlFor="google-client-secret">OAuth client secret</label><input id="google-client-secret" type="password" autoComplete="off" value={clientSecret} onChange={event=>setClientSecret(event.target.value)} required maxLength={4000}/><button type="submit" className="primary small" disabled={busy||!clientId.trim()||!clientSecret.trim()}>Save OAuth app</button></form>;
 }
-function message(cause:unknown) { return cause instanceof Error?cause.message:String(cause); }
+export function message(cause:unknown) { return cause instanceof Error?cause.message:String(cause); }

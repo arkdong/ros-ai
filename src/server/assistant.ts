@@ -111,7 +111,7 @@ export class AssistantService {
     const backend=this.store.record<{backend:AssistantBackend}>('assistant-backend',projectId)?.backend??'provider';
     const agentStatus=this.store.record<import('../shared/agent-runtime.js').AgentConnectionStatus>('agent-connection-status',projectId);
     const claude=backend==='claude'?this.claude?.readiness(projectId)??{available:false,reason:'Claude Code is not available in this service.'}:null;
-    const capabilities=claude?{modelAvailable:claude.available,searchAvailable:false,modelBlocker:claude.reason}:backend==='codex'?{modelAvailable:Boolean(agentStatus?.available),searchAvailable:false,modelBlocker:agentStatus?.available?null:agentStatus?.detail??'Open Connections & setup to check local Codex authentication, protocol and the separate bounded grant. No agent inference has been verified.'}:this.execution.assistantCapabilities(projectId,focus.nodeId);
+    const capabilities=claude?{modelAvailable:claude.available,searchAvailable:false,modelBlocker:claude.reason}:backend==='codex'?{modelAvailable:Boolean(agentStatus?.available),searchAvailable:false,modelBlocker:agentStatus?.available?null:agentStatus?.detail??'Open Model to check local Codex authentication, protocol and the separate bounded grant. No agent inference has been verified.'}:this.execution.assistantCapabilities(projectId,focus.nodeId);
     return {projectId,backend,focus,memory,outline,turns,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,...capabilities};
   }
   start(projectId:string,supplied:{message:string;focus?:AssistantFocus}):AssistantState{
@@ -235,7 +235,7 @@ export class AssistantService {
         if(!runtime)throw new StoreError(`The ${claude?'Claude Code':'local Codex'} adapter is unavailable in this service. No inference was sent.`,503);
         const detail=this.store.detail(projectId),nodeIds=turn.focus.nodeId?[turn.focus.nodeId]:[];
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
-        this.event(projectId,turnId,claude?'Starting Claude Code with the API key from Connections.':'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
+        this.event(projectId,turnId,claude?'Starting Claude Code with the API key from the Model page.':'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
         const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.store.addMessage(projectId,null,'assistant',result.reply);

@@ -1,6 +1,6 @@
 # Local tool connections
 
-Open **Connections** in the local ros.ai workspace. Each tool is a collapsible row with a connection and availability summary. Expand a row to inspect its usage allowance and manage its account. Account setup and research permission are separate: saving a key or signing in does not add spending allowance, select inputs, start research, or execute code. Private connection routes are unavailable in the public demo.
+AI models are set up on the **Model** page of the left icon bar, outside tools on **Plugins**, and every usage allowance on **Budget**. Each tool is a collapsible row with a connection and availability summary. Expand a row to manage its account; its allowance is on the Budget page. Account setup and research permission are separate: saving a key or signing in does not add spending allowance, select inputs, start research, or execute code. Private connection routes are unavailable in the public demo.
 
 | Connection | Setup in this build | What connection status establishes |
 | --- | --- | --- |
@@ -19,13 +19,17 @@ Codex instead shows **turns, runtime seconds, and tool-call allowances**, with p
 
 Google Drive has no model allowance: the visible limits describe read-only CSV access and the 500,000-byte capture maximum. Connecting it does not create a model-research budget.
 
+## Plugins
+
+The **Plugins** page lists outside tools. Google Drive uses the OAuth setup above, and Google Docs uses the same read-only Drive grant. Zotero (API key), Slack (bot token), Notion (internal integration secret) and GitHub (fine-grained personal access token) each take a token the user creates in that service. Tokens stay in the owner-only `plugin-tokens.json` in the data folder; the browser only sees whether one is saved. **Check** makes one read-only identity request (Zotero `keys/current`, Slack `auth.test`, Notion `users/me`, GitHub `user`). Tavily web search moved here from the model list; its allowance is on Budget. Overleaf is shown as not available yet: it has no public API and its Git integration needs a paid plan. Connecting a plugin does not yet let the canvas or assistant use it.
+
 ## Assistant model selection and project setup
 
 The assistant uses one custom model picker. Each option shows the model maker's symbol and name, grouped by the API connection that serves it: NVIDIA Nemotron and Moonshot Kimi through Nebius, OpenAI GPT through the direct OpenAI API. Maker identity and serving connection are separate. The picker retains the supported model IDs, project default and explicit block/Group inheritance. Arrow keys, Home/End, Enter and Escape are supported; **Model details** retains exact IDs, scope and key presence. It offers supported models rather than accepting arbitrary unverified IDs.
 
 The assistant's settings button holds the API-model/Local-Codex choice, connection setup, research permissions and full admission diagnostics. The conversation shows one short current blocker; historical failures and saved-record fallback responses retain their full original text under disclosures. A known-blocked model send is disabled and the draft remains saved. No budget/model/settings edit sends or retries a message. Existing saved-record server behavior and stored conversations remain intact.
 
-If provider usage is disabled, **Open connections** leads to its existing explicit allowance controls. Codex's isolation failure leads to **Choose API model**, because spending limits cannot fix missing read isolation.
+If provider usage is disabled, **Open Model** leads to its existing explicit allowance controls. Codex's isolation failure leads to **Choose API model**, because spending limits cannot fix missing read isolation.
 
 For the audited Ultra scalar-text request shape, local reservation counts the exact serialized wire body plus conservative chat-template margins; it no longer assumes every short prompt uses the full published context. Other models and request shapes retain full-context reservation. Nebius uses the documented total `max_completion_tokens` cap (visible output plus reasoning), one choice and no parameter fallback or retry. See the [Nebius completion reference](https://docs.tokenfactory.nebius.com/api-reference/inference/create-chat-completion) and the [pinned audit and limitations](../evidence/token-reservation-2026-10-01.json). Current hosted template/cap compatibility has not been verified by a live call; rates and availability are checked from the authenticated catalog before each admission.
 
@@ -45,7 +49,7 @@ Codex owns its credentials; ros.ai does not copy its auth cache or treat its sub
 
 Claude Code can be the project assistant. It runs through Anthropic's [Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), which ships with ros.ai (`npm ci` installs it), so no separate `claude` install is needed.
 
-1. Save an [Anthropic API key](https://platform.claude.com/settings/keys) under **Connections → Claude Code**. API billing is separate from a Claude subscription.
+1. Save an [Anthropic API key](https://platform.claude.com/settings/keys) on the **Model** page under **Claude Code**. API billing is separate from a Claude subscription.
 2. Save a usage allowance (total USD and requests) on the same card, and pick the model (Sonnet by default, Opus or Haiku).
 3. In the assistant, open settings and choose **Claude Code**.
 

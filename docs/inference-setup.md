@@ -4,7 +4,7 @@ Delivered local implementation · October 2, 2026. This setup extends the [Octob
 
 ## Add your model connection
 
-Open **Connections**, find **Your model connections**, and choose **Add model connection**.
+Open **Model** in the left icon bar, find **Local models and other servers**, and choose **Add a local model or server**. **Ollama** and **LM Studio** fill in their usual local addresses. Enable the connection's requests on the **Budget** page.
 
 1. Enter a connection name and **API base URL**. A server you already manage might use `http://127.0.0.1:8080/v1`. ros.ai sends text requests to `/chat/completions` beneath the supplied base; an endpoint already ending in `/chat/completions` is also accepted. Remote endpoints require HTTPS. HTTP is accepted only for `localhost`, `127.0.0.1` or `::1`. Endpoint queries, fragments and embedded credentials are rejected.
 2. Enter the exact model ID your server accepts, a readable display name, its maker and declared context capacity. Up to 16 models can share one connection. Maker symbols describe the model author; they do not establish where it runs. The adapter uses scalar text messages and a non-streaming chat-completion response, with optional JSON instructions validated by ros.ai. Other protocols, arbitrary tools and automatic model fallback are unsupported.

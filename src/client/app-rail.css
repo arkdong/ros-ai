@@ -1,0 +1,43 @@
+.app-rail { flex:0 0 52px; width:52px; display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 0; background:#f1f1f0; border-right:1px solid #e3e3e1; z-index:45; }
+.app-rail-button { position:relative; display:flex; align-items:center; justify-content:center; width:36px; height:36px; border:0; border-radius:9px; background:transparent; color:#5c5f5d; cursor:pointer; }
+.app-rail-button:hover { background:#e5e5e3; color:#1f2220; }
+.app-rail-button.active { background:#fff; color:#1b1d1c; box-shadow:0 1px 2px rgba(0,0,0,.08), 0 0 0 1px #e1e1df; }
+.app-rail-button:focus-visible { outline:2px solid #679a43; outline-offset:2px; }
+.app-rail-button:nth-child(1) { margin-bottom:8px; }
+.app-rail-hint { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); padding:5px 9px; border-radius:7px; background:#1d1f1e; color:#fff; font-size:12px; font-weight:500; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .12s ease; z-index:60; }
+.app-rail-button:hover .app-rail-hint, .app-rail-button:focus-visible .app-rail-hint { opacity:1; transition-delay:.15s; }
+
+.workspace { position:relative; }
+.rail-page { position:absolute; inset:0; z-index:40; overflow:auto; background:#fbfbfa; }
+.rail-page-inner { max-width:760px; margin:0 auto; padding:36px 28px 64px; }
+.rail-page-header { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
+.rail-page-header h1 { font-size:22px; font-weight:600; letter-spacing:-.3px; color:#171717; line-height:1.3; }
+.rail-page-header p { font-size:13px; color:#6b6b6b; margin-top:2px; }
+.rail-page-icon { display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:10px; background:#fff; border:1px solid #e4e4e2; color:#2d322f; flex-shrink:0; }
+.rail-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:22px 0 10px; }
+.rail-page-note { font-size:13px; color:#6b6b6b; line-height:1.55; }
+
+/* The former side panels read as full pages here. */
+.rail-page .connections-intro { padding:0 0 14px; }
+.rail-page .tool-connection p { font-size:13px; }
+.rail-page .tool-connection-name strong { font-size:14px; }
+.rail-page .tool-connection-name small { font-size:11.5px; }
+.rail-page .connection-state { font-size:11px; }
+.rail-page .connections-footnote { margin-top:16px; }
+.rail-page .resources-panel { background:#fff; border:1px solid #e4e4e2; border-radius:10px; padding-top:16px; }
+.rail-page .budget-panel { margin-top:28px; }
+.rail-page .budget-scroll { padding:0; overflow:visible; }
+.rail-page .budget-allowances .tool-connection-body .connection-allowance { margin:0; padding:0; border:0; }
+.inference-presets { display:flex; gap:8px; margin-bottom:10px; }
+.plugin-mark { display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color:#fff; font-size:11px; font-weight:700; letter-spacing:-.3px; }
+
+@media (max-width:1100px) {
+  /* The sidebar floats over the canvas here; keep it beside the rail. */
+  .app-shell.single-canvas-shell .sidebar { left:52px; }
+}
+@media (max-width:600px) {
+  .app-shell.single-canvas-shell .sidebar { left:44px; max-width:calc(100vw - 44px); }
+  .app-rail { flex-basis:44px; width:44px; }
+  .app-rail-button { width:32px; height:32px; }
+  .rail-page-inner { padding:24px 16px 48px; }
+}

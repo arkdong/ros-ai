@@ -1,5 +1,3 @@
-.budget-panel .budget-heading { min-height: 86px; border-bottom: 1px solid #e9e9e9; }
-.budget-heading-icon { display: flex; align-items: center; justify-content: center; width: 33px; color: #474747; }
 .budget-scroll { overflow-y: auto; min-height: 0; flex: 1; padding: 22px 20px 16px; }
 .budget-eyebrow { display: block; color: #737373; font-size: 12px; font-weight: 600; }
 .budget-remaining-value { display: block; margin: 9px 0 16px; color: #202020; font-size: 35px; letter-spacing: -1.1px; font-weight: 600; font-variant-numeric: tabular-nums; }

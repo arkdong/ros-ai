@@ -2,10 +2,8 @@
 .brand-wordmark { position: relative; display: inline-block; width: 118px; aspect-ratio: 1334 / 444; overflow: hidden; flex-shrink: 0; }
 .brand-wordmark > img { position: absolute; width: 132.984%; height: auto; max-width: none; left: -16.492%; top: -45.045%; }
 .welcome-wordmark { width: 165px; }
-.single-canvas-shell .workspace-actions .assistant-toggle,
-.single-canvas-shell .workspace-actions .budget-toggle { flex-shrink: 0; }
-.single-canvas-shell .workspace-actions .assistant-toggle.active,
-.single-canvas-shell .workspace-actions .budget-toggle.active { background: #f0f6e5; box-shadow: inset 0 0 0 1px #d8e9bd; }
+.single-canvas-shell .workspace-actions .assistant-toggle { flex-shrink: 0; }
+.single-canvas-shell .workspace-actions .assistant-toggle.active { background: #f0f6e5; box-shadow: inset 0 0 0 1px #d8e9bd; }
 .single-canvas-shell .assistant-toggle > .research-ring { width: 25px; height: 25px; object-fit: contain; }
 .single-canvas-shell .assistant-signal { width: 32px; height: 32px; }
 .single-canvas-shell .assistant-signal > .research-ring { width: 32px; height: 32px; transform: none; opacity: 1; object-fit: contain; }

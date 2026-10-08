@@ -71,7 +71,7 @@ async function* single(message: string): AsyncIterable<SDKUserMessage> {
 }
 
 /** Claude Code through Anthropic's Agent SDK, authenticated only with the Anthropic
- * API key saved under Connections. Claude subscription sign-in is not offered. */
+ * API key saved on the Model page. Claude subscription sign-in is not offered. */
 export class ClaudeAgentService {
   private readonly active = new Map<string, { controller: AbortController; done: Promise<unknown> }>();
   private readonly configDir: string;
@@ -97,10 +97,10 @@ export class ClaudeAgentService {
   }
   /** Cheap and local: no request is sent to Anthropic. */
   readiness(projectId: string): { available: boolean; reason: string | null } {
-    if (!process.env.ANTHROPIC_API_KEY?.trim()) return { available: false, reason: 'Connect an Anthropic API key under Connections, then Claude Code can answer here.' };
+    if (!process.env.ANTHROPIC_API_KEY?.trim()) return { available: false, reason: 'Connect an Anthropic API key on the Model page, then Claude Code can answer here.' };
     const budget = this.execution.connectionBudgets.status('claude');
     if (!budget.ready) return { available: false, reason: budget.reason };
-    if (budget.remainingUsd < MIN_TURN_USD) return { available: false, reason: `Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains. Raise the allowance under Connections.` };
+    if (budget.remainingUsd < MIN_TURN_USD) return { available: false, reason: `Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains. Raise the allowance on the Model page.` };
     if (this.experiments.authority.policy(projectId).stopped) return { available: false, reason: 'Project research is stopped. Resume deliberately before a new turn.' };
     return { available: true, reason: null };
   }
@@ -166,7 +166,7 @@ export class ClaudeAgentService {
         if (item.type === 'system' && item.subtype === 'init') {
           attempt.sessionId = item.session_id; attempt.request = { ...(attempt.request as object), claudeCodeVersion: item.claude_code_version, reportedModel: item.model, reportedTools: item.tools, apiKeySource: item.apiKeySource }; save();
           // The session must bill the key ros.ai passed, never a personal Claude login.
-          if (item.apiKeySource !== 'ANTHROPIC_API_KEY') { refused = 'Claude Code did not confirm it is using the API key from Connections, so ros.ai stopped the turn.'; stop(); }
+          if (item.apiKeySource !== 'ANTHROPIC_API_KEY') { refused = 'Claude Code did not confirm it is using the API key from the Model page, so ros.ai stopped the turn.'; stop(); }
         } else if (item.type === 'stream_event' && item.parent_tool_use_id === null) {
           const value = item.event;
           if (value.type === 'content_block_start' && value.content_block.type === 'text' && textBlocks++ > 0) event({ at: now(), type: 'delta', message: '\n\n' });

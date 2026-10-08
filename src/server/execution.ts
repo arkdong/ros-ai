@@ -172,7 +172,7 @@ export class ExecutionService {
       return;
     }
     if (requireModel && !this.cloudAllowed(provider)) throw new Error(`Paid inference is blocked. ${this.connectionBudgets.status(provider).reason}`);
-    if (requireModel && !model.configured) throw new Error(`${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Connections to configure it server-side.`);
+    if (requireModel && !model.configured) throw new Error(`${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.`);
   }
   private signal(controller:AbortController) { return AbortSignal.any([controller.signal,AbortSignal.timeout(this.timeoutMs)]); }
   private checkSignal(signal:AbortSignal) { if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.'); }
@@ -300,7 +300,7 @@ export class ExecutionService {
     const modelBudgetReady=comparison?comparison.ready:usesAppAllowance?allowance.ready:provider!=='nebius'||!this.combinedBudget||this.combinedBudget.status().ready;
     const ledgerReady=usesAppAllowance?allowance.ready:ledger.accounted(provider)<(ledger.limits[provider]??0)&&(allowance.source!=='environment'||allowance.remainingRequests>0);
     const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
-    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Connections to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? comparison?.reason??this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:this.search.configured&&this.cloudAllowed('tavily')&&searchBudgetReady};
+    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? comparison?.reason??this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:this.search.configured&&this.cloudAllowed('tavily')&&searchBudgetReady};
     if(projectId&&new Authority(this.store).policy(projectId).stopped){
       capabilities.modelBlocker??='Project research is stopped. Open Permissions and resume deliberately.';
       capabilities.modelAvailable=false;capabilities.searchAvailable=false;
