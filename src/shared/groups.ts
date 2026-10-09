@@ -20,6 +20,15 @@ export function groupMembers(canvas: Canvas, groupId: string): CanvasNode[] {
   visit(groupId); return result;
 }
 
+/** A collapsed Group lists the first few blocks inside it, by position, leaving out a block another
+ * block in the group points to, so a search and the note it led to show once. */
+export const GROUP_PREVIEW_MEMBERS = 4;
+export function groupPreviewMembers(canvas: Canvas, groupId: string): CanvasNode[] {
+  const members = canvas.nodes.filter(node => node.parentId === groupId), ids = new Set(members.map(node => node.id));
+  const pointed = new Set(canvas.connections.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => edge.target));
+  return members.filter(node => !pointed.has(node.id)).sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
 /** Scope coordinates remain stable within their destination. Grouping is one
  * undoable content edit and never manufactures evidence connections. */
 export function createGroupOperations(canvas: Canvas, ids: readonly string[], id: string, title: string): Mutation[] {

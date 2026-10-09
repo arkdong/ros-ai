@@ -12,7 +12,7 @@ import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search']).optional(), agent:z.object({runtime:z.enum(['claude','codex']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding']).optional(), agent:z.object({runtime:z.enum(['claude','codex']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
@@ -298,7 +298,7 @@ export class Store {
     return placed;
   }
 
-  private applyOperations(project: Project, supplied: Mutation[], proposal: boolean): { canvas: Canvas; operations: Mutation[] } {
+  private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
     const operations = operationsSchema.parse(supplied) as Mutation[];
     const canvas = clone(project.canvas);
     const activeNode = (id: string) => {
@@ -326,7 +326,7 @@ export class Store {
         let updated = { ...node, ...operation.patch };
         if ('x' in operation.patch || 'y' in operation.patch) {
           updated.x = snap(updated.x); updated.y = snap(updated.y);
-          if (proposal) updated = this.placeNode(updated, canvas.nodes.filter(item => item.id !== node.id));
+          if (proposal && !arranged) updated = this.placeNode(updated, canvas.nodes.filter(item => item.id !== node.id));
         }
         coordinate.parse(updated.x); coordinate.parse(updated.y);
         canvas.nodes = canvas.nodes.map(item => item.id === node.id ? updated : item);
@@ -472,11 +472,13 @@ export class Store {
     });
   }
 
-  createProposal(projectId: string, baseRevision: number, summary: string, supplied: Mutation[]): Proposal {
+  /** A model's suggested moves are nudged to a free spot. `arranged` moves were laid out by ros.ai itself,
+   * such as an agent's own tree, so they keep their positions and the preview matches the result. */
+  createProposal(projectId: string, baseRevision: number, summary: string, supplied: Mutation[], arranged = false): Proposal {
     return this.transaction(() => {
       const project = this.getProject(projectId);
       if (project.revision !== baseRevision) throw new StoreError('The canvas changed while this proposal was generated. Request an updated preview.', 409);
-      const { operations } = this.applyOperations(project, supplied, true);
+      const { operations } = this.applyOperations(project, supplied, true, arranged);
       const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now() };
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
       return proposal;

@@ -259,3 +259,15 @@ Design: `/mnt/project-files/research/knowledge-action-redesign-2026-10-08.md` in
 - A Result note keeps its cited sources as a `### Sources` list at the end. Cards show the summary as Markdown and count the sources.
 - Within one turn, tools may build on blocks the turn itself added, and the expected canvas revision moves forward with the turn's own accepted changes.
 - `TAVILY_BASE_URL`, like `ANTHROPIC_BASE_URL`, lets a person route search through a compatible gateway of their own.
+
+## Reading pages, findings and theme groups · October 9, 2026
+
+The second step of the same design: after the searches, the agent decides what matters and how to group it.
+
+- `ros_read_pages` reads up to 15 pages in a turn, named by Result note and source number, through Tavily Extract (basic depth, 1 credit, US$0.008, per 5 pages read together). `ExecutionService.agentRead` saves each page on the Agent block as a `source` artifact with capture `full-content` (cut at 50,000 characters, with a locator saying so), as a run with its own allowance reservation. The tool returns 4,000 characters of each page from an offset, so the agent reads further without paying again.
+- `ros_write_findings` saves claims as `blockType: 'finding'` notes linked from their Result note by a quiet `finding` relationship: the claim as title, a word-for-word quote, why it matters and the source. ros.ai looks for each quote in the saved page or search excerpt (ignoring case, spacing and the style of quotation marks and dashes; an ellipsis may skip words) and refuses findings it cannot find. Cards name the site quoted.
+- `ros_propose_groups` proposes theme groups and one folded "Set aside" group whose description gives each reason; a Result note set aside takes its Search block with it, and nothing is deleted. Because it moves existing blocks, it always waits for review.
+- Findings and groups join the agent's tree, laid out as Tidy lays out trees with the Agent block fixed. Proposals ros.ai lays out itself are saved as `arranged`, so their preview matches what Accept saves; other proposals' moves are still nudged to a free spot. Previews do not mark blocks that only move, and the proposal card counts the blocks moving into each new group.
+- `estimatedCardHeight` sizes a text card as the canvas does before measuring it: from its first sentence, with the rest cut. A Finding card instead grows to show its whole quote. A collapsed group lists its first four blocks (those no other member points to) and how many more it holds; `estimatedGroupHeight` gives layout that height.
+- Page readings appear in a report's AI-use record with the addresses sent to Tavily.
+- A step also records what its call made (pages read or findings saved, at most 30), how many quotes were refused and the proposal it left. The Agent view lists them, opens a page's saved text with the original beside it, and shows a proposal's current decision with a Review button while it waits.

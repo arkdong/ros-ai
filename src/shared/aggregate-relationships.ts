@@ -54,11 +54,11 @@ export function aggregateTopLevelRelationships(canvas: Canvas, expandedIds?:read
 }
 
 /** Links an agent draws for its own steps (question to agent, agent to its searches,
- * search to its result, agent to blocks it added) carry no badge on the canvas.
- * Their wording stays in the relationship details. */
+ * search to its result, result to its findings, agent to blocks it added) carry no badge
+ * on the canvas. Their wording stays in the relationship details. */
 export function quietRelationship(connection: Connection, node: (id: string) => CanvasNode | undefined): boolean {
   const label = connection.label.trim().replace(/\s+/gu, ' ').toLowerCase(), source = node(connection.source)?.blockType, target = node(connection.target)?.blockType;
-  return (source === 'agent' && (target === 'search' || label === 'added')) || (source === 'search' && label === 'found') || (target === 'agent' && label === 'taken on by');
+  return (source === 'agent' && (target === 'search' || label === 'added')) || (source === 'search' && label === 'found') || (target === 'agent' && label === 'taken on by') || (target === 'finding' && label === 'finding');
 }
 /** The badge a top-level relationship shows on the canvas; empty when it has none. */
 export function relationshipBadgeText(group: AggregateRelationship, node: (id: string) => CanvasNode | undefined): string {

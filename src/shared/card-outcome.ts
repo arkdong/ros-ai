@@ -116,7 +116,11 @@ export function deriveCardOutcome(node: CanvasNode, runs: Run[], artifacts: Arti
     const parts = [datasets.length ? `${datasets.length} captured dataset${datasets.length === 1 ? '' : 's'}` : '', sources.length ? `${sources.length} saved source${sources.length === 1 ? '' : 's'}${sources.some(a => a.capture === 'search-snippet') ? ' (including search excerpts)' : ''}` : ''].filter(Boolean);
     return { label: 'Evidence saved', tone: 'neutral', text: `Available for inspection: ${parts.join(' and ')}.`, hasResult: true, artifactIds: evidence.map(a => a.id), ...(latest ? { runId: latest.id } : {}) };
   }
-  return { label: 'Purpose', tone: 'neutral', text: sentences(plainText(node.description || node.title), 1, 180) || 'Add a question or purpose to begin this note.', hasResult: false, artifactIds: [] };
+  return { label: 'Purpose', tone: 'neutral', text: purposeText(node), hasResult: false, artifactIds: [] };
+}
+/** What a block without runs says on its card: the first sentence of its description. */
+export function purposeText(node: { title: string; description: string }) {
+  return sentences(plainText(node.description || node.title), 1, 180) || 'Add a question or purpose to begin this note.';
 }
 
 /** Group summaries expose existing child evidence without importing it or

@@ -17,9 +17,12 @@ export interface ModelAdapter {
 }
 export type SearchResult = { title:string; url:string; content:string; locator:string };
 export type SearchResponse = { results:SearchResult[]; credits:number|null; requestId:string|null };
+export type ExtractResponse = { pages:{url:string;content:string;locator:string}[]; failed:string[]; credits:number|null; requestId:string|null };
 export interface SearchAdapter {
   readonly configured:boolean;
   search(query:string,signal:AbortSignal):Promise<SearchResponse>;
+  /** The full text of pages a search found. */
+  extract?(urls:string[],signal:AbortSignal):Promise<ExtractResponse>;
 }
 
 // Complete external harnesses are intentionally a different boundary from inference.
@@ -151,12 +154,32 @@ export class NebiusAdapter implements ModelAdapter {
 
 export const TAVILY_CREDIT_USD = 0.008;
 export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
+// Basic extract costs 1 credit for every 5 pages read. A page keeps at most PAGE_CHARACTERS.
+export const EXTRACT_PAGES_PER_CREDIT = 5, PAGE_CHARACTERS = 50_000;
+export const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
 export class TavilyAdapter implements SearchAdapter {
   get configured():boolean { return Boolean(this.key ?? process.env.TAVILY_API_KEY); }
   constructor(private readonly key?:string) {}
-  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
+  async extract(urls:string[],signal:AbortSignal):Promise<ExtractResponse> {
+    const result = await requestJson(`${TAVILY_BASE}/extract`,{method:'POST',headers:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify({urls,...EXTRACT_SCHEMA.configuration}),signal});
+    if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid page text.');
+    // A page can come back under a slightly different address (a trailing slash, www.); it keeps the one asked for.
+    const same = (url:string) => url.replace(/^https?:\/\/(?:www\.)?/u,'').replace(/\/+$/u,'');
+    const pages = result.results.flatMap((page:any)=>{
+      const url = typeof page.url === 'string' ? urls.find(asked=>same(asked)===same(page.url)) : undefined;
+      if (!url || typeof page.raw_content !== 'string') return [];
+      const content = page.raw_content.slice(0,PAGE_CHARACTERS);
+      return [{url,content,locator:`Tavily extract; page text characters 0–${content.length}${page.raw_content.length > content.length ? ` of ${page.raw_content.length} (truncated)` : ''}`}];
+    });
+    const failed = urls.filter(url=>!pages.some((page:{url:string})=>page.url===url));
+    return {pages,failed,credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null};
+  }
+  private credential():string {
     if (!this.configured) throw new Error('Set TAVILY_API_KEY in the server-side .env.local, then restart; model-only work is available without search.');
-    const key = this.key ?? process.env.TAVILY_API_KEY ?? '';
+    return this.key ?? process.env.TAVILY_API_KEY ?? '';
+  }
+  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
+    const key = this.credential();
     const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...SEARCH_SCHEMA.configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
     return {results:result.results.slice(0,3).map((source:any,index:number)=>{

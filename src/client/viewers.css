@@ -5,3 +5,4 @@
 .artifact-more>summary{cursor:pointer;font-size:13px;color:#5d6862}
 .artifact-more[open]>summary{margin-bottom:12px}
 .artifact-more .result-actions{margin-top:12px}
+.artifact-source-link{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:#3d5a4a}

@@ -14,7 +14,7 @@ import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObject } from './response-normalization.js';
-import { NebiusAdapter, TavilyAdapter, SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
+import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
 
 const now = () => new Date().toISOString();
 function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
@@ -176,11 +176,11 @@ export class ExecutionService {
   }
   private signal(controller:AbortController) { return AbortSignal.any([controller.signal,AbortSignal.timeout(this.timeoutMs)]); }
   private checkSignal(signal:AbortSignal) { if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.'); }
-  private reserveSearch(purpose:string,basis:string,runId:string,trace:Record<string,unknown>) {
-    const allowance=this.connectionBudgets.status('tavily',TAVILY_CREDIT_USD);
+  private reserveSearch(purpose:string,basis:string,runId:string,trace:Record<string,unknown>,amountUsd=TAVILY_CREDIT_USD) {
+    const allowance=this.connectionBudgets.status('tavily',amountUsd);
     if(!this.cloudAllowed('tavily'))throw new Error(allowance.reason);
-    if(allowance.source==='app')return this.connectionBudgets.reserve({provider:'tavily',amountUsd:TAVILY_CREDIT_USD,purpose,basis,runId,trace},allowance.revision);
-    return this.ledger.reserve('tavily',TAVILY_CREDIT_USD,purpose,basis,runId,trace);
+    if(allowance.source==='app')return this.connectionBudgets.reserve({provider:'tavily',amountUsd,purpose,basis,runId,trace},allowance.revision);
+    return this.ledger.reserve('tavily',amountUsd,purpose,basis,runId,trace);
   }
   private async modelCall(request:ModelRequest,signal:AbortSignal,purpose:string,runId?:string,projectId?:string,reservationMultiplier=2,selection?:ModelSelection):Promise<{response:ModelResponse;info:ModelInfo;usage:UsageRecord}> {
     selection??=this.customModel?{provider:'nebius',model:this.model.model}:runId?{provider:this.store.getRun(runId).provider as ModelSelection['provider'],model:this.store.getRun(runId).model}:projectId?this.modelSelection(projectId):undefined;
@@ -321,8 +321,9 @@ export class ExecutionService {
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Explicit workspace guide review',undefined,projectId,1,selection);}
     finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
   }
-  assistantProposal(projectId:string,summary:string,operations:Mutation[]):Proposal {
-    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations));
+  /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. */
+  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false):Proposal {
+    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged));
   }
   /** Why an agent cannot search right now, or null when Tavily has a key and remaining allowance. */
   agentSearchBlocker():string|null{
@@ -356,6 +357,41 @@ export class ExecutionService {
       this.active.delete(run.id);
       if(this.chats.get(projectId)===controller)this.chats.delete(projectId);
     });
+    active.done=task.then(()=>undefined,()=>undefined);
+    return task;
+  }
+  /** The full text of up to five pages an agent's searches found, read in one Tavily extract and
+   * saved on its Agent block as exact versions it can quote. Runs inside the agent's turn, like its searches. */
+  agentRead(projectId:string,nodeId:string,pages:{url:string;title:string}[],signal:AbortSignal,turnId:string):Promise<{run:Run;failed:string[]}>{
+    this.admitWork(false);
+    this.checkSignal(signal);
+    if(!this.search.configured||!this.search.extract||!this.cloudAllowed('tavily'))throw new Error('Tavily has no configured remaining authorization for reading pages.');
+    const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
+    if(!node)throw new Error('The Agent block was removed from the canvas.');
+    const urls=z.array(z.string().url().max(2000)).min(1).max(EXTRACT_PAGES_PER_CREDIT).parse(pages.map(page=>page.url));
+    const credits=Math.ceil(urls.length/EXTRACT_PAGES_PER_CREDIT),amountUsd=credits*TAVILY_CREDIT_USD;
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:urls.join('\n'),useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-extract',modelVersion:null,configuration:{purpose:'agent-read',assistantTurnId:turnId,extract:EXTRACT_SCHEMA.configuration},tools:[EXTRACT_SCHEMA],events:[],artifactIds:[]});
+    const controller=new AbortController(),active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
+    const combined=AbortSignal.any([signal,this.signal(controller)]);
+    const task=Promise.resolve().then(async()=>{
+      let reservation:UsageRecord|undefined;
+      try{
+        reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:amountUsd});return this.reserveSearch('Agent page reading',`Continued cumulative Tavily allowance: basic extract of ${urls.length} page${urls.length===1?'':'s'}, ${credits} credit at $0.008 PAYG upper bound.`,run.id,{urls,assistantTurnId:turnId},amountUsd);});
+        const response=await abortable(this.search.extract!(urls,combined),combined);this.checkSignal(combined);
+        const reported={urls,credits:response.credits,requestId:response.requestId,failed:response.failed};
+        this.store.updateUsage(reservation.id,{status:response.credits===null?'uncertain':'settled',estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),...reported,assistantTurnId:turnId}});
+        const artifacts=response.pages.map((page,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`P${index+1}`,capture:'full-content',title:pages.find(item=>item.url===page.url)?.title||new URL(page.url).hostname,url:page.url,content:page.content,locator:page.locator}));
+        const saved=this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'pages-captured',message:`Saved the text of ${artifacts.length} of ${urls.length} page${urls.length===1?'':'s'}. Page text is evidence, not independent verification.`}],cost:{reservedUsd:amountUsd,estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD},usage:reported});
+        return {run:saved,failed:response.failed};
+      }catch(error){
+        if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
+        if(['queued','running'].includes(this.store.getRun(run.id).status)){
+          const timedOut=combined.aborted&&combined.reason instanceof Error&&combined.reason.name==='TimeoutError';
+          this.store.updateRun(run.id,{status:combined.aborted&&!timedOut?'cancelled':'failed',endedAt:now(),error:this.safeError(error)});
+        }
+        throw error;
+      }
+    }).finally(()=>this.active.delete(run.id));
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
   }

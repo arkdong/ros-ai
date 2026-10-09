@@ -1,6 +1,6 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronDown, ChevronRight, CircleHelp, FileText, Focus, GitBranch, ListTree, LoaderCircle, MessageSquare, PanelRightClose, Plug, Settings2, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronDown, ChevronRight, CircleHelp, FileText, Focus, GitBranch, ListTree, LoaderCircle, MessageSquare, PanelRightClose, Plug, Quote, Settings2, ShieldCheck, Square, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn, OutlineEntry } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { RichText, time } from './Content';
@@ -172,6 +172,7 @@ function AgentWorkSummary({ node, turn, detail, onReference }: { node: ProjectDe
     <ul>
       {work.directions.length > 0 && <li><Search size={13}/>{running && !work.sources ? `Searching ${plural(work.directions.length, 'direction')}…` : `Searched ${plural(work.directions.length, 'direction')} · ${plural(work.sources, 'source')}`}</li>}
       {work.directions.length > 0 && <li><BookOpen size={13}/>{work.written === work.directions.length ? `Wrote ${plural(work.written, 'result note')}` : `Wrote ${work.written} of ${plural(work.directions.length, 'result note')}`}</li>}
+      {work.pages.length + work.findings > 0 && <li><Quote size={13}/>Read {plural(work.pages.length, 'page')} · saved {plural(work.findings, 'finding')}</li>}
       {waiting > 0 && <li className="waiting"><GitBranch size={13}/>{plural(waiting, 'change')} waiting for your review</li>}
     </ul>
     <button className="text-button" onClick={() => onReference({ kind: 'node', id: node.id, label: node.title })}>Show on canvas<ArrowRight size={12}/></button>
