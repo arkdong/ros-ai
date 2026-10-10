@@ -33,6 +33,7 @@ import { CanvasHistory } from './CanvasHistory';
 import { FileBar, FolderChip, FolderField, FolderPanel, folderName, useFolderSuggestion, useProjectFolder } from './ProjectFolder';
 import './demo-polish.css';
 import type { AssistantState, AssistantFocus, AssistantReference } from '../shared/assistant';
+import type { OutsideAgentsStatus } from '../shared/outside-agents';
 
 type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report';
 
@@ -92,6 +93,11 @@ export function App(){
   const folder=useProjectFolder(projectId,detail?.project.id===projectId?detail.project.revision:undefined,!publicDemo,()=>{void refresh().catch(report);}),folderStatus=folder.status;
   const missingKey=folderStatus?.files.filter(file=>file.missing).map(file=>file.nodeId).sort().join(',')??'';
   const missingFiles=useMemo(()=>new Set(missingKey.split(',').filter(Boolean)),[missingKey]);
+  // The person's own Claude Code or Codex can propose changes from outside; show them as they arrive.
+  useEffect(()=>{if(!projectId||publicDemo)return;let stopped=false,timer:ReturnType<typeof setTimeout>|undefined,seen:string|undefined;
+    const check=async()=>{try{const {activity}=await api<OutsideAgentsStatus>('/api/outside-agents');if(stopped)return;const at=activity[projectId];if(seen!==undefined&&at&&at!==seen){await refresh();setAssistantOpen(true);}seen=at??'';}catch{/* ros.ai is restarting; try again. */}if(!stopped)timer=setTimeout(check,document.visibilityState==='visible'?2500:10000);};
+    void check();return()=>{stopped=true;clearTimeout(timer);};
+  },[projectId,publicDemo,refresh]);
   useEffect(()=>{if(!hasActive&&!chatBusy&&!notebookRunning)return;let polling=false;const interval=setInterval(()=>{if(polling)return;polling=true;void refresh().catch(report).finally(()=>{polling=false;});},1500);return()=>clearInterval(interval);},[hasActive,chatBusy,notebookRunning,refresh,report]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!event.defaultPrevented&&!(event.target instanceof Element&&event.target.closest('.cm-editor'))){setNewProject(false);setDialog(null);setFolderDialog(false);setAttachment(null);setAddScope(undefined);setInspectorId(null);setResearchNodeId(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);setTrashOpen(false);setDeleteCandidate(null);setProjectMenu(null);setDemoPicker(false);saveLocal('demo-offer-seen',true);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const action=useCallback(async(fn:()=>Promise<unknown>,shouldRefresh=true)=>{setSaving(n=>n+1);try{await fn();if(shouldRefresh)await refresh();return true;}catch(cause){report(cause);if(shouldRefresh)await refresh().catch(()=>undefined);return false;}finally{setSaving(n=>n-1);}},[refresh,report]);

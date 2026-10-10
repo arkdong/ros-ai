@@ -25,6 +25,7 @@ import { InferenceConnections } from './inference-connections.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
+import { OutsideAgents } from './outside-agents.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -48,6 +49,7 @@ let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
+let outside:OutsideAgents|undefined;
 let notebooks:NotebookService|undefined;
 let projectFolders:ProjectFolders|undefined;
 let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
@@ -97,7 +99,8 @@ try {
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     assistant=new AssistantService(store,execution,experiments,agent,claude);
     guide=new WorkspaceGuideService(store,execution);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir)},guide);
+    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;
@@ -118,6 +121,7 @@ try {
   server.on('request', app);
   server.on('error', async (error) => { console.error(`ros.ai could not start: ${error.message}`); await shutdown(); process.exitCode = 1; });
   server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
+    outside?.publish(port);
     console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().catch(error => { console.error(`ros.ai stopped with an error: ${error instanceof Error ? error.message : error}`); process.exitCode = 1; }).finally(() => process.exit()); });

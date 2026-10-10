@@ -36,7 +36,7 @@ const replySchema=z.object({reply:z.string().min(1).max(16000),question:z.string
 const responseSchema=z.toJSONSchema(replySchema);
 type Tool=z.infer<typeof toolSchema>;
 type Trace={provider?:string;at:string;messages:ModelMessage[];schema:Record<string,unknown>;response:string;usageId:string;model:string;modelVersion:string|null;responseMetadata:Record<string,unknown>};
-type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection};
+type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsideSession?:string};
 const emptyMemory=():ResearchMemory=>({originalQuestion:null,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]});
 const clip=(value:string,length:number)=>value.length>length?value.slice(0,length)+'\n[Capture preview truncated; saved artifact is complete.]':value;
 
@@ -362,6 +362,21 @@ export class AssistantService {
       }
       return this.updateAction(projectId,turnId,action);
     }catch(error){action={...action,status:'failed',error:error instanceof Error?error.message:'Tool action failed.'};this.updateAction(projectId,turnId,action);return action;}
+  }
+  /** The person's own agent (over MCP) shows in the conversation as its own turn. Its calls
+   * keep landing in that turn while nothing else was said in between. */
+  outsideTurn(projectId:string,session:string,label:string){
+    const latest=this.turns(projectId).at(-1);
+    if(latest?.source==='outside-agent'&&latest.outsideSession===session)return latest.id;
+    const turn:SavedTurn={id:randomUUID(),projectId,createdAt:now(),updatedAt:now(),focus:{nodeId:null},userMessage:'',reply:'',status:'completed',source:'outside-agent',model:label,references:[],actions:[],events:[],steps:[],outsideSession:session};
+    this.save(turn);return turn.id;
+  }
+  outsideRecord(projectId:string,turnId:string,entry:{event:string;note?:string;actions?:AssistantAction[]}){
+    const turn=this.getTurn(projectId,turnId);
+    turn.events.push({at:now(),message:entry.event});
+    if(entry.note)turn.reply=[turn.reply,entry.note].filter(Boolean).join('\n\n').slice(-16000);
+    turn.actions.push(...entry.actions??[]);
+    this.save(turn);
   }
   decide(projectId:string,actionId:string,decision:'accept'|'dismiss'){
     const turn=this.turns(projectId).find(t=>t.actions.some(a=>a.id===actionId));if(!turn)throw new StoreError('Assistant action not found.',404);
