@@ -47,7 +47,8 @@ export class DeferredAgentRuntime implements AgentRuntime {
 // before every inference; a historical NEBIUS_MODEL setting is not a selection.
 export const DEFAULT_MODEL = 'nvidia/Nemotron-3-Ultra-550b-a55b';
 export const NEBIUS_BASE = 'https://api.tokenfactory.us-central1.nebius.com/v1';
-const TAVILY_BASE = 'https://api.tavily.com';
+// A Tavily-compatible gateway the person set up themselves can replace the public endpoint.
+const TAVILY_BASE = process.env.TAVILY_BASE_URL?.replace(/\/+$/u, '') || 'https://api.tavily.com';
 
 /** Audited scalar-text shape only. NVIDIA Ultra's published tokenizer is
  * byte-level BPE with no normalizer: merging cannot add tokens beyond UTF-8

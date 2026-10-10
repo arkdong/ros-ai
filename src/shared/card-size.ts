@@ -16,3 +16,10 @@ export function initialCardSize(node: { width?: number; title: string }, text: s
   const outcomeLines = Math.max(1, Math.ceil(Array.from(text).length * 7.5 / (width - 66)));
   return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
 }
+
+/** Cards that preview code, a figure, a table or a report can grow to the maximum height. */
+const PREVIEW_BLOCKS = ['code', 'notebook', 'figure', 'dataset', 'report'];
+/** A height guess for a new block's card before the browser measures it. */
+export function estimatedCardHeight(node: { width?: number; title: string; description: string; kind?: string; blockType?: string; artifactId?: string }) {
+  return node.kind === 'group' || node.artifactId || PREVIEW_BLOCKS.includes(node.blockType ?? '') ? CARD_MAX_HEIGHT : initialCardSize(node, node.description).height;
+}

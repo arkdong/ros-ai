@@ -37,6 +37,15 @@
 .direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-figure-preview),.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-code-source){flex-shrink:0}
 .direct-canvas .block-metric-preview{font-size:42px;line-height:1.3;overflow-wrap:anywhere}
 .direct-canvas .block-text-preview{font-size:14px;line-height:1.6;margin:0;color:#555f59}
+/* Card faces show the same Markdown as the opened block, set small and clipped by the card. */
+.direct-canvas .rich-text.markdown-preview{font-size:14px;line-height:1.55;color:#555f59}
+.direct-canvas .rich-text.markdown-preview p{margin:0 0 6px}
+.direct-canvas .rich-text.markdown-preview h4{font-size:14px;margin:6px 0 2px;color:#26302a}
+.direct-canvas .rich-text.markdown-preview ul,.direct-canvas .rich-text.markdown-preview ol{margin:2px 0 6px;padding-left:18px}
+.direct-canvas .rich-text.markdown-preview li{margin:1px 0}
+.direct-canvas .rich-text.markdown-preview strong{color:#26302a}
+/* The card cuts a long preview at its own height, so the last lines fade out instead of ending mid-line. */
+.direct-canvas .block-primary-preview:has(>.markdown-preview){mask-image:linear-gradient(to bottom,#000 calc(100% - 30px),transparent)}
 .direct-canvas .block-code-preview{font-family:monospace;font-size:11px;line-height:1.6;margin:0;white-space:pre-wrap;max-height:170px;overflow:hidden;background:#f5f5f5;padding:10px}
 .direct-canvas .block-table-preview{overflow:hidden}
 .direct-canvas .block-table-preview table{width:100%;border-collapse:collapse;font-size:11px;text-align:left}

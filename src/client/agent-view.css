@@ -1,0 +1,41 @@
+.agent-view { display: grid; align-content: start; gap: 18px; padding: 20px 25px 30px; flex: 1; min-height: 0; overflow-y: auto; }
+.agent-view header { display: flex; align-items: center; gap: 10px; }
+.agent-view header > div { display: grid; flex: 1; gap: 1px; }
+.agent-view header strong { font-size: 14px; }
+.agent-view header small { color: #6b6b67; font-size: 12px; }
+.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #f1f1ef; box-shadow: 0 0 0 1px #e1e1df; }
+.agent-goal .rich-text { font-size: 14px; color: #3d3d3a; }
+/* Section titles are not headings, so Markdown headings inside the answer keep their own style. */
+.agent-section-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #6b6b67; }
+.agent-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.agent-step { display: grid; grid-template-columns: 22px 1fr; gap: 8px; position: relative; padding-bottom: 12px; }
+.agent-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: #e3e3e0; }
+.agent-step-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f4f4f2; color: #4a4a46; }
+.agent-step.waiting .agent-step-icon { background: #fbf3e4; color: #8a5a12; }
+.agent-step.failed .agent-step-icon, .agent-step.declined .agent-step-icon { background: #fbecea; color: #9b3a32; }
+.agent-step-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-height: 22px; font-size: 14px; line-height: 22px; color: #26302a; }
+.agent-step-label time { margin-left: auto; font-size: 12px; color: #8a8a85; }
+.agent-step-target { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: #c8c8c3; text-underline-offset: 2px; }
+.agent-step-target:hover { text-decoration-color: currentColor; }
+.agent-step-thought { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: #6b6b67; white-space: pre-wrap; }
+.agent-step-error { margin: 2px 0 0; font-size: 13px; color: #9b3a32; }
+.agent-directions { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.agent-step .agent-directions { margin-top: 6px; }
+.agent-directions li { display: flex; align-items: center; gap: 10px; }
+.agent-directions button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 3px 0; cursor: pointer; color: inherit; text-align: left; font-size: 14px; }
+.agent-directions button:hover span { text-decoration: underline; }
+.agent-directions small { margin-left: auto; color: #8a8a85; white-space: nowrap; }
+.agent-error { color: #9b3a32; margin: 0; }
+/* Canvas card faces for Agent and Search blocks. */
+.agent-face { display: grid; gap: 6px; }
+.agent-face ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: #3d3d3a; }
+.agent-face li { display: flex; align-items: center; gap: 6px; }
+.agent-face li svg { flex: none; color: #8a8a85; }
+.agent-waiting { margin: 0; font-size: 13px; color: #8a5a12; }
+.agent-thought { margin: 0; font-size: 13px; line-height: 1.5; color: #6b6b67; }
+.search-face { display: grid; gap: 6px; }
+.search-why { margin: 0; font-size: 13px; line-height: 1.45; color: #6b6b67; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.search-queries { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.search-queries li { display: flex; align-items: center; gap: 6px; color: #3d3d3a; font-size: 13px; min-width: 0; }
+.search-queries li svg { flex: none; color: #8a8a85; }
+.search-queries li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

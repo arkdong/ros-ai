@@ -2081,6 +2081,20 @@ a {
   font-size: 15px;
   color: #171717;
 }
+.rich-text h4.md-h1 { font-size: 1.15em; }
+.rich-text h4.md-h4 { font-size: inherit; color: #3d3d3a; }
+.rich-text ol { padding-left: 22px; margin: 10px 0; }
+.rich-text li > ul, .rich-text li > ol { margin: 4px 0; }
+.rich-text ul.md-references { list-style: none; padding-left: 0; font-size: .93em; color: #4a4a46; }
+.rich-text ul.md-references li { margin: 3px 0; }
+.rich-text em { font-style: italic; }
+.rich-text del { color: #6b6b67; }
+.rich-text a { color: inherit; text-decoration: underline; text-decoration-color: #b5b5b0; text-underline-offset: 2px; }
+.rich-text a:hover { text-decoration-color: currentColor; }
+.rich-text blockquote { margin: 10px 0; padding: 2px 0 2px 12px; border-left: 3px solid #e1e1de; color: #4a4a46; }
+.rich-text hr { border: 0; border-top: 1px solid #e6e6e3; margin: 14px 0; }
+.rich-text :not(pre) > code { font-size: .9em; background: #f4f4f2; border-radius: 4px; padding: 1px 4px; }
+.rich-text pre.md-code { background: #f7f7f5; border: 1px solid #ebebe8; border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; white-space: pre; }
 .message-meta {
   display: flex;
   align-items: center;

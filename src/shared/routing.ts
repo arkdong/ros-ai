@@ -52,12 +52,15 @@ const clear = (points: RoutePoint[], boxes: Rect[]) => !points.slice(1).some((po
 const unique = (values: number[]) => [...new Set(values)].sort((a, b) => a - b);
 function overlaps(a: Rect, b: Rect) { return a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top; }
 
-/** Short doglegs handle ordinary layouts without building a large visibility grid. */
-function shortRoute(a: RoutePoint, b: RoutePoint, boxes: Rect[], bounds?: Rect): RoutePoint[] | undefined {
+/** Short doglegs handle ordinary layouts without building a large visibility grid.
+ * A single bend turns near the source and arrives straight, so links from one
+ * block to several others branch beside it and each reaches its block on its own line. */
+function shortRoute(a: RoutePoint, b: RoutePoint, boxes: Rect[], bounds?: Rect, arriveHorizontally = false): RoutePoint[] | undefined {
   const usable = (points: RoutePoint[]) => clear(points, boxes) && (!bounds || points.every(point => within(point, bounds)));
   const candidates: RoutePoint[][] = [];
   if ((a.x === b.x || a.y === b.y) && usable([a, b])) return [a, b];
-  candidates.push([a, { x: b.x, y: a.y }, b], [a, { x: a.x, y: b.y }, b]);
+  const across: RoutePoint[] = [a, { x: b.x, y: a.y }, b], along: RoutePoint[] = [a, { x: a.x, y: b.y }, b];
+  candidates.push(...(arriveHorizontally ? [along, across] : [across, along]));
   const elbow = candidates.map(simplify).find(usable);
   if (elbow) return elbow;
   const region = { left: Math.min(a.x, b.x) - STUB, right: Math.max(a.x, b.x) + STUB, top: Math.min(a.y, b.y) - STUB, bottom: Math.max(a.y, b.y) + STUB };
@@ -161,7 +164,7 @@ export function routeRelationship(request: RouteRequest): RelationshipRoute | un
     // Short endpoint stubs may cross only their own note boundary.
     if (!clear([pair.from, pair.a], sourceBoxes) || !clear([pair.b, pair.to], targetBoxes)) continue;
     eligible.push(pair);
-    const middle = shortRoute(pair.a, pair.b, boxes, request.bounds ? rect(request.bounds, 0) : undefined);
+    const middle = shortRoute(pair.a, pair.b, boxes, request.bounds ? rect(request.bounds, 0) : undefined, pair.targetHandle === 'left' || pair.targetHandle === 'right');
     if (middle) { const points = simplify([pair.from, ...middle, pair.to]); candidates.push({ points, sourceHandle: pair.sourceHandle, targetHandle: pair.targetHandle, score: pathScore(points) }); }
   }
   if (!candidates.length) {
