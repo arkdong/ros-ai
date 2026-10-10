@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, LoaderCircle, RotateCcw } from 'lucide-react';
 import type { ProjectDetail } from '../shared/types';
 import { modelMaker, resolveModelSetting, type ModelSelection, type ModelSettingsResponse } from '../shared/model-settings';
@@ -9,8 +9,10 @@ import './ModelPicker.css';
 const settingsChanged = 'ros-ai-model-settings';
 export type ModelDisplay = { provider: string; model: string; configured: boolean };
 
-export function ModelSettings({ detail, nodeId, readOnly = false, compact = false, onSelectionChange }: {
+export function ModelSettings({ detail, nodeId, readOnly = false, compact = false, onSelectionChange, agents }: {
   detail: ProjectDetail; nodeId?: string | null; readOnly?: boolean; compact?: boolean;
+  /** Agent runtimes offered beside the models, such as Claude Code; choosing one switches the assistant to it. */
+  agents?: { id: string; label: string; detail: string; icon: ReactNode; onChoose: () => void }[];
   onSelectionChange?: (selection: ModelDisplay) => void;
 }) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
@@ -88,6 +90,7 @@ export function ModelSettings({ detail, nodeId, readOnly = false, compact = fals
           const optionMaker=choice.model.maker??modelMaker(choice.model.id,choice.provider.id);
           return <button key={choice.model.id} ref={element=>{if(element)options.current.set(index,element);else options.current.delete(index);}} type="button" role="option" aria-label={`${optionMaker.label} ${choice.model.label} via ${connection.label}; ${destination(connection)}`} aria-selected={chosen} tabIndex={activeIndex===index?0:-1} disabled={readOnly||busy} className={`model-picker-option${chosen?' is-selected':''}`} onFocus={()=>setActiveIndex(index)} onClick={()=>void save(choice.selection)}><ModelMakerSymbol maker={optionMaker}/><span><strong>{choice.model.label}</strong><small>{optionMaker.label} · {destination(connection)}</small></span>{chosen&&<Check size={16} aria-hidden="true"/>}</button>;
         })}</div>)}
+        {agents?.length?<div role="group" aria-label="Agents" className="model-picker-provider-group"><div className="model-picker-provider-heading">Agents</div>{agents.map(agent=><button key={agent.id} type="button" role="option" aria-selected={false} disabled={readOnly||busy} className="model-picker-option" onClick={()=>{setOpen(false);agent.onChoose();}}>{agent.icon}<span><strong>{agent.label}</strong><small>{agent.detail}</small></span></button>)}</div>:null}
       </div>
       <details className="model-picker-details"><summary>Model details</summary><p>{scope}</p><code>{selection.model}</code>{provider&&<p>{destination(provider)}</p>}<p>{provider?.configured?'Connection configured.':provider?'Connection key missing. Open Model to configure it.':'The saved connection is disabled or unavailable. Choose another configured connection explicitly.'} Changing a model starts no work and grants no spending permission.</p></details>
     </div>}

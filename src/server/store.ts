@@ -4,7 +4,7 @@ import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MAX_HEIGHT, cardWidth } from '../shared/card-size.js';
+import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MAX_HEIGHT, cardWidth, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
@@ -12,7 +12,7 @@ import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report']).optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search']).optional(), agent:z.object({runtime:z.enum(['claude','codex']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
@@ -28,8 +28,9 @@ const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);
 const GRID = 24;
-// Placement runs before the browser measures outcome content. Reserve the
-// bounded maximum height; explicit Arrange uses actual measured footprints.
+// Placement runs before the browser measures outcome content. Existing cards may
+// show results, so reserve the bounded maximum height for them; blocks added in
+// the same edit have no results yet. Explicit Arrange uses measured footprints.
 const CARD_HEIGHT = CARD_MAX_HEIGHT;
 const MAX_NODES = 500;
 const MAX_CONNECTIONS = 2_000;
@@ -278,11 +279,12 @@ export class Store {
     this.db.prepare('INSERT INTO changes(id, project_id, revision, data) VALUES (?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change));
   }
 
-  private placeNode(node: CanvasNode, others: CanvasNode[]): CanvasNode {
+  private placeNode(node: CanvasNode, others: CanvasNode[], fresh: ReadonlySet<string> = new Set()): CanvasNode {
     const placed = { ...node, x: snap(node.x), y: snap(node.y) };
+    const height = (item: CanvasNode) => fresh.has(item.id) ? estimatedCardHeight(item) : CARD_HEIGHT;
     const overlaps = () => others.some(other => (other.parentId ?? null) === (placed.parentId ?? null)
       && placed.x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < placed.x + cardWidth(placed) + LAYOUT_GAP
-      && Math.abs(other.y - placed.y) < CARD_HEIGHT + LAYOUT_GAP);
+      && (other.y <= placed.y ? placed.y < other.y + height(other) + LAYOUT_GAP : other.y < placed.y + height(placed) + LAYOUT_GAP));
     const originX = placed.x;
     const stepX = Math.ceil((cardWidth(placed) + LAYOUT_GAP) / GRID) * GRID;
     const stepY = Math.ceil((CARD_HEIGHT + LAYOUT_GAP) / GRID) * GRID;
@@ -306,6 +308,7 @@ export class Store {
     };
     const normalized: Mutation[] = [];
     const recordedDecisions = new Set<string>();
+    const added = new Set<string>();
     for (const operation of operations) {
       const decided = operation.type === 'addNode' ? operation.node.decisions && operation.node.id : operation.type === 'updateNode' && 'decisions' in operation.patch ? operation.id : undefined;
       if (decided) {
@@ -315,7 +318,8 @@ export class Store {
       if (operation.type === 'addNode') {
         if (canvas.nodes.some(item => item.id === operation.node.id) || this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, operation.node.id)) throw new StoreError(`Node id ${operation.node.id} already exists or belongs to a removed node`);
         if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
-        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(operation.node, canvas.nodes);
+        added.add(operation.node.id);
+        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(operation.node, canvas.nodes, added);
         canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
@@ -477,6 +481,12 @@ export class Store {
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
       return proposal;
     });
+  }
+
+  proposalStatus(projectId: string, proposalId: string): Proposal['status'] {
+    const proposal = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', proposalId, 'Proposal');
+    if (proposal.projectId !== projectId) throw new StoreError('Proposal not found in this project', 404);
+    return proposal.status;
   }
 
   private getProposal(projectId: string, proposalId: string): Proposal {

@@ -201,7 +201,7 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report']).optional(),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search']).optional(),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
@@ -457,7 +457,7 @@ export class ProjectFolders implements NotebookFolders {
     let node: CanvasNode;
     if (kind === 'note') {
       if (text.length > 20_000) throw new StoreError(`${rel} is longer than 20,000 characters, the most a note holds.`);
-      node = { ...base, blockType: placement.blockType === 'action' ? 'action' : 'note', description: text };
+      node = { ...base, blockType: placement.blockType === 'action' || placement.blockType === 'agent' || placement.blockType === 'search' ? placement.blockType : 'note', description: text };
     } else if (kind === 'code') {
       if (text.length > 100_000) throw new StoreError(`${rel} is longer than 100,000 characters, the most a Code block holds.`);
       node = { ...base, blockType: 'code', code: { language: codeLanguage(extensionOf(rel)) ?? 'python', source: text, parameters: {}, inputArtifactId: null } };

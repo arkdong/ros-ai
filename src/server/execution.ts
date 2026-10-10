@@ -324,16 +324,30 @@ export class ExecutionService {
   assistantProposal(projectId:string,summary:string,operations:Mutation[]):Proposal {
     return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations));
   }
+  /** Why an agent cannot search right now, or null when Tavily has a key and remaining allowance. */
+  agentSearchBlocker():string|null{
+    if(!this.search.configured)return 'Tavily web search is not connected. Add its key on the Plugins page.';
+    if(!this.cloudAllowed('tavily'))return this.connectionBudgets.status('tavily',TAVILY_CREDIT_USD).reason;
+    return null;
+  }
   async assistantSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
+    return this.searchRun(projectId,nodeId,query,signal,turnId,true);
+  }
+  /** One Tavily search saved on a Search block. An agent's searches run side by side inside its own turn,
+   * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes. */
+  agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
+    return this.searchRun(projectId,nodeId,query,signal,turnId,false);
+  }
+  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean):Promise<Run>{
     this.admitWork(false);
     this.checkSignal(signal);
     if(!this.search.configured||!this.cloudAllowed('tavily'))throw new Error('Tavily search has no configured remaining authorization.');
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
-    if(this.chats.has(projectId))throw new Error('The project assistant is already responding.');
-    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-search',modelVersion:null,configuration:{purpose:'assistant-search',assistantTurnId:turnId,search:SEARCH_SCHEMA.configuration},tools:[SEARCH_SCHEMA],events:[],artifactIds:[]});
-    const controller=new AbortController();this.chats.set(projectId,controller);
+    if(lock&&this.chats.has(projectId))throw new Error('The project assistant is already responding.');
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-search',modelVersion:null,configuration:{purpose:lock?'assistant-search':'agent-search',assistantTurnId:turnId,search:SEARCH_SCHEMA.configuration},tools:[SEARCH_SCHEMA],events:[],artifactIds:[]});
+    const controller=new AbortController();if(lock)this.chats.set(projectId,controller);
     const active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combinedSignal=AbortSignal.any([signal,this.signal(controller)]);
     // Register before dispatch, so immediate cancellation/shutdown can prevent
@@ -432,10 +446,13 @@ export class ExecutionService {
   private reviewProjectProposal(proposal:Proposal):Proposal {
     const additions=proposal.operations.filter(op=>op.type==='addNode');
     if(!additions.length)return proposal;
+    // Relationships that touch a block added in the same proposal belong to that addition.
+    const added=new Set(additions.map(op=>op.node.id));
+    const attached=proposal.operations.filter(op=>op.type==='addConnection'&&(added.has(op.connection.source)||added.has(op.connection.target))).length;
     this.store.saveRecord('proposal-authority',proposal.id,proposal.projectId,{proposalId:proposal.id,projectId:proposal.projectId});
     const authority=new Authority(this.store);
     const reviews=additions.map(op=>authority.review(proposal.projectId,{kind:'create-action',nodeId:op.node.parentId??'project',fingerprint:`${proposal.id}:${op.node.id}`}));
-    if(additions.length!==proposal.operations.length||reviews.some(r=>r.outcome!=='allow'))return proposal;
+    if(additions.length+attached!==proposal.operations.length||reviews.some(r=>r.outcome!=='allow'))return proposal;
     this.acceptGovernedProposal(proposal.projectId,proposal.id);
     return this.store.detail(proposal.projectId).proposals.find(p=>p.id===proposal.id)!;
   }
@@ -456,7 +473,7 @@ export class ExecutionService {
     const request = requestText.parse(options.request);
     const duplicate = this.store.listRuns(projectId).find(r=>r.nodeId===nodeId && (r.status==='queued'||r.status==='running'));
     if (duplicate) {
-      if (duplicate.configuration.kind==='local-experiment' || duplicate.configuration.purpose==='assistant-search' || Boolean(options.experimentDatasetId)!==(duplicate.configuration.purpose==='experiment-plan') || (options.experimentDatasetId && !options.research && (duplicate.configuration.backend??'bounded')!==(options.experimentBackend??'bounded'))) throw new Error('This node already has different active work. Finish or cancel its current run or local approval preview first.');
+      if (duplicate.configuration.kind==='local-experiment' || ['assistant-search','agent-search'].includes(String(duplicate.configuration.purpose)) || Boolean(options.experimentDatasetId)!==(duplicate.configuration.purpose==='experiment-plan') || (options.experimentDatasetId && !options.research && (duplicate.configuration.backend??'bounded')!==(options.experimentBackend??'bounded'))) throw new Error('This node already has different active work. Finish or cancel its current run or local approval preview first.');
       return duplicate;
     }
     const selection=this.modelSelection(projectId,nodeId);
@@ -587,7 +604,7 @@ export class ExecutionService {
   retryRun(runId:string) {
     const run = this.store.getRun(runId);
     if (!['failed','cancelled','interrupted'].includes(run.status)) throw new Error('Only failed, cancelled, or interrupted runs can be retried.');
-    if(run.configuration.purpose==='assistant-search')throw new Error('Repeat source discovery in the project assistant. A search-only run cannot be retried as a new model synthesis.');
+    if(['assistant-search','agent-search'].includes(String(run.configuration.purpose)))throw new Error('Repeat source discovery in the project assistant. A search-only run cannot be retried as a new model synthesis.');
     return this.startRun(run.projectId,run.nodeId,{request:run.request,useSearch:run.useSearch,retryOf:run.id,...(typeof run.configuration.datasetArtifactId==='string'?{experimentDatasetId:run.configuration.datasetArtifactId,experimentBackend:run.configuration.backend==='nebius-sandbox'?'nebius-sandbox':run.configuration.backend==='docker-python'?'docker-python':'bounded'}:{})});
   }
   private safeError(error:unknown) { return error instanceof z.ZodError ? 'Model returned an invalid proposal schema; no canvas edits were applied.' : error instanceof SyntaxError ? 'Model returned invalid JSON; no canvas edits were applied.' : error instanceof Error ? error.message.slice(0,500) : 'Request failed. No automatic retry was attempted.'; }

@@ -2,7 +2,7 @@ import type { Canvas, CanvasNode } from './types';
 import { CARD_DEFAULT_WIDTH, CARD_DEFAULT_HEIGHT, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, cardWidth } from './card-size';
 import { displayRelationship } from './relationships';
 import { relationshipLabelSize } from './relationship-label';
-import { aggregateTopLevelRelationships } from './aggregate-relationships';
+import { aggregateTopLevelRelationships, relationshipBadgeText } from './aggregate-relationships';
 
 export const CARD_SIZE = { width: CARD_DEFAULT_WIDTH, height: CARD_DEFAULT_HEIGHT };
 export const GROUP_INSET = { x: 32, y: 144 };
@@ -23,17 +23,18 @@ export function numberedStageOrder(nodes: readonly Pick<CanvasNode, 'id' | 'titl
   return new Map(entries.filter((entry): entry is readonly [string, number] => entry !== null).sort((a, b) => a[1] - b[1]).map(([id], index) => [id, index]));
 }
 
-/** Explicit, position-only arrangement. Known provenance relationships place
- * sources above consumers; this never schedules research or imports evidence.
- * Preserve ownership and spatial order within each dependency level. Unknown
- * relationships retain the ordinary reading-order grid.
+/** Explicit, position-only arrangement. Blocks joined by relationships are laid
+ * out as trees read left to right, each block centred beside the blocks it
+ * points to, so an agent's searches and their results line up in rows. A
+ * relationship never schedules research or imports evidence. Unconnected
+ * blocks keep the reading-order grid, and a numbered sequence of stages keeps
+ * its order. Spatial order is kept among siblings.
  */
 export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { canvas: Canvas; sizes: Record<string, CanvasSize> } {
   const canvas = structuredClone(source);
   const expanded = new Set(options.expandedIds || []);
   const sizes: Record<string, CanvasSize> = {};
   const byId = new Map(canvas.nodes.map(node => [node.id, node]));
-  const dependencies = canvas.connections.map(displayRelationship).filter(connection => connection.dependency);
   const children = new Map<string | null, CanvasNode[]>();
   for (const node of canvas.nodes) {
     const parent = node.parentId || null;
@@ -53,43 +54,113 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
     }
     return undefined;
   };
-  const dependencyLevels = (siblings: CanvasNode[], parentId: string | null) => {
-    const edges = new Map(siblings.map(node => [node.id, new Set<string>()]));
-    for (const dependency of dependencies) {
-      const source = inScope(dependency.source, parentId), target = inScope(dependency.target, parentId);
-      if (source && target && source !== target) edges.get(source)?.add(target);
+  // Only top-level summaries are drawn with a label; the gap after a column fits it.
+  const labels = new Map(aggregateTopLevelRelationships(canvas).map(group => [`${group.source}\u0000${group.target}`, relationshipBadgeText(group, id => byId.get(id))]));
+  const flow = (siblings: CanvasNode[], parentId: string | null) => {
+    const targets = new Map(siblings.map(node => [node.id, [] as string[]]));
+    for (const connection of canvas.connections) {
+      // A Group frame already draws its direct membership.
+      if (connection.label.trim().toLowerCase() === 'contains' && byId.get(connection.source)?.kind === 'group' && byId.get(connection.target)?.parentId === connection.source) continue;
+      const shown = displayRelationship(connection);
+      const from = inScope(shown.source, parentId), to = inScope(shown.target, parentId);
+      if (from && to && from !== to && !targets.get(from)!.includes(to)) targets.get(from)!.push(to);
     }
-    // Collapse strongly connected components before ranking. Reciprocal and
-    // cyclic evidence relationships remain visible without unstable ordering.
-    const indexes = new Map<string, number>(), low = new Map<string, number>();
-    const stack: string[] = [], active = new Set<string>(), components: string[][] = [];
-    const visit = (id: string) => {
-      indexes.set(id, indexes.size); low.set(id, indexes.get(id)!);
-      stack.push(id); active.add(id);
-      for (const target of edges.get(id) || []) {
-        if (!indexes.has(target)) { visit(target); low.set(id, Math.min(low.get(id)!, low.get(target)!)); }
-        else if (active.has(target)) low.set(id, Math.min(low.get(id)!, indexes.get(target)!));
+    return targets;
+  };
+  /** Trees read left to right. Cycles are broken where a depth-first walk meets
+   * a block it is still inside; each block takes the column after its furthest
+   * parent and sits beside its first parent, centred on its own children. */
+  const trees = (members: CanvasNode[], targets: Map<string, string[]>, origin: { x: number; y: number }, labelGap: (from: string, to: string) => number) => {
+    const rank = new Map(members.map((node, index) => [node.id, index]));
+    const out = (id: string) => (targets.get(id) || []).filter(target => rank.has(target)).sort((a, b) => rank.get(a)! - rank.get(b)!);
+    const parents = new Map(members.map(node => [node.id, [] as string[]]));
+    const state = new Map<string, 1 | 2>();
+    const walk = (id: string) => {
+      state.set(id, 1);
+      for (const target of out(id)) {
+        if (state.get(target) === 1) continue;
+        parents.get(target)!.push(id);
+        if (!state.has(target)) walk(target);
       }
-      if (low.get(id) === indexes.get(id)) {
-        const component: string[] = [];
-        let member: string;
-        do { member = stack.pop()!; active.delete(member); component.push(member); } while (member !== id);
-        components.push(component);
-      }
+      state.set(id, 2);
     };
-    siblings.forEach(node => { if (!indexes.has(node.id)) visit(node.id); });
-    const componentOf = new Map(components.flatMap((component, index) => component.map(id => [id, index] as const)));
-    const incoming = components.map(() => new Set<number>());
-    for (const [source, targets] of edges) for (const target of targets) {
-      const from = componentOf.get(source)!, to = componentOf.get(target)!;
-      if (from !== to) incoming[to].add(from);
+    const incoming = new Set(members.flatMap(node => out(node.id)));
+    for (const node of members) if (!incoming.has(node.id) && !state.has(node.id)) walk(node.id);
+    for (const node of members) if (!state.has(node.id)) walk(node.id);
+    const columns = new Map<string, number>();
+    const column = (id: string): number => {
+      if (!columns.has(id)) { columns.set(id, 0); columns.set(id, Math.max(0, ...parents.get(id)!.map(parent => column(parent) + 1))); }
+      return columns.get(id)!;
+    };
+    members.forEach(node => column(node.id));
+    const kids = new Map(members.map(node => [node.id, [] as string[]]));
+    const roots: string[] = [];
+    for (const node of members) {
+      const parent = parents.get(node.id)!.filter(id => columns.get(id) === columns.get(node.id)! - 1).sort((a, b) => rank.get(a)! - rank.get(b)!)[0];
+      if (parent) kids.get(parent)!.push(node.id); else roots.push(node.id);
     }
-    const levels = new Map<number, number>();
-    const level = (component: number): number => {
-      if (!levels.has(component)) levels.set(component, Math.max(0, ...[...incoming[component]].map(parent => level(parent) + 1)));
-      return levels.get(component)!;
+    const height = (id: string) => snap(sizes[id].height);
+    const breadths = new Map<string, number>();
+    const breadth = (id: string): number => {
+      if (!breadths.has(id)) { const own = kids.get(id)!; breadths.set(id, Math.max(height(id), own.reduce((sum, kid) => sum + breadth(kid), 0) + Math.max(0, own.length - 1) * LAYOUT_GAP)); }
+      return breadths.get(id)!;
     };
-    return new Map(siblings.map(node => [node.id, level(componentOf.get(node.id)!)]));
+    const ys = new Map<string, number>();
+    const stack = (id: string, top: number) => {
+      const own = kids.get(id)!, span = breadth(id);
+      const block = own.reduce((sum, kid) => sum + breadth(kid), 0) + Math.max(0, own.length - 1) * LAYOUT_GAP;
+      ys.set(id, top + (span - height(id)) / 2);
+      let at = top + (span - block) / 2;
+      for (const kid of own) { stack(kid, at); at += breadth(kid) + LAYOUT_GAP; }
+    };
+    let top = origin.y;
+    for (const root of roots) { stack(root, top); top += breadth(root) + LAYOUT_GAP * 2; }
+    const count = Math.max(...columns.values()) + 1;
+    const widths = Array<number>(count).fill(0), gaps = Array<number>(count).fill(LAYOUT_GAP);
+    for (const node of members) widths[columns.get(node.id)!] = Math.max(widths[columns.get(node.id)!], sizes[node.id].width);
+    for (const node of members) for (const target of out(node.id)) if (columns.get(target) === columns.get(node.id)! + 1) gaps[columns.get(node.id)!] = Math.max(gaps[columns.get(node.id)!], labelGap(node.id, target));
+    const xs = [origin.x];
+    for (let i = 1; i < count; i++) xs.push(xs[i - 1] + snap(widths[i - 1] + gaps[i - 1]));
+    for (const node of members) { node.x = xs[columns.get(node.id)!]; node.y = snap(ys.get(node.id)!); }
+    return { right: Math.max(...members.map(node => node.x + sizes[node.id].width)), bottom: Math.max(...members.map(node => node.y + sizes[node.id].height)) };
+  };
+  /** The reading-order grid for blocks without relationships, or rows in a numbered stage order. */
+  const grid = (members: CanvasNode[], origin: { x: number; y: number }, levels: Map<string, number> | null, parentId: string | null) => {
+    const columns = Math.ceil(Math.sqrt(members.length));
+    const rowsByLevel = new Map<number, CanvasNode[]>();
+    for (const node of members) rowsByLevel.set(levels?.get(node.id) ?? 0, [...(rowsByLevel.get(levels?.get(node.id) ?? 0) || []), node]);
+    const cells: { node: CanvasNode; row: number; column: number }[] = [];
+    let rows = 0;
+    for (const [, level] of [...rowsByLevel].sort(([a], [b]) => a - b)) {
+      level.forEach((node, index) => cells.push({ node, row: rows + Math.floor(index / columns), column: index % columns }));
+      rows += Math.ceil(level.length / columns);
+    }
+    const widths = Array<number>(columns).fill(0), heights = Array<number>(rows).fill(0);
+    cells.forEach(({ node, row, column }) => {
+      widths[column] = Math.max(widths[column], sizes[node.id].width);
+      heights[row] = Math.max(heights[row], sizes[node.id].height);
+    });
+    const rowGaps = Array<number>(Math.max(0, rows - 1)).fill(LAYOUT_GAP);
+    const columnGaps = Array<number>(Math.max(0, columns - 1)).fill(LAYOUT_GAP);
+    if (parentId === null) {
+      const cellById = new Map(cells.map(cell => [cell.node.id, cell]));
+      for (const connection of aggregateTopLevelRelationships(canvas)) {
+        const from = cellById.get(connection.source), to = cellById.get(connection.target);
+        if (!from || !to) continue;
+        const label = relationshipLabelSize(connection.label);
+        if (from.row === to.row) {
+          for (let column = Math.min(from.column, to.column); column < Math.max(from.column, to.column); column++) columnGaps[column] = Math.max(columnGaps[column], label.width + 48);
+        } else {
+          const row = Math.min(from.row, to.row);
+          rowGaps[row] = Math.max(rowGaps[row], label.height + 64);
+        }
+      }
+    }
+    const xs = [origin.x], ys = [origin.y];
+    for (let i = 1; i < columns; i++) xs.push(xs[i - 1] + snap(widths[i - 1] + columnGaps[i - 1]));
+    for (let i = 1; i < rows; i++) ys.push(ys[i - 1] + snap(heights[i - 1] + rowGaps[i - 1]));
+    cells.forEach(({ node, row, column }) => { node.x = xs[column]; node.y = ys[row]; });
+    return { right: Math.max(...cells.map(({ node }) => node.x + sizes[node.id].width)), bottom: ys.at(-1)! + heights.at(-1)! };
   };
   const visiting = new Set<string | null>();
   const place = (parentId: string | null): CanvasSize => {
@@ -110,50 +181,47 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
         : { width: measured?.width ?? cardWidth(node), height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured?.height ?? CARD_SIZE.height)) };
     }
     if (!siblings.length) { visiting.delete(parentId); return { width: 0, height: 0 }; }
-    const columns = Math.ceil(Math.sqrt(siblings.length));
-    const levels = (parentId === null ? numberedStageOrder(siblings) : null) || dependencyLevels(siblings, parentId);
-    const rowsByLevel = new Map<number, CanvasNode[]>();
-    for (const node of siblings) rowsByLevel.set(levels.get(node.id)!, [...(rowsByLevel.get(levels.get(node.id)!) || []), node]);
-    const cells: { node: CanvasNode; row: number; column: number }[] = [];
-    let rows = 0;
-    for (const [, members] of [...rowsByLevel].sort(([a], [b]) => a - b)) {
-      members.forEach((node, index) => cells.push({ node, row: rows + Math.floor(index / columns), column: index % columns }));
-      rows += Math.ceil(members.length / columns);
-    }
-    const widths = Array<number>(columns).fill(0), heights = Array<number>(rows).fill(0);
-    cells.forEach(({ node, row, column }) => {
-      widths[column] = Math.max(widths[column], sizes[node.id].width);
-      heights[row] = Math.max(heights[row], sizes[node.id].height);
-    });
-    // Only top-level summaries are drawn. Internal evidence connections keep
-    // their meaning but need no canvas label or boundary-port gutters.
-    const rowGaps = Array<number>(Math.max(0, rows - 1)).fill(LAYOUT_GAP);
-    const columnGaps = Array<number>(Math.max(0, columns - 1)).fill(LAYOUT_GAP);
-    if (parentId === null) {
-      const cellById = new Map(cells.map(cell => [cell.node.id, cell]));
-      for (const connection of aggregateTopLevelRelationships(canvas)) {
-        const from = cellById.get(connection.source), to = cellById.get(connection.target);
-        if (!from || !to) continue;
-        const label = relationshipLabelSize(connection.label);
-        if (from.row === to.row) {
-          for (let column = Math.min(from.column, to.column); column < Math.max(from.column, to.column); column++) columnGaps[column] = Math.max(columnGaps[column], label.width + 48);
-        } else {
-          const row = Math.min(from.row, to.row);
-          rowGaps[row] = Math.max(rowGaps[row], label.height + 64);
-        }
-      }
-    }
     // Root alignment stays in the same part of the canvas. Inner groups compact
     // their own contents; ancestors reserve the resulting complete footprint.
     const origin = parentId === null
       ? { x: Math.round(Math.min(...siblings.map(n => n.x)) / 24) * 24, y: Math.round(Math.min(...siblings.map(n => n.y)) / 24) * 24 }
       : { x: 0, y: 0 };
-    const xs = [origin.x], ys = [origin.y];
-    for (let i = 1; i < columns; i++) xs.push(xs[i - 1] + snap(widths[i - 1] + columnGaps[i - 1]));
-    for (let i = 1; i < rows; i++) ys.push(ys[i - 1] + snap(heights[i - 1] + rowGaps[i - 1]));
-    cells.forEach(({ node, row, column }) => { node.x = xs[column]; node.y = ys[row]; });
+    const stages = parentId === null ? numberedStageOrder(siblings) : null;
+    const targets = stages ? new Map<string, string[]>() : flow(siblings, parentId);
+    const linked = new Set([...targets].flatMap(([source, list]) => list.length ? [source, ...list] : []));
+    const labelGap = (from: string, to: string) => {
+      const label = parentId === null ? labels.get(`${from}\u0000${to}`) ?? labels.get(`${to}\u0000${from}`) : undefined;
+      return label ? relationshipLabelSize(label).width + 48 : 0;
+    };
+    // Each set of linked blocks is its own tree, stacked in reading order.
+    const groups: CanvasNode[][] = [];
+    const seen = new Set<string>();
+    for (const node of siblings) {
+      if (!linked.has(node.id) || seen.has(node.id)) continue;
+      const members: CanvasNode[] = [], queue = [node.id];
+      seen.add(node.id);
+      while (queue.length) {
+        const id = queue.shift()!;
+        members.push(byId.get(id)!);
+        for (const [source, list] of targets) for (const target of list) {
+          const next = source === id ? target : target === id ? source : null;
+          if (next && !seen.has(next)) { seen.add(next); queue.push(next); }
+        }
+      }
+      groups.push(members.sort((a, b) => a.y - b.y || a.x - b.x || compare(a.id, b.id)));
+    }
+    let bottom = origin.y, right = origin.x;
+    groups.forEach((members, index) => {
+      const placed = trees(members, targets, { x: origin.x, y: index ? snap(bottom + LAYOUT_GAP * 2) : origin.y }, labelGap);
+      bottom = placed.bottom; right = Math.max(right, placed.right);
+    });
+    const loose = siblings.filter(node => !linked.has(node.id));
+    if (loose.length) {
+      const placed = grid(loose, { x: origin.x, y: groups.length ? snap(bottom + LAYOUT_GAP * 2) : origin.y }, stages, parentId);
+      bottom = placed.bottom; right = Math.max(right, placed.right);
+    }
     visiting.delete(parentId);
-    return { width: Math.max(...cells.map(({node}) => node.x + sizes[node.id].width)), height: ys.at(-1)! + heights.at(-1)! };
+    return { width: right - origin.x, height: bottom - origin.y };
   };
   place(null);
   if (Object.keys(sizes).length !== canvas.nodes.length) throw new Error('Cannot arrange missing or cyclic parent groups');
