@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
@@ -8,6 +8,7 @@ import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
 import { InferenceConnections } from './InferenceConnections';
+import type { OutsideAgentsStatus } from '../shared/outside-agents';
 import { api, post } from './api';
 import './connections.css';
 
@@ -40,6 +41,8 @@ export function ModelPage({projectId,connections,publicDemo,onChanged,onBudget}:
     <KeyConnection provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} onBudget={onBudget} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>
     <CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed} onBudget={onBudget}/>
     <KeyConnection provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} onBudget={onBudget} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>
+    <h3 className="rail-section-title">Your own agents</h3>
+    <OutsideAgents/>
     <h3 className="rail-section-title">Local models and other servers</h3>
     <InferenceConnections onChanged={changed} onBudget={onBudget}/>
     <p className="connections-footnote">Keys stay on the local server. Connect a model here, then set what it may spend in Budget.</p>
@@ -119,3 +122,19 @@ function GoogleOAuthForm({busy,onSave}:{busy:boolean;onSave:(value:{clientId:str
   return <form onSubmit={event=>{event.preventDefault();void onSave({clientId:clientId.trim(),clientSecret:clientSecret.trim()}).then(()=>{setClientId('');setClientSecret('');});}}><label className="field-label" htmlFor="google-client-id">OAuth client ID</label><input id="google-client-id" value={clientId} onChange={event=>setClientId(event.target.value)} autoComplete="off" required maxLength={1000}/><label className="field-label" htmlFor="google-client-secret">OAuth client secret</label><input id="google-client-secret" type="password" autoComplete="off" value={clientSecret} onChange={event=>setClientSecret(event.target.value)} required maxLength={4000}/><button type="submit" className="primary small" disabled={busy||!clientId.trim()||!clientSecret.trim()}>Save OAuth app</button></form>;
 }
 export function message(cause:unknown) { return cause instanceof Error?cause.message:String(cause); }
+
+/** Claude Code or Codex in the person's own terminal or app, on their own plan, using ros.ai as an MCP server. */
+function OutsideAgents() {
+  const [status,setStatus]=useState<OutsideAgentsStatus>(),[error,setError]=useState(''),[copied,setCopied]=useState('');
+  useEffect(()=>{api<OutsideAgentsStatus>('/api/outside-agents').then(setStatus,cause=>setError(message(cause)));},[]);
+  const copy=async(command:string)=>{try{await navigator.clipboard.writeText(command);setCopied(command);setTimeout(()=>setCopied(''),2000);}catch{setError('Copying was blocked. Select the command and copy it yourself.');}};
+  const card=(id:'claude'|'codex',label:string)=>{
+    const sessions=status?.sessions.filter(item=>item.label===label)??[],command=status?.commands[id];
+    return <ConnectionCard key={id} label={`Your own ${label}`} icon={<BrandLogo id={id}/>} subtitle={sessions[0]?`Last used ${new Date(sessions[0].lastAt).toLocaleString()}${sessions[0].projectTitle?` in ${sessions[0].projectTitle}`:''}`:'Not used yet'} connected={sessions.length>0} status={sessions.length?'Connected before':'Set up once'}>
+      <p>Keep researching in {label} the way you already do. It signs in with your own {id==='claude'?'Claude':'ChatGPT'} plan or key; ros.ai never sees that login. Paste this once in a terminal:</p>
+      {command&&<div className="outside-command"><code>{command}</code><button className="icon-button" aria-label={`Copy the ${label} command`} title="Copy" onClick={()=>void copy(command)}>{copied===command?<Check size={14}/>:<Copy size={14}/>}</button></div>}
+      <p className="subtle">While ros.ai is open, {label} can read your canvas and propose notes, reports and analysis code. Proposals follow your Permissions choice and show in the assistant panel. Start {label} inside a project's folder and it works in that project.</p>
+    </ConnectionCard>;
+  };
+  return <>{error&&<p className="inline-error" role="alert">{error}</p>}{card('claude','Claude Code')}{card('codex','Codex')}</>;
+}

@@ -10,6 +10,7 @@ import type { ResearchService } from './research.js';
 import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
+import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
 import { projectBudgetReport } from './budget-report.js';
@@ -30,7 +31,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;outside?:OutsideAgents},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -162,6 +163,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     app.post('/api/research/:id/stop',(req,res)=>res.json(research.stop(routeId(req.params.id))));
   }
   if (assistant) attachAssistantRoutes(app,assistant);
+  if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;
