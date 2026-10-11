@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Express } from 'express';
 import { z } from 'zod';
 import type { Artifact, CanvasNode, Mutation, Run } from '../shared/types.js';
@@ -6,6 +9,7 @@ import type { TutorialCatalog, TutorialExecution, TutorialScenarioId, TutorialSe
 import type { ExperimentService } from './experiments.js';
 import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
+import type { ProjectFolders } from './project-folders.js';
 import { loadTutorialContent, localMarketDataAvailable } from './tutorial-content.js';
 import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import { LAYOUT_GAP } from '../shared/layout.js';
@@ -21,12 +25,14 @@ const scenarioSchema = z.enum(['banking','market']);
 const identifier = z.string().min(1).max(128);
 const now = () => new Date().toISOString();
 const isOutput = (artifact:Artifact) => ['plot','table','metric','result'].includes(artifact.kind);
+const workspaceSource = fileURLToPath(new URL('../../examples/demo-workspace', import.meta.url));
+type WorkspaceCanvas = { title:string; blocks:{id:string;title:string;kind:CanvasNode['kind'];blockType:CanvasNode['blockType'];file:string;x:number;y:number;width?:number}[]; connections:{source:string;target:string;label:string}[] };
 
 /** A visitor advances a prepared lesson explicitly. Saved evidence imports are
  * not research executions; the optional rerun uses the existing exact approval. */
 export class TutorialService {
   private highlights:Highlights;
-  constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean}={}) {
+  constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean;folders?:ProjectFolders}={}) {
     this.highlights = new Highlights(store);
   }
 
@@ -60,6 +66,9 @@ export class TutorialService {
           available:!this.options.publicDemo || content.publicDataReady,
           ...this.options.publicDemo && !content.publicDataReady ? {unavailableReason:content.publicDataStatus} : {} };
       }),
+      workspace:this.options.folders
+        ? {available:true,title:'The whole workspace · AI use by company size',summary:'One canvas with every kind of block: a Claude Code agent and its Tavily searches, cited results and quoted findings, the CBS data, a Code block and a Notebook you can run, and a draft article.'}
+        : {available:false,title:'The whole workspace · AI use by company size',summary:'One canvas with every kind of block, from web search to a draft article.',unavailableReason:'Available in the local app, where projects are folders on your computer.'},
       execution:this.execution(),
       hosting:this.options.publicDemo
         ? {mode:'public-demo',publicReady:true,reason:'Your browser has a separate demo workspace. Saved results and manual editing are available; fresh execution and paid provider calls are disabled in this public demo.'}
@@ -124,6 +133,49 @@ export class TutorialService {
       this.save(saved);
       return this.read(project.id)!;
     });
+  }
+
+  /** The whole workspace on one canvas: a project folder copied from examples/demo-workspace and opened like any
+   * other, so search, Code and Notebook stay live. The Code block gets the CBS data as its input and the genuine saved
+   * outputs of its 23 September 2026 Docker run, labelled as such; nothing is searched or run by opening it. */
+  createWorkspace():{projectId:string} {
+    const folders = this.options.folders;
+    if (!folders || this.options.publicDemo) throw new StoreError('The whole-workspace demo needs the local app, where projects are folders.',403);
+    const canvas = JSON.parse(readFileSync(join(workspaceSource,'canvas.json'),'utf8')) as WorkspaceCanvas;
+    // A fresh folder each time: one that does not exist yet and that no other project, even a trashed one, still claims.
+    const first = folders.suggest(canvas.title).path;
+    const target = Array.from({length:100},(_,index) => index ? `${first} ${index + 1}` : first)
+      .find(path => { if (existsSync(path)) return false; try { folders.prepare(path); return true; } catch { return false; } });
+    if (!target) throw new StoreError('Could not find a free folder for the demo. Remove older demo folders and try again.',409);
+    mkdirSync(target,{recursive:true});
+    for (const folder of ['notes','data','code','notebooks','reports']) cpSync(join(workspaceSource,folder),join(target,folder),{recursive:true});
+    const ids = new Map(canvas.blocks.map(block => [block.id,randomUUID()]));
+    mkdirSync(join(target,'.ros-ai'),{recursive:true});
+    writeFileSync(join(target,'.ros-ai','project.json'),JSON.stringify({app:'ros.ai',format:1,projectId:randomUUID(),title:canvas.title,
+      blocks:canvas.blocks.map(block => ({...block,id:ids.get(block.id)!,parentId:null})),
+      connections:canvas.connections.map(edge => ({id:randomUUID(),source:ids.get(edge.source)!,target:ids.get(edge.target)!,label:edge.label}))},null,2)+'\n');
+    const project = folders.openFolder(target), codeId = ids.get('code')!, content = loadTutorialContent('banking');
+    // A folder keeps no agent link, so the Agent block is marked as Claude Code's again.
+    this.store.mutate(project.id,[{type:'updateNode',id:ids.get('agent')!,patch:{agent:{runtime:'claude',turnId:randomUUID()}}}],'Demo: the recorded research was Claude Code\'s');
+    // The pages behind the searches, as captured on 23 September 2026: each Search block keeps its source, and the
+    // Agent block keeps the CBS chapter text its findings quote word for word.
+    content.sources.forEach((source,index) => this.importArtifacts(project.id,ids.get(['search-cbs','search-bank','search-retail'][index])!,[{
+      kind:'source', title:source.title, url:source.url, content:source.content, metadata:{tutorialOrigin:'prepared',provenance:'Source captured for the recorded demo; no live Tavily search.'},
+    }],'Import the source captured for this search'));
+    this.importArtifacts(project.id,ids.get('agent')!,[{kind:'source', title:content.sources[0].title, url:content.sources[0].url,
+      content:readFileSync(new URL('../../examples/dutch-ai-adoption/source/cbs-published-tables.txt',import.meta.url),'utf8'),
+      metadata:{tutorialOrigin:'saved',provenance:'CBS chapter text captured on 23 September 2026.'}}],'Import the CBS page text the findings quote');
+    const code = this.store.getProject(project.id).canvas.nodes.find(node => node.id === codeId);
+    const dataset = this.store.listArtifacts(project.id).find(artifact => artifact.nodeId === ids.get('dataset') && artifact.kind === 'dataset');
+    if (code?.code && dataset) {
+      this.store.mutate(project.id,[{type:'updateNode',id:code.id,patch:{code:{...code.code,inputArtifactId:dataset.id}}}],'Demo: use the CBS data as the Code block\'s input');
+      this.store.addInput(project.id,code.id,dataset.id);
+      this.importArtifacts(project.id,code.id,content.reference.outputs.map(output => ({
+        kind:output.kind, title:output.title, content:output.content, mediaType:output.mediaType,
+        metadata:{tutorialOrigin:'saved',originalExecution:output.provenance,provenance:content.reference.provenance},
+      })),'Import the saved outputs of this code\'s Docker run on 23 September 2026');
+    }
+    return {projectId:project.id};
   }
 
   private save(session:SavedSession) { return this.store.saveRecord('demo-session',session.projectId,session.projectId,session); }
@@ -290,6 +342,7 @@ export function attachTutorialRoutes(app:Express,service:TutorialService) {
     const {scenario} = z.object({scenario:scenarioSchema}).strict().parse(req.body);
     res.status(201).json(service.create(scenario));
   });
+  app.post('/api/demo-workspace',(_req,res) => res.status(201).json(service.createWorkspace()));
   app.get('/api/projects/:id/demo-session',(req,res) => res.json(service.read(identifier.parse(req.params.id))));
   app.post('/api/projects/:id/demo-session/advance',(req,res) => {
     const {step} = z.object({step:z.number().int().min(0).max(3).optional()}).strict().parse(req.body ?? {});

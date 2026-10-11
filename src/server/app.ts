@@ -63,12 +63,12 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
-  attachTutorialRoutes(app,new TutorialService(store,experiments,options));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
   if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
   const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store,authority,options.notebooks);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
+  attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);

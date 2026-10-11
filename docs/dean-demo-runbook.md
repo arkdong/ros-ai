@@ -1,92 +1,32 @@
 # Dean demo runbook
 
-How to run the two live cases for the UvA dean demo (week of 12 October 2026) with what ros.ai can do today. The slides are in `uva-dean-demo-slides.html`; these cases follow its last slide.
+How to show ros.ai to the dean of UvA's Faculty of Economics and Business (week of 12 October 2026). The slides are in `uva-dean-demo-slides.html`; this demo follows its last slide.
 
-Each case starts from a prepared canvas that `npm run dean-demo` copies into a new project folder and opens in your running ros.ai. Everything after that happens live: the searches, findings and draft are real calls made during the demo.
+The demo is one canvas in demo mode: **Try demo mode → The whole workspace · AI use by company size**. It holds every kind of block, from a Claude Code agent with its Tavily searches to a draft article, so it works with no keys and no network. Everything on it stays live: you can run the code and the notebook again, and start a real search from the question.
 
 ## Before the meeting
 
-1. Start ros.ai from your checkout with a larger Claude Code budget per turn. The research step searches, reads up to 15 pages and writes findings in one turn, which can go past the default of US$1:
+1. Start Docker Desktop, then ros.ai. ros.ai checks for the Python sandbox only when it starts. The sandbox image is built once with `docker build -t ros-ai-research-python:1 src/server/sandbox`.
+2. For the live search, put an Anthropic key on **Model** and a Tavily key on **Plugins**, and set allowances for both under **Budget**. Without them, show the recorded search and skip step 6.
+3. Click **Try demo mode**, keep **The whole workspace** selected and press **Start demo**. ros.ai copies the canvas into a new project folder (`~/Documents/ros.ai/ros.ai demo · AI use by company size`) and opens it. Every start makes a fresh copy, so rehearse on one and start a clean one for the meeting.
+4. Keep the permission button in the header on **Ask every time**, so every run visibly waits for you.
 
-   ```sh
-   ROS_CLAUDE_TURN_USD=3 npm start
-   ```
+## The walk-through
 
-   Start Docker Desktop first: ros.ai checks for the Python sandbox when it starts. The sandbox image is built once with `docker build -t ros-ai-research-python:1 src/server/sandbox`.
-2. Check the connections once: an Anthropic key on **Model**, a Tavily key on **Plugins**, and allowances for both under **Budget**.
-3. Set up both cases in a second terminal:
+The canvas reads from left to right. **See all** in the left dock shows the whole of it.
 
-   ```sh
-   npm run dean-demo -- abn-amro-drafting
-   npm run dean-demo -- aiso-plain-words-stats
-   ```
+1. **Start here and Question.** The question is the ABN AMRO one: how AI use differs between small and large Dutch businesses, and what a bank should ask its business clients about it.
+2. **Agent.** Double-click the Agent block. Claude Code took the question on, planned three search directions and waited for approval before searching. *Talking point: nothing searches the web until the researcher says yes.* This run is recorded and says so on the block.
+3. **Search and Result.** Each Search block is one Tavily search. The Result note next to it summarises what came back and lists the pages it cites.
+4. **Findings.** Each Finding quotes its page word for word, here the CBS AI monitor. *Talking point: every claim can be traced back to the sentence it came from.*
+5. **Data, Code and Notebook.** Double-click **AI use by company size**. The saved results from an earlier run are on the right. Press **Run**, review the captured attempt and press **Allow & run**: the code runs in the sandbox on this computer and the figures appear again in a few seconds (a 41.4-point gap in AI use between the smallest and largest firms). Then open **Explore the turnover gap**, the notebook, and run a cell. *Talking point: someone without Python can ask for this in plain words; the code, data and every attempt are kept.*
+6. **Live search (optional).** Click the **Question**, open **Assistant**, pick **Claude Code** and ask, for example: *Research this question in three directions, mixing Dutch and English sources such as CBS, KVK and ABN AMRO Insights, and save the claims that matter as findings.* Approve the plan card. A second Agent block grows next to the recorded one with real Tavily results. This costs roughly US$0.50–1.20; start ros.ai with `ROS_CLAUDE_TURN_USD=3 npm start` if the turn needs more than the default US$1.
+7. **Draft article.** Open the report: the article is built from the findings and the calculated figures and ends with what the evidence does not show. Download the **Self-contained HTML** to show the hand-in, with its AI-use statement.
+8. **Control.** Undo and redo a change; show the project folder in Finder, where every block is a plain file; the keys and the budget stay on this computer.
 
-   Reload the page and open the projects from the project list. Running a command again makes a fresh copy, numbered (2), (3) and so on.
-4. Do one full rehearsal the evening before and keep that project. If the network or a key fails during the meeting, open the rehearsed project instead and walk through it. **Try demo mode** also opens the recorded case *AI adoption in Dutch businesses · the banking question*, which makes no calls at all.
-5. In the meeting, keep the permission button in the header on **Ask every time**, so every plan and every draft visibly waits for you.
+## What is recorded and what is live
 
-## Case 1 · ABN AMRO: drafting an Insights article
-
-**The story.** AURORA, built by AISO with ABN AMRO, drafts Insights articles through fixed stages: approved sources, citations, audit trail, quality checks and human sign-off. The same lessons apply to research, but a researcher needs to explore rather than follow a fixed pipeline. Here ros.ai drafts the same kind of article on one canvas, where every claim can be traced back to the sentence it came from.
-
-**On the canvas at the start**
-- **Brief**: the question, the reader, the evidence rules and what is out of scope.
-- **Writing guide**: a summary of the ABN AMRO house style as AURORA applied it.
-- **Review checklist**: the AURORA-style checks you go through before accepting the draft.
-
-### Step 1 · Research (about 3–5 minutes, roughly US$0.50–1.20)
-
-Click the **Brief**, open **Assistant**, pick **Claude Code** in the model list and send:
-
-> Research this brief for the article. Plan five search directions that mix Dutch and English sources, such as CBS, KVK, De Nederlandsche Bank, the European Commission and ABN AMRO Insights. Then read the most useful pages, save the claims that matter as Finding notes that quote each page word for word, and propose theme groups, setting weak or off-topic results aside.
-
-1. A plan card appears with the directions, the number of searches and the cost. Approve it. *Talking point: nothing searches the web until the researcher says yes.*
-2. The Agent block appears next to the Brief. Each direction grows a Search block and a Result note with a cited summary. The sentence the agent writes before each step shows on its card.
-3. Finding notes appear, each quoting its page word for word. ros.ai refuses a quote it cannot find on the saved page.
-4. A grouping card proposes themes plus a folded **Set aside** group. Approve it. *Talking point: weak sources are kept and labelled, not deleted.*
-
-### Step 2 · Draft (about 1–2 minutes)
-
-Choose **Add block → Report**, name it *Draft article* and add it. With the Report block selected, send:
-
-> Draft the article into this Report block, following the Brief and the Writing guide. Do not search again: use only the Finding notes in the project folder as evidence, link each source where it is used, and end with a short paragraph on what the evidence does not show.
-
-A **Review report revision** card appears. Open it and go through the **Review checklist** out loud before you press **Accept report revision**. *Talking point: this is AURORA's human sign-off. Accepting saves a new report version; nothing is published.*
-
-### Step 3 · Show the trail (as long as the questions last)
-
-- **Supporting evidence:** open a Finding to show the quote and the page it came from.
-- **History:** double-click the Agent block to show its timeline: every search, page read and proposal, in order.
-- **Limits:** open the **Set aside** group and the draft's closing paragraph.
-- **Control:** undo a change and redo it; show the project folder in Finder, where every block is a Markdown file; the keys and the budget stay on this computer.
-- **Hand-in:** open the report and download the **Self-contained HTML**. It includes the AI-use statement and the record of how the report was produced.
-
-## Case 2 · AISO: statistics in plain words
-
-**The story.** Many students and research assistants have data and a question, but no time to learn Python. Here someone asks in plain words. ros.ai's assistant writes the code, runs it in a sandbox on this computer, and keeps the chart, the numbers, the code and every attempt together, so a supervisor or successor can check how the answer was reached.
-
-**On the canvas at the start**
-- **Question**: is the weather really worse at the weekend? It also lists what a good answer contains.
-- **Schiphol weather 2024**: real KNMI measurements for all 366 days of 2024 (CC BY 4.0).
-- **About the data**: the source and the columns in plain words, and the limits of the data.
-- **Reading the results**: a short guide to averages, medians, group sizes and one-year patterns.
-
-To use an AISO dataset instead, swap in that CSV and question in `examples/dean-demo/aiso-plain-words-stats`, or add the CSV to the project with **Add block → Dataset**.
-
-### Step 1 · Ask (about 1 minute, a few cents)
-
-Double-click **Schiphol weather 2024** to show the table, then close it, so the assistant works on this exact version of the data. Open **Assistant**, pick **Claude Code** and send:
-
-> Is the weather really worse at the weekend? Compare rain on weekdays and weekends in this data, with the number of days, the average and the median, and one chart. Explain the answer in plain words, and say what this data cannot tell us.
-
-The assistant proposes an analysis, and the dataset card shows **Awaiting approval**. Click **Inspect experiment** in the assistant, then **Load captured experiment for review**, look at the code together and press **Allow & run**. *Talking point: nothing runs until a person has seen the exact code and data.* If clicking through feels too slow for the audience, set Permissions to **Approve for me** beforehand: plain analysis code then runs at once, and the code stays visible afterwards.
-
-### Step 2 · Read the answer
-
-Select the dataset, choose **Details → Results** and open the chart, the table and the conclusion. The real numbers are 3.04 mm of rain per weekday (262 days) against 2.40 mm per weekend day (104 days), with the same median of 0.35 mm. So weekends were not wetter in 2024, and the equal medians show that a few very wet weekdays pull the weekday average up. Use **Reading the results** to explain it.
-
-### Step 3 · Follow up
-
-> Does that hold in every season? Keep the first answer as it is.
-
-In 2024, the difference reverses in spring, when weekends were wetter by 0.30 mm a day. *Talking point: a pattern for the whole year can reverse within a season, and both attempts stay on the record with their code.* Then show **History** on the dataset block: every attempt, its code and its exact input are kept.
+- The searches, Result notes, findings and the draft were prepared for this demo from pages and data captured on 23 September 2026 (CBS AI monitor 2024 and two ABN AMRO Insights articles). They are labelled as recorded on the canvas.
+- The saved Code results come from the Docker run of the same code on 23 September 2026. Pressing **Run** calculates them again for real.
+- The notebook's outputs come from a real run of its cells in ros.ai's sandbox. Running a cell again recalculates it.
+- Only step 6 calls Claude and Tavily.

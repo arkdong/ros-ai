@@ -5,6 +5,7 @@ export type TutorialExecution = { available:boolean; backend:'docker-python'; re
 export type TutorialScenario = { id:TutorialScenarioId; title:string; summary:string; question:string; publicDataReady:boolean; publicDataStatus:string; available?:boolean; unavailableReason?:string };
 export type TutorialCatalog = {
   scenarios:TutorialScenario[];
+  workspace?:{ available:boolean; title:string; summary:string; unavailableReason?:string };
   execution:TutorialExecution;
   hosting:{ mode:'local'|'public-demo'; publicReady:boolean; reason:string };
 };

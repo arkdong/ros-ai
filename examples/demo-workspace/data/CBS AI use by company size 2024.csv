@@ -1,0 +1,7 @@
+size_order,size_group,year,ai_enterprise_percent,published_ci_low,published_ci_high,adopter_turnover_percent,nonadopter_turnover_percent,minimum_persons,sectors,provisional
+1,10-19,2024,17.8,16.3,19.5,18.7,81.3,10,NACE C-N and Q,1
+2,20-49,2024,22.2,20.4,24,21.6,78.4,10,NACE C-N and Q,1
+3,50-99,2024,28.1,25.8,30.5,27.8,72.2,10,NACE C-N and Q,1
+4,100-249,2024,34.8,33.2,36.5,43.7,56.3,10,NACE C-N and Q,1
+5,250-499,2024,46.2,43.1,49.4,60.5,39.5,10,NACE C-N and Q,1
+6,500+,2024,59.2,55.9,62.4,79.5,20.5,10,NACE C-N and Q,1
