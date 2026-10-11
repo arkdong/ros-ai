@@ -541,8 +541,10 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
   // Shows a set of blocks together once they are on the canvas; a block in a closed group is shown by its group.
   useEffect(() => { if (frame?.ids.length) setFrameRequest(frame.ids); }, [frame]);
   useEffect(() => {
-    if (!frameRequest) return;
+    // Automatic spacing settles first, so the blocks are shown where they end up.
+    if (!frameRequest || animatingLayout) return;
     const timer = setTimeout(() => {
+      if (reflowWriting.current) return;
       const nodes = displayed.canvas.nodes, shown = new Map<string, Node>();
       for (const id of frameRequest) {
         let node = nodes.find(item => item.id === id);
@@ -553,9 +555,9 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
       }
       if (shown.size) void showBlocks([...shown.values()]);
       setFrameRequest(null);
-    }, 90);
+    }, 240);
     return () => clearTimeout(timer);
-  }, [frameRequest, computedNodes]);
+  }, [frameRequest, computedNodes, cardSizes, animatingLayout]);
   const edges = useMemo<RoutedEdge[]>(() => {
     // Original endpoints remain visible in expanded frames; collapsed ancestors
     // aggregate only their hidden contributions.
