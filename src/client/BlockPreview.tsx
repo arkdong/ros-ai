@@ -2,6 +2,7 @@ import { svgImageUrl } from '../shared/reports';
 import type { Artifact } from '../shared/types';
 import { textPreview } from '../shared/presentation';
 import { parseCsv } from './Experiment';
+import { MarkdownPreview } from './Content';
 
 /** A single compact preview; complete versions open in the reading surface. */
 export function BlockPreview({artifact, compact=false}: {artifact:Artifact; compact?:boolean}) {
@@ -16,5 +17,7 @@ export function BlockPreview({artifact, compact=false}: {artifact:Artifact; comp
     return <div className="block-table-preview"><table><thead><tr>{rows[0]?.slice(0,4).map((cell,index)=><th key={index}>{String(cell)}</th>)}</tr></thead><tbody>{rows.slice(1,compact?2:4).map((row,index)=><tr key={index}>{row.slice(0,4).map((cell,column)=><td key={column}>{String(cell??'')}</td>)}</tr>)}</tbody></table><small>{Math.max(0,rows.length-1)} rows · {rows[0]?.length??0} columns · open full data</small></div>;
   }
   if (artifact.kind==='code') return <pre className="block-code-preview">{artifact.content.split('\n').slice(0,compact?2:5).join('\n')}</pre>;
+  // Reports and results are Markdown, so headings and lists read as such on the card.
+  if (artifact.mediaType==='text/markdown') return <MarkdownPreview text={artifact.content} limit={compact?100:220}/>;
   return <p className="block-text-preview">{textPreview(artifact.content,compact?100:220).text}</p>;
 }
