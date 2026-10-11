@@ -10,19 +10,22 @@ export type AgentConnectionStatus = {
   enforcement: string[]; limitations: string[];
   grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
 };
-/** One ros.ai tool call as the timeline shows it: its target block and what came of it. */
-export type AgentStep = { call: number; tool: string; outcome: 'requested' | 'done' | 'waiting' | 'declined' | 'failed'; target?: string; size?: number };
+/** One ros.ai tool call as the timeline shows it: its target block, how many things it covered, the blocks
+ * or saved versions it made (items), what it turned down (skipped), the proposal it made, and what came of it. */
+export type AgentStep = { call: number; tool: string; outcome: 'requested' | 'done' | 'waiting' | 'declined' | 'failed'; target?: string; size?: number; items?: string[]; skipped?: number; proposalId?: string };
 export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage' | 'thought'; message: string; data?: unknown; step?: AgentStep };
 /** Shared by both agent transports, so Claude Code and Codex timelines read the same. */
 export function agentStep(call: number, tool: string, input: unknown, result?: { value?: unknown; failed?: boolean }): AgentStep {
   if (!result) {
-    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown };
+    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown };
     const target = [args.resultNodeId, args.nodeId, args.targetNodeId].find(value => typeof value === 'string') as string | undefined;
-    return { call, tool, outcome: 'requested', ...(target ? { target } : {}), ...(Array.isArray(args.directions) ? { size: args.directions.length } : {}) };
+    const list = [args.directions, args.pages, args.findings, args.themes].find(Array.isArray);
+    return { call, tool, outcome: 'requested', ...(target ? { target } : {}), ...(list ? { size: list.length } : {}) };
   }
-  const value = (result.value && typeof result.value === 'object' ? result.value : {}) as { status?: unknown; action?: { status?: unknown } };
-  const status = value.status ?? value.action?.status;
-  return { call, tool, outcome: result.failed ? 'failed' : status === 'dismissed' ? 'declined' : status === 'pending' ? 'waiting' : 'done' };
+  const value = (result.value && typeof result.value === 'object' ? result.value : {}) as { status?: unknown; count?: unknown; items?: unknown; rejected?: unknown; action?: { status?: unknown; proposalId?: unknown } };
+  const status = value.status ?? value.action?.status, items = Array.isArray(value.items) ? value.items.filter((item): item is string => typeof item === 'string').slice(0, 30) : [];
+  return { call, tool, outcome: result.failed ? 'failed' : status === 'dismissed' ? 'declined' : status === 'pending' ? 'waiting' : 'done',
+    ...(typeof value.count === 'number' ? { size: value.count } : {}), ...(items.length ? { items } : {}), ...(Array.isArray(value.rejected) && value.rejected.length ? { skipped: value.rejected.length } : {}), ...(typeof value.action?.proposalId === 'string' ? { proposalId: value.action.proposalId } : {}) };
 }
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };

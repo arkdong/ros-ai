@@ -7,3 +7,5 @@ export function savedCanvasPosition(position: { x: number; y: number }, nested: 
   const y = snap(position.y - (nested ? GROUP_INSET.y : 0));
   return { x: nested ? Math.max(0, x) : x, y: nested ? Math.max(0, y) : y };
 }
+/** A change that only moves or resizes a block is layout, not research content. */
+export const layoutOnly = (patch: object) => Object.keys(patch).every(key => key === 'x' || key === 'y' || key === 'width');

@@ -1,5 +1,6 @@
 import { ArrowRight, BookOpen, CircleAlert, FlaskConical, FolderTree, GitBranch } from 'lucide-react';
 import type { AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
+import { layoutOnly } from '../shared/canvas-position';
 import type { CanvasNode, Proposal } from '../shared/types';
 import { RichText } from './Content';
 import './assistant-structure-preview.css';
@@ -17,13 +18,19 @@ const kindLabel = (kind: PreviewNote['kind']) => kind === 'group' ? 'Group' : ki
 export function proposalStructurePreview(proposal: Proposal, existingNodes: readonly CanvasNode[]): StructurePreview | null {
   const nodes = new Map(existingNodes.map(node => [node.id, node]));
   const changedIds = new Set<string>();
-  const updatedIds = new Set<string>();
+  const updates = new Map<string, string>();
   const relationships: StructurePreview['relationships'] = [];
   for (const operation of proposal.operations) {
     if (operation.type === 'addNode') { nodes.set(operation.node.id, operation.node); changedIds.add(operation.node.id); }
     else if (operation.type === 'updateNode') {
       const node = nodes.get(operation.id);
-      if (node) { nodes.set(operation.id, { ...node, ...operation.patch }); changedIds.add(operation.id); updatedIds.add(operation.id); }
+      if (!node) continue;
+      nodes.set(operation.id, { ...node, ...operation.patch });
+      // A block that only moves is not listed; one that only changes group says where it goes.
+      if (layoutOnly(operation.patch)) continue;
+      changedIds.add(operation.id);
+      const moves = layoutOnly(Object.fromEntries(Object.entries(operation.patch).filter(([key]) => key !== 'parentId'))) && updates.get(operation.id) !== 'Updates an existing card.';
+      updates.set(operation.id, !moves ? 'Updates an existing card.' : operation.patch.parentId ? 'Moves into this group.' : 'Moves out of its group.');
     } else if (operation.type === 'removeNode') { nodes.delete(operation.id); changedIds.delete(operation.id); }
     else if (operation.type === 'addConnection') relationships.push({ source: operation.connection.source, target: operation.connection.target, label: operation.connection.label });
   }
@@ -31,7 +38,7 @@ export function proposalStructurePreview(proposal: Proposal, existingNodes: read
   for (const id of changedIds) {
     const node = nodes.get(id);
     if (!node) continue;
-    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', parentId: node.parentId ?? null, ...(updatedIds.has(id) ? { rationale: 'Updates an existing card.' } : {}) });
+    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', parentId: node.parentId ?? null, ...(updates.has(id) ? { rationale: updates.get(id) } : {}) });
   }
   return notes.length || relationships.length ? { summary: proposal.summary, validated: false, notes, relationships } : null;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type Viewport } from '@xyflow/react';
-import { ArrowUpRight, BookOpen, Bot, Search as SearchIcon, BoxSelect, Braces, Database, FileText, Image as ImageIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Undo2, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Bot, Quote, Search as SearchIcon, BoxSelect, Braces, Database, FileText, Image as ImageIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Undo2, X } from 'lucide-react';
 import { ArtifactContent } from './Experiment';
 import { MarkdownPreview } from './Content';
 import { agentDirections, splitSources } from '../shared/agent-work';
@@ -9,7 +9,7 @@ import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
 import { resolveModelSetting, type ModelSettingsResponse } from '../shared/model-settings';
 import { CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardWidth, initialCardSize } from '../shared/card-size';
-import { savedCanvasPosition } from '../shared/canvas-position';
+import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
 import { aggregateTopLevelRelationships, relationshipBadgeText, type AggregateRelationship } from '../shared/aggregate-relationships';
@@ -26,7 +26,7 @@ import './canvas-evidence.css';
 import './groups.css';
 import './aggregate-relationships.css';
 import './agent-view.css';
-import { convertLegacyGroups, createGroupOperations, isGroup } from '../shared/groups';
+import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupPreviewMembers, isGroup } from '../shared/groups';
 import { blockRegistry, isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
 import { CodeView } from './code';
@@ -40,7 +40,7 @@ function notebookCard(detail: ProjectDetail, nodeId: string): Pick<CardData, 'no
 export function kindLabel(kind?: string) { return kind === 'group' ? 'Group' : kind === 'topic' ? 'Knowledge' : kind === 'activity' ? 'Action' : 'Note'; }
 /** One icon per block type, so a Code block created under Knowledge still reads as code. */
 export function KindIcon({ kind, blockType, size = 14 }: { kind?: string; blockType?: string; size?: number }) {
-  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' ? ImageIcon : blockType === 'report' ? FileText : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : kind === 'activity' ? Play : BookOpen;
+  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' ? ImageIcon : blockType === 'report' ? FileText : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'finding' ? Quote : kind === 'activity' ? Play : BookOpen;
   return <Icon size={size}/>;
 }
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -49,6 +49,8 @@ const ARTIFACT_SIZE = { width: 360, height: 300 };
 type CardData = {
   kind?: string; title: string; description: string; status?: RunStatus; awaitingApproval?: boolean;
   workLabel?: string; blockType?: string; blockLabel: string; primary?: Artifact; members: number;
+  /** The blocks a collapsed Group lists on its card. */
+  listed?: { id: string; title: string; kind?: string; blockType?: string }[];
   /** A Code block's source, shown on the card. */
   code?: string;
   /** A Notebook block's cells and last run; `notebookFigure` is the address of its newest figure. */
@@ -67,8 +69,8 @@ type CardData = {
   sources?: Artifact[];
   /** Why an agent ran this Search block, from the agent's link to it. */
   why?: string;
-  /** An Agent block's searches so far. */
-  directions?: { total: number; written: number; sources: number };
+  /** An Agent block's searches so far, the pages it read and the findings it saved. */
+  directions?: { total: number; written: number; sources: number; pages: number; findings: number };
 };
 export type AgentTurnSummary = { status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; runtime: string; thought?: string; pending: number };
 const agentState = { running: 'Working', completed: 'Finished', failed: 'Stopped with an error', cancelled: 'Stopped', interrupted: 'Interrupted' } as const;
@@ -80,6 +82,7 @@ function AgentFace({ data }: { data: CardData }) {
     {work && work.total > 0 ? <ul>
       <li><SearchIcon size={12}/>{plural(work.total, 'direction')} searched · {plural(work.sources, 'source')}</li>
       <li><BookOpen size={12}/>{work.written} of {plural(work.total, 'result note')} written</li>
+      {work.pages + work.findings > 0 && <li><Quote size={12}/>{plural(work.pages, 'page')} read · {plural(work.findings, 'finding')}</li>}
     </ul> : !running && data.description ? <MarkdownPreview text={data.description} limit={200}/> : null}
     {data.agent?.pending ? <p className="agent-waiting">{plural(data.agent.pending, 'change')} waiting for your review</p> : null}
     {running && data.agent?.thought && <p className="agent-thought" title={data.agent.thought}>{textPreview(data.agent.thought, 160).text}</p>}
@@ -100,7 +103,7 @@ function ResearchCard({ data, selected }: NodeProps<ResearchNode>) {
   // Only states that need attention get a line; an idle block shows its content.
   const workState=data.awaitingApproval?'Awaiting approval':active?data.status:data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
-  return <article className={`research-card ${group?'organizational-group':'research-block'} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
+  return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
       <div className="card-top"><span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType}/>{group?'Group':data.blockLabel==='Note'&&data.kind==='topic'?'Knowledge':data.blockLabel}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</span><span className="card-controls nodrag">
@@ -111,7 +114,9 @@ function ResearchCard({ data, selected }: NodeProps<ResearchNode>) {
       {group ? <>
         {data.workLabel&&<span className="group-contained-work">{data.workLabel}</span>}
         {data.description&&<p className="group-overview-excerpt">{data.description.slice(0,140)}{data.description.length>140?'…':''}</p>}
-        {!data.expanded&&<div className="group-chosen-highlights nodrag nopan">{data.chosen.length?data.chosen.map(artifact=><button key={artifact.id} className="group-highlight-preview" aria-label={`Open highlight: ${artifact.title}`} title={`From ${data.origins[artifact.nodeId]??'a saved block'} · exact version ${artifact.hash}`} onClick={event=>{event.stopPropagation();data.onHighlightOpen(artifact);}}><BlockPreview artifact={artifact} compact/><span><strong>{artifact.title}</strong><small>{data.origins[artifact.nodeId]??'Saved block'} · {artifact.hash.slice(0,8)}</small></span></button>):<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
+        {!data.expanded&&<div className="group-chosen-highlights nodrag nopan">{data.chosen.length?data.chosen.map(artifact=><button key={artifact.id} className="group-highlight-preview" aria-label={`Open highlight: ${artifact.title}`} title={`From ${data.origins[artifact.nodeId]??'a saved block'} · exact version ${artifact.hash}`} onClick={event=>{event.stopPropagation();data.onHighlightOpen(artifact);}}><BlockPreview artifact={artifact} compact/><span><strong>{artifact.title}</strong><small>{data.origins[artifact.nodeId]??'Saved block'} · {artifact.hash.slice(0,8)}</small></span></button>)
+          :data.listed?.length?<ul className="group-member-list">{data.listed.slice(0,GROUP_PREVIEW_MEMBERS).map(member=><li key={member.id} title={member.title}><KindIcon kind={member.kind} blockType={member.blockType} size={12}/><span>{member.title}</span></li>)}{data.members>Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)&&<li className="more">{data.members-Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)} more</li>}</ul>
+          :<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
       </> : <>
         {notebook?data.notebook?.cells?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
         :data.blockType==='agent'?<div className={`block-work-state ${data.agent?.status==='running'?'running':data.agent&&data.agent.status!=='completed'?'failed':''}`}>{data.agent?.status==='running'&&<LoaderCircle size={12} className="spin"/>}{data.agent?`${agentState[data.agent.status]} · ${data.agent.runtime}`:'Agent'}</div>
@@ -122,7 +127,7 @@ function ResearchCard({ data, selected }: NodeProps<ResearchNode>) {
         {selected&&data.modelLabel&&<span className="node-model-indicator" title={data.modelTitle}>{data.modelLabel}</span>}
       </>}
       {!data.expanded&&!group&&data.blockType==='search'&&data.sources?.length?<div className="outcome-footer"><small>{data.sources.length} source{data.sources.length===1?'':'s'} found</small></div>:null}
-      {!data.expanded&&!group&&!data.primary&&!['search','agent'].includes(data.blockType??'')&&splitSources(data.description).sources>0&&<div className="outcome-footer"><small>{splitSources(data.description).sources} source{splitSources(data.description).sources===1?'':'s'} cited</small></div>}
+      {!data.expanded&&!group&&!data.primary&&!['search','agent'].includes(data.blockType??'')&&(({sources,hosts})=>sources>0&&<div className="outcome-footer"><small>{data.blockType==='finding'&&hosts.length?`From ${hosts.join(', ')}`:`${sources} source${sources===1?'':'s'} cited`}</small></div>)(splitSources(data.description))}
       {!data.expanded&&!group&&(data.resultCount>0||data.primary)&&<div className="outcome-footer">{data.resultCount>0&&<small>{data.resultCount} result{data.resultCount===1?'':'s'}</small>}{data.primary&&<small className="block-version">{['failed','interrupted','cancelled','queued','running'].includes(data.status??'')?'Earlier saved result · ':'Version · '}{data.primary.hash.slice(0,8)}</small>}</div>}
     </div>
     {!data.expanded&&!data.readonly&&<button className="card-width-handle nodrag nopan" disabled={data.resizePending} role="slider" aria-label={`Card width for ${data.title}`} aria-valuemin={CARD_MIN_WIDTH} aria-valuemax={CARD_MAX_WIDTH} aria-valuenow={data.width} title="Drag to resize width" onClick={event=>event.stopPropagation()}
@@ -204,7 +209,8 @@ function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   const result = structuredClone(canvas); const marks = new Map<string, CardData['preview']>();
   for (const op of proposal?.operations || []) {
     if (op.type === 'addNode') { result.nodes.push(op.node); marks.set(op.node.id, 'added'); }
-    if (op.type === 'updateNode') { const n = result.nodes.find(n => n.id === op.id); if (n) Object.assign(n, op.patch); marks.set(op.id, 'changed'); }
+    // Blocks a proposal only moves, such as a tree laid out again around new groups, are not marked as changed.
+    if (op.type === 'updateNode') { const n = result.nodes.find(n => n.id === op.id); if (n) Object.assign(n, op.patch); if (!layoutOnly(op.patch)) marks.set(op.id, 'changed'); }
     if (op.type === 'removeNode') marks.set(op.id, 'removed');
     if (op.type === 'addConnection') result.connections.push(op.connection);
     if (op.type === 'removeConnection') result.connections = result.connections.filter(c => c.id !== op.id);
@@ -407,7 +413,7 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
         const selectedProvider=modelSettings?.providers.find(item=>item.id===effective?.selection.provider);
         const selectedModel=selectedProvider?.models.find(item=>item.id===effective?.selection.model);
         const modelTitle=effective?`Selected model: ${selectedProvider?.label??effective.selection.provider} · ${selectedModel?.label??effective.selection.model}${effective.inheritedFrom===node.id?' · task override':effective.inheritedFrom?' · inherited from '+displayed.canvas.nodes.find(item=>item.id===effective.inheritedFrom)?.title:' · project default'}. Saved results retain their original producing model.`:undefined;
-        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, blockLabel:blockRegistry[nodeBlockType(node)].label, code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, primary:isGroup(node)?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), modelLabel:selectedModel?.label??effective?.selection.model, modelTitle, results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, onWidth: (width, commit) => resizeCard(node.id, width, commit), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, sources: node.blockType === 'search' ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: node.blockType === 'search' ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources }) => ({ total: directions.length, written, sources }))(agentDirections(displayed.canvas, detail.artifacts, node.id)) : undefined } }, ...child.nodes);
+        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, blockLabel:blockRegistry[nodeBlockType(node)].label, code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, primary:isGroup(node)?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType})=>({id,title,kind,blockType})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), modelLabel:selectedModel?.label??effective?.selection.model, modelTitle, results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, onWidth: (width, commit) => resizeCard(node.id, width, commit), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, sources: node.blockType === 'search' ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: node.blockType === 'search' ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id)) : undefined } }, ...child.nodes);
       }
       return { nodes: built, width: right, height: bottom };
     };
