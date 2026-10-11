@@ -1,0 +1,478 @@
+{
+ "title": "AI in Dutch business · from idea to report",
+ "idea": {
+  "title": "The idea",
+  "text": "**How is AI changing Dutch businesses, and what does it mean for a bank such as ABN AMRO?**\n\nThe starting point for an Insights-style article for business readers. Nothing is decided yet: where to look, which numbers to trust, what to test."
+ },
+ "agent": {
+  "title": "Research AI in Dutch business",
+  "text": "Research how AI is changing Dutch businesses, for a bank's business clients. Six directions and eight web searches: official Dutch figures, Europe for comparison, small businesses, what a bank already says, rules for small firms, and whether AI pays off.\n\n*Recorded for this demo on 11 October 2026, outside ros.ai. In a live run Claude Code makes this plan here, and nothing is searched until you approve it.*"
+ },
+ "directions": [
+  {
+   "id": "official",
+   "title": "Official Dutch figures",
+   "why": "the numbers have to come from official statistics",
+   "queries": [
+    "CBS AI monitor 2024 use of AI by Dutch companies company size"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "CBS · 2 .Use of AI technology by Dutch companies",
+     "url": "https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies",
+     "page": "cbs-chapter",
+     "snippet": "This chapter examines the use of AI technologies by Dutch companies with ten or more employees."
+    },
+    {
+     "n": 2,
+     "title": "CBS · Dutch AI monitor 2024, summary",
+     "url": "https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/summary",
+     "page": "cbs-summary",
+     "snippet": "In 2024, 23 percent of companies with ten or more employees made use of one or more of the AI technologies listed."
+    },
+    {
+     "n": 3,
+     "title": "CBS · Increasing use of AI by business",
+     "url": "https://www.cbs.nl/en-gb/news/2025/09/increasing-use-of-ai-by-business",
+     "page": "cbs-news",
+     "snippet": "In 2024, 22.7 percent of companies with ten or more workers used one or more forms of AI technology."
+    },
+    {
+     "n": 4,
+     "title": "DutchNews · More companies use AI-based technologies, NL 6th in Europe",
+     "url": "https://dutchnews.nl/2025/02/more-companies-use-ai-based-technologies-nl-6th-in-europe",
+     "snippet": "Almost 23% of companies employing more than 10 people used one or more AI-based technologies last year"
+    },
+    {
+     "n": 5,
+     "title": "NL Times",
+     "url": "https://nltimes.nl/node/78697",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "CBS's AI monitor is the primary source. In 2024, 22.7% of Dutch companies with ten or more workers used at least one AI technology, nearly 9 points more than in 2023 [3]. Use was highest among companies with 500 or more workers (59.2%) and lowest among those with 10 to 19 (17.8%) [3]. Five EU countries had a higher share than the Netherlands; the EU as a whole stood at 13.5% [3]. The monitor counts seven specific technologies, such as machine learning and text mining [2], and its second chapter gives the figures by company size, with each group's share of turnover [1]. DutchNews reports the same CBS figures [4]."
+  },
+  {
+   "id": "europe",
+   "title": "Europe for comparison",
+   "why": "to see whether the Dutch pattern is unusual",
+   "queries": [
+    "Eurostat use of artificial intelligence in enterprises 2024 by size class",
+    "Eurostat news 2025 enterprises using artificial intelligence share EU large small"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "Eurostat · Use of artificial intelligence in enterprises",
+     "url": "https://ec.europa.eu/eurostat/statistics-explained/SEPDF/cache/106920.pdf",
+     "page": "eurostat",
+     "snippet": "In 2025, 17% of small enterprises, 30.36% of medium enterprises and 55.03% of large enterprises used AI."
+    },
+    {
+     "n": 2,
+     "title": "Artificial intelligence in the European Union – leaders and outsiders",
+     "url": "https://www.trade.gov.pl/en/news/artificial-intelligence-in-the-european-union-leaders-and-outsiders",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 3,
+     "title": "EU AI adoption by enterprise size",
+     "url": "https://inzonex.co.uk/ai/data/eu-ai-adoption-by-enterprise-size",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 4,
+     "title": "20% of EU enterprises use AI technologies",
+     "url": "https://www.wam.ae/en/article/bn6ymql-20-enterprises-use-technologies",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "Eurostat shows the same pattern across the EU. In 2025, 19.95% of enterprises used AI, 6.47 points more than in 2024, and use rose from 17% of small enterprises to 55.03% of large ones [1]. The other results appear to restate Eurostat's figures second-hand, so the agent reads Eurostat itself [2][3][4]."
+  },
+  {
+   "id": "small",
+   "title": "Small businesses",
+   "why": "CBS's main figures leave out firms with fewer than ten people",
+   "queries": [
+    "mkb AI gebruik Nederland onderzoek KVK 2025"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "MKB Servicedesk · Hoe gebruiken Nederlandse microbedrijven AI-technologie? Een overzicht van 2023-2025",
+     "url": "https://www.mkbservicedesk.nl/nieuws/ondernemersnieuws/hoe-gebruiken-nederlandse-microbedrijven-ai-technologie-een-overzicht-van",
+     "page": "micro",
+     "snippet": "Bijna 14% van de Nederlandse microbedrijven gebruikte in 2025 AI-technologieën."
+    },
+    {
+     "n": 2,
+     "title": "Dutch IT Channel · Gebruik van AI onder Nederlandse mkb-ondernemers meer dan verdubbeld",
+     "url": "https://www.dutchitchannel.nl/news/757009/gebruik-van-ai-onder-nederlandse-mkb-ondernemers-meer-dan-verdubbeld",
+     "page": "exact",
+     "snippet": "Zeven op de tien ondernemers (70%) zeggen de technologie inmiddels te gebruiken, tegenover een derde (33%) in 2025."
+    },
+    {
+     "n": 3,
+     "title": "Strato · mkb AI-gebruik (press release)",
+     "url": "https://www.strato.nl/pers/persberichten/mkb-ai-gebruik.html",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 4,
+     "title": "Searchlab · AI-adoptie Nederland 2026",
+     "url": "https://searchlab.nl/statistieken/ai-adoptie-nederland-2026",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 5,
+     "title": "Deel · 84 procent mkb meer investeren in AI",
+     "url": "https://www.deel.com/nl/blog/84-procent-mkb-meer-investeren-in-ai/",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "Two sources reach below ten employees. A CBS report on micro businesses, summarised by MKB Servicedesk, finds that almost 14% of Dutch micro businesses used AI technologies in 2025 [1]. A survey of more than 1,700 entrepreneurs for Exact's MKB Barometer puts use at 70% in 2026, up from 33% in 2025 [2]. They measure different things: CBS asks about specific technologies, the survey asks whether entrepreneurs use AI at all. The other results are a company press release and statistics round-ups [3][4][5]."
+  },
+  {
+   "id": "bank",
+   "title": "What a bank already says",
+   "why": "the article is for a bank's business clients",
+   "queries": [
+    "ABN AMRO Insights mkb niet klaar voor nieuwe digitale risico's AI",
+    "ABN AMRO Insights retailers AI kennis kopzorgen"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "ABN AMRO Insights · Mkb niet klaar voor nieuwe digitale risico’s",
+     "url": "https://www.abnamro.nl/nl/zakelijk/insights/sectoren-en-trends/alle-sectoren/mkb-niet-klaar-voor-nieuwe-digitale-risicos.html",
+     "page": "abn-risk",
+     "snippet": "Vooral kleinere bedrijven zijn nog onvoldoende voorbereid op een nieuwe generatie digitale risico’s"
+    },
+    {
+     "n": 2,
+     "title": "ABN AMRO · Mkb niet klaar voor nieuwe digitale risico's, juni 2026 (PDF)",
+     "url": "https://assets.abnamro.com/api/public/content/mkb-niet-klaar-voor-nieuwe-digitale-risicos-abn-amro-juni-2026.pdf",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 3,
+     "title": "Onderneming.nl · ABN AMRO: mkb'ers lopen achter bij aanpak nieuwe digitale risico's",
+     "url": "https://www.onderneming.nl/nieuws/onderzoeken/abn-amro-mkbers-lopen-achter-bij-aanpak-nieuwe-digitale-risicos/",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 4,
+     "title": "ABN AMRO Insights · AI opent deuren, maar bezorgt retailers kopzorgen over kennis",
+     "url": "https://www.abnamro.nl/nl/zakelijk/insights/sectoren-en-trends/retail/ai-opent-deuren-maar-bezorgt-retailers-kopzorgen-over-kennis.html",
+     "page": "abn-retail",
+     "snippet": "Uiteindelijk zegt iets meer dan de helft van de ondervraagde retailers al op een of andere wijze aan de slag te zijn met AI."
+    },
+    {
+     "n": 5,
+     "title": "Capgemini · ABN AMRO adopts a future-focused approach to gen AI development",
+     "url": "https://www.capgemini.com/nl-nl/nieuws/client-stories/abn-amro-adopts-a-future-focused-approach-to-gen-ai-development/",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "ABN AMRO's June 2026 Insights article finds that 78% of organisations with turnover up to €25 million use AI to some degree, but only 9% have a formal policy for outside AI tools, and that smaller firms are the least prepared for new digital risks [1]. A 2023 article on 73 retailers finds just over half already working with AI, with most saying their in-house knowledge falls short or will be a challenge [4]. Two results cover the same 2026 research [2][3]; one is about the bank's own use of AI, not its clients [5]."
+  },
+  {
+   "id": "rules",
+   "title": "Rules for small firms",
+   "why": "new EU rules shape what small firms can do",
+   "queries": [
+    "EU AI Act obligations small and medium-sized enterprises guidance"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "EU AI Act · Article 62: Measures for providers and deployers, in particular SMEs",
+     "url": "https://artificialintelligenceact.eu/article/62/",
+     "page": "ai-act",
+     "snippet": "Member States shall undertake the following actions:"
+    },
+    {
+     "n": 2,
+     "title": "Holistic AI · What considerations have been made for SMEs under the EU AI Act?",
+     "url": "https://www.holisticai.com/blog/how-will-smes-be-supported-under-the-eu-ai-act",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 3,
+     "title": "Trade Commissioner Service · European Union AI Act: what businesses need to know",
+     "url": "https://www.tradecommissioner.gc.ca/en/market-industry-info/search-country-region/region/canada-europe-export/european-union-ai-act-what-businesses-need-to-know.html",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 4,
+     "title": "The Barrister Group · Navigating the EU AI Act: a guide for SMEs and start-ups",
+     "url": "https://thebarristergroup.co.uk/blog/navigating-the-eu-ai-act-a-guide-for-smes-and-start-ups",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "The EU AI Act asks member states to support SMEs, for example with priority access to AI regulatory sandboxes and training tailored to them [1]. The other results are guides and commentary on the act [2][3][4]. Useful background, but the question here is about use rather than regulation."
+  },
+  {
+   "id": "payoff",
+   "title": "Does AI pay off?",
+   "why": "a bank cares whether AI changes a firm's results",
+   "queries": [
+    "AI productivity effect firms evidence Netherlands CPB OECD"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "title": "WebProNews · A 12,000-firm European study confirms AI's productivity payoff",
+     "url": "https://www.webpronews.com/the-numbers-are-in-a-12000-firm-european-study-confirms-ais-productivity-payoff-but-the-fine-print-matters/",
+     "snippet": "Title and address from the search results; this page was not read."
+    },
+    {
+     "n": 2,
+     "title": "VoxEU · How AI is affecting productivity and jobs in Europe",
+     "url": "https://cepr.org/voxeu/columns/how-ai-affecting-productivity-and-jobs-europe",
+     "page": "voxeu",
+     "snippet": "AI adoption increases labour productivity levels by 4% on average in the EU"
+    },
+    {
+     "n": 3,
+     "title": "BIS · AI adoption, productivity and employment: evidence from European firms",
+     "url": "https://www.bis.org/publ/work1325.htm",
+     "page": "bis",
+     "snippet": "Our results show that AI adoption increases the level of labor productivity by 4%."
+    },
+    {
+     "n": 4,
+     "title": "NL Times",
+     "url": "https://nltimes.nl/node/79415",
+     "snippet": "Title and address from the search results; this page was not read."
+    }
+   ],
+   "result": "A BIS working paper on European firms finds that AI adoption raises labour productivity by 4%, with no adverse effect on firm-level employment, but that the gains concentrate in medium and large firms [3]. The authors' VoxEU column says the same and notes the effects may be transitional [2]. A news piece appears to report the same study [1]."
+  }
+ ],
+ "pages": [
+  {
+   "id": "cbs-chapter",
+   "title": "CBS · Dutch AI monitor 2024, chapter 2",
+   "url": "https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies",
+   "text": "Public CBS chapter text retrieved through the web browsing tool on 2026-09-23T09:35:06.986Z\nURL: https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/2-use-of-ai-technology-by-dutch-companies\nCapture: selected source lines as returned; unchanged numeric tables. This is not a downloaded original CSV or microdata. Direct HTTPS retrieval returned HTTP 500.\n\nL40: Publication date: 18/06/2025 06:30 Dutch AI monitor 2024\nL41: # 2 .Use of AI technology by Dutch companies\nL42: \nL43: This chapter examines the use of AI technologies by Dutch companies with ten or more employees.\nL44: \nL45: Questions on use of AI technology in survey on ICT use in enterprises\nL46: The data used for this chapter were taken from the cite34†survey on ICT usage in enterprises. This survey describes ICT use among firms with at least one person employed in sections C through N and Q of the NACE classification of economic activities. Since 2020, it has included a series of questions about the use of Artificial Intelligence (AI), which are posed to companies with ten or more employees.\nL47: They ask whether companies use specific AI technologies, for what purposes these AI technologies are used, and how the AI technologies were obtained. Companies indicating that they do not use AI are asked if they have ever considered using such technology, and if not, for what reason. There is some variation over the years in the questions asked, as well as the response categories used. A summary of these questions and categories can be found in cite30†Appendix 1 .\nL48: For the period 2021-2024, the use of at least one of the following seven AI technologies could be identified consistently: machine learning, service robots or autonomous vehicles, robot-assisted process automation, speech recognition, image recognition, text mining and natural language generation. However, a consistent time series from 2020 onwards could only be established for the first four of the listed technologies.\nL49: cite35†Eurostat†ec.europa.eu defines the investigated technologies as follows.\nL108: 2.1.3 Use of at least one of seven AI technologies by companies, by size, 2024*\nL109: Grootteklasse  | AI use (Use of AI technology (%))  | AI use, margin (Use of AI technology (%))\nL110: --- | --- | ---\nL111: 10-19\nL112: employees  | 17.8  | 16.3 - 19.5\nL113: 20-49\nL114: employees  | 22.2  | 20.4 - 24\nL115: 50-99\nL116: employees  | 28.1  | 25.8 - 30.5\nL117: 100-249\nL118: employees  | 34.8  | 33.2 - 36.5\nL119: 250-499\nL120: employees  | 46.2  | 43.1 - 49.4\nL121: 500 or more\nL122: employees  | 59.2  | 55.9 - 62.4\nL123: * provisional figures\nL244: ## 2.2 Revenue share of companies with AI technology\nL245: Companies that used AI technology accounted for more than half (51.1 percent) of the total turnover in 2024 by companies with ten or more employees in sectors C through N and Q; companies that did not use AI accounted for the remaining 48.9 percent of turnover. The revenue share of companies that used AI technology was greater among larger companies.\nL246: For example, among companies with ten to nineteen employees, those that used AI technology accounted for 18.7 percent of turnover, compared with 79.5 percent for companies with 500 or more employees. This positive relationship between revenue share and company size can be partly explained by the fact that larger companies are more likely to use AI technology.\nL247: Download CSV Show datatable\nL248: \nL249: 2.2.1 Share of revenue among companies that use AI, by size, 2024*\nL250: Grootteklasse  | Companies using AI (Share of revenue (%))  | Companies not using AI (Share of revenue (%))\nL251: --- | --- | ---\nL252: 10-19 employees  | 18.7  | 81.3\nL253: 20-49 employees  | 21.6  | 78.4\nL254: 50-99 employees  | 27.8  | 72.2\nL255: 100-249 employees  | 43.7  | 56.3\nL256: 250-499 employees  | 60.5  | 39.5\nL257: 500 employees and more  | 79.5  | 20.5\nL258: * provisional figures\n\n",
+   "captured": "2026-09-23"
+  },
+  {
+   "id": "cbs-news",
+   "title": "CBS · Increasing use of AI by business",
+   "url": "https://www.cbs.nl/en-gb/news/2025/09/increasing-use-of-ai-by-business",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nPublished 27 February 2025.\n\nIn 2024, 22.7 percent of companies with ten or more workers used one or more forms of AI technology.\n\nThis was an increase of nearly 9 percentage points compared with 2023.\n\nThis is according to CBS’s AI Monitor 2024.\n\nLarger companies were more likely to use AI technology in 2024 than smaller companies.\n\nUse of AI technology was the most common among companies with 500 or more workers (59.2 percent)\n\nand the lowest among companies with 10 to 19 workers (17.8 percent).\n\nIn 2024, there were five EU countries (Denmark, Sweden, Belgium, Finland, and Luxembourg)\n\nwith a higher share of companies that use AI technology than the Netherlands.\n\nAcross the European Union as a whole, 13.5 percent of companies used AI technology in 2024.",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "cbs-summary",
+   "title": "CBS · Dutch AI monitor 2024, summary",
+   "url": "https://www.cbs.nl/en-gb/longread/aanvullende-statistische-diensten/2025/ai-monitor-2024/summary",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nIn 2024, 23 percent of companies with ten or more employees made use of one or more of the AI technologies listed.\n\nThe seven technologies are: machine learning, service robots or autonomous vehicles, robot-assisted process automation, speech recognition, image recognition, text mining and natural language generation.\n\nAmong those companies which, in 2024, had considered adopting AI technology at some point, but which were not currently using it, ‘lack of experience’ was by far the most commonly given reason for this (75 percent).",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "eurostat",
+   "title": "Eurostat · Use of artificial intelligence in enterprises",
+   "url": "https://ec.europa.eu/eurostat/statistics-explained/SEPDF/cache/106920.pdf",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nData extracted in December 2025.\n\nIn 2025, 19.95% of enterprises in the EU\n\nCompared with 2024, the use of AI technologies increased by 6.47 percentage points (pp)\n\nIn 2025, 17% of small enterprises, 30.36% of medium enterprises and 55.03% of large enterprises used AI.",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "micro",
+   "title": "MKB Servicedesk · Hoe gebruiken Nederlandse microbedrijven AI-technologie?",
+   "url": "https://www.mkbservicedesk.nl/nieuws/ondernemersnieuws/hoe-gebruiken-nederlandse-microbedrijven-ai-technologie-een-overzicht-van",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\n27 maart 2026\n\nBijna 14% van de Nederlandse microbedrijven gebruikte in 2025 AI-technologieën.\n\nTen opzichte van 2024 is dit meer dan 3% gestegen.\n\nHet gaat om cijfers uit de periode van 2023 tot 2025.\n\nDat blijkt uit de rapportage ‘Gebruik van AI-technologie door Nederlandse microbedrijven’ van het CBS.\n\ntwee tot tien werkzame personen",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "exact",
+   "title": "Dutch IT Channel · Gebruik van AI onder Nederlandse mkb-ondernemers meer dan verdubbeld",
+   "url": "https://www.dutchitchannel.nl/news/757009/gebruik-van-ai-onder-nederlandse-mkb-ondernemers-meer-dan-verdubbeld",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nWouter Hoeffnagel, 7 augustus 2026.\n\nHet gebruik van kunstmatige intelligentie onder Nederlandse mkb-ondernemers is het afgelopen jaar sterk gestegen. Zeven op de tien ondernemers (70%) zeggen de technologie inmiddels te gebruiken, tegenover een derde (33%) in 2025.\n\nDat blijkt uit het MKB Barometeronderzoek van softwareontwikkelaar Exact, uitgevoerd door onderzoeksbureau Markteffect\n\nonder ruim 1.700 Nederlandse mkb-ondernemers.",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "abn-risk",
+   "title": "ABN AMRO Insights · Mkb niet klaar voor nieuwe digitale risico’s",
+   "url": "https://www.abnamro.nl/nl/zakelijk/insights/sectoren-en-trends/alle-sectoren/mkb-niet-klaar-voor-nieuwe-digitale-risicos.html",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nJulia Krauwer, 23/06/2026.\n\nVooral kleinere bedrijven zijn nog onvoldoende voorbereid op een nieuwe generatie digitale risico’s\n\nSlechts 26 procent heeft een formeel responsplan voor cyberincidenten, tegenover 49 procent van het grootbedrijf\n\n43 procent van de mkb’ers heeft nog nooit een cyberaanval geoefend\n\nTegelijk gebruikt 78 procent van deze organisaties – met een jaaromzet tot 25 miljoen euro – in enige mate AI\n\nslechts 9 procent heeft formeel beleid voor het gebruik van externe AI-oplossingen",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "abn-retail",
+   "title": "ABN AMRO Insights · AI opent deuren, maar bezorgt retailers kopzorgen over kennis",
+   "url": "https://www.abnamro.nl/nl/zakelijk/insights/sectoren-en-trends/retail/ai-opent-deuren-maar-bezorgt-retailers-kopzorgen-over-kennis.html",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nHenk Hofstede en Ward van der Stee, 21/09/2023.\n\nIn samenwerking met Q&A Insights Consultancy zijn 73 retailers bevraagd uit drie omzetcategorieën\n\nUiteindelijk zegt iets meer dan de helft van de ondervraagde retailers al op een of andere wijze aan de slag te zijn met AI.\n\n10 procent van de retailers zegt geen kennis en vaardigheden in huis te hebben om AI zelf uit te rollen\n\n62 procent zegt dat dit onvoldoende is en/of een uitdaging wordt.",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "ai-act",
+   "title": "EU AI Act · Article 62: Measures for providers and deployers, in particular SMEs",
+   "url": "https://artificialintelligenceact.eu/article/62/",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nMeasures for Providers and Deployers, in Particular SMEs, Including Start-Ups\n\nMember States shall undertake the following actions:\n\nprovide SMEs, including start-ups, having a registered office or a branch in the Union,\n\nwith priority access to the AI regulatory sandboxes\n\norganise specific awareness raising and training activities on the application of this Regulation\n\ntailored to the needs of SMEs including start-ups",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "bis",
+   "title": "BIS Working Paper 1325 · AI adoption, productivity and employment: evidence from European firms",
+   "url": "https://www.bis.org/publ/work1325.htm",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\n23 January 2026.\n\nOur results show that AI adoption increases the level of labor productivity by 4%.\n\nProductivity gains are due to capital deepening, as we find no adverse effects on firm-level employment.\n\nHowever, productivity benefits of AI adoption are unevenly distributed and concentrate in medium and large firms.",
+   "captured": "2026-10-11"
+  },
+  {
+   "id": "voxeu",
+   "title": "VoxEU · How AI is affecting productivity and jobs in Europe",
+   "url": "https://cepr.org/voxeu/columns/how-ai-affecting-productivity-and-jobs-europe",
+   "text": "Excerpts of this page as read on 11 October 2026. Each passage is word for word; text between passages is left out.\n\nInaki Aldasoro, Leonardo Gambacorta, Rozália Pál, Debora Revoltella, Christoph Weiss, Marcin Wolski, 17 February 2026.\n\nAI adoption increases labour productivity levels by 4% on average in the EU\n\nwe find no evidence that AI reduces employment in the short run\n\nThe productivity benefits, however, are unevenly distributed.\n\nmedium and large companies experience substantially stronger productivity gains than their smaller counterparts\n\nThe capital-deepening effects we document may be transitional.",
+   "captured": "2026-10-11"
+  }
+ ],
+ "findings": [
+  {
+   "id": "size-cbs",
+   "direction": "official",
+   "page": "cbs-news",
+   "claim": "Larger Dutch firms use AI more often",
+   "quote": "Larger companies were more likely to use AI technology in 2024 than smaller companies.",
+   "why": "The size gap is the core of the story; the next step tests it on CBS's own table."
+  },
+  {
+   "id": "size-eu",
+   "direction": "europe",
+   "page": "eurostat",
+   "claim": "The same size gap across the EU",
+   "quote": "In 2025, 17% of small enterprises, 30.36% of medium enterprises and 55.03% of large enterprises used AI.",
+   "why": "The Dutch pattern is not unusual: AI use rises with size across Europe."
+  },
+  {
+   "id": "size-gains",
+   "direction": "payoff",
+   "page": "bis",
+   "claim": "Productivity gains go to bigger firms",
+   "quote": "However, productivity benefits of AI adoption are unevenly distributed and concentrate in medium and large firms.",
+   "why": "If gains follow size, the adoption gap can widen differences between firms."
+  },
+  {
+   "id": "measure-cbs",
+   "direction": "official",
+   "page": "cbs-news",
+   "claim": "22.7% of firms with ten or more workers use AI",
+   "quote": "In 2024, 22.7 percent of companies with ten or more workers used one or more forms of AI technology.",
+   "why": "The official baseline, counting seven specific AI technologies."
+  },
+  {
+   "id": "measure-micro",
+   "direction": "small",
+   "page": "micro",
+   "claim": "Almost 14% of micro businesses use AI",
+   "quote": "Bijna 14% van de Nederlandse microbedrijven gebruikte in 2025 AI-technologieën.",
+   "why": "Covers the firms CBS's main monitor leaves out, with the same kind of technology list."
+  },
+  {
+   "id": "measure-survey",
+   "direction": "small",
+   "page": "exact",
+   "claim": "Surveys of any use find 70%",
+   "quote": "Zeven op de tien ondernemers (70%) zeggen de technologie inmiddels te gebruiken, tegenover een derde (33%) in 2025.",
+   "why": "Asking whether a firm uses AI at all gives a far higher number than asking about specific technologies."
+  },
+  {
+   "id": "measure-bank",
+   "direction": "bank",
+   "page": "abn-risk",
+   "claim": "78% of SMEs use AI to some degree",
+   "quote": "Tegelijk gebruikt 78 procent van deze organisaties – met een jaaromzet tot 25 miljoen euro – in enige mate AI",
+   "why": "A second any-use measure, from the bank's own research."
+  },
+  {
+   "id": "ready-policy",
+   "direction": "bank",
+   "page": "abn-risk",
+   "claim": "Only 9% have a policy for outside AI tools",
+   "quote": "slechts 9 procent heeft formeel beleid voor het gebruik van externe AI-oplossingen",
+   "why": "Use runs far ahead of rules: a concrete question for a bank to ask."
+  },
+  {
+   "id": "ready-risk",
+   "direction": "bank",
+   "page": "abn-risk",
+   "claim": "Smaller firms are least prepared for digital risks",
+   "quote": "Vooral kleinere bedrijven zijn nog onvoldoende voorbereid op een nieuwe generatie digitale risico’s",
+   "why": "Readiness falls with size, as use does."
+  },
+  {
+   "id": "ready-experience",
+   "direction": "official",
+   "page": "cbs-summary",
+   "claim": "Lack of experience holds firms back",
+   "quote": "‘lack of experience’ was by far the most commonly given reason for this (75 percent).",
+   "why": "Among firms that considered AI but did not use it, the barrier is know-how."
+  },
+  {
+   "id": "aside-retail",
+   "direction": "bank",
+   "page": "abn-retail",
+   "claim": "Half of retailers worked with AI in 2023",
+   "quote": "Uiteindelijk zegt iets meer dan de helft van de ondervraagde retailers al op een of andere wijze aan de slag te zijn met AI.",
+   "why": "Colour from one sector."
+  },
+  {
+   "id": "aside-act",
+   "direction": "rules",
+   "page": "ai-act",
+   "claim": "The AI Act gives SMEs priority access to sandboxes",
+   "quote": "with priority access to the AI regulatory sandboxes",
+   "why": "Support exists for small firms that build AI."
+  }
+ ],
+ "themes": [
+  {
+   "id": "size",
+   "title": "AI use rises with company size",
+   "description": "Official Dutch and EU figures agree: the bigger the firm, the more likely it uses AI, and the productivity gains follow the same line.",
+   "members": [
+    "size-cbs",
+    "size-eu",
+    "size-gains"
+   ]
+  },
+  {
+   "id": "measure",
+   "title": "How you ask changes the number",
+   "description": "Counting specific AI technologies gives 14–23%; asking whether a firm uses AI at all gives 70–78%. An article must say which measure it uses.",
+   "members": [
+    "measure-cbs",
+    "measure-micro",
+    "measure-survey",
+    "measure-bank"
+   ]
+  },
+  {
+   "id": "ready",
+   "title": "Use runs ahead of readiness",
+   "description": "Few firms have rules for AI tools, smaller firms are the least prepared, and lack of experience is the main barrier.",
+   "members": [
+    "ready-policy",
+    "ready-risk",
+    "ready-experience"
+   ]
+  }
+ ],
+ "aside": [
+  {
+   "finding": "aside-retail",
+   "reason": "73 retailers in 2023: too narrow and too old for a national picture."
+  },
+  {
+   "finding": "aside-act",
+   "reason": "About support for firms that build AI; the question is about use."
+  }
+ ],
+ "conclusion": {
+  "title": "Leading conclusion",
+  "text": "**AI use in Dutch business rises steeply with company size, and readiness lags behind use.**\n\n- **Size:** 22.7% of Dutch companies with ten or more workers used AI in 2024, from 17.8% of the smallest to 59.2% of the largest. The EU shows the same gradient: 17% of small and 55% of large enterprises in 2025.\n- **Measure:** CBS counts specific AI technologies. Surveys that count any use report 70–78%, so the measure must be named.\n- **Readiness:** only 9% of SMEs have a formal policy for outside AI tools, and productivity gains so far concentrate in medium and large firms.\n\n**Next:** test the size gap on CBS's own table, and check what the turnover shares do and do not say."
+ }
+}

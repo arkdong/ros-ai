@@ -2,31 +2,36 @@
 
 How to show ros.ai to the dean of UvA's Faculty of Economics and Business (week of 12 October 2026). The slides are in `uva-dean-demo-slides.html`; this demo follows its last slide.
 
-The demo is one canvas in demo mode: **Try demo mode → The whole workspace · AI use by company size**. It holds every kind of block, from a Claude Code agent with its Tavily searches to a draft article, so it works with no keys and no network. Everything on it stays live: you can run the code and the notebook again, and start a real search from the question.
+The demo is a guided walk-through in demo mode: **Try demo mode → From idea to report · AI in Dutch business**. It takes one question, how AI is changing Dutch businesses and what that means for a bank such as ABN AMRO, from a first idea to a report in seven steps. Each **Next** adds one step's blocks to the canvas and shows them together, so the canvas grows from one note to the whole piece of research. It works with no keys and no network, and every block stays live and editable.
 
 ## Before the meeting
 
 1. Start Docker Desktop, then ros.ai. ros.ai checks for the Python sandbox only when it starts. The sandbox image is built once with `docker build -t ros-ai-research-python:1 src/server/sandbox`.
-2. For the live search, put an Anthropic key on **Model** and a Tavily key on **Plugins**, and set allowances for both under **Budget**. Without them, show the recorded search and skip step 6.
-3. Click **Try demo mode**, keep **The whole workspace** selected and press **Start demo**. ros.ai copies the canvas into a new project folder (`~/Documents/ros.ai/ros.ai demo · AI use by company size`) and opens it. Every start makes a fresh copy, so rehearse on one and start a clean one for the meeting.
-4. Keep the permission button in the header on **Ask every time**, so every run visibly waits for you.
+2. Click **Try demo mode**, keep **From idea to report** selected and press **Start demo**. ros.ai creates a new project folder (`~/Documents/ros.ai/Demo · AI in Dutch business`, numbered when that folder already exists) and opens it with the demo guide. The assistant and the sidebar start closed to give the canvas room; **Assistant** and the sidebar button bring them back. Every start makes a fresh project, so rehearse on one and start a clean one for the meeting.
+3. Keep the permission button in the header on **Ask every time**, so every run visibly waits for you.
+4. For the optional live search, put an Anthropic key on **Model** and a Tavily key on **Plugins**, and set allowances for both under **Budget**.
 
-## The walk-through
+## The seven steps
 
-The canvas reads from left to right. **See all** in the left dock shows the whole of it.
+The guide sits at the lower left. Its main button names the next step; the numbered steps at the top go back to an earlier view; an **Open** button opens a block and folds the guide away, and the arrow on the folded guide brings it back.
 
-1. **Start here and Question.** The question is the ABN AMRO one: how AI use differs between small and large Dutch businesses, and what a bank should ask its business clients about it.
-2. **Agent.** Double-click the Agent block. Claude Code took the question on, planned three search directions and waited for approval before searching. *Talking point: nothing searches the web until the researcher says yes.* This run is recorded and says so on the block.
-3. **Search and Result.** Each Search block is one Tavily search. The Result note next to it summarises what came back and lists the pages it cites.
-4. **Findings.** Each Finding quotes its page word for word, here the CBS AI monitor. *Talking point: every claim can be traced back to the sentence it came from.*
-5. **Data, Code and Notebook.** Double-click **AI use by company size**. The saved results from an earlier run are on the right. Press **Run**, review the captured attempt and press **Allow & run**: the code runs in the sandbox on this computer and the figures appear again in a few seconds (a 41.4-point gap in AI use between the smallest and largest firms). Then open **Explore the turnover gap**, the notebook, and run a cell. *Talking point: someone without Python can ask for this in plain words; the code, data and every attempt are kept.*
-6. **Live search (optional).** Click the **Question**, open **Assistant**, pick **Claude Code** and ask, for example: *Research this question in three directions, mixing Dutch and English sources such as CBS, KVK and ABN AMRO Insights, and save the claims that matter as findings.* Approve the plan card. A second Agent block grows next to the recorded one with real Tavily results. This costs roughly US$0.50–1.20; start ros.ai with `ROS_CLAUDE_TURN_USD=3 npm start` if the turn needs more than the default US$1.
-7. **Draft article.** Open the report: the article is built from the findings and the calculated figures and ends with what the evidence does not show. Download the **Self-contained HTML** to show the hand-in, with its AI-use statement.
-8. **Control.** Undo and redo a change; show the project folder in Finder, where every block is a plain file; the keys and the budget stay on this computer.
+1. **Idea.** One note with the question. *Talking point: a project starts as a rough question, not a finished plan.*
+2. **Search.** A Claude Code agent takes the idea on: six directions, eight web searches and 27 sources, with a Result note per direction that cites its pages. Open the agent to show its plan. *Talking point: in a live run nothing searches the web until the researcher approves the plan.*
+3. **Read.** The agent reads the eleven best pages in full and saves twelve Findings, each quoting its page word for word. Open a finding. *Talking point: every claim can be traced back to the sentence it came from, and ros.ai checks each quote against the saved page.*
+4. **Group.** The findings fall into three themes, two weak ones go to **Set aside** instead of being deleted, and the themes support one **Leading conclusion**: AI use rises with company size, and readiness lags behind.
+5. **Test.** CBS's own table and a Code block that checks the data and calculates the 41.4-point gap between the smallest and the largest firms. Open the code, press **Run**, review the captured attempt and press **Allow & run**: it calculates again in the sandbox on this computer in a few seconds. *Talking point: someone without Python can ask for this in plain words; the code, data and every attempt are kept.*
+6. **Charts.** A notebook and three figures. Open the notebook and press **Run all**, then approve: the cells run again and the chart redraws.
+7. **Report.** The final article, with every source and figure linked to the saved page or result. Open it and download the **Self-contained HTML** to show the hand-in with its AI-use statement.
+
+**Finish demo** closes the guide and **Tutorial** in the canvas header opens it again. **See all** in the left dock shows the whole canvas. To finish, show control: undo and redo a change, and show the project folder in Finder, where every block is a plain file.
+
+## Optional: a live search
+
+Close the guide, click **The idea**, open **Assistant**, pick **Claude Code** under Agents and ask, for example: *Research how AI is changing Dutch small businesses in three directions, mixing Dutch and English sources such as CBS, KVK and ABN AMRO Insights, and save the claims that matter as findings.* Approve the plan card. A second Agent block grows with real Tavily results. This costs roughly US$0.50–1.20; start ros.ai with `ROS_CLAUDE_TURN_USD=3 npm start` if the turn needs more than the default US$1.
 
 ## What is recorded and what is live
 
-- The searches, Result notes, findings and the draft were prepared for this demo from pages and data captured on 23 September 2026 (CBS AI monitor 2024 and two ABN AMRO Insights articles). They are labelled as recorded on the canvas.
-- The saved Code results come from the Docker run of the same code on 23 September 2026. Pressing **Run** calculates them again for real.
-- The notebook's outputs come from a real run of its cells in ros.ai's sandbox. Running a cell again recalculates it.
-- Only step 6 calls Claude and Tavily.
+- The web searches and the pages were captured on 11 October 2026 while the demo was prepared, apart from one CBS chapter captured on 23 September 2026. They are labelled as such: the agent shows **A recorded run**, and each saved page and search result carries **Recorded for this demo**. Every finding's quote is checked word for word against its saved page when the demo starts.
+- The grouping, the conclusion and the report were written while the demo was prepared, from those findings and calculations. The report says so in its AI-use statement.
+- The Code block's results are saved from an earlier sandbox run of the same code, and the notebook's outputs come from a real run of its cells in ros.ai's sandbox. **Run** calculates them again for real.
+- **Next** makes no model, search or code calls. Only the optional live search calls Claude and Tavily.

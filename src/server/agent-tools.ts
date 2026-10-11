@@ -8,10 +8,9 @@ import type { AgentScope } from '../shared/agent-runtime.js';
 import type { Artifact, Canvas, CanvasNode, Mutation, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import { EXTRACT_PAGES_PER_CREDIT, TAVILY_CREDIT_USD } from './providers.js';
-import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, CARD_MIN_HEIGHT, cardWidth, estimatedCardHeight, estimatedGroupHeight } from '../shared/card-size.js';
+import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
 import { LAYOUT_GAP, arrangeCanvas } from '../shared/layout.js';
 import { RESULT_PLACEHOLDER, formatSources } from '../shared/agent-work.js';
-import { groupPreviewMembers } from '../shared/groups.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const readSchema = z.object({ artifactId: id.optional(), offset: z.number().int().min(0).default(0), length: z.number().int().min(1).max(30000).default(12000) }).strict();
@@ -431,8 +430,7 @@ export class AgentWorkspaceTools {
     const inTree = new Set(canvas.nodes.filter(node => own.has(node.id) && !node.parentId).map(node => node.id));
     for (let grew = true; grew;) { grew = false; for (const node of canvas.nodes) if (node.parentId && inTree.has(node.parentId) && !inTree.has(node.id)) { inTree.add(node.id); grew = true; } }
     const tree: Canvas = { nodes: canvas.nodes.filter(node => inTree.has(node.id)), connections: canvas.connections.filter(edge => inTree.has(edge.source) && inTree.has(edge.target)) };
-    const size = (node: CanvasNode) => ({ width: cardWidth(node), height: node.kind === 'group' ? estimatedGroupHeight(node, groupPreviewMembers(tree, node.id), tree.nodes.filter(item => item.parentId === node.id).length) : Math.max(CARD_MIN_HEIGHT, estimatedCardHeight(node)) });
-    const sizes = Object.fromEntries(tree.nodes.map(node => [node.id, size(node)]));
+    const sizes = Object.fromEntries(tree.nodes.map(node => [node.id, estimatedSize(tree, node)]));
     const laid = arrangeCanvas(tree, { nodeSizes: sizes }).canvas.nodes, at = laid.find(node => node.id === agent.id)!;
     const dx = agent.x - at.x, dy = agent.y - at.y, roots = laid.filter(node => !node.parentId);
     const others = canvas.nodes.filter(node => !node.parentId && !inTree.has(node.id));
@@ -453,7 +451,7 @@ const findingCard = (finding: z.infer<typeof findingsSchema>['findings'][number]
   title: finding.claim, description: `> ${finding.quote.replace(/\s+/gu, ' ')}\n\n**Why it matters:** ${finding.why}\n\n${formatSources([{ n: 1, title: source.title, url: source.url }])}`, kind: 'topic' as const, blockType: 'finding' as const });
 /** Quotes are compared word for word, ignoring case, spacing and the style of quotation marks and dashes.
  * An ellipsis may leave words out between parts, which must appear in order. */
-function quoted(text: string, quote: string): boolean {
+export function quoted(text: string, quote: string): boolean {
   const plain = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[‘’‚‛′]/gu, "'").replace(/[“”„‟″]/gu, '"').replace(/[‐‑‒–—―]/gu, '-').replace(/\s+/gu, ' ').trim();
   const haystack = plain(text), parts = plain(quote).replace(/^["']+|["']+$/gu, '').split(/\s*(?:\[(?:\.\.\.|…)\]|\.\.\.|…)\s*/u).filter(Boolean);
   let from = 0;
@@ -461,7 +459,7 @@ function quoted(text: string, quote: string): boolean {
   return parts.join(' ').length >= 12;
 }
 /** The canvas as it would be after these operations, before they are saved. */
-function canvasAfter(canvas: Canvas, operations: Mutation[]): Canvas {
+export function canvasAfter(canvas: Canvas, operations: Mutation[]): Canvas {
   const result = structuredClone(canvas);
   for (const operation of operations) {
     if (operation.type === 'addNode') result.nodes.push(structuredClone(operation.node));
