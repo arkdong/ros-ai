@@ -1,0 +1,10 @@
+{
+  "title": "AISO · statistics in plain words",
+  "blocks": [
+    { "id": "question", "title": "Question · is the weather worse at the weekend?", "file": "Question.md", "x": 0, "y": 0 },
+    { "id": "data", "title": "Schiphol weather 2024", "file": "Schiphol weather 2024.csv", "x": 480, "y": 0 },
+    { "id": "about", "title": "About the data", "file": "About the data.md", "x": 480, "y": 420 },
+    { "id": "reading", "title": "Reading the results", "file": "Reading the results.md", "x": 0, "y": 420 }
+  ],
+  "connections": []
+}

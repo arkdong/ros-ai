@@ -12,14 +12,16 @@ Each case starts from a prepared canvas that `npm run dean-demo` copies into a n
    ROS_CLAUDE_TURN_USD=3 npm start
    ```
 
+   Start Docker Desktop first: ros.ai checks for the Python sandbox when it starts. The sandbox image is built once with `docker build -t ros-ai-research-python:1 src/server/sandbox`.
 2. Check the connections once: an Anthropic key on **Model**, a Tavily key on **Plugins**, and allowances for both under **Budget**.
-3. Set up the case in a second terminal:
+3. Set up both cases in a second terminal:
 
    ```sh
    npm run dean-demo -- abn-amro-drafting
+   npm run dean-demo -- aiso-plain-words-stats
    ```
 
-   Reload the page and open **ABN AMRO · drafting an Insights article** from the project list. Running the command again makes a fresh copy, numbered (2), (3) and so on.
+   Reload the page and open the projects from the project list. Running a command again makes a fresh copy, numbered (2), (3) and so on.
 4. Do one full rehearsal the evening before and keep that project. If the network or a key fails during the meeting, open the rehearsed project instead and walk through it. **Try demo mode** also opens the recorded case *AI adoption in Dutch businesses · the banking question*, which makes no calls at all.
 5. In the meeting, keep the permission button in the header on **Ask every time**, so every plan and every draft visibly waits for you.
 
@@ -59,6 +61,32 @@ A **Review report revision** card appears. Open it and go through the **Review c
 - **Control:** undo a change and redo it; show the project folder in Finder, where every block is a Markdown file; the keys and the budget stay on this computer.
 - **Hand-in:** open the report and download the **Self-contained HTML**. It includes the AI-use statement and the record of how the report was produced.
 
-## Case 2 · AISO
+## Case 2 · AISO: statistics in plain words
 
-To be added once the case is chosen.
+**The story.** Many students and research assistants have data and a question, but no time to learn Python. Here someone asks in plain words. ros.ai's assistant writes the code, runs it in a sandbox on this computer, and keeps the chart, the numbers, the code and every attempt together, so a supervisor or successor can check how the answer was reached.
+
+**On the canvas at the start**
+- **Question**: is the weather really worse at the weekend? It also lists what a good answer contains.
+- **Schiphol weather 2024**: real KNMI measurements for all 366 days of 2024 (CC BY 4.0).
+- **About the data**: the source and the columns in plain words, and the limits of the data.
+- **Reading the results**: a short guide to averages, medians, group sizes and one-year patterns.
+
+To use an AISO dataset instead, swap in that CSV and question in `examples/dean-demo/aiso-plain-words-stats`, or add the CSV to the project with **Add block → Dataset**.
+
+### Step 1 · Ask (about 1 minute, a few cents)
+
+Double-click **Schiphol weather 2024** to show the table, then close it, so the assistant works on this exact version of the data. Open **Assistant**, pick **Claude Code** and send:
+
+> Is the weather really worse at the weekend? Compare rain on weekdays and weekends in this data, with the number of days, the average and the median, and one chart. Explain the answer in plain words, and say what this data cannot tell us.
+
+The assistant proposes an analysis, and the dataset card shows **Awaiting approval**. Click **Inspect experiment** in the assistant, then **Load captured experiment for review**, look at the code together and press **Allow & run**. *Talking point: nothing runs until a person has seen the exact code and data.* If clicking through feels too slow for the audience, set Permissions to **Approve for me** beforehand: plain analysis code then runs at once, and the code stays visible afterwards.
+
+### Step 2 · Read the answer
+
+Select the dataset, choose **Details → Results** and open the chart, the table and the conclusion. The real numbers are 3.04 mm of rain per weekday (262 days) against 2.40 mm per weekend day (104 days), with the same median of 0.35 mm. So weekends were not wetter in 2024, and the equal medians show that a few very wet weekdays pull the weekday average up. Use **Reading the results** to explain it.
+
+### Step 3 · Follow up
+
+> Does that hold in every season? Keep the first answer as it is.
+
+In 2024, the difference reverses in spring, when weekends were wetter by 0.30 mm a day. *Talking point: a pattern for the whole year can reverse within a season, and both attempts stay on the record with their code.* Then show **History** on the dataset block: every attempt, its code and its exact input are kept.
