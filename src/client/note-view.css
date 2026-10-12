@@ -1,0 +1,56 @@
+/* Note view: the content on the left, the node's conversation on the right (like the Code view). */
+.node-modal:has(.note-view) { width: min(1180px, 94vw); }
+.node-modal .inspector.note-view { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); flex: 1; min-height: 0; color: #171717; font-size: 14px; }
+.note-view .note-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 22px 28px 28px; }
+.note-view .note-title { width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 2px 0; border: 0; background: transparent; font-size: 22px; font-weight: 600; line-height: 1.35; color: #171717; }
+.note-view .note-title:focus { outline: none; box-shadow: 0 1px 0 #d2d6d3; }
+.note-view .note-description { font-size: 15px; line-height: 1.75; }
+.note-view .note-description-input { width: 100%; box-sizing: border-box; font-size: 15px; line-height: 1.65; }
+.note-view .note-edit-toggle { display: inline-flex; align-items: center; gap: 5px; margin: 6px 0 0; padding: 0; color: #6b6b6b; font-size: 12px; }
+.note-view .note-edit-toggle:hover { color: #171717; }
+.note-view .note-edit-actions { margin-top: 10px; }
+.note-view .note-content { margin-top: 26px; padding-top: 18px; border-top: 1px solid #e6e8e6; }
+.note-view .note-content h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.note-view .note-content-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.note-view .note-content-heading .text-button { display: inline-flex; align-items: center; gap: 4px; color: #6b6b6b; font-size: 12px; white-space: nowrap; }
+.note-view .note-content img { max-width: 100%; }
+.note-view .note-empty { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding: 18px; border: 1px dashed #dcdfdc; border-radius: 8px; color: #6b6b6b; }
+.note-view .note-empty p { margin: 0; font-size: 13px; }
+.note-view .note-more { margin-top: 28px; border-top: 1px solid #e6e8e6; }
+.note-view .note-more > summary { padding: 12px 0 0; color: #6b6b6b; font-size: 13px; cursor: pointer; }
+.note-view .note-more-body { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; }
+.note-view .note-more-body .group-organize, .note-view .note-more-body .node-kind-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; border: 0; }
+.note-view .note-more-body .group-organize label, .note-view .note-more-body .node-kind-row label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b6b6b; white-space: nowrap; }
+.note-view .note-more-body .decision-log { margin: 0; }
+.note-view .note-more-body h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.note-view .note-more-body > .text-button.danger { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+
+.note-view .note-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #e6e8e6; background: #fbfbfa; }
+.note-view .note-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #ececea; font-size: 13px; }
+.note-view .note-history-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid #e1e4e1; border-radius: 999px; background: #fff; color: #555; font-size: 12px; cursor: pointer; }
+.note-view .note-history-toggle:hover { border-color: #c9cdca; color: #171717; }
+.note-view .note-history-toggle span { min-width: 16px; padding: 0 5px; border-radius: 999px; background: #f0f1ef; font-size: 11px; text-align: center; }
+.note-view .note-side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px; }
+.note-view .note-side-scroll.runs-section { padding: 14px 18px; }
+.note-view .note-side-welcome { margin: 4px 0; color: #6b6b6b; font-size: 13px; line-height: 1.7; }
+.note-view .conversation .chat-message { margin-bottom: 20px; font-size: 14px; line-height: 1.65; }
+.note-view .note-message-actions { display: flex; gap: 14px; margin-top: 8px; }
+.note-view .note-message-actions .text-button { padding: 0; color: #6b6b6b; font-size: 12px; }
+.note-view .activity-card p, .note-view .run-notice, .note-view .run-notice p { font-size: 13px; }
+.note-view .note-composer { flex-shrink: 0; margin: 0; padding: 12px 14px 14px; border-top: 1px solid #ececea; background: #fff; }
+.note-view .note-composer textarea { width: 100%; box-sizing: border-box; resize: none; font-size: 14px; }
+.note-view .note-composer-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.note-view .note-composer-row .search-toggle { margin-left: auto; }
+.note-view .note-composer .provider-note { margin-top: 6px; }
+/* A small model chip; its list opens upwards from the composer. */
+.note-view .model-picker { position: relative; min-width: 0; flex: 0 1 auto; margin: 0; }
+.note-view .model-picker-trigger { width: auto; max-width: 220px; height: 30px; padding: 3px 8px; gap: 6px; border-radius: 999px; }
+.note-view .model-picker-trigger .model-picker-current small { display: none; }
+.note-view .model-picker-trigger .model-picker-current strong { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-view .model-picker-trigger img, .note-view .model-picker-trigger .model-maker-symbol { width: 18px; height: 18px; }
+.note-view .model-picker-popover { top: auto; bottom: calc(100% + 6px); right: auto; width: 320px; }
+@media (max-width: 850px) {
+  .node-modal .inspector.note-view { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); overflow-y: auto; }
+  .note-view .note-main { overflow: visible; }
+  .note-view .note-side { border-left: 0; border-top: 1px solid #e6e8e6; }
+}
