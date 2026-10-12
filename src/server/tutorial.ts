@@ -6,18 +6,21 @@ import type { TutorialCatalog, TutorialExecution, TutorialScenarioId, TutorialSe
 import type { ExperimentService } from './experiments.js';
 import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
+import type { ProjectFolders } from './project-folders.js';
+import { WORKFLOW_STEPS, WorkflowTutorial, type WorkflowSession } from './demo-workflow.js';
 import { loadTutorialContent, localMarketDataAvailable } from './tutorial-content.js';
 import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import { LAYOUT_GAP } from '../shared/layout.js';
 
-type SavedSession = {
-  projectId:string; scenario:TutorialScenarioId; step:number; createdAt:string;
+type LessonSession = {
+  projectId:string; scenario:Exclude<TutorialScenarioId,'workflow'>; step:number; createdAt:string;
   stageNodeIds:string[]; questionArtifactId:string; sourceArtifactIds:string[];
   datasetArtifactId?:string; analysisNodeId?:string; outputArtifactIds:string[];
   runId?:string; draftNodeId?:string; draftArtifactId?:string;
 };
-type ImportArtifact = Pick<Artifact,'kind'|'title'|'content'> & Partial<Pick<Artifact,'url'|'mediaType'|'metadata'>>;
-const scenarioSchema = z.enum(['banking','market']);
+type SavedSession = LessonSession | WorkflowSession;
+export type ImportArtifact = Pick<Artifact,'kind'|'title'|'content'> & Partial<Pick<Artifact,'url'|'mediaType'|'metadata'|'capture'|'sourceId'>>;
+const lessonSchema = z.enum(['banking','market']);
 const identifier = z.string().min(1).max(128);
 const now = () => new Date().toISOString();
 const isOutput = (artifact:Artifact) => ['plot','table','metric','result'].includes(artifact.kind);
@@ -26,8 +29,11 @@ const isOutput = (artifact:Artifact) => ['plot','table','metric','result'].inclu
  * not research executions; the optional rerun uses the existing exact approval. */
 export class TutorialService {
   private highlights:Highlights;
-  constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean}={}) {
+  /** The guided workflow builds its canvas in a project folder, so it needs the local app. */
+  private workflow?:WorkflowTutorial;
+  constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean;folders?:ProjectFolders}={}) {
     this.highlights = new Highlights(store);
+    if (options.folders && !options.publicDemo) this.workflow = new WorkflowTutorial(store,options.folders,(...args) => this.importArtifacts(...args));
   }
 
   private marketAvailable() { return !this.options.publicDemo && localMarketDataAvailable(); }
@@ -41,7 +47,11 @@ export class TutorialService {
 
   catalog():TutorialCatalog {
     return {
-      scenarios:scenarioSchema.options.map(id => {
+      scenarios:[{id:'workflow' as const,title:'From idea to report · AI in Dutch business',
+        summary:'The whole workflow in seven steps: web searches from a first idea, findings read from the pages, themes and a leading conclusion, a calculation and a notebook on CBS data, charts and a final report.',
+        question:'How is AI changing Dutch businesses, and what does it mean for a bank such as ABN AMRO?',publicDataReady:false,publicDataStatus:'',available:Boolean(this.workflow),
+        ...this.workflow ? {} : {unavailableReason:'Available in the local app, where projects are folders on your computer.'}},
+      ...lessonSchema.options.map(id => {
         // Restricted market files are deliberately absent from the public image.
         // Listing the unavailable choice must not read or package its snapshot.
         if (id === 'market' && !this.marketAvailable()) return {
@@ -59,7 +69,7 @@ export class TutorialService {
           publicDataReady:content.publicDataReady, publicDataStatus:content.publicDataStatus,
           available:!this.options.publicDemo || content.publicDataReady,
           ...this.options.publicDemo && !content.publicDataReady ? {unavailableReason:content.publicDataStatus} : {} };
-      }),
+      })],
       execution:this.execution(),
       hosting:this.options.publicDemo
         ? {mode:'public-demo',publicReady:true,reason:'Your browser has a separate demo workspace. Saved results and manual editing are available; fresh execution and paid provider calls are disabled in this public demo.'}
@@ -75,6 +85,10 @@ export class TutorialService {
   read(projectId:string):TutorialSession|null {
     const saved = this.saved(projectId);
     if (!saved) return null;
+    if (saved.scenario === 'workflow') {
+      if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',409);
+      return this.workflow.read(saved,this.execution());
+    }
     const content = loadTutorialContent(saved.scenario);
     const preview = saved.runId && this.experiments ? this.experiments.inspect(saved.runId) : null;
     const run = preview?.run;
@@ -101,6 +115,10 @@ export class TutorialService {
   }
 
   create(scenario:TutorialScenarioId):TutorialSession {
+    if (scenario === 'workflow') {
+      if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',403);
+      return this.read(this.workflow.create())!;
+    }
     if (scenario === 'market' && !this.marketAvailable()) throw new StoreError(this.options.publicDemo
       ? 'The market scenario is unavailable publicly: its captured S&P/FRED data and derived figures need reproduction permission or an approved replacement dataset.'
       : 'The market scenario needs its captured S&P/FRED data, which is not in this checkout.',this.options.publicDemo ? 403 : 409);
@@ -108,7 +126,7 @@ export class TutorialService {
     if (this.options.publicDemo && !content.publicDataReady) throw new StoreError(content.publicDataStatus,403);
     return this.store.atomic(() => {
       const project = this.store.createProject(scenario === 'banking' ? 'Dutch AI adoption' : 'Historical market risk');
-      const saved:SavedSession = { projectId:project.id, scenario, step:0, createdAt:now(),
+      const saved:LessonSession = { projectId:project.id, scenario, step:0, createdAt:now(),
         stageNodeIds:[], questionArtifactId:'', sourceArtifactIds:[], outputArtifactIds:[] };
       const stage = this.addStage(saved,0,content.stages[0].description);
       const question = this.addNote(project.id,stage.id,'The question and its scope',
@@ -132,6 +150,11 @@ export class TutorialService {
     const saved = this.saved(projectId);
     if (!saved) throw new StoreError('This project is not a demo workspace.',404);
     if (expectedStep !== undefined && expectedStep !== saved.step) throw new StoreError('The tutorial has already moved. Refresh before advancing again.',409);
+    if (saved.scenario === 'workflow') {
+      if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',409);
+      this.workflow.advance(saved);
+      return this.read(projectId)!;
+    }
     if (saved.step === 3) return this.read(projectId)!;
     return this.store.atomic(() => {
       const content = loadTutorialContent(saved.scenario);
@@ -207,7 +230,7 @@ export class TutorialService {
 
   preview(projectId:string):TutorialSession {
     const saved = this.saved(projectId);
-    if (!saved?.analysisNodeId || !saved.datasetArtifactId) throw new StoreError('Reach Analyze and challenge before preparing a new calculation.',409);
+    if (!saved || saved.scenario === 'workflow' || !saved.analysisNodeId || !saved.datasetArtifactId) throw new StoreError('Reach Analyze and challenge before preparing a new calculation.',409);
     if (!this.experiments) throw new StoreError('The execution service is unavailable.',503);
     if (!this.execution().available) throw new StoreError(this.execution().reason,503);
     const current = saved.runId ? this.experiments.inspect(saved.runId) : null;
@@ -226,7 +249,7 @@ export class TutorialService {
     return this.read(projectId)!;
   }
 
-  private addStage(saved:SavedSession,index:number,summary:string):CanvasNode {
+  private addStage(saved:LessonSession,index:number,summary:string):CanvasNode {
     const content = loadTutorialContent(saved.scenario);
     const roots = this.store.getProject(saved.projectId).canvas.nodes.filter(node => !node.parentId);
     const previous = roots.find(node => node.id === saved.stageNodeIds.at(-1));
@@ -276,7 +299,7 @@ export class TutorialService {
       cost:{estimatedUsd:0,basis:'Local copy of tutorial evidence; no external request.'} };
     this.store.createRun(run);
     const results = artifacts.map(artifact => this.store.addArtifact({
-      ...artifact,projectId,nodeId,runId:run.id,capture:'full-content',
+      capture:'full-content',...artifact,projectId,nodeId,runId:run.id,
       metadata:{...artifact.metadata,importedAt:timestamp,freshExecution:false},
     }));
     this.store.updateRun(run.id,{status:'completed',endedAt:timestamp,artifactIds:results.map(artifact => artifact.id)});
@@ -287,12 +310,12 @@ export class TutorialService {
 export function attachTutorialRoutes(app:Express,service:TutorialService) {
   app.get('/api/demo-scenarios',(_req,res) => res.json(service.catalog()));
   app.post('/api/demo-sessions',(req,res) => {
-    const {scenario} = z.object({scenario:scenarioSchema}).strict().parse(req.body);
+    const {scenario} = z.object({scenario:z.enum(['workflow',...lessonSchema.options])}).strict().parse(req.body);
     res.status(201).json(service.create(scenario));
   });
   app.get('/api/projects/:id/demo-session',(req,res) => res.json(service.read(identifier.parse(req.params.id))));
   app.post('/api/projects/:id/demo-session/advance',(req,res) => {
-    const {step} = z.object({step:z.number().int().min(0).max(3).optional()}).strict().parse(req.body ?? {});
+    const {step} = z.object({step:z.number().int().min(0).max(WORKFLOW_STEPS - 1).optional()}).strict().parse(req.body ?? {});
     res.json(service.advance(identifier.parse(req.params.id),step));
   });
   app.post('/api/projects/:id/demo-session/preview',(req,res) => res.json(service.preview(identifier.parse(req.params.id))));

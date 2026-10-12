@@ -77,19 +77,20 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
     return { step, directions, at };
   });
   const unlisted = work.directions.slice(next);
+  // A demo's agent block holds a run recorded while the demo was prepared, not a turn of this assistant.
+  const recorded = detail.artifacts.some(item => item.metadata?.tutorialOrigin === 'recorded' && (item.nodeId === node.id || work.directions.some(({ search }) => search.id === item.nodeId)));
   const directionList = (list: AgentDirection[]) => <ul className="agent-items">{list.map(({ search, sources, written, findings }) => <li key={search.id}>
     <button onClick={() => onOpenNode(search.id)}><SearchIcon size={13}/><span>{search.title}</span></button>
     <small>{plural(sources, 'source')}{findings.length ? ` · ${plural(findings.length, 'finding')}` : ''}{!written && !running ? ' · no note written' : ''}</small>
   </li>)}</ul>;
-  // What a step made: the pages it read (their saved text, with the original page beside it), the findings it saved, or the groups it proposed.
+  // Pages read in full: their saved text, with the original page beside it.
+  const pageList = (pages: Artifact[]) => pages.length > 0 && <ul className="agent-items">{pages.map(page => <li key={page.id}>
+    <button onClick={() => onOpenArtifact(page)} title="Read the saved text"><FileText size={13}/><span>{page.title}</span></button>
+    {page.url && <a href={page.url} target="_blank" rel="noreferrer" title="Open the original page">{host(page.url)}<ExternalLink size={11}/></a>}
+  </li>)}</ul>;
+  // What a step made: the pages it read, the findings it saved, or the groups it proposed.
   const made = (step: Step) => {
-    if (step.tool === 'ros_read_pages') {
-      const pages = (step.items ?? []).flatMap(id => detail.artifacts.filter(item => item.id === id));
-      return pages.length > 0 && <ul className="agent-items">{pages.map(page => <li key={page.id}>
-        <button onClick={() => onOpenArtifact(page)} title="Read the saved text"><FileText size={13}/><span>{page.title}</span></button>
-        {page.url && <a href={page.url} target="_blank" rel="noreferrer" title="Open the original page">{host(page.url)}<ExternalLink size={11}/></a>}
-      </li>)}</ul>;
-    }
+    if (step.tool === 'ros_read_pages') return pageList((step.items ?? []).flatMap(id => detail.artifacts.filter(item => item.id === id)));
     if (step.tool === 'ros_write_findings') {
       const findings = (step.items ?? []).flatMap(id => canvas.nodes.filter(item => item.id === id));
       return findings.length > 0 && <ul className="agent-items">{findings.map(finding => <li key={finding.id}><button onClick={() => onOpenNode(finding.id)}><Quote size={13}/><span>{finding.title}</span></button></li>)}</ul>;
@@ -106,7 +107,7 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
   return <div className="agent-view">
     <header>
       <span className="agent-avatar"><Bot size={18}/></span>
-      <div><strong>{runtime}</strong><small>{turn ? `${status[turn.status]} · ${time(turn.updatedAt)}` : 'This turn is no longer in the assistant history.'}{work.directions.length ? ` · ${plural(work.directions.length, 'direction')} · ${plural(work.sources, 'source')}` : ''}{work.findings ? ` · ${plural(work.findings, 'finding')}` : ''}</small></div>
+      <div><strong>{runtime}</strong><small>{turn ? `${status[turn.status]} · ${time(turn.updatedAt)}` : recorded ? 'A recorded run' : 'This turn is no longer in the assistant history.'}{work.directions.length ? ` · ${plural(work.directions.length, 'direction')} · ${plural(work.sources, 'source')}` : ''}{work.findings ? ` · ${plural(work.findings, 'finding')}` : ''}</small></div>
       {running && <LoaderCircle size={16} className="spin"/>}
       <button className="secondary small" onClick={() => onReveal(node.id)}>Show on canvas</button>
     </header>
@@ -126,6 +127,7 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
       </li>)}</ol>
     </section>}
     {unlisted.length > 0 && <section><div className="agent-section-title">Directions</div>{directionList(unlisted)}</section>}
+    {!steps.some(({ step }) => step.tool === 'ros_read_pages') && work.pages.length > 0 && <section><div className="agent-section-title">Pages read in full</div>{pageList(work.pages)}</section>}
     {turn?.reply && !running && <section><div className="agent-section-title">Answer</div><RichText text={turn.reply}/></section>}
     {turn?.error && <p className="agent-error">{turn.error}</p>}
   </div>;

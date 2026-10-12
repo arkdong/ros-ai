@@ -218,7 +218,7 @@ function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   return { canvas: convertLegacyGroups(result), marks };
 }
 export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
-type Props = { notices?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; missingFiles?: ReadonlySet<string> };
+type Props = { notices?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string> };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -240,11 +240,11 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
   });
   return { items, width, height, minY };
 }
-function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, missingFiles, agentTurns }: Props) {
+function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, agentTurns }: Props) {
   const expandedIds = useMemo(()=>{const canvas=historyCanvas||detail.project.canvas;return requestedExpandedIds.filter(id=>canvas.nodes.some(node=>node.id===id&&(isGroup(node)||canvas.nodes.some(child=>child.parentId===id))));},[requestedExpandedIds,historyCanvas,detail.project.canvas]);
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group');
-  const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
   const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
   const [animatingLayout, setAnimatingLayout] = useState(false), [artifactPlacementRevision, setArtifactPlacementRevision] = useState(0);
   const [reflowRevision, setReflowRevision] = useState(0);
@@ -301,6 +301,9 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
       left = Math.min(left, bounds.width / 8);
       const dock = area.current!.querySelector('.canvas-dock')?.getBoundingClientRect();
       if (dock?.width) left = Math.max(left, dock.right - bounds.left + 16);
+      // The demo guide floats over the lower left; blocks shown for it stay beside it.
+      const guide = document.querySelector('.executable-demo:not(.minimized)')?.getBoundingClientRect();
+      if (guide?.width && guide.width < bounds.width / 2 && guide.left < bounds.left + bounds.width / 2) left = Math.max(left, guide.right - bounds.left + 16);
     }
     return { top, bottom, left, right };
   };
@@ -330,6 +333,16 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
       }
     }
     return flow.setViewport({ x: inset.left + (width - content.width * zoom) / 2 - content.x * zoom, y: inset.top + (height - content.height * zoom) / 2 - content.y * zoom, zoom }, { duration });
+  };
+  // Blocks shown together stay readable: when they do not fit at 45% they start at the top left, the rest a scroll away.
+  const showBlocks = (visible: Node[], duration = 450) => {
+    const bounds = area.current?.getBoundingClientRect();
+    if (!bounds || !visible.length) return;
+    const inset = canvasInsets(), content = flow.getNodesBounds(visible);
+    const width = Math.max(160, bounds.width - inset.left - inset.right), height = Math.max(160, bounds.height - inset.top - inset.bottom);
+    const zoom = Math.max(.45, Math.min(1, width / (content.width + 40), height / (content.height + 40)));
+    const x = inset.left + Math.max(0, (width - content.width * zoom) / 2), y = inset.top + Math.max(0, (height - content.height * zoom) / 2);
+    return flow.setViewport({ x: x - content.x * zoom, y: y - content.y * zoom, zoom }, { duration });
   };
   const readonly = Boolean(historyCanvas || proposal);
   const displayed = useMemo(() => previewCanvas(historyCanvas || detail.project.canvas, historyCanvas ? undefined : proposal), [historyCanvas, detail.project.canvas, proposal]);
@@ -525,6 +538,26 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
     return () => clearTimeout(timer);
   }, [focusRequest, computedNodes]);
   useEffect(() => { if (focusId) setFocusRequest(focusId); }, [focusId]);
+  // Shows a set of blocks together once they are on the canvas; a block in a closed group is shown by its group.
+  useEffect(() => { if (frame?.ids.length) setFrameRequest(frame.ids); }, [frame]);
+  useEffect(() => {
+    // Automatic spacing settles first, so the blocks are shown where they end up.
+    if (!frameRequest || animatingLayout) return;
+    const timer = setTimeout(() => {
+      if (reflowWriting.current) return;
+      const nodes = displayed.canvas.nodes, shown = new Map<string, Node>();
+      for (const id of frameRequest) {
+        let node = nodes.find(item => item.id === id);
+        if (!node) return;
+        while (node && !flow.getNode(node.id)) node = node.parentId ? nodes.find(item => item.id === node!.parentId) : undefined;
+        const visible = node && flow.getNode(node.id);
+        if (visible) shown.set(visible.id, visible);
+      }
+      if (shown.size) void showBlocks([...shown.values()]);
+      setFrameRequest(null);
+    }, 240);
+    return () => clearTimeout(timer);
+  }, [frameRequest, computedNodes, cardSizes, animatingLayout]);
   const edges = useMemo<RoutedEdge[]>(() => {
     // Original endpoints remain visible in expanded frames; collapsed ancestors
     // aggregate only their hidden contributions.

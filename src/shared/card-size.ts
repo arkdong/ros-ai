@@ -1,6 +1,7 @@
+import type { Canvas, CanvasNode } from './types.js';
 import { splitSources } from './agent-work.js';
 import { purposeText } from './card-outcome.js';
-import { GROUP_PREVIEW_MEMBERS } from './groups.js';
+import { GROUP_PREVIEW_MEMBERS, groupPreviewMembers } from './groups.js';
 
 export const CARD_DEFAULT_WIDTH = 408;
 export const CARD_MIN_WIDTH = 320;
@@ -44,4 +45,10 @@ export function estimatedGroupHeight(node: { width?: number; title: string; desc
   const shown = listed.slice(0, GROUP_PREVIEW_MEMBERS), more = members > shown.length ? 25 : 0;
   const rows = shown.reduce((sum, item, index) => sum + Math.min(2, lines(item.title, 6.5, 70)) * 18 + (index ? 7 : 0), more);
   return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, 101 + Math.min(2, lines(node.title, 9, 40)) * 24 + (node.description ? 20 : 0) + rows));
+}
+/** A block's footprint before the browser measures it, for laying out a tree of new blocks on the server. */
+export function estimatedSize(canvas: Canvas, node: CanvasNode) {
+  return { width: cardWidth(node), height: node.kind === 'group'
+    ? estimatedGroupHeight(node, groupPreviewMembers(canvas, node.id), canvas.nodes.filter(item => item.parentId === node.id).length)
+    : Math.max(CARD_MIN_HEIGHT, estimatedCardHeight(node)) };
 }
