@@ -1,0 +1,5 @@
+Generated with the built-in image-generation tool on 2026-10-10.
+Asset: research-direction.png
+Purpose: illustrative researcher in the slide 6 concept diagram.
+
+Use case: illustration-story. Asset type: a researcher vignette at the top of an editable university presentation diagram. A thoughtful adult researcher develops a question while looking at an open notebook at a small desk, holding a pencil lightly, looking engaged and curious. One person only, wearing everyday sage-green clothing. Show head, torso, hands, open notebook and a little of the desk, centered in a landscape 3:2 composition, tightly framed so the person is legible as a small illustration. Pure white background, refined thin charcoal linework, restrained sage green and pale olive accents, natural skin tone, minimal softly shaded forms. Polished editorial illustration, matching a modern research-team slide series. No lab coat, glassware, floating symbols, question marks, text, letters, numbers, logos, watermark or border. Leave out plants and extra desk objects. This is an illustrative researcher, not a real person.

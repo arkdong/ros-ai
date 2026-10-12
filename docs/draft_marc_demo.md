@@ -1,0 +1,63 @@
+---
+type:
+parents:
+---
+Research ideas rarely develop in a single place. They take shape across conversations, papers, experiments and tools, guided by a researcher’s intuition, interests and prior work. As AI becomes part of this process, preserving the connections between these activities becomes increasingly important.
+
+> **Opening-slide cues (not spoken):** The ChatGPT conversation is visible on entry. On “papers”, click **→** to show the annotated paper in Zotero. On “experiments”, click **→** to show the SSH/Bash terminal and experiment results. On “tools”, click **→** to show the Overleaf editor. Hold this image while finishing the paragraph. The next **→** opens the shared-memory-vault slide. **←** retraces the images. The activity names can also be clicked directly.
+>
+> **Image credits:** The terminal is an illustrative session generated with the built-in image-generation tool. Its pi estimate (3.140592) and absolute error (0.001001) come from a local Python Monte Carlo calculation with 1,000,000 samples and seed 42; the SSH login and file-save messages are illustrative. The other images are public examples, not personal research captures: [ChatGPT / OpenAI demo via notai.jp, original 1920 × 1080 PNG](https://notai.jp/blog/chatgpt-deep-research/), [Zotero PDF reader](https://www.zotero.org/support/pdf_reader), [Overleaf example project](https://docs.overleaf.com/getting-started/your-first-project). Images are embedded in the HTML deck for offline presentation.
+
+In my own workflow, I have tried to address this through a shared memory vault that sits above individual project folders, preserving history, decisions and useful context across projects. A central memory agent draws on this information to coordinate work, send requests to project-specific conversations and oversee the resulting changes.
+
+> **Vault-slide cues (not spoken):** Show the selected real folders from Adam’s vault. Point to `08 Project/AISO` for detailed working notes and `13 Agent Memory/Projects/ros-ai/README.md` for durable project context. Explain that executable files live separately under `code/ros-ai`. The right-hand diagram shows the central memory agent drawing on that context and coordinating separate ros.ai and AISO conversations. The note is condensed for readability; it is not an Obsidian screenshot. Click **→** for the separate coordination slide.
+
+Yet much of the coordination still requires manual effort: bringing material from webpages, articles, code and papers into the agent through copied text, screenshots or computer interaction, then transferring its findings and changes back into the relevant tools. This arrangement helps maintain continuity, but moving information between tools and keeping the broader research context coherent remain challenges.
+
+> **Coordination-slide cues (not spoken):** The first view shows **copied text** moving from a webpage into the conversation. Click **→** for **screenshots** from a PDF reader, then **→** for **computer use**, with a pointer moving to the Methods section. Click **→** for **returning results**, where a draft moves back into an editor for review. These app views and snippets are illustrative, not live actions or claims about a specific paper. Pause here for the final sentence about continuity and coherent research context. The next **→** opens the teams-and-labs slide. **←** retraces the sequence; the four labels also select a view directly.
+
+The same challenge becomes more pronounced in research teams and labs, where knowledge must outlast any individual’s involvement. Research assistants and PhD students join, move between projects and eventually leave. New members need to understand not only existing methods and tools, but also the reasoning behind them. A successor may inherit files without knowing why particular decisions were made, which approaches failed or which questions remain unresolved. Differences in technical experience can further complicate both knowledge transfer and the adoption of AI tools.
+
+> **Teams-and-labs slide cues (not spoken):** Four subplots stay visible throughout. **A — Joining a lab** is highlighted on entry: a new researcher asks why a method was chosen. Click **→** for **B — Moving between projects**, showing context travelling with a researcher. Click **→** for **C — Leaving and handing over**, where the successor receives files but may lack the decisions, failed approaches and open questions behind them. Click **→** for **D — Different technical experience**, showing researchers comparing code and a visual interface. Finish the paragraph here. The next **→** opens the central research question. You can also click each subplot heading directly.
+>
+> **Illustration credit:** Four editorial illustrations generated with the built-in image-generation tool for this presentation. The people and short questions are illustrative. Assets and prompts are saved under `docs/assets/uva-dean-demo/team-*`; images are embedded for offline presentation.
+
+This raises a question beyond which model or tool to choose: **how can AI support research while preserving the context that gives it direction?** Tools such as Claude Code and Codex offer powerful capabilities, but researchers still have to assemble the relevant context, connect their tools and carry decisions forward. That context differs across disciplines and individual ways of working. A useful research environment should adapt to those differences while helping researchers develop their own questions, intuition and creative ideas.
+
+> **Central-question slide cues (not spoken):** The question and supporting sentence appear together. Pause on the question, then deliver the paragraph, including different ways of working and the researcher’s intuition and creativity. Click **→** to open the lessons slide.
+
+Our experience developing and evaluating agentic solutions within AISO and through work associated with ABN AMRO has highlighted the importance of explainability, traceability and transparency. Producing an answer is only part of the task. Researchers also need to inspect the supporting evidence, follow the history of an experiment and understand the limitations of a result. Reproducibility, the ability to work locally, privacy and control over external connections are equally important considerations.
+
+> **AURORA slide cues (not spoken):** The supplied architecture diagram stays fixed. Use the keyboard **→** or the small arrow on the slide to change highlights; **←** retraces them.
+>
+> 1. **Overview — on entry.** Deliver the opening two sentences with the whole diagram visible.
+> 2. **Supporting evidence — →** on “inspect the supporting evidence”. Approved source material, **Context Retrieval** and **Citations** are highlighted.
+> 3. **History — →** on “follow the history of an experiment”. The core stages, **Stage logs + Traceability**, **Audit Trace** and **Audit Store** are highlighted. AURORA's drafting history illustrates the corresponding need in research; the image is not an actual experiment log.
+> 4. **Limitations — →** on “understand the limitations of a result”. Highlight **KPI Evaluation**, **KPI Score**, **Guardrails**, **Policy Rules** and the **KPI Catalogue**. Human-signoff flags identify review requirements; they do not constitute completed human approval.
+> 5. **Researcher control — →** for the final sentence. Highlight the **Interface Layer**, **Guardrails** and **Policy Rules** as control boundaries. The caption lists reproducibility, working locally, privacy and external connections as broader research requirements. The next **→** opens the ros.ai proposal.
+>
+> **Visual source and scope:** Original 1920 × 1080 AURORA architecture image supplied by Adam as `aurora.png`, copied without pixel changes to `docs/assets/uva-dean-demo/aurora-architecture.png` and embedded in the HTML for offline presentation. Highlights are separate SVG overlays. The diagram matches the architecture shown on page 13 of `code/AURORA/deliverables/AURORA_presentation.pdf`. The project report describes audit and evaluation features in a proof of concept; the diagram is not evidence of completed human sign-off, durable production audit storage, fully local inference or privacy guarantees. Source details: `docs/assets/uva-dean-demo/aurora-visuals.sources.md`.
+
+Building on these experiences, **AISO Research proposes exploring this direction through ros.ai, a visual research sandbox for developing ideas with AI.** The aim is to connect research materials, conversations, decisions and experiment histories in an environment where researchers can build on their work without repeatedly reconstructing its context. Tool coordination and routine tasks could happen behind the scenes, while researchers retain control over their questions, methods and the structure of their exploration. The sandbox would also provide a practical setting for investigating how these capabilities can support research and learning.
+
+> **ros.ai walkthrough cues (not spoken):** This slide uses actual captures of the local app. The four labels and **→ / ←** select a view. Click any image to enlarge it; arrows still advance, and **Esc** closes the enlarged view.
+>
+> - **Canvas:** Introduce ros.ai over the existing Dutch AI adoption workspace. Point to the Action, saved figure and connected note challenging its interpretation. These are independent blocks in a researcher-controlled Group; connections do not schedule work.
+> - **Results — →:** On building on existing research, show the saved figure and its exact version. Its “Saved demonstration result” label remains visible. This is saved evidence, not a fresh AI answer or computation.
+> - **History — →:** Show the result's producing-attempt link and exact captured inputs. The current workspace record is a labelled tutorial import, with the original local execution retained in its provenance.
+> - **Control — →:** On “researchers retain control”, show the real Permissions dialog. “Ask every time” is selected. Explain the choices without changing them, then finish with research and learning. The next **→** opens the community slide.
+>
+> **Optional live demonstration:** Click **Open ros.ai**. With the local service running at `http://127.0.0.1:4310/`, choose **Dutch AI adoption** if needed. Expand **03 · Analyze and challenge**, open its calculation, then inspect **Results**, **History** and a saved figure's **Producing attempt, captured inputs & provenance**. Open **Ask every time** to explain permissions. The saved walkthrough needs no new model, search or code run. Return to the deck to continue.
+>
+> **Capture source:** Actual local ros.ai UI, 11 October 2026, existing **Dutch AI adoption** demonstration. JPEG screenshots are embedded for offline use. Source notes: `docs/assets/uva-dean-demo/ros-ai-ui.sources.md`.
+
+
+AISO Research would start with hands-on workshops and conversations with students, research assistants and early-career researchers. Using ros.ai as a sandbox, we would help participants explore their own research questions with AI while learning to assess its outputs critically. Their experience would guide the tools and support we develop.
+
+> **Community slide — one page, no animation:** Present AISO Research’s proposed contribution through workshops, researcher interviews and ros.ai as a sandbox for real research questions. Emphasize learning to assess AI outputs critically. Participants’ experience would guide the tools and support we develop.
+
+Our ambition is to help UvA prepare the next generation of researchers to work effectively with AI while developing their own questions and judgment. AISO Research could contribute a setting for experimentation and share what we learn to inform teaching and researcher support. We would welcome UvA’s guidance in shaping a first pilot around its priorities.
+
+> **UvA slide — one page, no animation:** Connect practical AI experience with strong research judgment and transparent methods. Explain how lessons could inform UvA’s teaching and researcher support, then invite guidance on shaping a first pilot. The pilot remains a proposal, not an agreed university commitment.
+
+To make the proposal concrete, we are considering two demonstration cases: a finance or FinTech use case, potentially drawing on the ABN AMRO work, and a case accessible to nontechnical users, potentially based on statistical work within AISO. Both remain provisional, with their scope to be agreed on Monday. Together, they would illustrate how preserved context, a visible research history and understandable experimentation can help students and researchers move from an initial question towards meaningful learning and useful research results.
