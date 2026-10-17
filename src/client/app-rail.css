@@ -42,3 +42,9 @@
   .app-rail-button { width:32px; height:32px; }
   .rail-page-inner { padding:24px 16px 48px; }
 }
+
+.app-rail-spacer { flex:1; }
+.app-rail-button:focus-visible { outline-color:var(--accent); }
+.rail-page-tabs { display:inline-flex; gap:4px; padding:3px; margin:-6px 0 18px; border:1px solid var(--line); border-radius:var(--radius-block); background:var(--paper); }
+.rail-page-tabs button { height:28px; padding:0 12px; border:0; border-radius:var(--radius-control); background:transparent; color:var(--muted); font-size:var(--text-sm); cursor:pointer; }
+.rail-page-tabs button.active { background:#f0f0ef; color:var(--ink); font-weight:600; }

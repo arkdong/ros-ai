@@ -70,7 +70,7 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
       </div></details>
     </div>
     <div className="note-side">
-      <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><MessageSquare size={13}/> Conversation</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button></div>
+      <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button></div>
       {side==='history'
         ? <div className="note-side-scroll runs-section">{!runs.length&&<div className="empty-small"><Clock3 size={22} strokeWidth={1.2}/><p>Each run of this node will appear here.</p></div>}{runs.map((run,index)=><RunDetails key={run.id} run={run} detail={detail} initialOpen={index===0} onAttach={onAttach} onCancel={onCancel} onRetry={onRetry} readOnly={readOnly}/>)}</div>
         : <div ref={thread} className="note-side-scroll conversation" data-testid="node-conversation">
