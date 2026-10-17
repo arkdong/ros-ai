@@ -5,6 +5,7 @@ import './tokens.css';
 import './styles.css';
 import { App } from './App';
 import { ErrorBoundary } from './ErrorBoundary';
+import './glass.css';
 
 if (/^\/waitlist(?:\/pitch)?\/?$/.test(window.location.pathname)) {
   window.location.replace('/app');

@@ -66,7 +66,7 @@ export function App(){
   const updateRightPanel=(panel:'assistant'|null)=>updateRosMode(current=>panel?(current==='full'?'full':'half'):'bar');
   const setRightPanel=(panel:'assistant'|null)=>setRos(panel?(rosMode==='full'?'full':'half'):'bar');
   const rightPanel=rosMode==='full'?'assistant':null;
-  useEffect(()=>{if(demoSession&&demoSession.scenario!=='workflow'&&!readSaved('demo-assistant-introduced',false)){saveLocal('demo-assistant-introduced',true);setRos('half');}},[demoSession?.projectId]);
+  useEffect(()=>{if(demoSession&&demoSession.scenario!=='workflow'&&!readSaved('demo-assistant-introduced',false)){saveLocal('demo-assistant-introduced',true);setRos('full');}},[demoSession?.projectId]);
   const assistantOpen=rosMode!=='bar';
   const setAssistantOpen=(open:boolean)=>setRightPanel(open?'assistant':null);
   const selectedProjectTitle=detail?.project.id===projectId?demoDisplayTitle(detail.project):projects.find(project=>project.id===projectId)&&demoDisplayTitle(projects.find(project=>project.id===projectId)!);
