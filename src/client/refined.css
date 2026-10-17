@@ -124,3 +124,71 @@
 .rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #ececea; }
 .rail-page .connection-state { font-size: 13px; }
 .rail-page .resources-panel { border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
+
+/* Code view: the scrollbar sits on the sheet's edge and both columns keep the same 28px margin. */
+.code-modal { padding-right: 0; }
+.code-modal > .modal-heading, .code-modal > .file-bar { margin-right: 28px; }
+.code-block { padding-right: 28px; }
+
+/* Scrollbars in sheets: thin, rounded and kept clear of the corners. */
+.modal::-webkit-scrollbar, .modal *::-webkit-scrollbar { width: 12px; height: 12px; }
+.modal::-webkit-scrollbar-track, .modal *::-webkit-scrollbar-track { background: transparent; }
+.modal::-webkit-scrollbar-thumb, .modal *::-webkit-scrollbar-thumb { border: 4px solid transparent; border-radius: 999px; background: rgba(0, 0, 0, .16) padding-box; }
+.modal::-webkit-scrollbar-thumb:hover, .modal *::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, .3); }
+.modal::-webkit-scrollbar-corner, .modal *::-webkit-scrollbar-corner { background: transparent; }
+.modal::-webkit-scrollbar-track { margin: 20px 0; }
+.data-viewer .data-table-wrap::-webkit-scrollbar-track { margin: 0 12px; }
+@supports not selector(::-webkit-scrollbar) { .modal, .modal * { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, .2) transparent; } }
+
+/* Tables: values stay on one line, header on a calm grey. */
+.data-viewer .data-table-wrap { border-color: var(--card-line); border-radius: 12px; }
+.data-viewer th { background: #f6f6f4; }
+.data-viewer th button { padding: 10px 14px; font-size: 13px; }
+.data-viewer td { padding: 9px 14px; overflow-wrap: break-word; vertical-align: middle; }
+.data-viewer .data-table th, .data-viewer .data-table td { border-color: #ececea; }
+
+/* Folded detail sections: one quiet heading style with a chevron, content in soft panels. */
+.artifact-provenance, .artifact-more { margin: 0; padding: 0; border-top: 1px solid var(--card-divider); font-size: 13px; }
+.artifact-provenance + .artifact-more { margin-top: 0; }
+.artifact-provenance:first-of-type { margin-top: 24px; }
+.artifact-provenance > summary, .artifact-more > summary, .run-section > summary {
+  display: flex; align-items: center; gap: 8px; padding: 14px 0; list-style: none; cursor: pointer;
+  color: var(--body); font-size: 13px; font-weight: 500;
+}
+.artifact-provenance > summary::-webkit-details-marker, .artifact-more > summary::-webkit-details-marker, .run-section > summary::-webkit-details-marker { display: none; }
+.artifact-provenance > summary::before, .artifact-more > summary::before, .run-section > summary::before {
+  content: ''; width: 6px; height: 6px; margin: 0 3px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .12s; opacity: .7; flex-shrink: 0;
+}
+.artifact-provenance[open] > summary::before, .artifact-more[open] > summary::before, .run-section[open] > summary::before { transform: rotate(45deg); }
+.artifact-provenance > summary:hover, .artifact-more > summary:hover, .run-section > summary:hover { color: var(--ink); }
+.artifact-provenance[open] > summary, .artifact-more[open] > summary { color: var(--ink); }
+.artifact-provenance[open], .artifact-more[open] { padding-bottom: 18px; }
+.artifact-provenance > p { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+.artifact-provenance > p:first-of-type { padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafaf9; color: var(--body); font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.artifact-provenance > button { margin: 0 0 14px; }
+.artifact-provenance pre, .run-section pre { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafaf9; font-size: 12px; line-height: 1.6; }
+.artifact-more > div:first-of-type { margin-bottom: 12px; }
+
+/* History runs: a status line, the request as the main text, details folded below. */
+.note-view .run-card { margin: 0 0 12px; border: 1px solid var(--card-line); border-radius: 12px; background: #fff; box-shadow: var(--card-shadow); }
+.note-view .run-card > summary { gap: 10px; padding: 14px 16px; cursor: pointer; }
+.note-view .run-card > summary strong { font-size: 14px; font-weight: 600; }
+.note-view .run-card > summary small { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.note-view .run-card > summary > svg, .note-view .run-card > summary > .run-mode { color: var(--muted); }
+.note-view .run-card[open] > summary { border-bottom-color: var(--card-divider); }
+.note-view .run-card .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.note-view .run-card .status-dot.completed { background: var(--ok); }
+.note-view .run-card .status-dot.failed, .note-view .run-card .status-dot.interrupted, .note-view .run-card .status-dot.cancelled { background: var(--fail); }
+.note-view .run-card .status-dot.running, .note-view .run-card .status-dot.queued { background: var(--wait); }
+.note-view .run-body { padding: 14px 16px 4px; }
+.note-view .run-request { margin: 0 0 10px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+.note-view .run-body > .row .tag { max-width: 100%; border: 0; border-radius: 999px; padding: 3px 10px; background: #eef1f5; color: #46536a; font-size: 12px; word-break: normal; }
+.note-view .run-section { margin: 12px 0 0; padding: 0; border-top: 1px solid var(--card-divider); }
+.note-view .run-section + .run-section { margin-top: 0; }
+.note-view .run-section[open] { padding-bottom: 12px; }
+.note-view .run-section h4 { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--body); }
+.note-view .run-section .capture-meta, .note-view .run-section .subtle, .note-view .run-section dl { font-size: 12.5px; color: var(--muted); }
+.note-view .note-history-toggle.active { border-color: #dcdcd8; color: var(--ink); }
+/* The sticky title covers the sheet's top padding too, so scrolled content never shows above it. */
+.artifact-modal:has(.artifact-viewer) { padding-top: 0; }
+.artifact-modal:has(.artifact-viewer) > .modal-heading { top: 0; margin: 0 -30px 10px; padding: 26px 30px 12px; }
