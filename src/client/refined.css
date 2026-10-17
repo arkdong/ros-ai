@@ -61,12 +61,46 @@
 .note-view .note-composer-row { gap: 10px; margin-top: 10px; }
 .note-view .note-composer .provider-note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
 
-/* The block's file sits inside the heading: one block for title and location. */
-.node-modal > .modal-heading:has(+ .file-bar) { padding-bottom: 6px; border-bottom: 0; }
-.node-modal > .file-bar { margin: 0; padding: 0 28px 18px; gap: 8px; border-radius: 0; background: #fff; border-bottom: 1px solid var(--card-divider); color: var(--muted); font-size: 13px; }
-.node-modal > .file-bar code { flex: 0 1 auto; padding: 0; background: none; color: var(--muted); font-size: 12.5px; }
-.node-modal > .file-bar .open-in { margin-left: auto; }
-.node-modal > .file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: 13px; }
+/* A block's file sits under its title as one quiet line, never a grey band. */
+.file-bar { margin: -6px 0 18px; padding: 0 0 16px; gap: 8px; border-radius: 0; background: none; border-bottom: 1px solid var(--card-divider); color: var(--muted); font-size: 13px; }
+.file-bar code { flex: 0 1 auto; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12.5px; }
+.file-bar .open-in { margin-left: auto; }
+.file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: 13px; }
+.modal > .modal-heading:has(+ .file-bar) { border-bottom: 0; }
+.node-modal > .modal-heading:has(+ .file-bar) { padding-bottom: 6px; }
+.node-modal > .file-bar { margin: 0; padding: 0 28px 18px; background: #fff; }
+
+/* Code view. */
+.code-modal { padding: 24px 28px 12px; }
+.code-modal > .modal-heading { margin-bottom: 14px; }
+.code-modal > .modal-heading h2 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+.code-block { gap: 32px; padding: 0 0 16px; }
+.code-results { padding-left: 28px; border-left-color: var(--card-divider); }
+.code-section { border-top-color: var(--card-divider); }
+.code-section h4, .code-results-head h4 { font-size: 11px; letter-spacing: .08em; color: var(--muted); }
+.code-results-head { margin-bottom: 4px; }
+.code-results > p.subtle { margin: 0 0 4px; color: var(--muted); }
+.code-output { padding: 22px 0 24px; border-bottom-color: var(--card-divider); }
+.code-output:last-child { border-bottom: 0; }
+/* The output's kind is a small label above its title, so the title leads. */
+.code-output-head { flex-direction: column-reverse; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
+.code-output-head strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; line-height: 1.4; }
+.code-output-head small, .result-kind { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #eef1f5; color: #46536a; font-size: 11px; font-weight: 500; letter-spacing: .02em; text-transform: capitalize; }
+.code-results .metric-value { margin: 4px 0 2px; }
+.code-results .result-actions { margin-top: 14px; }
+
+/* Notices sit in a soft panel aligned with the editor, not behind a side bar. */
+.runtime-blocker, .code-error-hint { margin: 0 0 12px; padding: 10px 14px; border: 1px solid #f0e3c4; border-left: 1px solid #f0e3c4; border-radius: 10px; background: #fcf8ee; color: #6d5214; font-size: 13px; line-height: 1.5; }
+.code-error-hint { border-color: #f1d4cd; background: #fdf4f2; color: #7a2a1d; }
+
+/* Tags read as labels: filled, borderless pills, so they never look like buttons. */
+.artifact-version-line { gap: 8px; margin: 4px 0 18px; color: var(--muted); }
+.artifact-version-line .tag, .artifact-dialog-meta .tag { border: 0; border-radius: 999px; padding: 3px 10px; background: #eef1f5; color: #46536a; font-size: 12px; font-weight: 500; }
+.artifact-version-line .tag:first-child { text-transform: capitalize; }
+.artifact-version-line > span:not(.tag) { margin-left: 4px; }
+.artifact-version-line code { padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; }
+.artifact-dialog-meta { margin-bottom: 10px; }
+.artifact-dialog-meta .tag { background: #fbf3e0; color: #7a5a14; }
 
 /* The guided demo card. */
 .executable-demo { border: 1px solid var(--card-line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--sheet-shadow); }
