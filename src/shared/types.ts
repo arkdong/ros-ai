@@ -1,7 +1,7 @@
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
 export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding';
 /** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
-export type AgentLink = {runtime:'claude'|'codex'; turnId:string};
+export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 export type NotebookDocument = {sessionId?:string; path:string};
 export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };

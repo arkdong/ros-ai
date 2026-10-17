@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { InferenceConnectionStatus } from '../shared/inference.js';
 import { modelMaker } from '../shared/model-settings.js';
 import type { UsageRecord } from '../shared/types.js';
-import type { ModelAdapter, ModelInfo, ModelRequest, ModelResponse } from './providers.js';
+import { wireMessages, wireTools, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse } from './providers.js';
 import { Store, StoreError } from './store.js';
 import { captureChatCompletion } from './response-normalization.js';
 
@@ -141,8 +141,9 @@ export class InferenceConnections{
   }
 }
 
-/** Text-only chat-completions transport; no shell, tools, catalog probes or
- * automatic fallback. prepare() reads declarations and performs no network. */
+/** Chat-completions transport; no shell, catalog probes or automatic fallback.
+ * An agent loop may send ros.ai's tool definitions: the model only names calls,
+ * which ros.ai validates and runs. prepare() reads declarations and performs no network. */
 export class CompatibleHttpAdapter implements ModelAdapter{
   private prepared?:{config:PrivateConnection;revision:number};
   constructor(readonly provider:string,readonly model:string,private readonly snapshot:()=>{config:PrivateConnection;revision:number},private readonly active:Map<string,number>){}
@@ -155,7 +156,12 @@ export class CompatibleHttpAdapter implements ModelAdapter{
   describeRequest(request:ModelRequest):Record<string,unknown>{
     const {config}=this.prepared??this.snapshot();
     if(!Number.isInteger(request.maxOutputTokens)||request.maxOutputTokens<1||request.maxOutputTokens>config.caps.maxOutputTokens)throw new StoreError('Requested output exceeds this connection completion cap.');
-    if(!Array.isArray(request.messages)||request.messages.some(message=>!message||!['system','user','assistant'].includes(message.role)||typeof message.content!=='string'))throw new StoreError('Only bounded scalar-text messages are supported by this connection.');
+    if(!Array.isArray(request.messages)||request.messages.some(message=>!message||!['system','user','assistant',...(request.tools?['tool']:[])].includes(message.role)||typeof message.content!=='string'))throw new StoreError('Only bounded scalar-text messages are supported by this connection.');
+    if(request.tools){
+      const wire={model:this.model,messages:wireMessages(request.messages),max_tokens:request.maxOutputTokens,n:1,stream:false,tools:wireTools(request.tools),tool_choice:'auto'};
+      if(Buffer.byteLength(JSON.stringify(wire),'utf8')>config.caps.maxInputBytes)throw new StoreError('The complete text request exceeds this connection input-byte cap.');
+      return wire;
+    }
     const textMessages=request.messages.map(message=>({role:message.role,content:message.content}));
     const messages=request.schema?[{role:'system',content:`Return one JSON object matching this response contract, without Markdown fences or surrounding prose. It is a proposal only, never execution or permission. JSON Schema: ${JSON.stringify(request.schema)}`},...textMessages]:textMessages;
     const wire={model:this.model,messages,max_tokens:request.maxOutputTokens,n:1,stream:false};
@@ -177,7 +183,7 @@ export class CompatibleHttpAdapter implements ModelAdapter{
       const chunks:Uint8Array[]=[];let bytes=0;
       for(;;){const result=await reader.read();if(result.done)break;bytes+=result.value.byteLength;if(bytes>config.caps.maxResponseBytes){await reader.cancel();throw new StoreError('Inference response exceeded its configured byte cap.',503);}chunks.push(result.value);}
       let result:any;try{result=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new StoreError('Configured inference endpoint returned invalid transport JSON.',503);}
-      const captured=captureChatCompletion(result,{provider:this.provider,requestedModel:this.model,modelVersion:false,requireExactModel:true,responseContract:request.schema?'application-validated-json':'text',wireRequest:wire});
+      const captured=captureChatCompletion(result,{provider:this.provider,requestedModel:this.model,modelVersion:false,requireExactModel:true,responseContract:request.tools?'agent-tool-calls':request.schema?'application-validated-json':'text',wireRequest:wire,...(request.tools?{allowToolCalls:true}:{})});
       return {...captured,metadata:{...captured.metadata,connectionId:this.provider,requestedModel:this.model,reportedModel:captured.model,destination:endpoint(config.endpoint).destination,endpointOrigin:endpoint(config.endpoint).url.origin,processingVerified:false,responseBytes:bytes,outputLimitBasis:'Operator-declared output upper bound requested as max_tokens; hidden/billed reasoning behavior is unverified.'}};
     }catch(error){if(error instanceof StoreError)throw error;throw new StoreError(combined.aborted?'Inference stopped or reached its deadline. Outcome may be uncertain; no automatic retry occurred.':'Configured inference connection failed. No automatic retry occurred.',503);}
     finally{const remaining=(this.active.get(this.provider)??1)-1;if(remaining>0)this.active.set(this.provider,remaining);else this.active.delete(this.provider);}

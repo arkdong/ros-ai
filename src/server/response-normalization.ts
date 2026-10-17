@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import type {ModelResponse} from './providers.js';
+import type {ModelResponse,ToolCall} from './providers.js';
 import {presentAssistantResponse,type AssistantResponsePresentation} from '../shared/assistant-presentation.js';
 
 const CAPTURE_CHARACTERS=100000;
@@ -11,7 +11,7 @@ const finiteCount=(value:unknown):value is number=>typeof value==='number'&&Numb
  * Capture limits are separate from the application action contract. Successful
  * HTTP responses must reach the usage ledger before a consumer rejects them.
  */
-export function captureChatCompletion(result:unknown,options:{provider:string;requestedModel:string;modelVersion:boolean;responseContract:string;wireRequest:Record<string,unknown>;functionName?:string;requireExactModel?:boolean}):ModelResponse {
+export function captureChatCompletion(result:unknown,options:{provider:string;requestedModel:string;modelVersion:boolean;responseContract:string;wireRequest:Record<string,unknown>;functionName?:string;requireExactModel?:boolean;allowToolCalls?:boolean}):ModelResponse {
   const envelope=record(result),choices=Array.isArray(envelope.choices)?envelope.choices:[],choice=record(choices[0]),message=record(choice.message);
   const visible=boundedString(message.content,CAPTURE_CHARACTERS)??'';
   const visibleLength=typeof message.content==='string'?message.content.length:null;
@@ -20,6 +20,13 @@ export function captureChatCompletion(result:unknown,options:{provider:string;re
   const argumentsText=expectedCall?record(record((calls as unknown[])[0]).function).arguments as string:null;
   const rawContent=options.functionName?argumentsText:typeof message.content==='string'?message.content:null;
   const content=boundedString(rawContent,CAPTURE_CHARACTERS)??'';
+  // An agent loop's tool requests: names and argument text only, at most eight per response.
+  const toolCalls:ToolCall[]=options.allowToolCalls&&Array.isArray(calls)?calls.slice(0,8).flatMap((item,index)=>{
+    const call=record(item),fn=record(call.function);
+    if(typeof fn.name!=='string'||!/^[a-z][a-z0-9_]{0,63}$/i.test(fn.name))return [];
+    const args=typeof fn.arguments==='string'?fn.arguments:fn.arguments&&typeof fn.arguments==='object'?JSON.stringify(fn.arguments):'{}';
+    return [{id:boundedString(call.id,256)||`call_${index+1}`,name:fn.name,arguments:args.slice(0,CAPTURE_CHARACTERS)}];
+  }):[];
   const reportedModel=boundedString(envelope.model,256),model=reportedModel??options.requestedModel;
   const usageRecord=record(envelope.usage),input=usageRecord.prompt_tokens,output=usageRecord.completion_tokens;
   const usage=finiteCount(input)&&finiteCount(output)?{inputTokens:input,outputTokens:output}:null;
@@ -37,10 +44,11 @@ export function captureChatCompletion(result:unknown,options:{provider:string;re
   if(choices.length!==1)responseError='Provider returned an unexpected number of response choices. No proposed action was accepted.';
   else if(options.requireExactModel&&reportedModel!==null&&reportedModel!==options.requestedModel)responseError='Provider returned a different model than requested. No alternate result or proposed action was accepted.';
   else if(options.functionName&&!expectedCall)responseError='Provider returned an unexpected tool request. Nothing was authorized or executed.';
-  else if(!options.functionName&&calls!==undefined&&calls!==null&&(!Array.isArray(calls)||calls.length>0))responseError='Provider returned unsolicited tool requests. Nothing was executed.';
+  else if(options.allowToolCalls&&toolCalls.length){ /* Tool requests stand in for text; ros.ai validates each one. */ }
+  else if(!options.functionName&&!options.allowToolCalls&&calls!==undefined&&calls!==null&&(!Array.isArray(calls)||calls.length>0))responseError='Provider returned unsolicited tool requests. Nothing was executed.';
   else if(rawContent===null||!rawContent.trim())responseError='Provider returned no text response. The response receipt and any reported usage remain saved.';
   else if(rawContent.length>CAPTURE_CHARACTERS)responseError='Provider response exceeds the bounded capture contract. Its bounded preview and reported usage remain saved; no proposed action was accepted.';
-  return {content,model,modelVersion:options.modelVersion?reportedModel:null,usage,metadata:{
+  return {content,model,modelVersion:options.modelVersion?reportedModel:null,usage,...(toolCalls.length?{toolCalls}:{}),metadata:{
     provider:options.provider,requestId:boundedString(envelope.id,256),finishReason:boundedString(choice.finish_reason,80),systemFingerprint:boundedString(envelope.system_fingerprint,256),
     providerUsage:envelope.usage?numericUsage(envelope.usage):null,responseContract:options.responseContract,wireRequest:options.wireRequest,
     rawVisibleResponse:{content:visible,characters:visibleLength,truncated:visibleLength!==null&&visibleLength>CAPTURE_CHARACTERS,limitCharacters:CAPTURE_CHARACTERS},
@@ -55,6 +63,7 @@ export function captureChatCompletion(result:unknown,options:{provider:string;re
  */
 export function assertModelResponseUsable(response:ModelResponse):void {
   if(typeof response.metadata.responseError==='string')throw new Error(response.metadata.responseError);
+  if(response.toolCalls?.length)return;
   if(typeof response.content!=='string'||!response.content.trim())throw new Error('Provider returned no text response. No proposed action was accepted.');
   if(response.content.length>CAPTURE_CHARACTERS)throw new Error('Provider response exceeds the bounded contract. No proposed action was accepted.');
 }

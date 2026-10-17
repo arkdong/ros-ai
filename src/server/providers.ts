@@ -3,8 +3,13 @@ import {captureChatCompletion} from './response-normalization.js';
 
 export type ModelCapabilities = { structuredOutput:boolean; cancellation:'abort-request'; toolCalling:boolean; modelVersion:boolean };
 export type ModelInfo = { id:string; contextTokens:number; inputUsdPerToken:number; outputUsdPerToken:number; capabilities:ModelCapabilities; metadata:Record<string,unknown> };
-export type ModelRequest = { messages:ModelMessage[]; maxOutputTokens:number; schema?:Record<string,unknown>; responseName?:string; responseMode?:'text-json' };
-export type ModelResponse = { content:string; model:string; modelVersion:string|null; usage:{inputTokens:number;outputTokens:number}|null; metadata:Record<string,unknown> };
+/** One function call a model asked for. ros.ai validates and runs it; the model never does. */
+export type ToolCall = { id:string; name:string; arguments:string };
+/** Plain messages, plus the assistant tool calls and tool results an agent loop sends back. */
+export type ChatMessage = ModelMessage | { role:'assistant'; content:string; toolCalls:ToolCall[] } | { role:'tool'; toolCallId:string; content:string };
+export type ModelTool = { name:string; description:string; parameters:Record<string,unknown> };
+export type ModelRequest = { messages:ChatMessage[]; maxOutputTokens:number; schema?:Record<string,unknown>; responseName?:string; responseMode?:'text-json'; tools?:ModelTool[] };
+export type ModelResponse = { content:string; model:string; modelVersion:string|null; usage:{inputTokens:number;outputTokens:number}|null; metadata:Record<string,unknown>; toolCalls?:ToolCall[] };
 export type ModelInputTokenBound = { tokens:number; basis:string };
 export interface ModelAdapter {
   readonly provider:string;
@@ -44,6 +49,16 @@ export class DeferredAgentRuntime implements AgentRuntime {
   async *run(_input:{request:string;materials:{content:string;reference:string}[]},_signal:AbortSignal):AsyncIterable<RuntimeEvent> {
     yield {type:'error',message:`${this.id} runtime integration is deferred. No external harness was invoked.`};
   }
+}
+
+/** The OpenAI chat-completions shape that Token Factory, Ollama and LM Studio all accept. */
+export function wireMessages(messages:ChatMessage[]):Record<string,unknown>[] {
+  return messages.map(message=>message.role==='tool'?{role:'tool',tool_call_id:message.toolCallId,content:message.content}
+    :'toolCalls' in message&&message.toolCalls.length?{role:'assistant',content:message.content||null,tool_calls:message.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:call.arguments}}))}
+    :{role:message.role,content:message.content});
+}
+export function wireTools(tools:ModelTool[]):Record<string,unknown>[] {
+  return tools.map(item=>({type:'function',function:{name:item.name,description:item.description,parameters:item.parameters}}));
 }
 
 // Verified by an authenticated, read-only catalog GET on 2026-09-21. Rechecked
@@ -134,6 +149,10 @@ export class NebiusAdapter implements ModelAdapter {
   }
   describeRequest(request:ModelRequest):Record<string,unknown> {
     if (!this.info) throw new Error('Model catalog must be validated before inference.');
+    if(request.tools){
+      if(!this.info.capabilities.toolCalling)throw new Error('The selected model does not declare tool calling in the Token Factory catalog. Choose another model for the agent.');
+      return {model:this.model,messages:wireMessages(request.messages),max_completion_tokens:request.maxOutputTokens,n:1,temperature:0.3,tools:wireTools(request.tools),tool_choice:'auto'};
+    }
     if(request.responseMode==='text-json') return {model:this.model,messages:[{role:'system',content:`Return one JSON object matching this response contract. No Markdown fences or surrounding prose. This is a proposal only, never execution or permission. JSON Schema: ${JSON.stringify(request.schema)}`},...request.messages],max_completion_tokens:request.maxOutputTokens,n:1,temperature:0.3};
     if (request.schema && !this.info.capabilities.structuredOutput && !this.info.capabilities.toolCalling) throw new Error('Selected model declares neither structured output nor tool calling.');
     const toolMode = Boolean(request.schema && !this.info.capabilities.structuredOutput);
@@ -144,11 +163,11 @@ export class NebiusAdapter implements ModelAdapter {
   }
   async complete(request:ModelRequest,signal:AbortSignal):Promise<ModelResponse> {
     const body=this.describeRequest(request);
-    const toolMode=Boolean(request.schema && request.responseMode!=='text-json' && !this.info!.capabilities.structuredOutput);
+    const toolMode=Boolean(!request.tools && request.schema && request.responseMode!=='text-json' && !this.info!.capabilities.structuredOutput);
     const responseName=request.responseName ?? 'ros_ai_response';
     const result = await requestJson(`${NEBIUS_BASE}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${this.activeKey}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal});
     return captureChatCompletion(result,{provider:this.provider,requestedModel:this.model,modelVersion:false,requireExactModel:true,
-      responseContract:request.responseMode==='text-json'?'application-validated-json':toolMode?'function-call':request.schema?'json-schema':'text',wireRequest:body,...(toolMode?{functionName:responseName}:{})});
+      responseContract:request.tools?'agent-tool-calls':request.responseMode==='text-json'?'application-validated-json':toolMode?'function-call':request.schema?'json-schema':'text',wireRequest:body,...(request.tools?{allowToolCalls:true}:toolMode?{functionName:responseName}:{})});
   }
 }
 
