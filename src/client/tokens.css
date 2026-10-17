@@ -1,0 +1,56 @@
+/* The one source for ros.ai's colours, type sizes, radii and depth.
+   New and touched styles use these variables; older rules move over as they are edited. */
+:root {
+  /* Neutrals */
+  --ink: #171717;
+  --body: #4a4a4a;
+  --muted: #6b6b6b;
+  --line: #dedede;
+  --line-soft: #ececea;
+  --canvas: #f7f7f7;
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --sidebar: #f7f7f7;
+
+  /* Lime is the keyboard focus ring. */
+  --accent: #b7ef32;
+  --accent-light: #f5f5f5;
+  --accent-ink: #171717;
+
+  /* Status: only as a 6px dot or a one-word label. */
+  --ok: #2f7d4f;
+  --wait: #b45309;
+  --fail: #b42318;
+
+  /* Signal, from the logo ring: only on Ros (mark, glow under the bar, edge of its open panel). */
+  --signal-start: #d6ff3c;
+  --signal-mid: #7ad80c;
+  --signal-end: #16901a;
+  --signal: linear-gradient(90deg, var(--signal-start), var(--signal-mid) 45%, var(--signal-end));
+  --signal-glow: 0 4px 22px rgba(122, 216, 12, .16);
+
+  --chart-1: #3d6f8f;
+
+  /* Type */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+
+  /* Radius and depth */
+  --radius-control: 6px;
+  --radius-block: 8px;
+  --radius-view: 12px;
+  --shadow-block: 0 1px 2px rgba(0, 0, 0, .04);
+  --shadow-float: 0 10px 32px rgba(0, 0, 0, .10);
+  --shadow-view: 0 18px 50px rgba(0, 0, 0, .14);
+  --glass: rgba(255, 255, 255, .82);
+  --glass-blur: blur(18px) saturate(1.4);
+
+  /* Legacy names some rules still read */
+  --green: var(--muted);
+  --red: var(--ink);
+  --boundary: var(--line);
+}

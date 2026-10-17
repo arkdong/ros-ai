@@ -287,13 +287,13 @@ function FlowCanvas({ notices, detail, selectedId, onSelect, onInspect, onArtifa
         const overlay = element.getBoundingClientRect();
         if (overlay.height) top = Math.max(top, overlay.bottom - bounds.top + 22);
       }
-      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .selection-toolbar, .project-floating-actions, .edge-selection') || []) {
+      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .selection-toolbar, .project-floating-actions, .edge-selection, .ros-dock') || []) {
         const overlay = element.getBoundingClientRect();
         if (overlay.height && overlay.top > bounds.top + bounds.height / 2) bottom = Math.max(bottom, bounds.bottom - overlay.top + 22);
       }
       // Desktop panels shrink the canvas. On narrow windows they overlay it;
       // only their actual intersection is reserved, never their width twice.
-      const panel = area.current!.closest('.workspace-body')?.querySelector('.assistant-panel');
+      const panel = area.current!.closest('.workspace-body')?.querySelector('.assistant-panel:not(.ros-half)');
       if (panel) {
         const overlay = panel.getBoundingClientRect();
         if (overlay.left < bounds.right && overlay.right > bounds.left && overlay.bottom > bounds.top) right = Math.max(right, bounds.right - Math.max(bounds.left, overlay.left) + 22);
