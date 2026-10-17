@@ -53,7 +53,20 @@
 .node-modal > .modal-heading h2 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
 .note-view .note-main { padding: 32px 48px 40px; }
 .note-view .note-side { border-left: 1px solid var(--card-divider); background: #fbfbfa; }
-.note-view .note-composer { border-radius: var(--radius-card); }
+.note-view .note-side-heading { padding: 16px 20px; }
+.note-view .note-side-scroll { padding: 18px 20px; }
+.note-view .note-composer { margin: 0 16px 16px; padding: 14px 16px 12px; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: #fff; box-shadow: var(--card-shadow); }
+.note-view .note-composer:focus-within { border-color: #d4d4d0; }
+.note-view .note-composer textarea { min-height: 52px; padding: 0 2px; line-height: 1.55; }
+.note-view .note-composer-row { gap: 10px; margin-top: 10px; }
+.note-view .note-composer .provider-note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
+
+/* The block's file sits inside the heading: one block for title and location. */
+.node-modal > .modal-heading:has(+ .file-bar) { padding-bottom: 6px; border-bottom: 0; }
+.node-modal > .file-bar { margin: 0; padding: 0 28px 18px; gap: 8px; border-radius: 0; background: #fff; border-bottom: 1px solid var(--card-divider); color: var(--muted); font-size: 13px; }
+.node-modal > .file-bar code { flex: 0 1 auto; padding: 0; background: none; color: var(--muted); font-size: 12.5px; }
+.node-modal > .file-bar .open-in { margin-left: auto; }
+.node-modal > .file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: 13px; }
 
 /* The guided demo card. */
 .executable-demo { border: 1px solid var(--card-line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--sheet-shadow); }
