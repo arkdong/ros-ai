@@ -195,6 +195,7 @@ export class ExecutionService {
     const info = await abortable(model.prepare(signal),signal);
     this.checkSignal(signal);
     if (request.schema && request.responseMode!=='text-json' && !info.capabilities.structuredOutput && !info.capabilities.toolCalling) throw new Error('Selected model lacks structured output or function calling required for validated proposals.');
+    if (request.tools && !info.capabilities.toolCalling) throw new Error('The selected model does not declare tool calling, which the agent needs. Choose another model.');
     const wireRequest=model.describeRequest?.(request)??null;
     const wireBytes=wireRequest?Buffer.byteLength(JSON.stringify(wireRequest),'utf8'):bytes;
     if(wireBytes>64000)throw new Error('The complete provider request exceeds the 64 KB context limit, including its response schema. Select less context.');
@@ -221,7 +222,7 @@ export class ExecutionService {
       return admitted;
     });
     const reservedTrace=usage.reportedUsage as Record<string,unknown>;
-    if (runId) this.store.updateRun(runId,{messages:request.messages,configuration:{...this.store.getRun(runId).configuration,modelInfo:info,request:structuredClone(request)}});
+    if (runId) this.store.updateRun(runId,{messages:request.messages as ModelMessage[],configuration:{...this.store.getRun(runId).configuration,modelInfo:info,request:structuredClone(request)}});
     const sentAt = performance.now();
     let captured:ModelResponse|undefined,actual:number|null=null;
     try {
@@ -264,7 +265,7 @@ export class ExecutionService {
       return registry.reserve({provider:selection.provider,amountUsd:reserveUsd,purpose,basis,runId,trace},before.revision);
     });
     const reservedTrace=usage.reportedUsage as Record<string,unknown>;
-    if(runId)this.store.updateRun(runId,{messages:request.messages,configuration:{...this.store.getRun(runId).configuration,modelInfo:info,request:structuredClone(request)}});
+    if(runId)this.store.updateRun(runId,{messages:request.messages as ModelMessage[],configuration:{...this.store.getRun(runId).configuration,modelInfo:info,request:structuredClone(request)}});
     let captured:ModelResponse|undefined,estimatedUsd:number|null=null;
     const sentAt=performance.now();
     try{
