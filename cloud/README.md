@@ -21,4 +21,9 @@ Then start the app with `ROS_CLOUD_URL=http://127.0.0.1:4400 npm start` and choo
 
 `docker build -t ros-ai-cloud cloud` builds an image that migrates and starts on its own, so the same service runs on Railway, Nebius AI Cloud or an organisation's own servers. Deploying it is a separate step that needs the owner's approval, because it holds the provider key.
 
+## Numbers and errors
+
+- `npm run metrics` (with `DATABASE_URL` set) prints sign-ups per day, weekly active people with requests and cost per person, and weekly retention. They are views over Better Auth's tables and `ros_usage` (`src/metrics.ts`), so nothing extra is collected. "Active" means at least one settled hosted Ros request in that week.
+- Error reports go to Sentry only when `SENTRY_DSN` is set (`src/instrument.ts`). Reports keep the method and path, never request bodies, query strings, cookies, headers, IP addresses or console output, so prompts and tokens stay in this service.
+
 Check: `npm run lint`.
