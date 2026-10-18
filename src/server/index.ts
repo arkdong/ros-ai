@@ -100,8 +100,9 @@ try {
     const combinedBudget = new CombinedNebiusBudget(store);
     const inference = new InferenceConnections(store,dataDir);
     execution = new ExecutionService(store,{combinedBudget,inference});
-    // ros.ai cloud (sign-in and free hosted Ros) is off unless an address is configured.
-    cloud = new CloudAccount(process.env.ROS_CLOUD_URL?.replace(/\/+$/u,'') || undefined,dataDir,inference);
+    // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
+    const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
+    cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
