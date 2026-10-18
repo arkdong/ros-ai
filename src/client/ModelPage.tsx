@@ -8,6 +8,7 @@ import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
 import { InferenceConnections } from './InferenceConnections';
+import { CloudAccount } from './CloudAccount';
 import type { OutsideAgentsStatus } from '../shared/outside-agents';
 import { api, post } from './api';
 import './connections.css';
@@ -36,6 +37,7 @@ export function ModelPage({projectId,connections,publicDemo,onChanged,onBudget}:
     <div className="connections-intro"><p>The AI models ros.ai can use, on this computer. Choose which one the assistant uses in its settings.</p><button className="icon-button" disabled={loading} aria-label="Refresh model status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></div>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
+    <CloudAccount onChanged={changed}/>
     <h3 className="rail-section-title">Model providers</h3>
     <KeyConnection provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} onBudget={onBudget} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>
     <KeyConnection provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} onBudget={onBudget} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>

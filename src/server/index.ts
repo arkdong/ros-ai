@@ -23,6 +23,7 @@ import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
+import { CloudAccount } from './cloud-account.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
@@ -49,6 +50,7 @@ let assistant:AssistantService|undefined;
 let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
+let cloud:CloudAccount|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
 let outside:OutsideAgents|undefined;
@@ -70,6 +72,7 @@ async function shutdown() {
     await agent?.shutdown();
     await claude?.shutdown();
     await loop?.shutdown();
+    cloud?.shutdown();
     await execution?.shutdown();
     await experiments?.shutdown();
     await research?.shutdown();
@@ -95,7 +98,10 @@ try {
     const credentials = new ToolCredentials(dataDir);
     googleDrive = new GoogleDriveConnection({dataDir,port});
     const combinedBudget = new CombinedNebiusBudget(store);
-    execution = new ExecutionService(store,{combinedBudget,inference:new InferenceConnections(store,dataDir)});
+    const inference = new InferenceConnections(store,dataDir);
+    execution = new ExecutionService(store,{combinedBudget,inference});
+    // ros.ai cloud (sign-in and free hosted Ros) is off unless an address is configured.
+    cloud = new CloudAccount(process.env.ROS_CLOUD_URL?.replace(/\/+$/u,'') || undefined,dataDir,inference);
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
@@ -104,7 +110,7 @@ try {
     assistant=new AssistantService(store,execution,experiments,agent,claude,loop);
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside,cloud},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;
