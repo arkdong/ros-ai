@@ -18,7 +18,8 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: config.emailPassword, minPasswordLength: 12 },
   socialProviders: { ...(config.github ? { github: config.github } : {}), ...(config.google ? { google: config.google } : {}) },
   session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 60 * 60 * 24 },
-  rateLimit: { enabled: true, window: 60, max: 60, storage: 'database' },
+  // Kept in memory: one service instance, and the database table's bigint column only produced a warning.
+  rateLimit: { enabled: true, window: 60, max: 60, storage: 'memory' },
   plugins: [
     bearer(),
     organization({ allowUserToCreateOrganization: true }),

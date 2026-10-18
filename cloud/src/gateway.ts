@@ -86,12 +86,21 @@ gateway.post('/v1/chat/completions', json({ limit: MAX_BODY }), async (req, res)
   } finally { clearTimeout(timer); inFlight.set(person.orgId, (inFlight.get(person.orgId) ?? 1) - 1); }
 });
 
-/** One free catalogue read at start, so a wrong provider model id shows up in the log at once. */
+/** One free catalogue read at start, so a wrong provider model id shows up in the log at once.
+ * An id that differs only in letter case takes the provider's spelling; the log lists every
+ * Nemotron id the key can use, so ROS_CLOUD_MODELS can be set from it. */
 export async function checkCatalogue() {
   if (!config.upstreamKey) { console.warn('ros.ai cloud: NEBIUS_API_KEY is not set, so chat requests are refused.'); return; }
   try {
     const response = await fetch(`${config.upstreamUrl}/models`, { headers: { Authorization: `Bearer ${config.upstreamKey}` }, signal: AbortSignal.timeout(15_000) });
-    const ids = new Set(((await response.json()) as any)?.data?.map((entry: any) => entry.id) ?? []);
-    for (const item of config.models) console.log(`ros.ai cloud: ${item.name} -> ${item.upstream} ${ids.has(item.upstream) ? 'is in the provider catalogue' : 'was NOT found in the provider catalogue'}`);
-  } catch { console.warn('ros.ai cloud: could not read the provider catalogue.'); }
+    const body = await response.json().catch(() => undefined) as any;
+    const ids: string[] = Array.isArray(body?.data) ? body.data.map((entry: any) => String(entry.id)) : [];
+    if (!response.ok || !ids.length) { console.warn(`ros.ai cloud: the provider catalogue at ${config.upstreamUrl}/models answered ${response.status} with ${ids.length} models. Check NEBIUS_API_KEY and UPSTREAM_URL.`); return; }
+    for (const item of config.models) {
+      const match = ids.find(id => id === item.upstream) ?? ids.find(id => id.toLowerCase() === item.upstream.toLowerCase());
+      if (match && match !== item.upstream) { console.log(`ros.ai cloud: ${item.name} -> using the provider's spelling ${match} (configured ${item.upstream})`); item.upstream = match; }
+      console.log(`ros.ai cloud: ${item.name} -> ${item.upstream} ${match ? 'is in the provider catalogue' : 'was NOT found in the provider catalogue'}`);
+    }
+    console.log(`ros.ai cloud: Nemotron models available: ${ids.filter(id => /nemotron/i.test(id)).join(', ') || 'none'} (${ids.length} models in total)`);
+  } catch (error) { console.warn(`ros.ai cloud: could not read the provider catalogue (${error instanceof Error ? error.message : String(error)}).`); }
 }
