@@ -12,11 +12,11 @@ const modelSchema = z.object({
 });
 export type CloudModel = z.infer<typeof modelSchema> & { name: string };
 
-// Token Factory prices from secondary listings (October 2026); the catalogue check at start
-// confirms the ids exist, and ROS_CLOUD_MODELS overrides any of this without a code change.
+// Token Factory ids as its catalogue listed them on 2026-10-18; prices from secondary listings.
+// The catalogue check at start confirms the ids exist, and ROS_CLOUD_MODELS overrides any of this without a code change.
 const DEFAULT_MODELS: Record<string, z.infer<typeof modelSchema>> = {
-  ros: { upstream: 'nvidia/Nemotron-3-Nano-30B-A3B', inputUsdPerMillion: 0.06, outputUsdPerMillion: 0.24, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
-  'ros-deep': { upstream: 'nvidia/Nemotron-3-Super-120b-a12b', inputUsdPerMillion: 0.30, outputUsdPerMillion: 0.90, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
+  ros: { upstream: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B', inputUsdPerMillion: 0.06, outputUsdPerMillion: 0.24, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
+  'ros-deep': { upstream: 'nvidia/nemotron-3-super-120b-a12b', inputUsdPerMillion: 0.30, outputUsdPerMillion: 0.90, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
 };
 
 const env = z.object({
