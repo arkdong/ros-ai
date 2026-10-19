@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp, Check, ChevronDown, ChevronUp, Focus, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal, Square, X } from 'lucide-react';
 import type { AssistantBackend, AssistantFocus, AssistantState } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
@@ -8,6 +8,8 @@ import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
 import { api, post } from './api';
 import { useFolderSuggestion } from './ProjectFolder';
+import { readSaved, saveLocal } from './persistence';
+import { textPreview } from '../shared/presentation';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -18,6 +20,7 @@ export function RosMark({ working = false }: { working?: boolean }) {
 }
 
 const settingsChanged = 'ros-ai-model-settings';
+const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
 type ModelChoice = { provider: string; model: string; label: string; maker: ModelMaker };
@@ -46,11 +49,17 @@ function useProjectModels(projectId: string, revision: number) {
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
 export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onOpen }: { state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onOpen: (mode: 'half' | 'full') => void }) {
   const [draft, setDraft] = useState(''), [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [now, setNow] = useState(() => Date.now());
+  const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const menuRef = useRef<HTMLDivElement>(null), modelButton = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const active = turns.find(turn => turn.id === state?.activeTurnId) || turns.findLast(turn => turn.status === 'running');
   const running = busy || Boolean(active);
+  // The last finished request stays in the bar, with its outcome, until the user clicks OK.
+  const finished = !running ? turns.findLast(turn => turn.status !== 'running') : undefined;
+  const done = finished && finished.id !== seenTurn ? finished : undefined;
+  const dismiss = () => { if (done) { setSeenTurn(done.id); saveLocal(`ros-seen-turn:${detail.project.id}`, done.id); } };
+  const outcome = done ? done.status === 'completed' ? (done.reply ? textPreview(plain(done.reply), 140).text : done.question ? textPreview(plain(done.question), 140).text : 'Done') : done.status === 'failed' ? (done.error || 'Ros could not finish this request') : done.status === 'cancelled' ? 'Stopped' : 'Interrupted' : '';
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
   // Suggestions waiting for a decision: open proposals plus pending actions that carry no proposal of their own.
   const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length;
@@ -86,14 +95,22 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
   const pickModel = (choice: ModelChoice) => switchTo(async () => { await models.choose(choice); if (agentLabel) await setBackend('provider'); });
   const usingModel = (choice: ModelChoice) => !agentLabel && models.current?.provider === choice.provider && models.current?.model === choice.model;
   return <div className="ros-dock" data-testid="ros-bar">
-    <form className={`ros-bar ${running ? 'running' : ''}`} onSubmit={submit}>
+    <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
       {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
         <LoaderCircle size={15} className="spin" aria-hidden="true"/>
         <span className="ros-progress-text"><strong>{active?.userMessage || draft || 'Your question'}</strong><span role="status">{currentStep}</span></span>
         {active && <span className="ros-progress-meta">{clock(now - Date.parse(active.createdAt))}</span>}
         <ChevronUp size={12} aria-hidden="true"/>
       </button>}
-      <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
+      {done && <div className={`ros-progress done ${done.status}`} data-testid="ros-done">
+        <button type="button" className="ros-done-open" onClick={() => onOpen('half')} aria-label="Open the reply from Ros">
+          {done.status === 'completed' ? <Check size={15} aria-hidden="true"/> : <CircleAlert size={15} aria-hidden="true"/>}
+          <span className="ros-progress-text"><strong>{done.userMessage}</strong><span>{outcome}</span></span>
+          <span className="ros-progress-meta">{clock(Date.parse(done.updatedAt) - Date.parse(done.createdAt))}</span>
+        </button>
+        <button type="button" className="ros-done-ok" onClick={dismiss}>OK</button>
+      </div>}
+      <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <div className="ros-model">
