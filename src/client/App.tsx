@@ -26,6 +26,7 @@ import { WorkflowDemo } from './WorkflowDemo';
 import type { TutorialSession } from '../shared/tutorial';
 import { BudgetPage } from './BudgetPage';
 import { PluginsPage } from './PluginsPage';
+import { MemoryPage } from './MemoryPage';
 import { AppRail, RailPageFrame, type RailPage } from './AppRail';
 import { Wordmark } from './Brand';
 import { AgentReportReview } from './AgentReportReview';
@@ -189,7 +190,7 @@ export function App(){
   const pin=async(value:Artifact,nodeId:string)=>{const existing=detail?.highlights?.find(h=>h.nodeId===nodeId&&h.artifactId===value.id);await action(()=>existing?api(`/api/projects/${projectId}/highlights/${existing.id}`,{method:'DELETE'}):post(`/api/projects/${projectId}/highlights`,{nodeId,artifactId:value.id,x:0,y:0}));};
   const currentCanvas=historical?.canvas||detail?.project.canvas;const selectedNode=currentCanvas?.nodes.find(n=>n.id===selectedId);const inspectorNode=currentCanvas?.nodes.find(n=>n.id===inspectorId);const inspectorFile=folderStatus?.files.find(file=>file.nodeId===inspectorId);const notebookNode=detail&&inspectorNode?.blockType==='notebook'&&inspectorNode.kind!=='group'&&!inspectorConversation&&!historical?inspectorNode:undefined;const preview=!historical?detail?.proposals.find(p=>p.id===previewId&&p.status==='pending'):undefined;
   const reloadConnections=async()=>{setConnections(await api<ConnectionStatus[]>('/api/connections'));await refresh();};
-  const railPage=page==='canvas'?null:<RailPageFrame page={page} onPage={setPage}>{page==='model'?<ModelPage key={projectId||'local'} projectId={projectId} connections={connections} publicDemo={publicDemo} onChanged={reloadConnections} onBudget={()=>setPage('budget')}/>:page==='budget'?<BudgetPage key={projectId||'local'} projectId={projectId} publicDemo={publicDemo}/>:page==='plugins'?<PluginsPage projectId={projectId} publicDemo={publicDemo} onChanged={reloadConnections} onResources={()=>setPage('resources')} onBudget={()=>setPage('budget')}/>:detail?<Resources key={detail.project.id} detail={detail} onChanged={()=>refresh()} onOpenArtifact={openArtifact} onExports={()=>setDialog('files')}/>:<p className="rail-page-note">Open a project to see its resources.</p>}</RailPageFrame>;
+  const railPage=page==='canvas'?null:<RailPageFrame page={page} onPage={setPage}>{page==='model'?<ModelPage key={projectId||'local'} projectId={projectId} connections={connections} publicDemo={publicDemo} onChanged={reloadConnections} onBudget={()=>setPage('budget')}/>:page==='budget'?<BudgetPage key={projectId||'local'} projectId={projectId} publicDemo={publicDemo}/>:page==='plugins'?<PluginsPage projectId={projectId} publicDemo={publicDemo} onChanged={reloadConnections} onResources={()=>setPage('resources')} onBudget={()=>setPage('budget')}/>:page==='memory'?<MemoryPage publicDemo={publicDemo}/>:detail?<Resources key={detail.project.id} detail={detail} onChanged={()=>refresh()} onOpenArtifact={openArtifact} onExports={()=>setDialog('files')}/>:<p className="rail-page-note">Open a project to see its resources.</p>}</RailPageFrame>;
   return <div className={`app-shell single-canvas-shell ${sidebarOpen?'':'sidebar-hidden'}`}>
     <AppRail page={page} onPage={setPage}/>
     <aside className="sidebar" aria-label="Projects and notes">

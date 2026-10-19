@@ -28,6 +28,7 @@ import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
 import { OutsideAgents } from './outside-agents.js';
+import { PersonalMemory } from './personal-memory.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -108,10 +109,11 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
-    assistant=new AssistantService(store,execution,experiments,agent,claude,loop);
+    const personal=new PersonalMemory(store,dataDir);
+    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal);
     guide=new WorkspaceGuideService(store,execution);
-    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside,cloud},guide);
+    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside,cloud,memory:personal},guide);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

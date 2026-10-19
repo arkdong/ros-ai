@@ -13,6 +13,7 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 - **Project folders:** each project lives in a folder you choose. Notes, code, notebooks and data are ordinary files (Markdown, `.py`, `.ipynb`, CSV) that Obsidian, VS Code or Jupyter open, and edits saved there come back as changes you can undo. See [RESULT.md](RESULT.md).
 - **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
 - **Notebooks:** a Notebook block opens a notebook over the canvas and runs its cells one by one, as Jupyter does, in a Python that stays running in the Docker sandbox. It is saved as `.ipynb` in the project folder, and a `.ipynb` file can be imported.
+- **Ros remembers:** Ros notices how you like work done (taste and style, working habits, people, commitments) and proposes one line at a time, kept under the project's permission choice as Markdown files in the app data folder (`memory/`). Settings › Memory lists the lines, and every agent (Ros, the agent loop, Claude Code or Codex over MCP) receives the kept lines as your preferences, never as instructions. The switch there turns it off.
 - **Landing page:** `landing.html` is the public website, built by Vite next to the app and served by the public demo at `/` (the app stays at `/app`). A local checkout serves it at `/landing.html`.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.
@@ -118,7 +119,7 @@ claude mcp add --scope user ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mj
 codex mcp add ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
 ```
 
-The agent can then read the canvas and artifacts and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; set `ROS_DATA_DIR` for the bridge too if you set it for ros.ai.
+The agent can then read the canvas, artifacts and your saved preferences (`ros_read_memory`) and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; set `ROS_DATA_DIR` for the bridge too if you set it for ros.ai.
 
 ## Models and spending
 

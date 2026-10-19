@@ -2,16 +2,16 @@ import type { ReactNode } from 'react';
 import { Bot, LayoutDashboard, Plug, Settings2, type LucideIcon } from 'lucide-react';
 import './app-rail.css';
 
-export type RailPage = 'canvas' | 'model' | 'budget' | 'resources' | 'plugins';
+export type RailPage = 'canvas' | 'model' | 'budget' | 'resources' | 'plugins' | 'memory';
 type RailItem = { id: string; pages: RailPage[]; label: string; subtitle: string; icon: LucideIcon };
 // Budget and Resources share the Settings entry; the page values stay so existing links keep working.
 const items: RailItem[] = [
   { id: 'canvas', pages: ['canvas'], label: 'Canvas', subtitle: '', icon: LayoutDashboard },
   { id: 'agents', pages: ['model'], label: 'Agents', subtitle: 'Every agent that can work in your projects, connected the same way', icon: Bot },
   { id: 'apps', pages: ['plugins'], label: 'Apps', subtitle: 'Connect the apps your External blocks read from', icon: Plug },
-  { id: 'settings', pages: ['budget', 'resources'], label: 'Settings', subtitle: 'Spending, sources and saved versions', icon: Settings2 },
+  { id: 'settings', pages: ['budget', 'resources', 'memory'], label: 'Settings', subtitle: 'Spending, sources, saved versions and what Ros remembers', icon: Settings2 },
 ];
-const settingsTabs: { page: RailPage; label: string }[] = [{ page: 'budget', label: 'Budget' }, { page: 'resources', label: 'Resources' }];
+const settingsTabs: { page: RailPage; label: string }[] = [{ page: 'budget', label: 'Budget' }, { page: 'resources', label: 'Resources' }, { page: 'memory', label: 'Memory' }];
 
 /** The slim icon column at the far left; each icon opens its own page over the canvas. */
 export function AppRail({ page, onPage }: { page: RailPage; onPage: (page: RailPage) => void }) {

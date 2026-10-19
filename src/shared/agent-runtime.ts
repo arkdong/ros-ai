@@ -29,7 +29,8 @@ export function agentStep(call: number, tool: string, input: unknown, result?: {
 }
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };
-export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
+/** preferences: the person's kept memory lines as one paragraph, labelled as their own notes; left out when there are none. */
+export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; preferences?: string; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
 export interface AgentRuntime {
   status(projectId: string): Promise<AgentConnectionStatus>;
   execute(request: AgentExecuteRequest): Promise<AgentResult>;

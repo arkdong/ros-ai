@@ -1,0 +1,34 @@
+/* Ros remembers: the Memory tab in Settings and the card under a reply. */
+.memory-page { display: flex; flex-direction: column; }
+.memory-panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-view); padding: 16px 18px; }
+.memory-switch { display: flex; gap: 14px; align-items: flex-start; }
+.memory-switch h2 { margin: 0; font-size: var(--text-lg); font-weight: 600; color: var(--ink); }
+.memory-switch p { margin: 4px 0 0; font-size: var(--text-sm); color: var(--body); line-height: 1.55; }
+.memory-switch .memory-off { color: var(--muted); }
+.switch { position: relative; flex-shrink: 0; width: 34px; height: 20px; margin-top: 2px; border: 0; border-radius: 10px; background: var(--line); padding: 0; cursor: pointer; }
+.switch.on { background: var(--ink); }
+.switch span { position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); transition: left .12s ease; }
+.switch.on span { left: 16px; }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.memory-waiting-title { display: flex; align-items: center; gap: 8px; }
+.memory-list { padding-top: 2px; padding-bottom: 2px; }
+.memory-line { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.memory-list .memory-line:first-child { border-top: 0; }
+.memory-line-body { flex: 1; min-width: 0; }
+.memory-line-body p { margin: 0; font-size: var(--text-md); line-height: 1.5; color: var(--ink); }
+.memory-line-body small { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--muted); }
+.memory-line.gone p { color: var(--muted); }
+.memory-line .text-button, .memory-line .primary { flex-shrink: 0; font-size: var(--text-sm); }
+.memory-empty { margin: 0; font-size: var(--text-sm); color: var(--muted); }
+.memory-add { display: flex; gap: 8px; align-items: center; }
+.memory-add select, .memory-add input { height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 0 10px; font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--paper); box-sizing: border-box; }
+.memory-add select { width: 160px; flex-shrink: 0; }
+.memory-add input { flex: 1; min-width: 0; }
+.memory-footer { margin-top: 22px; font-size: var(--text-sm); color: var(--muted); line-height: 1.6; }
+.memory-footer p { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.memory-footer code { font-size: var(--text-xs); word-break: break-all; }
+.memory-footer .text-button { font-size: var(--text-sm); }
+.memory-card .assistant-action-title { align-items: center; }
+.memory-card .assistant-action-title .ros-mark, .memory-card .assistant-action-title .ros-mark .research-ring { width: 16px; height: 16px; }
+.memory-card .memory-line { padding: 9px 0; }
+@media (max-width: 600px) { .memory-add { flex-wrap: wrap; } .memory-add select { width: 100%; } }

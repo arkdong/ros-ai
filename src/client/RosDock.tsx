@@ -22,8 +22,8 @@ export function RosBar({ state, detail, busy, onSend, onOpen }: { state: Assista
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const last = turns.at(-1), running = busy || Boolean(state?.activeTurnId);
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
-  // Suggestions waiting for a decision: open proposals plus pending actions that carry no proposal of their own.
-  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length;
+  // Suggestions waiting for a decision: open proposals, pending actions that carry no proposal of their own, and lines Ros noticed about the person.
+  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0);
   const peek = running ? 'Working on your question…' : last?.reply ? textPreview(plain(last.reply), 180).text : '';
   const submit = async (event: FormEvent) => {
     event.preventDefault();
