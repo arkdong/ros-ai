@@ -37,6 +37,11 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const rememberSubmission=(value:Submission|null)=>{setSubmission(value);saveLocal(`assistant-submission:${detail.project.id}`,value);};
 
 
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.ros-model-menu, .modal, .cm-editor:focus-within')) onClose(); };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onClose]);
   const scroller = useRef<HTMLDivElement>(null); const textarea = useRef<HTMLTextAreaElement>(null); const followConversation=useRef(true);
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const focusedArtifact = detail.artifacts.find(artifact => artifact.id === focus.artifactId);
@@ -90,7 +95,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     return null;
   };
   return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="Ros" data-testid="assistant-panel">
-    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label={rosSizeLabel.bar} title="Bar" onClick={onClose}><RosSizeIcon size="bar"/></button></header>
+    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close Ros" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     {answerTarget?.projectId===detail.project.id&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>setAnswerTarget(null)}/>}
     <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
@@ -110,6 +115,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
+        <span className="ros-footer-break" aria-hidden="true"/>
         {focusedNode || focusedArtifact
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}

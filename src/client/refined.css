@@ -106,7 +106,7 @@
 .executable-demo { border: 1px solid var(--card-line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--sheet-shadow); }
 
 /* Ros keeps its single green touch. */
-.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; }
+.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: 20px; }
 .single-canvas-shell .assistant-composer { border-radius: var(--radius-card); }
 
 /* Agents, Apps and Settings pages. */

@@ -47,7 +47,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   useEffect(() => {
     if (!menu) return;
     const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setMenu(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenu(false); trigger.current?.focus(); } };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setMenu(false); trigger.current?.focus(); } };
     document.addEventListener('pointerdown', outside); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
   }, [menu]);
@@ -109,7 +109,7 @@ export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError
   useEffect(() => {
     if (!menu) return;
     const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setMenu(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenu(false); trigger.current?.focus(); } };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setMenu(false); trigger.current?.focus(); } };
     document.addEventListener('pointerdown', outside); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
   }, [menu]);
