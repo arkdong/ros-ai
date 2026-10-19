@@ -22,7 +22,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    - *Live (preferred).* Create an internal integration at notion.so/profile/integrations in the AISO workspace (a workspace owner may have to create it), give it read content, update content, insert content and comments, and share with it only *Applications overview*, *Open positions for the team*, the two templates, and a new private page *ros.ai eval sandbox*. Put its secret in your keys file as `NOTION_TOKEN` (Setup 4). The agent then reads applicants and roles itself with the Notion tools, and its writes (assessments, status changes) go to the sandbox page and wait for your Accept.
    - *Snapshot (for comparable runs, or without an integration).* In the AISO Research recruitment page, open *Applications overview*, filter Teams contains Research (and Position contains Research, since some rows have no team), then **••• → Export → Markdown & CSV, include subpages and files**. Unzip into `snapshot/applicants/`. Export the role texts the same way from *Open positions for the team* into `snapshot/roles/`, and any Interviews pages with transcripts into `snapshot/interviews/`.
    Live runs read whatever Notion holds that day, so for scorecards you compare, use the snapshot or note the date of the live read.
-3. **CVs to text.** ros.ai reads `.md`, `.txt` and `.csv`, not PDF (known gap G2). Convert each CV next to its applicant file, for example `pdftotext -layout CV.pdf CV.txt` (`brew install poppler`), or paste the text into a `.md`.
+3. **CVs.** Leave PDF CVs as they are. In ros.ai's project folder panel a PDF is listed as new; *Add to canvas* saves its text beside it as `<name>.pdf.md` and adds that note. Scanned PDFs without a text layer have no text to read: convert those yourself (OCR) or paste the text into a `.md`.
 4. **Keys and model.** Once, put the keys in `~/.config/ros.ai/keys.env` so every fresh run folder has them (see README, *Keys in one file*):
    ```sh
    mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
@@ -87,7 +87,7 @@ Each stage mirrors the AISO process; stage 3 adds the background research AISO n
 - 3b. Each finding links to the page it came from and quotes it word for word (ros.ai checks quotes against the saved page).
 - 3c. Every claim in the assessment ends up marked confirmed, contradicted or not found, and "not found" is not treated as false.
 - 3d. Same-name confusion: the agent shows how it knows a page is about this applicant, and drops pages it cannot tie to them.
-- 3e. The links the applicant gave are actually read (expected gap G6 if they are only reached when a search happens to return them; LinkedIn usually blocks reading, G7).
+- 3e. The links the applicant gave appear as named links in the plan and are actually read (LinkedIn usually blocks reading, G7).
 - 3f. Something you did not know before, that matters for the interview: yes or no per applicant.
 - 3g. Tavily credits and Claude cost for this stage (from the Budget page).
 
@@ -137,17 +137,15 @@ Each stage mirrors the AISO process; stage 3 adds the background research AISO n
 
 ## Known gaps on 2026-10-19
 
-G1 (Notion could only check its token) closed on 2026-10-19: agents now read, query and, with your approval, write to Notion.
+Closed on 2026-10-19: G1 (agents now read, query and, with your approval, write to Notion), G2 (PDFs are added as their text) and G6 (a search plan can name the applicant's own links, which are read like found pages).
 
 Expected failures on the current build. Note them when you hit them, but they are not new findings; log only a new angle on them.
 
 | ID | Gap | Where it shows |
 | --- | --- | --- |
-| G2 | No PDF reading | Setup 3 |
 | G3 | No way to run one agent prompt per applicant in a batch | 2g |
 | G4 | No record block with fields (status, scores); applicants are notes | 1b, 5 |
 | G5 | No rules on the canvas (for example, no decision without an assessment) | all |
-| G6 | The agent reads only pages its own searches returned; it cannot open a URL the applicant gave directly | 3e |
 | G7 | LinkedIn pages are usually blocked to page reading | 3e |
 
 ## Run log template
