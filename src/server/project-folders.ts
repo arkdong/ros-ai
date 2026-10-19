@@ -20,6 +20,8 @@ const RECORD = 'project-folder';
 const MANIFEST = '.ros-ai/project.json';
 const TRASH = '.ros-ai/trash';
 // Largest file read back per kind. Text limits in characters are checked after decoding.
+const PDF_BYTES = 20_000_000;
+const isPdf = (path: string) => path.toLowerCase().endsWith('.pdf');
 const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000 };
 const TWO_WAY = new Set<FolderFileKind>(['note', 'code', 'report', 'dataset', 'notebook']);
 const CODE_TYPES: [language: string, extension: string][] = [['python', '.py'], ['r', '.R'], ['julia', '.jl'], ['c', '.c'], ['haskell', '.hs'], ['sql', '.sql'], ['bash', '.sh']];
@@ -76,7 +78,7 @@ export function safeFileBase(title: string): string {
   return name || 'Untitled';
 }
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
-function unplacedKind(path: string): UnplacedFile['kind'] | null {
+function unplacedKind(path: string): Exclude<UnplacedFile['kind'], 'pdf'> | null {
   const extension = extensionOf(path).toLowerCase();
   if (NOTE_EXTENSIONS.includes(extension)) return 'note';
   if (extension === '.csv') return 'dataset';
@@ -442,9 +444,32 @@ export class ProjectFolders implements NotebookFolders {
   /** Adds a file that is already in the folder to the canvas as a block. */
   add(projectId: string, rel: string): { nodeId: string } {
     const { record, files } = this.require(projectId), kind = unplacedKind(rel);
-    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV and notebook files.');
+    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook and PDF files.');
     if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError('This file is already a block on the canvas.', 409);
     const node = this.blockFromFile(record, files, rel, kind, {});
+    return { nodeId: node.id };
+  }
+
+  /** The PDF stays as it is; its text is written beside it as `<name>.pdf.md` and that note becomes the block,
+   * so the text syncs like any note. Scanned PDFs without a text layer have no text to read. */
+  /** Any file the folder lists as new, PDFs included. */
+  async addFile(projectId: string, rel: string): Promise<{ nodeId: string }> { return isPdf(rel) ? this.addPdf(projectId, rel) : this.add(projectId, rel); }
+  private async addPdf(projectId: string, rel: string): Promise<{ nodeId: string }> {
+    const { record, files } = this.require(projectId), note = `${rel}.md`;
+    if (files.exists(note)) throw new StoreError(`${note} is already in the folder; add that note instead.`, 409);
+    const read = files.read(rel, PDF_BYTES);
+    let text: string;
+    try {
+      const { extractText, getDocumentProxy } = await import('unpdf');
+      const document = await getDocumentProxy(new Uint8Array(read.bytes));
+      const result = await extractText(document, { mergePages: false });
+      text = (result.text as string[]).map(page => page.replace(/[ \t]+\n/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim()).filter(Boolean).join('\n\n');
+    } catch { throw new StoreError(`ros.ai could not read ${rel} as a PDF.`); }
+    if (!text.trim()) throw new StoreError(`${rel} has no text layer (it may be a scan), so there is nothing to read.`);
+    const body = `Text of ${posix.basename(rel)}, read by ros.ai. The PDF itself is unchanged.\n\n${text}`;
+    if (body.length > 20_000) throw new StoreError(`The text of ${rel} is longer than 20,000 characters, the most a note holds.`);
+    files.write(note, Buffer.from(body, 'utf8'));
+    const node = this.blockFromFile(record, files, note, 'note', {});
     return { nodeId: node.id };
   }
 
@@ -624,7 +649,12 @@ export class ProjectFolders implements NotebookFolders {
       if (JSON.stringify(record) !== before) this.save(record);
       const mapped = this.mapped(record), board = record.board?.toLowerCase();
       const unplaced = listing.filter(file => !mapped.has(file.path.toLowerCase()) && file.path.toLowerCase() !== board)
-        .flatMap(file => { const kind = unplacedKind(file.path); return kind ? [{ path: file.path, kind, bytes: file.size }] : []; }).slice(0, 200);
+        .flatMap(file => {
+          const kind = unplacedKind(file.path) ?? (isPdf(file.path) ? 'pdf' as const : null);
+          // A PDF whose text note is already there is not new any more.
+          if (kind === 'pdf' && listing.some(other => other.path.toLowerCase() === `${file.path.toLowerCase()}.md`)) return [];
+          return kind ? [{ path: file.path, kind, bytes: file.size }] : [];
+        }).slice(0, 200);
       this.checked.set(projectId, { available: true, unplaced, problems, checkedAt: now() });
     }
   }
@@ -920,5 +950,5 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
   });
   app.get('/api/open-apps', (_req, res) => res.json(folders.apps()));
   app.post('/api/projects/:id/folder/restore', (req, res) => res.json(folders.restore(id.parse(req.params.id), z.object({ nodeId: id }).strict().parse(req.body).nodeId)));
-  app.post('/api/projects/:id/folder/add', (req, res) => res.status(201).json(folders.add(id.parse(req.params.id), z.object({ path: z.string().min(1).max(1000) }).strict().parse(req.body).path)));
+  app.post('/api/projects/:id/folder/add', async (req, res) => res.status(201).json(await folders.addFile(id.parse(req.params.id), z.object({ path: z.string().min(1).max(1000) }).strict().parse(req.body).path)));
 }

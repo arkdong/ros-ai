@@ -7,8 +7,9 @@
  *   npm run try -- 4 --port 4320 --no-open
  *
  * The code goes into a git worktree next to this checkout (../ros-ai-try/pr-4) with its own
- * packages and its own empty data folder. Your branch, projects and keys stay as they are, and
- * the copy gets no AI keys or spending allowances, so it cannot spend anything.
+ * packages and its own empty data folder. Your branch, projects and keys stay as they are. The copy
+ * takes no keys or allowances from this shell; it reads only your keys file (~/.config/ros.ai/keys.env)
+ * if you made one, including any ROS_START_ALLOWANCE_* starting allowance for its fresh data folder.
  * Running the same command again updates the copy to the latest push and keeps its test projects.
  */
 import { spawn, spawnSync } from 'node:child_process';
