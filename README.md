@@ -155,6 +155,7 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 - [Data provenance](docs/amsterdam-data.md)
 - [Current verification](RESULT.md)
 - Strategy notes of 16 October 2026 (internal): [product and market report](docs/strategy/product-and-market-report-2026-10-16.md), [investor brief](docs/strategy/investor-brief-2026-10-16.md), [YC application answers](docs/strategy/yc-application-answers-2026-10-16.md)
+- Onboarding design of 19 October 2026 (internal): [find and connect your tools](docs/strategy/onboarding-connections-2026-10-19.md), a design doc and screen mockup, not built yet
 
 ## Optional public demonstration
 
