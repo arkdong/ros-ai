@@ -118,10 +118,9 @@ function propertyValue(name: string, type: string, value: NotionValue): Json {
 }
 
 export class NotionApi {
-  /** `refresh` renews a signed-in (OAuth) token once when Notion says the current one expired. */
-  constructor(private readonly token: () => string | undefined, private readonly fetcher: typeof fetch = fetch, private readonly base = notionBase(), private readonly refresh?: () => Promise<boolean>) {}
+  constructor(private readonly token: () => string | undefined, private readonly fetcher: typeof fetch = fetch, private readonly base = notionBase()) {}
   get configured() { return Boolean(this.token()); }
-  private async call<T = Json>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, signal?: AbortSignal, renewed = false): Promise<T> {
+  private async call<T = Json>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const token = this.token();
     if (!token) throw new StoreError('Notion is not connected. Save the integration secret on the Plugins page.', 409);
     let response: Response;
@@ -129,7 +128,6 @@ export class NotionApi {
       response = await this.fetcher(`${this.base}${path}`, { method, redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000), headers: { Authorization: `Bearer ${token}`, 'Notion-Version': VERSION, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     } catch { throw new StoreError('Could not reach Notion.', 502); }
     const payload = await response.json().catch(() => ({})) as Json;
-    if (response.status === 401 && !renewed && this.refresh && await this.refresh()) return this.call<T>(method, path, body, signal, true);
     if (!response.ok) {
       const message = typeof payload.message === 'string' ? payload.message.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 300) : `HTTP ${response.status}`;
       const hint = response.status === 404 ? ' Share the page with the ros.ai integration in Notion (••• → Connections) if it should be visible.' : '';

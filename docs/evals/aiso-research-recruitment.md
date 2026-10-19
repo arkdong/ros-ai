@@ -7,7 +7,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
 ## Rules for every run
 
 - **Candidate data never enters this repository.** The snapshot, the ros.ai data folder, the project folder and the run logs all live in `~/ros-ai-evals/aiso-research/`. Only this protocol and anonymous findings come back to the repo or to GitHub issues.
-- **Notion stays the system of record.** The agent may read the live AISO pages through ros.ai's Notion integration, but during an eval it writes only to a private test page (*ros.ai eval sandbox*, Setup 2). Dismiss any proposed write to a real recruitment page and log it as a finding. Real decisions are still recorded in Notion by the people who own them.
+- **Notion stays the system of record.** The agent may read the live AISO pages through ros.ai's Notion connection, but during an eval it writes only to a private test page (*ros.ai eval sandbox*, Setup 2). Dismiss any proposed write to a real recruitment page and log it as a finding. Real decisions are still recorded in Notion by the people who own them.
 - **Model for real data:** Claude through Adam's own Anthropic API key, with the assistant set to Claude Code (decided 2026-10-19). Full candidate files go to the Anthropic API; search queries in stage 3 (which carry applicant names and the organisations they list) go to Tavily; nothing goes to the ros.ai cloud gateway or any other provider. Keep the same model (Sonnet by default) across runs so scorecards compare.
 - **Agents draft, people decide.** A run passes a stage only if a person reviewed what the agent proposed. Accepting without reading counts as a failed run.
 - **Same snapshot, same steps.** Runs are comparable only on the same snapshot. Refresh it on purpose (new round, new applicants) and note the snapshot date in the run log.
@@ -19,7 +19,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    mkdir -p ~/ros-ai-evals/aiso-research/{snapshot,runs}
    ```
 2. **Notion.** Either way works:
-   - *Live (preferred).* Create an internal integration at notion.so/profile/integrations in the AISO workspace (a workspace owner may have to create it), give it read content, update content, insert content and comments, and share with it only *Applications overview*, *Open positions for the team*, the two templates, and a new private page *ros.ai eval sandbox*. Put its secret in your keys file as `NOTION_TOKEN` (Setup 4). If you cannot create an API token (*You don't have permission to create internal connections*), choose **OAuth** instead, with the redirect URIs `http://localhost:4310/api/plugins/notion/callback` and `http://localhost:4330/api/plugins/notion/callback`, put its `NOTION_OAUTH_CLIENT_ID` and `NOTION_OAUTH_CLIENT_SECRET` in the keys file, and sign in from the Apps page; Notion asks which pages to share, so pick the same pages. `npm run eval:aiso` waits for that sign-in on its first run. The agent then reads applicants and roles itself with the Notion tools, and its writes (assessments, status changes) go to the sandbox page and wait for your Accept.
+   - *Live (preferred).* Connect Notion on the eval's Apps page (the runner asks for it on the first run and waits): ros.ai signs in to Notion's own hosted connection, the same one Claude uses, so no integration or secret is needed. It sees what your Notion account sees. Create a private page *ros.ai eval sandbox* for the agent's writes. The agent reads applicants and roles itself with Notion's tools, and every write waits for your Accept.
    - *Snapshot (for comparable runs, or without an integration).* In the AISO Research recruitment page, open *Applications overview*, filter Teams contains Research (and Position contains Research, since some rows have no team), then **••• → Export → Markdown & CSV, include subpages and files**. Unzip into `snapshot/applicants/`. Export the role texts the same way from *Open positions for the team* into `snapshot/roles/`, and any Interviews pages with transcripts into `snapshot/interviews/`.
    Live runs read whatever Notion holds that day, so for scorecards you compare, use the snapshot or note the date of the live read.
 3. **CVs.** Leave PDF CVs as they are. In ros.ai's project folder panel a PDF is listed as new; *Add to canvas* saves its text beside it as `<name>.pdf.md` and adds that note. Scanned PDFs without a text layer have no text to read: convert those yourself (OCR) or paste the text into a `.md`.
@@ -31,7 +31,6 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    ```
    ANTHROPIC_API_KEY=sk-ant-...
    TAVILY_API_KEY=tvly-...
-   NOTION_TOKEN=ntn_...
    ROS_START_ALLOWANCE_CLAUDE_USD=5
    ROS_START_ALLOWANCE_TAVILY_USD=1
    ```
@@ -42,14 +41,14 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
 
 `npm run eval:aiso` does the whole run with fixed prompts, on the connections in your keys file:
 
-1. **Sync.** Reads every row of the Notion applicants database (default *AISO Recruitment*), keeps the Research ones (Teams or Position contains Research), and writes one note per applicant to `~/ros-ai-evals/aiso-research/project/applicants/` with their Notion properties and application text, plus their attached files (CVs). New applicants are added; changed ones get their *From Notion* section replaced, and everything above it (the stage line, edits) is kept.
-2. **Start.** Starts ros.ai from this checkout on port 4330 with its own data folder (`~/ros-ai-evals/aiso-research/data`), checks the Anthropic key, Notion, Tavily and both allowances, and stops with what to fix if one is missing. It opens or creates the project *AISO Research recruitment* on that folder, adds new files to the canvas (PDFs as their text), sets the project to Full access and the assistant to Claude Code.
+1. **Sync** (after Start, through the eval's ros.ai). Reads every row of the Notion applicants database (default *AISO Recruitment*), keeps the Research ones (Teams or Position contains Research), and writes one note per applicant to `~/ros-ai-evals/aiso-research/project/applicants/` with their Notion properties and application text, plus their attached files (CVs). New applicants are added; changed ones get their *From Notion* section replaced, and everything above it (the stage line, edits) is kept.
+2. **Start.** Starts ros.ai from this checkout on port 4330 with its own data folder (`~/ros-ai-evals/aiso-research/data`), checks the Anthropic key, Tavily and both allowances, and stops with what to fix if one is missing. On the first run it waits until you connect Notion on its Apps page (one browser sign-in, remembered in that data folder). It opens or creates the project *AISO Research recruitment* on that folder, adds new files to the canvas (PDFs as their text), sets the project to Full access and the assistant to Claude Code.
 3. **Stages.** For each applicant, one Ros turn with the same fixed prompt moves them one stage on (2 Screening, 3 Background research, 4 Interview 1 questions, 5 Interview 1 record or *not reached*), reading their stage from the first line of their note. Rounds repeat until everyone is at stage 5 or `--stages` rounds have run. Two failed turns in a row stop the run.
 4. **Close.** One turn writes a *Board brief* note per role and asks to write a summary to the Notion page *ros.ai eval sandbox*: accept or dismiss it in the browser. Nothing else is written to Notion.
 
 Every turn's outcome, time and reply go to `runs/<date-time>/log.md`, with a finding when an applicant's stage did not move; add the scorecard below and score it. Running it again continues from where each applicant is. `--sync-only` only brings Notion in; `--stages 1` moves everyone one stage.
 
-Before the first run: the keys file (Setup 4) and a Notion integration shared with the applicants database, *AISO Open Positions*, the two templates, *Interviews | Management* and *ros.ai eval sandbox* (Setup 2). Other names go in `~/ros-ai-evals/aiso-research/config.json`, written on the first run.
+Before the first run: the keys file (Setup 4) and a private Notion page *ros.ai eval sandbox* (Setup 2). Notion is connected in the browser on the first run. Other names go in `~/ros-ai-evals/aiso-research/config.json`, written on the first run.
 
 Cost: each turn reserves up to US$2 of the Claude allowance (`ROS_CLAUDE_TURN_USD`), and a full pass is about 4 turns per applicant plus one. The eval keeps one data folder, so `ROS_START_ALLOWANCE_CLAUDE_USD` applies once, on the first run; top it up on the Budget page. Start with `--stages 1` to see the cost of one round.
 

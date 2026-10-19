@@ -34,10 +34,10 @@ Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its 
 
 ```sh
 mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
-open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  NOTION_TOKEN=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
+open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  TAVILY_API_KEY=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
 ```
 
-**Notion.** With a Notion integration secret (Plugins page, or `NOTION_TOKEN`), ros.ai's assistants (Claude Code, Codex and chat models) can search, read and query the pages and databases shared with that integration, and ask to create pages, change properties, add text or comment. If you cannot create an API token in your workspace, sign in instead: create a Notion OAuth connection with the redirect URI `http://localhost:4310/api/plugins/notion/callback` (add one per port you use, such as 4330 for the eval), put its `NOTION_OAUTH_CLIENT_ID` and `NOTION_OAUTH_CLIENT_SECRET` in the keys file, restart, and press **Sign in with Notion** on the Apps page; Notion then asks which pages ros.ai may see. Every Notion write appears as a note on the canvas and waits for you to accept it, whatever the permission mode; nothing is written before that, and Undo in ros.ai does not take a write back in Notion.
+**Apps with their own hosted connection (Notion).** On the Apps page, Connect signs in to the app's hosted MCP server the way Claude and Claude Code do: ros.ai registers itself, you approve in the browser, and nothing is created or pasted. ros.ai's assistants then get the app's own tools through `ros_app_tools` and `ros_app_call`. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it, whatever the permission mode, and Undo in ros.ai does not take it back there. The sign-in is saved privately in the data folder (`app-connections.json`); the catalogue is in `src/server/remote-apps.ts`. A Notion integration secret (`NOTION_TOKEN`, or *Use a token instead*) still works for the older `ros_notion_*` tools.
 
 ```sh
 npm run dev       # frontend live reload and local server
