@@ -37,6 +37,33 @@ function fit(messages: ChatMessage[]) {
  * Factory, or a local model in Ollama or LM Studio. The model only names tool calls; each one
  * passes the same validation, scope and approval checks as Claude Code's, and every model
  * request goes through the project's model admission, budget and usage records. */
+/** Tool calls a model wrote into its answer text because the provider's parser missed them
+ * (Nemotron once did). Reads both the XML form (<function=name><parameter=key>) and the JSON form
+ * ({"name", "arguments"}) inside <tool_call> tags; anything else stays ordinary text. */
+export function textToolCalls(content: string): { text: string; calls: ToolCall[] } | undefined {
+  if (!content.includes('<tool_call>')) return undefined;
+  const calls: ToolCall[] = [];
+  const text = content.replace(/<tool_call>([\s\S]*?)<\/tool_call>/gu, (whole, inner: string) => {
+    const xml = /<function=([\w.-]+)>([\s\S]*?)<\/function>/u.exec(inner);
+    if (xml) {
+      const args: Record<string, unknown> = {};
+      for (const [, key, raw] of xml[2].matchAll(/<parameter=([\w.-]+)>([\s\S]*?)<\/parameter>/gu)) {
+        const value = raw.trim();
+        try { args[key] = JSON.parse(value); } catch { args[key] = value; }
+      }
+      calls.push({ id: `text-${randomUUID()}`, name: xml[1], arguments: JSON.stringify(args) });
+      return '';
+    }
+    try {
+      const value = JSON.parse(inner.trim()) as { name?: unknown; arguments?: unknown };
+      if (typeof value.name !== 'string') return whole;
+      calls.push({ id: `text-${randomUUID()}`, name: value.name, arguments: typeof value.arguments === 'string' ? value.arguments : JSON.stringify(value.arguments ?? {}) });
+      return '';
+    } catch { return whole; }
+  });
+  return calls.length ? { text, calls } : undefined;
+}
+
 export class ToolLoopAgentService {
   private readonly active = new Map<string, AbortController>();
   private closed = false;
@@ -95,7 +122,8 @@ export class ToolLoopAgentService {
         attempt.requests++;
         const { response, usage } = await this.execution.assistantComplete(request.projectId, { messages, maxOutputTokens: MAX_OUTPUT_TOKENS, tools }, controller.signal, request.selection);
         attempt.usageIds.push(usage.id); attempt.estimatedUsd += usage.estimatedUsd ?? usage.reservedUsd; save();
-        const text = response.content.trim(), calls: ToolCall[] = response.toolCalls ?? [];
+        const written = response.toolCalls?.length ? undefined : textToolCalls(response.content);
+        const text = (written?.text ?? response.content).trim(), calls: ToolCall[] = response.toolCalls?.length ? response.toolCalls : written?.calls ?? [];
         if (!calls.length) { reply = text; break; }
         if (text) event({ at: now(), type: 'thought', message: text.length > 600 ? `…${text.slice(-600)}` : text });
         messages.push({ role: 'assistant', content: text, toolCalls: calls });
