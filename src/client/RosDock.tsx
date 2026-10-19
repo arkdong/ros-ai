@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp, Check, ChevronDown, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal, Square, X } from 'lucide-react';
+import { Archive, ArrowUp, Check, ChevronDown, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal, Square, X } from 'lucide-react';
 import type { AssistantBackend, AssistantFocus, AssistantState } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
@@ -108,7 +108,7 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
           <span className="ros-progress-text"><strong>{done.userMessage}</strong><span>{outcome}</span></span>
           <span className="ros-progress-meta">{clock(Date.parse(done.updatedAt) - Date.parse(done.createdAt))}</span>
         </button>
-        <button type="button" className="ros-done-ok" onClick={dismiss}>OK</button>
+        <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
       </div>}
       <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">

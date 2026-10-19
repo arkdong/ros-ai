@@ -38,8 +38,8 @@
 .ros-progress.done.failed .ros-done-open > svg, .ros-progress.done.interrupted .ros-done-open > svg { color: var(--fail); }
 .ros-done-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 12px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ros-done-open:hover { background: var(--line-soft); }
-.ros-done-ok { flex-shrink: 0; height: 26px; padding: 0 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-xs); font-weight: 500; cursor: pointer; }
-.ros-done-ok:hover { border-color: #c9c9c9; }
+.ros-progress .ros-done-ok { flex-shrink: 0; width: 28px; height: 28px; margin-right: 2px; color: var(--muted); }
+.ros-progress .ros-done-ok:hover { color: var(--ink); background: var(--line-soft); }
 @keyframes ros-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes ros-sheet { from { opacity: 0; transform: translate(-50%, 18px) scale(.985); } to { opacity: 1; transform: translateX(-50%); } }
 @keyframes ros-panel { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
