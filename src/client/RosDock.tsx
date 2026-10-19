@@ -3,7 +3,8 @@ import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderC
 import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
-import { RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import type { ResearchPolicy } from '../shared/research';
 import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
@@ -20,7 +21,7 @@ const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
-export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
+export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
   const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -66,6 +67,7 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
+        <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={() => onOpen('half')}/>
         {focusedNode
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedNode.title}`}><Focus size={12}/><span>{focusedNode.title}</span><button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button></span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}

@@ -95,6 +95,14 @@
 .ros-model-menu button > svg, .ros-model-menu button > .model-maker-symbol { flex-shrink: 0; }
 .ros-model-menu .ros-menu-label { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ros-model-menu button small { font-size: var(--text-xs); color: var(--muted); }
+.ros-model-menu .ros-menu-label { white-space: normal; }
+.ros-menu-note { display: flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px 6px; font-size: var(--text-xs); color: var(--muted); }
+.ros-chip-button.mode-full { color: var(--fail); }
+.ros-model-menu button.mode-full svg { color: var(--fail); }
+.ros-model-menu button.mode-full { color: var(--ink); }
+.ros-model-menu button.mode-full .ros-menu-label { color: var(--fail); }
+.ros-model-menu button.mode-full small { color: var(--muted); }
+.ros-approval .ros-model-menu { width: 300px; }
 .ros-model-menu button:hover, .ros-model-menu button[aria-checked="true"] { background: var(--canvas); }
 .ros-waiting {
   display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; white-space: nowrap;
@@ -136,7 +144,7 @@
 .assistant-compact .ros-turn-meta .assistant-turn-events summary { font-size: var(--text-xs); color: var(--muted); cursor: pointer; }
 .assistant-panel.ros-panel .assistant-working { margin-top: 10px; padding: 9px 12px; border-radius: 10px; background: var(--canvas); color: var(--body); font-size: var(--text-sm); }
 /* The same composer as the bar, inside the card. */
-.assistant-panel.ros-panel .assistant-composer.ros-composer { margin: 8px 12px 12px; padding: 12px 10px 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
+.assistant-panel.ros-panel .assistant-composer.ros-composer { overflow: visible; margin: 8px 12px 12px; padding: 12px 10px 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
 .assistant-panel.ros-panel .ros-composer textarea, .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea { display: block; width: 100%; box-sizing: border-box; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; box-shadow: none; resize: none; background: transparent; font: inherit; font-size: var(--text-md); line-height: 1.5; color: var(--ink); }
 .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea:focus, .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea:focus-visible { outline: 0; box-shadow: none; border: 0; }
 .assistant-panel.ros-panel .ros-composer .ros-chip-button { margin-left: -8px; }

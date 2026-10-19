@@ -10,13 +10,14 @@ import { agentDirections } from '../shared/agent-work';
 import { presentAssistantResponse, type AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
 import { post } from './api';
-import { RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import type { ResearchPolicy } from '../shared/research';
 import { AssistantStructurePreview, proposalStructurePreview } from './AssistantStructurePreview';
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
 import './assistant-compact.css';
 
 type Props = {
-  state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; loadError?:string;
+  state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; loadError?:string;
   onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
   onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
@@ -26,7 +27,7 @@ type Props = {
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
 };
 
-export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onInspectAction, mode = 'full', onMode }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onInspectAction, mode = 'full', onMode }: Props) {
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
@@ -108,11 +109,11 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
       <textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
+        <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
         {focusedNode || focusedArtifact
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
-        <button type="button" className="icon-button" aria-label="Research permissions" title="Permissions" onClick={onPermissions}><ShieldCheck size={14}/></button>
         {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
           : <button className="ros-send" data-testid="send-project-message" aria-label="Send to Ros" title={blocker?.summary||'Send to Ros'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>

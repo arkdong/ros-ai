@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, LoaderCircle, Plug, ShieldCheck, Bot } from 'lucide-react';
+import { Bot, Check, ChevronDown, Hand, LoaderCircle, Plug, ShieldCheck, TriangleAlert, Zap } from 'lucide-react';
+import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { AssistantBackend, AssistantState } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
@@ -75,7 +76,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
         <p>{groups.length > 1 ? group.label : 'Models'}</p>
         {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
       </div>)}
-      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Work step by step with ros.ai’s tools</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
+      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <div className="ros-menu-group">
         <p>Agents</p>
         <button type="button" role="menuitemradio" aria-checked={backend === 'claude'} onClick={() => void switchTo(() => setBackend('claude'))}><BrandLogo id="claude" size={16}/><span className="ros-menu-label">Claude Code<small>Reads the project folder</small></span>{backend === 'claude' && <Check size={14}/>}</button>
@@ -83,7 +84,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
       </div>
       <hr/>
       <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Model &amp; budget</span></button>
-      <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permissions</span></button>
+      <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permission details</span></button>
     </div>}
   </div>;
 }
@@ -94,3 +95,44 @@ export function RosSizeIcon({ size: shape, px = 16 }: { size: 'bar' | 'half' | '
   return <svg width={px} height={px} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d={fill} fill="currentColor" stroke="none"/></svg>;
 }
 export const rosSizeLabel = { bar: 'Fold Ros to the bar', half: 'Open Ros as a half sheet', full: 'Open Ros as a side panel' } as const;
+
+const approvalModes: { mode: ApprovalMode; label: string; detail: string; icon: typeof Hand }[] = [
+  { mode: 'ask', label: 'Ask every time', detail: 'Every code run and every new block waits for your OK', icon: Hand },
+  { mode: 'review', label: 'Approve for me', detail: 'Plain analysis runs; other code and new blocks wait for you', icon: ShieldCheck },
+  { mode: 'full', label: 'Full access', detail: 'Code runs and blocks land at once; everything stays undoable', icon: Zap },
+];
+
+/** How Ros's actions are approved: a chip naming the mode and one menu to change it, like Codex's picker. */
+export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError }: { policy: ResearchPolicy | null; running: boolean; onRefresh: () => unknown; onDetails: () => void; onError?: (message: string) => void }) {
+  const [menu, setMenu] = useState(false), [saving, setSaving] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setMenu(false); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenu(false); trigger.current?.focus(); } };
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
+  }, [menu]);
+  if (!policy) return null;
+  const current = approvalModes.find(item => item.mode === policy.mode) ?? approvalModes[0];
+  const choose = async (mode: ApprovalMode) => {
+    if (saving || mode === policy.mode) { setMenu(false); return; }
+    setSaving(true);
+    try { await api(`/api/projects/${policy.projectId}/policy`, { method: 'PUT', body: JSON.stringify({ mode }) }); await onRefresh(); setMenu(false); }
+    catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setSaving(false); }
+  };
+  const Icon = current.icon;
+  return <div className="ros-model ros-approval">
+    <button ref={trigger} type="button" className={`ros-chip-button mode-${policy.mode}`} aria-haspopup="menu" aria-expanded={menu} disabled={saving} title={running ? 'Applies to the next step' : 'How Ros’s actions are approved'} onClick={() => setMenu(!menu)}>
+      <Icon size={13}/><span>{current.label}</span>{saving ? <LoaderCircle size={11} className="spin"/> : <ChevronDown size={11}/>}
+    </button>
+    {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="How Ros’s actions are approved">
+      <p>How should Ros’s actions be approved?</p>
+      {approvalModes.map(item => { const ItemIcon = item.icon; return <button key={item.mode} type="button" role="menuitemradio" aria-checked={policy.mode === item.mode} className={`mode-${item.mode}`} onClick={() => void choose(item.mode)}><ItemIcon size={16}/><span className="ros-menu-label">{item.label}<small>{item.detail}</small></span>{policy.mode === item.mode && <Check size={14}/>}</button>; })}
+      {policy.mode === 'full' && <p className="ros-menu-note"><TriangleAlert size={12}/> Runs in the isolated sandbox; the map keeps its history.</p>}
+      <hr/>
+      <button type="button" role="menuitem" onClick={() => { setMenu(false); onDetails(); }}><ShieldCheck size={14}/><span className="ros-menu-label">Per-block overrides and usage</span></button>
+    </div>}
+  </div>;
+}
