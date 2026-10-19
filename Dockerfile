@@ -2,9 +2,11 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY index.html vite.config.ts tsconfig.json ./
+COPY index.html landing.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY public ./public
+# Landing page analytics (Umami), only when the service sets these; empty builds load nothing.
+ARG VITE_UMAMI_WEBSITE_ID VITE_UMAMI_DOMAINS
 RUN npm exec vite build
 
 FROM node:24-bookworm-slim AS runtime
