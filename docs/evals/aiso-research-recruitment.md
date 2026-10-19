@@ -8,7 +8,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
 
 - **Candidate data never enters this repository.** The snapshot, the ros.ai data folder, the project folder and the run logs all live in `~/ros-ai-evals/aiso-research/`. Only this protocol and anonymous findings come back to the repo or to GitHub issues.
 - **Notion stays the system of record.** The eval reads a snapshot. Real decisions are still recorded in Notion by the people who own them; ros.ai output is a draft until someone copies it over.
-- **Model for real data:** the choice from the 2026-10-19 decision (see *Model* under Setup). Do not switch to a hosted model mid-run.
+- **Model for real data:** Claude through Adam's own Anthropic API key, with the assistant set to Claude Code (decided 2026-10-19). Full candidate files go to the Anthropic API; nothing goes to the ros.ai cloud gateway or any other provider. Keep the same model (Sonnet by default) across runs so scorecards compare.
 - **Agents draft, people decide.** A run passes a stage only if a person reviewed what the agent proposed. Accepting without reading counts as a failed run.
 - **Same snapshot, same steps.** Runs are comparable only on the same snapshot. Refresh it on purpose (new round, new applicants) and note the snapshot date in the run log.
 
@@ -20,9 +20,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    ```
 2. **Snapshot from Notion.** In the AISO Research recruitment page, open *Applications overview*, filter Teams contains Research (and Position contains Research, since some rows have no team), then **••• → Export → Markdown & CSV, include subpages and files**. Unzip into `snapshot/applicants/`. Export the role texts the same way from *Open positions for the team* into `snapshot/roles/`, and any Interviews pages with transcripts into `snapshot/interviews/`.
 3. **CVs to text.** ros.ai reads `.md`, `.txt` and `.csv`, not PDF (known gap G2). Convert each CV next to its applicant file, for example `pdftotext -layout CV.pdf CV.txt` (`brew install poppler`), or paste the text into a `.md`.
-4. **Model.** Configure it once on the Model page and give it an allowance on the Budget page.
-   - Local: Model page → *Add a local model or server* → Ollama or LM Studio preset (`docs/inference-setup.md`).
-   - Claude: Anthropic API key on the Model page; assistant set to Claude Code.
+4. **Model.** In each run's fresh data folder: Anthropic API key on the Model page, Claude Code chosen in the assistant's settings, model Sonnet, and a USD allowance on the Budget page (each turn reserves up to US$1; `ROS_CLAUDE_TURN_USD` changes that). Note the allowance in the run log so X2 can be read against it.
 5. **Templates as notes.** Put `snapshot/templates/candidate-assessment.md` (Background, Motivation, Evidence, Strong points, Concerns, Current recommendation, Rationale) and `snapshot/templates/interview-grid.md` (relevant skills, demonstrated ability, motivation, personal/cultural fit, each 1-5 with evidence; overall Proceed / Reject) in the snapshot, copied from the Notion templates.
 
 ## Start a run
