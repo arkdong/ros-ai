@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Copy, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
@@ -9,7 +9,9 @@ import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
 import { InferenceConnections } from './InferenceConnections';
 import { CloudAccount } from './CloudAccount';
-import type { OutsideAgentsStatus } from '../shared/outside-agents';
+import type { AgentId, LinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup';
+import { AgentIcon, agentWhy, CommandBox } from './Setup';
+import { date } from './Content';
 import { api, post } from './api';
 import './connections.css';
 
@@ -127,16 +129,36 @@ export function message(cause:unknown) { return cause instanceof Error?cause.mes
 
 /** Claude Code or Codex in the person's own terminal or app, on their own plan, using ros.ai as an MCP server. */
 function OutsideAgents() {
-  const [status,setStatus]=useState<OutsideAgentsStatus>(),[error,setError]=useState(''),[copied,setCopied]=useState('');
-  useEffect(()=>{api<OutsideAgentsStatus>('/api/outside-agents').then(setStatus,cause=>setError(message(cause)));},[]);
-  const copy=async(command:string)=>{try{await navigator.clipboard.writeText(command);setCopied(command);setTimeout(()=>setCopied(''),2000);}catch{setError('Copying was blocked. Select the command and copy it yourself.');}};
-  const card=(id:'claude'|'codex',label:string)=>{
-    const sessions=status?.sessions.filter(item=>item.label===label)??[],command=status?.commands[id];
-    return <ConnectionCard key={id} label={`Your own ${label}`} icon={<BrandLogo id={id}/>} subtitle={sessions[0]?`Last used ${new Date(sessions[0].lastAt).toLocaleString()}${sessions[0].projectTitle?` in ${sessions[0].projectTitle}`:''}`:'Not used yet'} connected={sessions.length>0} status={sessions.length?'Connected before':'Set up once'}>
-      <p>Keep researching in {label} the way you already do. It signs in with your own {id==='claude'?'Claude':'ChatGPT'} plan or key; ros.ai never sees that login. Paste this once in a terminal:</p>
-      {command&&<div className="outside-command"><code>{command}</code><button className="icon-button" aria-label={`Copy the ${label} command`} title="Copy" onClick={()=>void copy(command)}>{copied===command?<Check size={14}/>:<Copy size={14}/>}</button></div>}
-      <p className="subtle">While ros.ai is open, {label} can read your canvas and propose notes, reports and analysis code. Proposals follow your Permissions choice and show in the assistant panel. Start {label} inside a project's folder and it works in that project.</p>
-    </ConnectionCard>;
+  const [setup,setSetup]=useState<SetupStatus>(),[error,setError]=useState(''),[busy,setBusy]=useState(''),[notes,setNotes]=useState<Record<string,LinkResult>>({});
+  const load=useCallback(async(rescan=false)=>{try{setSetup(await api<SetupStatus>(`/api/setup${rescan?'?rescan=1':''}`));}catch(cause){setError(message(cause));}},[]);
+  useEffect(()=>{void load();},[load]);
+  const act=async(agent:AgentId,remove:boolean)=>{
+    setBusy(agent);setError('');
+    try{const result=remove?await api<LinkResult>(`/api/setup/links/${agent}`,{method:'DELETE'}):(await post<SetupLinkResponse>('/api/setup/links',{agents:[agent]})).agents[0];if(result)setNotes(prev=>({...prev,[agent]:result}));await load(true);}
+    catch(cause){setError(message(cause));}finally{setBusy('');}
   };
-  return <>{error&&<p className="inline-error" role="alert">{error}</p>}{card('claude','Claude Code')}{card('codex','Codex')}</>;
+  const showAgain=async()=>{try{await api('/api/setup/seen',{method:'DELETE'});window.dispatchEvent(new Event('ros-setup-reset'));}catch(cause){setError(message(cause));}};
+  // Claude Code and Codex always have a row; other agents appear once they are found, linked or seen.
+  const agents=(setup?.agents??[]).filter(agent=>agent.found||agent.link||agent.entry||agent.seenAt||agent.id==='claude-code'||agent.id==='codex');
+  const day=(value:string)=>new Date(value).toLocaleDateString([],{day:'numeric',month:'short'});
+  return <>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+    {agents.map(agent=>{
+      const linked=Boolean(agent.link||agent.entry),note=notes[agent.id],working=busy===agent.id;
+      const status=linked?'Linked':agent.found?'Not linked':agent.seenAt?'Seen before':'Not found';
+      const subtitle=[agent.link?`Linked ${day(agent.link.writtenAt)}`:agent.entry?'Linked outside ros.ai':agent.found?`Found${agent.signals.length?` · ${agent.signals.join(' · ')}`:''}`:`Not found on this computer`,agent.seenAt?`Seen ${date(agent.seenAt)}${agent.seenIn?` in ${agent.seenIn}`:''}`:''].filter(Boolean).join(' · ');
+      return <ConnectionCard key={agent.id} label={`Your own ${agent.label}`} icon={<AgentIcon id={agent.id} size={22}/>} subtitle={subtitle} connected={linked} status={status}>
+        <p>{agentWhy[agent.id]}{agent.note?` ${agent.note}`:''} While ros.ai is open, {agent.label} can read your canvas and propose notes, reports and analysis code. Proposals follow your Permissions choice and show in the assistant panel. Started inside a project's folder, it works in that project.</p>
+        {note&&<p className={note.ok?'connection-notice':'inline-error'} role="status">{note.message}</p>}
+        <div className="connection-actions">
+          {!linked&&agent.linkable&&<button className="primary small" disabled={working} onClick={()=>void act(agent.id,false)}>{working&&<LoaderCircle size={13} className="spin"/>}Link</button>}
+          {agent.entry&&!agent.link&&agent.linkable&&<button className="secondary small" disabled={working} onClick={()=>void act(agent.id,false)}>Relink to this ros.ai</button>}
+          {linked&&<button className="text-button" disabled={working} onClick={()=>void act(agent.id,true)}>Undo link</button>}
+        </div>
+        <p className="subtle">The link is one entry in {agent.target}. {agent.method==='cli'?'To add it yourself, paste this once in a terminal:':'To add it yourself, put this entry under mcpServers:'}</p>
+        <CommandBox command={note&&!note.ok&&note.command?note.command:agent.command} label={agent.label}/>
+      </ConnectionCard>;
+    })}
+    <p className="connections-footnote"><button className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
+  </>;
 }
