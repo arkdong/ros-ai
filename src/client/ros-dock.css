@@ -20,29 +20,80 @@
 .ros-peek span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ros-peek:hover { color: var(--ink); }
 .ros-bar {
-  display: flex; align-items: center; gap: 6px; height: 50px; padding: 0 7px 0 13px; border-radius: 25px;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 6px 12px; border-radius: 18px;
   background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border: 1px solid rgba(0, 0, 0, .07); box-shadow: var(--shadow-float), var(--signal-glow);
 }
+.ros-bar-input { display: flex; align-items: center; gap: 8px; }
+.ros-bar-input .ros-mark, .ros-bar-input .ros-mark .research-ring { width: 22px; height: 22px; }
 .ros-bar input { flex: 1; min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; font: inherit; font-size: var(--text-md); color: var(--ink); padding: 0 4px; }
 .ros-bar input::placeholder { color: var(--muted); }
-.ros-bar .icon-button { width: 32px; height: 32px; color: var(--muted); }
+
+/* The request in flight: spinner, the question, the step Ros is on, and how long it has run. */
+.ros-progress {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 2px -4px; padding: 8px 10px 8px 12px; border: 0; border-radius: 12px;
+  background: var(--canvas); color: var(--body); font: inherit; text-align: left; cursor: pointer;
+}
+.ros-progress:hover { background: var(--line-soft); }
+.ros-progress > svg { flex-shrink: 0; color: var(--body); }
+.ros-progress-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ros-progress-text > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-progress-text strong { font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
+.ros-progress-text span { font-size: var(--text-xs); color: var(--muted); }
+.ros-progress-meta { font-size: var(--text-xs); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Below the input: what Ros runs with and what it can see. */
+.ros-bar-footer { display: flex; align-items: center; gap: 2px; min-height: 28px; margin-left: -4px; font-size: var(--text-xs); color: var(--muted); }
+.ros-bar-footer .icon-button { width: 28px; height: 28px; color: var(--muted); }
+.ros-footer-dot { color: var(--line); padding: 0 2px; }
+.ros-footer-spacer { flex: 1; }
+.ros-model { position: relative; min-width: 0; }
+.ros-chip-button {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 220px; padding: 0 8px; border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--body); font: inherit; font-size: var(--text-xs); cursor: pointer;
+}
+.ros-chip-button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-chip-button:hover:not(:disabled), .ros-chip-button[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
+.ros-chip-button:disabled { cursor: default; }
+.ros-context { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--body); }
+.ros-context > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-context.focused { background: var(--canvas); padding-right: 3px; }
+.ros-context button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.ros-context button:hover { color: var(--ink); background: var(--line-soft); }
+.ros-model-menu {
+  position: absolute; left: 0; bottom: calc(100% + 8px); width: 280px; max-height: 360px; overflow-y: auto; z-index: 2;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view);
+  background: var(--paper); box-shadow: var(--shadow-view);
+}
+.ros-model-menu p { margin: 0; padding: 6px 10px 4px; font-size: var(--text-xs); color: var(--muted); }
+.ros-model-menu hr { border: 0; height: 1px; background: var(--line-soft); margin: 4px 6px; }
+.ros-model-menu button {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 0; border-radius: var(--radius-block);
+  background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer;
+}
+.ros-model-menu button > svg, .ros-model-menu button > .model-maker-symbol { flex-shrink: 0; }
+.ros-model-menu .ros-menu-label { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ros-model-menu button small { font-size: var(--text-xs); color: var(--muted); }
+.ros-model-menu button:hover, .ros-model-menu button[aria-checked="true"] { background: var(--canvas); }
 .ros-waiting {
   display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; white-space: nowrap;
   border: 1px solid var(--line); background: var(--paper); color: var(--body); font: inherit; font-size: var(--text-xs); cursor: pointer;
 }
 .ros-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wait); }
 .ros-send {
-  width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 50%; border: 0; display: grid; place-items: center; flex-shrink: 0;
   background: var(--ink); color: #fff; cursor: pointer; padding: 0;
 }
 .ros-send:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.ros-stop:hover { background: #000; }
 .ros-bar:focus-within { border-color: rgba(0, 0, 0, .14); }
 .ros-dock button:focus-visible, .ros-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Keep the map's own floating controls clear of the bar. */
-.canvas-stage:has(.ros-dock) .selection-toolbar { bottom: 132px; }
-.canvas-stage:has(.ros-dock) .project-floating-actions { bottom: 84px; }
+.canvas-stage:has(.ros-dock) .selection-toolbar { bottom: 164px; }
+.canvas-stage:has(.ros-dock) .project-floating-actions { bottom: 116px; }
+.canvas-stage:has(.ros-bar.running) .selection-toolbar { bottom: 220px; }
+.canvas-stage:has(.ros-bar.running) .project-floating-actions { bottom: 172px; }
 .canvas-stage:has(.ros-dock) .canvas-hint { display: none; }
 
 /* The panel itself, in both open sizes. */
@@ -76,4 +127,4 @@
 .ros-start .primary.small { display: inline-flex; align-items: center; gap: 5px; }
 .ros-start-demo { align-self: center; color: var(--muted); font-size: var(--text-sm); }
 .ros-start button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (max-width: 560px) { .ros-chip { display: none; } .ros-start h2 { font-size: var(--text-xl); } }
+@media (max-width: 560px) { .ros-chip { display: none; } .ros-context, .ros-footer-dot { display: none; } .ros-start h2 { font-size: var(--text-xl); } }
