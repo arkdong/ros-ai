@@ -3,7 +3,6 @@ import { ArrowUp, Check, ChevronDown, ChevronUp, Focus, Folder, LoaderCircle, Ma
 import type { AssistantBackend, AssistantFocus, AssistantState } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
-import { textPreview } from '../shared/presentation';
 import { ResearchRing } from './Brand';
 import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
@@ -18,7 +17,6 @@ export function RosMark({ working = false }: { working?: boolean }) {
   return <span className={`ros-mark ${working ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span>;
 }
 
-const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const settingsChanged = 'ros-ai-model-settings';
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
@@ -45,19 +43,17 @@ function useProjectModels(projectId: string, revision: number) {
   return { choices, current, fallback: selection?.model, choose };
 }
 
-/** Ros folded down: a floating composer at the bottom of the map. The request in flight shows above the input; the model and what Ros can see sit below it. */
+/** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
 export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onOpen }: { state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onOpen: (mode: 'half' | 'full') => void }) {
   const [draft, setDraft] = useState(''), [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [now, setNow] = useState(() => Date.now());
   const menuRef = useRef<HTMLDivElement>(null), modelButton = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const active = turns.find(turn => turn.id === state?.activeTurnId) || turns.findLast(turn => turn.status === 'running');
-  const last = turns.at(-1), running = busy || Boolean(active);
+  const running = busy || Boolean(active);
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
   // Suggestions waiting for a decision: open proposals plus pending actions that carry no proposal of their own.
   const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length;
-  const peek = !running && last?.reply ? textPreview(plain(last.reply), 180).text : '';
-  const steps = active?.events.filter(event => event.step || event.kind === 'tool').length ?? 0;
   const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const blocks = detail.project.canvas.nodes.length;
@@ -90,25 +86,20 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
   const pickModel = (choice: ModelChoice) => switchTo(async () => { await models.choose(choice); if (agentLabel) await setBackend('provider'); });
   const usingModel = (choice: ModelChoice) => !agentLabel && models.current?.provider === choice.provider && models.current?.model === choice.model;
   return <div className="ros-dock" data-testid="ros-bar">
-    {peek && <button type="button" className="ros-peek" onClick={() => onOpen('half')} aria-label="Open the conversation with Ros"><span>{peek}</span></button>}
     <form className={`ros-bar ${running ? 'running' : ''}`} onSubmit={submit}>
       {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
-        <LoaderCircle size={16} className="spin" aria-hidden="true"/>
+        <LoaderCircle size={15} className="spin" aria-hidden="true"/>
         <span className="ros-progress-text"><strong>{active?.userMessage || draft || 'Your question'}</strong><span role="status">{currentStep}</span></span>
-        {active && <span className="ros-progress-meta">{steps > 0 && <>Step {steps} · </>}{clock(now - Date.parse(active.createdAt))}</span>}
-        <ChevronUp size={14} aria-hidden="true"/>
+        {active && <span className="ros-progress-meta">{clock(now - Date.parse(active.createdAt))}</span>}
+        <ChevronUp size={12} aria-hidden="true"/>
       </button>}
-      <div className="ros-bar-input">
-        <RosMark/>
-        <input aria-label="Ask Ros" placeholder={running ? 'Ros is working. Type your next question.' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
-        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={11} fill="currentColor"/></button>
-          : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={15} className="spin"/> : <ArrowUp size={15}/>}</button>}
-      </div>
+      <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
+        <RosMark working={running}/>
         <div className="ros-model">
           <button ref={modelButton} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} onClick={() => setMenu(!menu)}>
             {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
-            <span>{modelLabel}</span>{switching ? <LoaderCircle size={12} className="spin"/> : <ChevronDown size={12}/>}
+            <span>{modelLabel}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
           </button>
           {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
             <p>Ros runs with</p>
@@ -119,14 +110,15 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
             <button type="button" role="menuitem" onClick={() => { setMenu(false); onOpen('half'); }}><SlidersHorizontal size={14}/><span className="ros-menu-label">More settings</span></button>
           </div>}
         </div>
-        <span className="ros-footer-dot" aria-hidden="true">·</span>
         {focusedNode
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedNode.title}`}><Focus size={12}/><span>{focusedNode.title}</span><button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button></span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
-        <button type="button" className="icon-button" aria-label="Open Ros as a half sheet" title="Half sheet" onClick={() => onOpen('half')}><PanelBottomOpen size={15}/></button>
-        <button type="button" className="icon-button" aria-label="Open Ros in full" title="Full panel" onClick={() => onOpen('full')}><Maximize2 size={14}/></button>
+        <button type="button" className="icon-button" aria-label="Open Ros as a half sheet" title="Half sheet" onClick={() => onOpen('half')}><PanelBottomOpen size={14}/></button>
+        <button type="button" className="icon-button" aria-label="Open Ros in full" title="Full panel" onClick={() => onOpen('full')}><Maximize2 size={13}/></button>
+        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
+          : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
   </div>;
