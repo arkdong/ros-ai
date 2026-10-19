@@ -16,8 +16,6 @@ Set these server variables:
 | `ROS_PUBLIC_ORIGIN` | The exact public HTTPS origin, without a trailing path; alternatively use the service's `RAILWAY_PUBLIC_DOMAIN` |
 | `ROS_DATA_DIR` | `/data/visitor-workspaces` |
 | `PORT` | Railway-provided port; image fallback is `8080` |
-| `VITE_UMAMI_WEBSITE_ID` | Optional. The Umami website id; the landing page then counts page views and marked clicks, without cookies. Read at build time |
-| `VITE_UMAMI_DOMAINS` | Optional. The public host name, so only that host reports |
 
 Generate the Railway domain, confirm the selected target port, and configure the exact origin before directing visitors to it. The public server listens on all interfaces; local mode remains on loopback. [Public networking](https://docs.railway.com/networking/public-networking).
 
