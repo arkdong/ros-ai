@@ -192,3 +192,13 @@
 /* The sticky title covers the sheet's top padding too, so scrolled content never shows above it. */
 .artifact-modal:has(.artifact-viewer) { padding-top: 0; }
 .artifact-modal:has(.artifact-viewer) > .modal-heading { top: 0; margin: 0 -30px 10px; padding: 26px 30px 12px; }
+
+/* Projects like a chat list: the open project's blocks nest under it, a few at a time. */
+.single-canvas-shell .project-group { display: flex; flex-direction: column; }
+.single-canvas-shell .project-fold { width: 24px; height: 28px; flex-shrink: 0; margin-right: 4px; color: var(--muted); }
+.single-canvas-shell .project-blocks { padding: 2px 0 8px 14px; }
+.single-canvas-shell .project-blocks .note-tree { padding-bottom: 0; }
+.single-canvas-shell .project-blocks .note-tree-row { min-height: 32px; font-size: var(--text-sm); }
+.single-canvas-shell .project-blocks .sidebar-empty { margin: 6px 8px; font-size: var(--text-sm); color: var(--muted); }
+.single-canvas-shell .note-tree-more { display: block; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; font: inherit; font-size: var(--text-sm); color: var(--muted); }
+.single-canvas-shell .note-tree-more:hover { background: #efefee; color: var(--ink); }
