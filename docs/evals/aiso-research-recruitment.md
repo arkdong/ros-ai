@@ -7,7 +7,7 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
 ## Rules for every run
 
 - **Candidate data never enters this repository.** The snapshot, the ros.ai data folder, the project folder and the run logs all live in `~/ros-ai-evals/aiso-research/`. Only this protocol and anonymous findings come back to the repo or to GitHub issues.
-- **Notion stays the system of record.** The eval reads a snapshot. Real decisions are still recorded in Notion by the people who own them; ros.ai output is a draft until someone copies it over.
+- **Notion stays the system of record.** The agent may read the live AISO pages through ros.ai's Notion integration, but during an eval it writes only to a private test page (*ros.ai eval sandbox*, Setup 2). Dismiss any proposed write to a real recruitment page and log it as a finding. Real decisions are still recorded in Notion by the people who own them.
 - **Model for real data:** Claude through Adam's own Anthropic API key, with the assistant set to Claude Code (decided 2026-10-19). Full candidate files go to the Anthropic API; search queries in stage 3 (which carry applicant names and the organisations they list) go to Tavily; nothing goes to the ros.ai cloud gateway or any other provider. Keep the same model (Sonnet by default) across runs so scorecards compare.
 - **Agents draft, people decide.** A run passes a stage only if a person reviewed what the agent proposed. Accepting without reading counts as a failed run.
 - **Same snapshot, same steps.** Runs are comparable only on the same snapshot. Refresh it on purpose (new round, new applicants) and note the snapshot date in the run log.
@@ -18,9 +18,24 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    ```sh
    mkdir -p ~/ros-ai-evals/aiso-research/{snapshot,runs}
    ```
-2. **Snapshot from Notion.** In the AISO Research recruitment page, open *Applications overview*, filter Teams contains Research (and Position contains Research, since some rows have no team), then **••• → Export → Markdown & CSV, include subpages and files**. Unzip into `snapshot/applicants/`. Export the role texts the same way from *Open positions for the team* into `snapshot/roles/`, and any Interviews pages with transcripts into `snapshot/interviews/`.
+2. **Notion.** Either way works:
+   - *Live (preferred).* Create an internal integration at notion.so/profile/integrations in the AISO workspace (a workspace owner may have to create it), give it read content, update content, insert content and comments, and share with it only *Applications overview*, *Open positions for the team*, the two templates, and a new private page *ros.ai eval sandbox*. Put its secret in your keys file as `NOTION_TOKEN` (Setup 4). The agent then reads applicants and roles itself with the Notion tools, and its writes (assessments, status changes) go to the sandbox page and wait for your Accept.
+   - *Snapshot (for comparable runs, or without an integration).* In the AISO Research recruitment page, open *Applications overview*, filter Teams contains Research (and Position contains Research, since some rows have no team), then **••• → Export → Markdown & CSV, include subpages and files**. Unzip into `snapshot/applicants/`. Export the role texts the same way from *Open positions for the team* into `snapshot/roles/`, and any Interviews pages with transcripts into `snapshot/interviews/`.
+   Live runs read whatever Notion holds that day, so for scorecards you compare, use the snapshot or note the date of the live read.
 3. **CVs to text.** ros.ai reads `.md`, `.txt` and `.csv`, not PDF (known gap G2). Convert each CV next to its applicant file, for example `pdftotext -layout CV.pdf CV.txt` (`brew install poppler`), or paste the text into a `.md`.
-4. **Model.** In each run's fresh data folder: Anthropic API key on the Model page, Claude Code chosen in the assistant's settings, model Sonnet, and a USD allowance on the Budget page (each turn reserves up to US$1; `ROS_CLAUDE_TURN_USD` changes that). Note the allowance in the run log so X2 can be read against it. For stage 3, also connect Tavily web search (`TAVILY_API_KEY`, or the Tavily card) with its own allowance.
+4. **Keys and model.** Once, put the keys in `~/.config/ros.ai/keys.env` so every fresh run folder has them (see README, *Keys in one file*):
+   ```sh
+   mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
+   open -e ~/.config/ros.ai/keys.env
+   ```
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   TAVILY_API_KEY=tvly-...
+   NOTION_TOKEN=ntn_...
+   ROS_START_ALLOWANCE_CLAUDE_USD=5
+   ROS_START_ALLOWANCE_TAVILY_USD=1
+   ```
+   Each fresh data folder then starts with those allowances (each Claude turn reserves up to US$1; `ROS_CLAUDE_TURN_USD` changes that), so the allowances are per run: keep them small. In the app, choose Claude Code in the assistant's settings and model Sonnet. Note the allowance in the run log so X2 can be read against it.
 5. **Templates as notes.** Put `snapshot/templates/candidate-assessment.md` (Background, Motivation, Evidence, Strong points, Concerns, Current recommendation, Rationale) and `snapshot/templates/interview-grid.md` (relevant skills, demonstrated ability, motivation, personal/cultural fit, each 1-5 with evidence; overall Proceed / Reject) in the snapshot, copied from the Notion templates.
 
 ## Start a run
@@ -122,11 +137,12 @@ Each stage mirrors the AISO process; stage 3 adds the background research AISO n
 
 ## Known gaps on 2026-10-19
 
+G1 (Notion could only check its token) closed on 2026-10-19: agents now read, query and, with your approval, write to Notion.
+
 Expected failures on the current build. Note them when you hit them, but they are not new findings; log only a new angle on them.
 
 | ID | Gap | Where it shows |
 | --- | --- | --- |
-| G1 | Notion plugin only checks the token; it cannot read pages or databases | Setup 2 |
 | G2 | No PDF reading | Setup 3 |
 | G3 | No way to run one agent prompt per applicant in a batch | 2g |
 | G4 | No record block with fields (status, scores); applicants are notes | 1b, 5 |

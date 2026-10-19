@@ -30,6 +30,15 @@ npm start
 
 Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
+**Keys in one file.** To avoid typing keys into every fresh data folder (eval runs, `npm run try` copies), put them once in `~/.config/ros.ai/keys.env`, readable only by you (`chmod 600`). ros.ai reads it at each start; `ROS_KEYS_FILE` names another file and `ROS_KEYS_FILE=off` skips it. It takes only `*_API_KEY` names (`ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `NEBIUS_API_KEY`, `OPENAI_API_KEY`), `NOTION_TOKEN`, and optional starting allowances `ROS_START_ALLOWANCE_<CLAUDE|TAVILY|NEBIUS|OPENAI>_USD` (with `_REQUESTS`, default 200). A starting allowance is saved only in a data folder that has never had one for that service, so every fresh data folder gets its own; restarts never top it up.
+
+```sh
+mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
+open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  NOTION_TOKEN=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
+```
+
+**Notion.** With a Notion integration secret (Plugins page, or `NOTION_TOKEN`), ros.ai's assistants (Claude Code, Codex and chat models) can search, read and query the pages and databases shared with that integration, and ask to create pages, change properties, add text or comment. Every Notion write appears as a note on the canvas and waits for you to accept it, whatever the permission mode; nothing is written before that, and Undo in ros.ai does not take a write back in Notion.
+
 ```sh
 npm run dev       # frontend live reload and local server
 npm run lint      # TypeScript
