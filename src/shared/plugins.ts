@@ -30,6 +30,8 @@ export const PLUGINS: PluginDefinition[] = [
 export type PluginStatus = {
   id: TokenPluginId;
   configured: boolean;
+  /** Notion only: whether "Sign in with Notion" is set up, and the workspace of the current sign-in. */
+  signIn?: { available: boolean; workspace?: string | null };
   checkedAt: string | null;
   verified: boolean | null;
   checkMessage: string | null;

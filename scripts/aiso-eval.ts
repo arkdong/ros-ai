@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { NotionApi } from '../src/server/notion.js';
 import { loadLocalKeys } from '../src/server/local-keys.js';
 import { safeFileBase } from '../src/server/project-folders.js';
+import { PluginTokens } from '../src/server/plugins.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const home = resolve(process.env.ROS_EVAL_HOME || join(homedir(), 'ros-ai-evals', 'aiso-research'));
@@ -54,8 +55,9 @@ const commit = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, e
 writeFileSync(logPath, `# Run ${run}\n\nBuild: ${commit}   Config: ${configPath}\n\n`);
 
 loadLocalKeys();
-const notion = new NotionApi(() => process.env.NOTION_TOKEN);
-if (!notion.configured) fail('Notion is not connected. Add NOTION_TOKEN=... to ~/.config/ros.ai/keys.env (see the eval doc, Setup 2).');
+// The Notion token is the eval data folder's: a sign-in on its Plugins page, or NOTION_TOKEN from the keys file.
+let plugins = new PluginTokens(dataDir);
+const notion = new NotionApi(() => plugins.token('notion'), fetch, undefined, () => plugins.refreshNotion());
 
 // 1. Applicants from Notion into the project folder: one note per applicant, plus their files.
 type Synced = Record<string, { file: string; lastEdited?: string }>;
@@ -146,6 +148,13 @@ async function ready() {
   const problems: string[] = [];
   const credentials = (await api<{ credentials: { provider: string; configured: boolean }[] }>('/api/connections/credentials')).credentials;
   for (const [provider, key] of [['claude', 'ANTHROPIC_API_KEY'], ['tavily', 'TAVILY_API_KEY']]) if (!credentials.find(item => item.provider === provider)?.configured) problems.push(`${key} is missing from ~/.config/ros.ai/keys.env.`);
+  let notionStatus = (await api<{ plugins: { id: string; configured: boolean; signIn?: { available: boolean } }[] }>('/api/plugins')).plugins.find(item => item.id === 'notion');
+  if (!notionStatus?.configured) {
+    if (!notionStatus?.signIn?.available) { stop(); fail('Notion is not connected. Add NOTION_TOKEN, or NOTION_OAUTH_CLIENT_ID and NOTION_OAUTH_CLIENT_SECRET, to ~/.config/ros.ai/keys.env (see the eval doc, Setup 2).'); }
+    console.log(`\n  Sign in to Notion once for this eval: open ${url.replace('127.0.0.1', 'localhost')}, go to Plugins, and press "Sign in with Notion". Waiting…\n`);
+    while (!notionStatus?.configured) { await new Promise(done => setTimeout(done, 3000)); notionStatus = (await api<{ plugins: typeof notionStatus[] }>('/api/plugins')).plugins.find(item => item?.id === 'notion'); }
+    plugins = new PluginTokens(dataDir);
+  }
   const check = await api<{ verified: boolean | null; checkMessage: string | null }>('/api/plugins/notion/check', { body: {} });
   if (!check.verified) problems.push(`Notion: ${check.checkMessage ?? 'the secret was not accepted.'}`);
   const budgets = (await api<{ budgets: { provider: string; ready: boolean; remainingUsd: number }[] }>('/api/connections/budgets')).budgets;
@@ -210,9 +219,9 @@ Finish by changing the first line of their block to the stage you completed, for
 const closingPrompt = `Stages 6 and 7 for the ${config.team} team. Read the map with ros_read_canvas. For each role applied to, compare the applicants who reached stage 4 or further against the role text in Notion ("${config.roles}"), using only their accepted notes: name disagreements between screening and interview evidence rather than averaging them. Then add one note per role titled "Board brief: <role>" with ros_propose_canvas: who to consider for an offer and why, open concerns, who is not recommended and why, each statement naming the note it rests on. Then ask to write a one-paragraph summary per role to the Notion page "${config.sandbox}" with ros_notion_write (it waits for the person's Accept). ${RULES}`;
 
 // 3. The run.
-await sync();
 await start();
 await ready();
+await sync();
 const projectId = await project();
 await placeNewFiles(projectId);
 console.log(`\n  ros.ai is open at ${url} (project "${PROJECT_TITLE}"). Watch the canvas while Ros works.\n`);

@@ -120,7 +120,7 @@ try {
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root);
     const plugins = new PluginTokens(dataDir);
-    AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
+    AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'), fetch, undefined, () => plugins.refreshNotion());
     app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins,outside,cloud},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }

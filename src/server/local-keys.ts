@@ -6,7 +6,7 @@ import { connectionBudgetProviders } from '../shared/connection-budgets.js';
 import type { ConnectionBudgets } from './connection-budgets.js';
 
 /** Only keys, tokens and starting allowances come from the keys file; it cannot move data folders or ports. */
-const ALLOWED = /^(?:[A-Z][A-Z0-9_]*_API_KEY|NOTION_TOKEN|ROS_START_ALLOWANCE_[A-Z]+_(?:USD|REQUESTS))$/u;
+const ALLOWED = /^(?:[A-Z][A-Z0-9_]*_API_KEY|NOTION_TOKEN|NOTION_OAUTH_CLIENT_(?:ID|SECRET)|ROS_START_ALLOWANCE_[A-Z]+_(?:USD|REQUESTS))$/u;
 
 /** One owner-only file of API keys outside the code and every data folder, read at each start,
  * so a fresh data folder (an eval run, a pull request copy) does not need the keys typed in again.
@@ -29,7 +29,7 @@ export function loadLocalKeys(): string | null {
     values = parse(readFileSync(fd, 'utf8'));
   } finally { closeSync(fd); }
   const ignored = Object.keys(values).filter(name => !ALLOWED.test(name));
-  if (ignored.length) console.warn(`ros.ai ignored ${ignored.join(', ')} in ${file}: it only reads API keys, NOTION_TOKEN and ROS_START_ALLOWANCE_* there.`);
+  if (ignored.length) console.warn(`ros.ai ignored ${ignored.join(', ')} in ${file}: it only reads API keys, NOTION_TOKEN, NOTION_OAUTH_CLIENT_ID/SECRET and ROS_START_ALLOWANCE_* there.`);
   for (const [name, value] of Object.entries(values)) if (ALLOWED.test(name) && value.trim() && process.env[name] === undefined) process.env[name] = value.trim();
   return file;
 }

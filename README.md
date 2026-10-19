@@ -37,7 +37,7 @@ mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.con
 open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  NOTION_TOKEN=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
 ```
 
-**Notion.** With a Notion integration secret (Plugins page, or `NOTION_TOKEN`), ros.ai's assistants (Claude Code, Codex and chat models) can search, read and query the pages and databases shared with that integration, and ask to create pages, change properties, add text or comment. Every Notion write appears as a note on the canvas and waits for you to accept it, whatever the permission mode; nothing is written before that, and Undo in ros.ai does not take a write back in Notion.
+**Notion.** With a Notion integration secret (Plugins page, or `NOTION_TOKEN`), ros.ai's assistants (Claude Code, Codex and chat models) can search, read and query the pages and databases shared with that integration, and ask to create pages, change properties, add text or comment. If you cannot create an API token in your workspace, sign in instead: create a Notion OAuth connection with the redirect URI `http://localhost:4310/api/plugins/notion/callback` (add one per port you use, such as 4330 for the eval), put its `NOTION_OAUTH_CLIENT_ID` and `NOTION_OAUTH_CLIENT_SECRET` in the keys file, restart, and press **Sign in with Notion** on the Apps page; Notion then asks which pages ros.ai may see. Every Notion write appears as a note on the canvas and waits for you to accept it, whatever the permission mode; nothing is written before that, and Undo in ros.ai does not take a write back in Notion.
 
 ```sh
 npm run dev       # frontend live reload and local server
