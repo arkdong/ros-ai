@@ -54,6 +54,23 @@ export type AgentCapture = {
  * Only the user's explicit node/artifact selection is captured. Connections do
  * not import their opposite endpoint or transitively expand this scope.
  */
+/** Models often send a list or object argument as JSON text ("[...]"). When the arguments fail
+ * validation, top-level strings holding valid JSON are read once more as JSON; the original error
+ * stands if that does not help, so a real string argument is never changed. */
+function lenient<T extends z.ZodTypeAny>(schema: T, supplied: unknown): z.infer<T> {
+  const first = schema.safeParse(supplied);
+  if (first.success) return first.data;
+  if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
+    const decoded = Object.fromEntries(Object.entries(supplied).map(([key, value]) => {
+      if (typeof value !== 'string' || !/^\s*[[{]/u.test(value)) return [key, value];
+      try { return [key, JSON.parse(value)]; } catch { return [key, value]; }
+    }));
+    const second = schema.safeParse(decoded);
+    if (second.success) return second.data;
+  }
+  throw first.error;
+}
+
 export class AgentWorkspaceTools {
   readonly capture: AgentCapture;
   readonly actions: AssistantAction[] = [];
@@ -107,16 +124,16 @@ export class AgentWorkspaceTools {
   private current() { if (this.store.getProject(this.scope.projectId).revision !== this.expectedRevision) throw new StoreError('The canvas changed after the agent capture. Review a new turn before proposing edits.', 409); }
   async call(name: string, supplied: unknown): Promise<unknown> {
     if (this.experiments.authority.policy(this.scope.projectId).stopped) throw new StoreError('Project work is stopped; no agent tool effect was applied.', 409);
-    if (name === 'ros_read_canvas') return this.readCanvas(canvasReadSchema.parse(supplied));
+    if (name === 'ros_read_canvas') return this.readCanvas(lenient(canvasReadSchema, supplied));
     if (name === 'ros_read_selected') {
-      const value = readSchema.parse(supplied);
+      const value = lenient(readSchema, supplied);
       if (!value.artifactId) return this.preview();
       const a = this.opened.get(value.artifactId) ?? this.artifact(value.artifactId);
       return { artifactId: a.id, hash: a.hash, runId: a.runId, createdAt: a.createdAt, offset: value.offset, content: a.content.slice(value.offset, value.offset + value.length), totalCharacters: a.content.length, more: value.offset + value.length < a.content.length };
     }
     let action: AssistantAction;
     if (name === 'ros_propose_canvas') {
-      const value = canvasSchema.parse(supplied); this.current();
+      const value = lenient(canvasSchema, supplied); this.current();
       const added = new Set(value.operations.flatMap(op => op.type === 'addNode' ? [op.node.id] : []));
       const allowed = (target: string) => { if (!added.has(target)) this.node(target); };
       for (const op of value.operations) {
@@ -153,11 +170,11 @@ export class AgentWorkspaceTools {
       this.store.saveRecord('agent-proposal', proposal.id, this.scope.projectId, { proposalId: proposal.id, agent: this.agent, client: this.client, turnId: this.turnId, captureHash: this.capture.hash, selectedArtifactVersions: this.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })), rationale: value.rationale });
       action = { id: randomUUID(), type: 'proposal', title: value.summary, proposalId: proposal.id, status: proposal.status === 'accepted' ? 'completed' : 'pending' };
     } else if (name === 'ros_propose_reuse') {
-      const value = reuseSchema.parse(supplied); this.node(value.targetNodeId); const artifact = this.artifact(value.artifactId);
+      const value = lenient(reuseSchema, supplied); this.node(value.targetNodeId); const artifact = this.artifact(value.artifactId);
       action = { id: randomUUID(), type: 'reuse', title: value.reason, targetNodeId: value.targetNodeId, nodeId: value.targetNodeId, artifactId: artifact.id, status: 'pending' };
       this.store.saveRecord('agent-reuse', action.id, this.scope.projectId, { action, agent: this.agent, client: this.client, turnId: this.turnId, sourceVersion: { id: artifact.id, hash: artifact.hash }, captureHash: this.capture.hash });
     } else if (name === 'ros_propose_report') {
-      const value = reportSchema.parse(supplied); this.node(value.nodeId); this.current();
+      const value = lenient(reportSchema, supplied); this.node(value.nodeId); this.current();
       const source = value.sourceArtifactId ? this.artifact(value.sourceArtifactId) : undefined;
       if (source && source.nodeId !== value.nodeId) throw new StoreError('Report revision must remain in the original selected block.');
       const evidence = [...new Set(value.evidenceIds)].map(id => this.artifact(id));
@@ -165,7 +182,7 @@ export class AgentWorkspaceTools {
       this.store.saveRecord('agent-report-proposal', proposal.id, this.scope.projectId, proposal);
       action = { id: proposal.id, type: 'proposal', title: `Review report: ${value.title}`, nodeId: value.nodeId, reportProposalId: proposal.id, status: 'pending' } as AssistantAction;
     } else if (name === 'ros_propose_analysis') {
-      const value = experimentSchema.parse(supplied); this.node(value.nodeId); const a = this.artifact(value.datasetArtifactId);
+      const value = lenient(experimentSchema, supplied); this.node(value.nodeId); const a = this.artifact(value.datasetArtifactId);
       if (a.kind !== 'dataset') throw new StoreError('Analysis requires an exact selected dataset artifact.');
       this.current();
       const project = this.store.getProject(this.scope.projectId), target = project.canvas.nodes.find(n => n.id === value.nodeId)!;
@@ -173,15 +190,15 @@ export class AgentWorkspaceTools {
       const preview = this.experiments.preview(this.scope.projectId, { nodeId: target.id, request: value.request, datasetArtifactId: a.id, code: value.code, parameters: value.parameters, backend: value.backend, planRunId: plan.id });
       action = { id: randomUUID(), type: 'experiment', title: value.request, nodeId: target.id, runId: preview.run.id, status: preview.approval.status === 'pending' ? 'pending' : preview.approval.status === 'allowed' ? 'running' : 'failed' };
     } else if (name === 'ros_fan_out_search') {
-      return this.fanOut(fanOutSchema.parse(supplied));
+      return this.fanOut(lenient(fanOutSchema, supplied));
     } else if (name === 'ros_write_result') {
-      return this.writeResult(resultSchema.parse(supplied));
+      return this.writeResult(lenient(resultSchema, supplied));
     } else if (name === 'ros_read_pages') {
-      return this.readPages(readPagesSchema.parse(supplied));
+      return this.readPages(lenient(readPagesSchema, supplied));
     } else if (name === 'ros_write_findings') {
-      return this.writeFindings(findingsSchema.parse(supplied));
+      return this.writeFindings(lenient(findingsSchema, supplied));
     } else if (name === 'ros_propose_groups') {
-      return this.proposeGroups(groupsSchema.parse(supplied));
+      return this.proposeGroups(lenient(groupsSchema, supplied));
     } else throw new StoreError('This agent tool is not available in the ros.ai selection boundary.', 403);
     this.actions.push(action);
     return { action, committed: action.status === 'completed', instruction: action.status === 'pending' ? 'Wait for exact user approval. Do not describe this as saved or executed.' : 'Inspect the resulting saved status; the proposal is not proof of a measured result.' };
