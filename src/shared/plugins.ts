@@ -13,6 +13,8 @@ export type PluginDefinition = {
   tokenLabel?: string;
   tokenHint?: string;
   tokenLink?: string;
+  /** The app has a hosted MCP server: Connect signs in there, like Claude does; a token stays as the fallback. */
+  signIn?: boolean;
   unavailableReason?: string;
 };
 
@@ -21,7 +23,7 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'google-docs', name: 'Google Docs', summary: 'Read your Google Docs as sources.', connect: 'google' },
   { id: 'zotero', name: 'Zotero', summary: 'Your reference library and citations.', connect: 'token', tokenLabel: 'Zotero API key', tokenHint: 'Create a read-only key under Settings > Security > Applications in your Zotero account.', tokenLink: 'https://www.zotero.org/settings/security#applications' },
   { id: 'slack', name: 'Slack', summary: 'Share findings with your team’s channels.', connect: 'token', tokenLabel: 'Slack bot token', tokenHint: 'Create a Slack app for your workspace, install it, and copy its Bot User OAuth Token (xoxb-…).', tokenLink: 'https://api.slack.com/apps' },
-  { id: 'notion', name: 'Notion', summary: 'Pages and databases you share with ros.ai. Agents read them and write only after you accept.', connect: 'token', tokenLabel: 'Notion integration secret', tokenHint: 'Create an internal integration, copy its secret, then share the pages you want with it.', tokenLink: 'https://www.notion.so/profile/integrations' },
+  { id: 'notion', name: 'Notion', summary: 'Your pages and databases, through Notion’s own connection, like in Claude. Agents read them and change things only after you accept.', connect: 'token', signIn: true, tokenLabel: 'Notion integration secret', tokenHint: 'Create an internal integration, copy its secret, then share the pages you want with it.', tokenLink: 'https://www.notion.so/profile/integrations' },
   { id: 'github', name: 'GitHub', summary: 'Repositories with your code and data.', connect: 'token', tokenLabel: 'GitHub personal access token', tokenHint: 'Create a fine-grained token with read access to the repositories you choose.', tokenLink: 'https://github.com/settings/personal-access-tokens' },
   { id: 'tavily', name: 'Tavily web search', summary: 'Web search for research you start.', connect: 'key' },
   { id: 'overleaf', name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
@@ -34,3 +36,6 @@ export type PluginStatus = {
   verified: boolean | null;
   checkMessage: string | null;
 };
+
+/** An app connected by signing in to its hosted MCP server. */
+export type AppConnectionStatus = { id: string; name: string; connected: boolean; connectedAt: string | null; account: string | null };

@@ -10,15 +10,16 @@
  * again keeps the project: new applicants are added, changed ones updated, and everyone moves on
  * from the stage they reached. Keys and allowances come from ~/.config/ros.ai/keys.env.
  *
- * The Notion side is read only, except one summary that Ros asks to write to the private
+ * Notion is reached through Notion's hosted connection, connected once on the eval's Apps page. It is read
+ * only, except one summary that Ros asks to write to the private
  * "ros.ai eval sandbox" page at the end, which waits for Accept in the browser.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NotionApi } from '../src/server/notion.js';
 import { loadLocalKeys } from '../src/server/local-keys.js';
 import { safeFileBase } from '../src/server/project-folders.js';
 
@@ -54,40 +55,73 @@ const commit = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, e
 writeFileSync(logPath, `# Run ${run}\n\nBuild: ${commit}   Config: ${configPath}\n\n`);
 
 loadLocalKeys();
-const notion = new NotionApi(() => process.env.NOTION_TOKEN);
-if (!notion.configured) fail('Notion is not connected. Add NOTION_TOKEN=... to ~/.config/ros.ai/keys.env (see the eval doc, Setup 2).');
 
 // 1. Applicants from Notion into the project folder: one note per applicant, plus their files.
+// Notion is read through the eval's own ros.ai, signed in to Notion's hosted connection on its Apps page.
 type Synced = Record<string, { file: string; lastEdited?: string }>;
 const state: Synced = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : {};
 const NOTION_MARK = '## From Notion';
+async function notion(tool: string, args: Record<string, unknown>) {
+  const result = await api<{ text: string; isError: boolean }>('/api/apps/notion/read', { body: { tool, arguments: args } });
+  if (result.isError) throw new Error(`Notion ${tool}: ${result.text.slice(0, 300)}`);
+  try { return JSON.parse(result.text) as Record<string, any>; } catch { return { text: result.text } as Record<string, any>; }
+}
 async function findDatabase(name: string) {
   if (/[0-9a-f]{32}/i.test(name.replace(/-/g, ''))) return name;
-  const found = (await notion.search(name, 'database', 10)).results.find((item: { title: string }) => item.title.trim().toLowerCase() === name.trim().toLowerCase());
-  if (!found) fail(`Notion has no database called "${name}" shared with ros.ai. Share it with the integration (••• → Connections), or put its link in ${configPath}.`);
+  const found = ((await notion('notion-search', { query: name, page_size: 10, max_highlight_length: 0 })).results ?? [] as { id: string; title: string; type: string }[])
+    .find((item: { title: string; type: string }) => item.type === 'database' && item.title.trim().toLowerCase() === name.trim().toLowerCase());
+  if (!found) fail(`Notion has no database called "${name}" that your account can see. Put its link in ${configPath}.`);
   return found.id as string;
 }
-const shown = (value: unknown) => Array.isArray(value) ? value.join(', ') : value === null || value === undefined || value === '' ? '' : String(value);
+const shown = (value: unknown): string => {
+  if (typeof value === 'string' && /^\[.*\]$/s.test(value)) { try { return shown(JSON.parse(value)); } catch { /* plain text */ } }
+  if (Array.isArray(value)) return value.map(shown).filter(Boolean).join(', ');
+  if (value === '__YES__') return 'yes';
+  if (value === '__NO__' || value === null || value === undefined || value === '') return '';
+  const text = String(value);
+  return /^(rollupResult|file|collection):\/\//.test(text) ? '' : text.replace(/<br>/g, ' ');
+};
+/** Signed file links in a page's properties (a CV property), named by their file name. */
+const fileLinks = (properties: Record<string, unknown>) => Object.entries(properties).flatMap(([key, value]) => Array.isArray(value)
+  ? value.filter((item): item is string => typeof item === 'string' && /^https?:\/\/\S+$/.test(item) && /\.[a-z0-9]{2,5}$/i.test(new URL(item).pathname)).map(url => ({ property: key, url, name: decodeURIComponent(new URL(url).pathname.split('/').pop()!) }))
+  : []);
 async function sync() {
   const database = await findDatabase(config.applicants), team = config.team.toLowerCase();
-  type Row = { id: string; url?: string; title: string; lastEdited?: string; properties: Record<string, unknown> };
+  const described = String((await notion('notion-fetch', { id: database })).text ?? '');
+  const source = described.match(/collection:\/\/[0-9a-f-]{36}/)?.[0], view = described.match(/view:\/\/[0-9a-f-]{36}/)?.[0];
+  if (!source) fail(`Could not find the table inside the Notion database "${config.applicants}".`);
+  type Row = Record<string, unknown> & { url: string };
   const rows: Row[] = [];
-  for (let cursor: string | undefined, first = true; first || cursor; first = false) {
-    const page = await notion.query(database, undefined, undefined, 50, cursor);
-    rows.push(...page.rows); cursor = page.nextCursor ?? undefined;
+  try {
+    if (!view) throw new Error('no view');
+    for (let cursor: string | undefined, first = true; first || cursor; first = false) {
+      const page = await notion('notion-query-data-sources', { data: { mode: 'view', view_url: view, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) } });
+      rows.push(...(page.results ?? [])); cursor = page.has_more ? page.next_cursor : undefined;
+    }
+  } catch {
+    rows.length = 0;
+    const page = await notion('notion-query-data-sources', { data: { mode: 'rows', data_source_url: source, limit: 100 } });
+    rows.push(...(page.results ?? []));
+    if (page.has_more) log('Finding: Notion returned only the first 100 rows (no saved view to page through).');
   }
-  const ours = rows.filter((row: Row) => config.teamProperties.some(name => shown(row.properties[name]).toLowerCase().includes(team)));
+  const ours = rows.filter(row => config.teamProperties.some(name => shown(row[name]).toLowerCase().includes(team)));
   const added: string[] = [], updated: string[] = [];
   for (const row of ours) {
-    const known = state[row.id];
-    if (known && known.lastEdited === row.lastEdited) continue;
-    const name = safeFileBase(row.title || `Applicant ${row.id.slice(0, 8)}`), file = known?.file ?? uniqueFile(`applicants/${name}.md`);
-    const page = await notion.read(row.id, undefined);
+    const id = row.url.match(/[0-9a-f]{32}/)?.[0] ?? row.url, version = createHash('sha256').update(JSON.stringify(row)).digest('hex').slice(0, 16);
+    const known = state[id];
+    if (known && known.lastEdited === version) continue;
+    const page = await notion('notion-fetch', { id: row.url, include_file_urls: true });
+    const text = String(page.text ?? ''), title = String(page.title ?? '');
+    let properties: Record<string, unknown> = row;
+    try { properties = JSON.parse(text.match(/<properties>\s*([\s\S]*?)\s*<\/properties>/)?.[1] ?? '') as Record<string, unknown>; } catch { /* the row's own values */ }
+    const content = (text.split('</properties>')[1] ?? '').replace(/<\/page>[\s\S]*$/, '').replace(/<iconMetadata>[\s\S]*?<\/iconMetadata>|<blank-page>[\s\S]*?<\/blank-page>/g, '').trim();
+    const name = safeFileBase(title || shown(row.Name) || `Applicant ${id.slice(0, 8)}`), file = known?.file ?? uniqueFile(`applicants/${name}.md`);
+    const attachments = fileLinks(properties);
     const fromNotion = [`${NOTION_MARK} (read ${new Date().toISOString().slice(0, 10)})`, '',
-      ...Object.entries(row.properties).flatMap(([key, value]) => shown(value) ? [`- **${key}:** ${shown(value)}`] : []), '',
-      ...(page.kind === 'page' && page.content ? ['### Application', '', page.content] : [])].join('\n');
+      ...Object.entries(properties).flatMap(([key, value]) => key === 'url' || attachments.some(item => item.property === key) || !shown(value) ? [] : [`- **${key}:** ${shown(value)}`]), '',
+      ...(content ? ['### Application', '', content] : [])].join('\n');
     const files: string[] = [];
-    for (const attachment of await notion.attachments(row.id)) {
+    for (const attachment of attachments) {
       const target = `applicants/${name} - ${safeFileBase(attachment.name.replace(/\.[a-z0-9]+$/i, ''))}${(attachment.name.match(/\.[a-z0-9]+$/i)?.[0] ?? '').toLowerCase()}`;
       if (existsSync(join(projectDir, target)) || files.includes(target)) { files.push(target); continue; }
       try {
@@ -104,10 +138,10 @@ async function sync() {
       writeFileSync(path, `${(at >= 0 ? current.slice(0, at) : `${current.trimEnd()}\n\n`)}${fromNotion}\n`);
       updated.push(name);
     } else {
-      writeFileSync(path, `Stage: 1 Intake done\nNotion: ${row.url ?? row.id}\n${files.length ? `Files: ${files.map(item => item.replace('applicants/', '')).join(', ')}\n` : ''}\n${fromNotion}\n`.slice(0, 19_000));
+      writeFileSync(path, `Stage: 1 Intake done\nNotion: ${row.url}\n${files.length ? `Files: ${files.map(item => item.replace('applicants/', '')).join(', ')}\n` : ''}\n${fromNotion}\n`.slice(0, 19_000));
       added.push(name);
     }
-    state[row.id] = { file, lastEdited: row.lastEdited };
+    state[id] = { file, lastEdited: version };
   }
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
   log(`Notion: ${ours.length} ${config.team} applicants of ${rows.length} rows; ${added.length} new${added.length ? ` (${added.join(', ')})` : ''}, ${updated.length} updated.`);
@@ -146,8 +180,12 @@ async function ready() {
   const problems: string[] = [];
   const credentials = (await api<{ credentials: { provider: string; configured: boolean }[] }>('/api/connections/credentials')).credentials;
   for (const [provider, key] of [['claude', 'ANTHROPIC_API_KEY'], ['tavily', 'TAVILY_API_KEY']]) if (!credentials.find(item => item.provider === provider)?.configured) problems.push(`${key} is missing from ~/.config/ros.ai/keys.env.`);
-  const check = await api<{ verified: boolean | null; checkMessage: string | null }>('/api/plugins/notion/check', { body: {} });
-  if (!check.verified) problems.push(`Notion: ${check.checkMessage ?? 'the secret was not accepted.'}`);
+  const signedIn = async () => (await api<{ apps: { id: string; connected: boolean }[] }>('/api/apps')).apps.some(item => item.id === 'notion' && item.connected);
+  if (!problems.length && !(await signedIn())) {
+    // The first run signs in once, in the browser; the eval's data folder remembers it.
+    console.log(`\n  Connect Notion once for this eval: open ${url}, go to Apps, and press Connect on Notion. Waiting…\n`);
+    while (!(await signedIn())) await new Promise(done => setTimeout(done, 3000));
+  }
   const budgets = (await api<{ budgets: { provider: string; ready: boolean; remainingUsd: number }[] }>('/api/connections/budgets')).budgets;
   for (const provider of ['claude', 'tavily']) { const budget = budgets.find(item => item.provider === provider); if (!budget?.ready) problems.push(`No ${provider} allowance left in this data folder. Set ROS_START_ALLOWANCE_${provider.toUpperCase()}_USD in the keys file for a new one, or raise it on the Budget page.`); else log(`${provider} allowance left: US$${budget.remainingUsd.toFixed(2)}`); }
   if (problems.length) { stop(); fail(problems.join('\n  ')); }
@@ -196,10 +234,10 @@ async function ask(projectId: string, message: string, nodeId: string | null, la
   return turn;
 }
 
-const RULES = `Rules: use only what the applicant gave (their Notion application, CV and the links in them) and their professional work; never search or keep anything about private life, family, health, religion or politics. Quote word for word. Never repeat email addresses or phone numbers. Do not write to Notion. Agents draft, people decide: never state a hiring decision as made.`;
+const RULES = `Rules: use only what the applicant gave (their Notion application, CV and the links in them) and their professional work; never search or keep anything about private life, family, health, religion or politics. Quote word for word. Never repeat email addresses or phone numbers. Do not write to Notion unless this message asks for it. Agents draft, people decide: never state a hiring decision as made.`;
 const stagePrompt = (title: string, nodeId: string) => `Take applicant "${title}" (block ${nodeId}) to their next recruitment stage, and only that stage.
 
-Read their block with ros_read_canvas: its first line "Stage: <n> ..." says the last stage done, and its "Files:" line names their CV notes on the map (titled "<name> - <file>.pdf"). The Candidate Assessment and Interview Scoring Grid templates and the role texts are in Notion: find them with ros_notion_search ("${config.templates.join('", "')}", "${config.roles}") and read them with ros_notion_read.
+Read their block with ros_read_canvas: its first line "Stage: <n> ..." says the last stage done, and its "Files:" line names their CV notes on the map (titled "<name> - <file>.pdf"). The Candidate Assessment and Interview Scoring Grid templates and the role texts are in Notion: find them with Notion's own tools through ros_app_call (app "notion": notion-search for "${config.templates.join('", "')}" and "${config.roles}", then notion-fetch).
 
 - After 1 Intake, do 2 Screening: add one note "Assessment: ${title}" linked from their block, with exactly the Candidate Assessment template's headings, every claim quoting the application or CV.
 - After 2, do 3 Background research: run ros_fan_out_search on their professional background, with the links they gave as named links in a direction; read the useful pages and save findings. Then add a note "Claim check: ${title}" linked from their block that marks each claim of their assessment confirmed, contradicted or not found, citing findings (not found is not false).
@@ -207,12 +245,12 @@ Read their block with ros_read_canvas: its first line "Stage: <n> ..." says the 
 - After 4, do 5 Interview 1 record: look in the Notion database "${config.interviews}" for this applicant. If there are interview notes, add a draft Interview Scoring Grid with evidence quoted from them. If not, set the stage to "5 Interview 1 not reached" and stop.
 
 Finish by changing the first line of their block to the stage you completed, for example "Stage: 2 Screening done". ${RULES}`;
-const closingPrompt = `Stages 6 and 7 for the ${config.team} team. Read the map with ros_read_canvas. For each role applied to, compare the applicants who reached stage 4 or further against the role text in Notion ("${config.roles}"), using only their accepted notes: name disagreements between screening and interview evidence rather than averaging them. Then add one note per role titled "Board brief: <role>" with ros_propose_canvas: who to consider for an offer and why, open concerns, who is not recommended and why, each statement naming the note it rests on. Then ask to write a one-paragraph summary per role to the Notion page "${config.sandbox}" with ros_notion_write (it waits for the person's Accept). ${RULES}`;
+const closingPrompt = `Stages 6 and 7 for the ${config.team} team. Read the map with ros_read_canvas. For each role applied to, compare the applicants who reached stage 4 or further against the role text in Notion ("${config.roles}"), using only their accepted notes: name disagreements between screening and interview evidence rather than averaging them. Then add one note per role titled "Board brief: <role>" with ros_propose_canvas: who to consider for an offer and why, open concerns, who is not recommended and why, each statement naming the note it rests on. Then ask to write a one-paragraph summary per role to the Notion page "${config.sandbox}" with ros_app_call (app "notion", tool notion-update-page with command insert_content; it waits for the person's Accept). ${RULES}`;
 
 // 3. The run.
-await sync();
 await start();
 await ready();
+await sync();
 const projectId = await project();
 await placeNewFiles(projectId);
 console.log(`\n  ros.ai is open at ${url} (project "${PROJECT_TITLE}"). Watch the canvas while Ros works.\n`);
