@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Archive, ArrowUp, Check, ChevronDown, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal, Square, X } from 'lucide-react';
-import type { AssistantBackend, AssistantFocus, AssistantState } from '../shared/assistant';
-import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, Square, X } from 'lucide-react';
+import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
-import { BrandLogo } from './brand-logos';
-import { ModelMakerSymbol } from './ModelMakerSymbol';
-import { api, post } from './api';
+import { RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
 import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
@@ -19,39 +16,13 @@ export function RosMark({ working = false }: { working?: boolean }) {
   return <span className={`ros-mark ${working ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span>;
 }
 
-const settingsChanged = 'ros-ai-model-settings';
 const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
-type ModelChoice = { provider: string; model: string; label: string; maker: ModelMaker };
-
-/** The project's chosen model and the models it could switch to, kept fresh when settings change elsewhere. */
-function useProjectModels(projectId: string, revision: number) {
-  const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
-  useEffect(() => {
-    let active = true;
-    const load = () => { void api<ModelSettingsResponse>(`/api/projects/${projectId}/models`).then(value => { if (active) setSettings(value); }).catch(() => undefined); };
-    load();
-    window.addEventListener(settingsChanged, load);
-    return () => { active = false; window.removeEventListener(settingsChanged, load); };
-  }, [projectId, revision]);
-  const selection = settings?.project || settings?.default;
-  const choices: ModelChoice[] = settings?.providers.flatMap(connection => connection.models.map(item => ({ provider: connection.id, model: item.id, label: item.label, maker: item.maker || modelMaker(item.id, connection.id) }))) ?? [];
-  const current = choices.find(item => item.provider === selection?.provider && item.model === selection?.model);
-  const choose = async (choice: ModelChoice) => {
-    const value = await api<ModelSettingsResponse>(`/api/projects/${projectId}/models`, { method: 'PATCH', body: JSON.stringify({ nodeId: null, selection: { provider: choice.provider, model: choice.model } }) });
-    setSettings(value);
-    window.dispatchEvent(new Event(settingsChanged));
-  };
-  return { choices, current, fallback: selection?.model, choose };
-}
-
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
-export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onOpen }: { state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onOpen: (mode: 'half' | 'full') => void }) {
-  const [draft, setDraft] = useState(''), [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [now, setNow] = useState(() => Date.now());
+export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
+  const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
-  const menuRef = useRef<HTMLDivElement>(null), modelButton = useRef<HTMLButtonElement>(null);
-  const models = useProjectModels(detail.project.id, detail.project.revision);
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const active = turns.find(turn => turn.id === state?.activeTurnId) || turns.findLast(turn => turn.status === 'running');
   const running = busy || Boolean(active);
@@ -66,17 +37,7 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
   const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const blocks = detail.project.canvas.nodes.length;
-  const backend = state?.backend;
-  const agentLabel = backend === 'claude' ? 'Claude Code' : backend === 'codex' ? 'Codex' : null;
-  const modelLabel = agentLabel || models.current?.label || models.fallback || 'Choose a model';
   useEffect(() => { if (!running) return; setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [running]);
-  useEffect(() => {
-    if (!menu) return;
-    const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node) && !modelButton.current?.contains(event.target as Node)) setMenu(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenu(false); modelButton.current?.focus(); } };
-    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
-  }, [menu]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const message = draft.trim();
@@ -85,15 +46,6 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
     setDraft('');
     if (!await onSend(message)) setDraft(message);
   };
-  const switchTo = async (change: () => Promise<unknown>) => {
-    if (switching || running) return;
-    setSwitching(true);
-    try { await change(); await onRefresh(); setMenu(false); } catch { onOpen('half'); } finally { setSwitching(false); }
-  };
-  const setBackend = (next: AssistantBackend) => post(`/api/projects/${detail.project.id}/assistant/backend`, { backend: next });
-  // Picking a model while an outside agent runs Ros hands Ros back to that model.
-  const pickModel = (choice: ModelChoice) => switchTo(async () => { await models.choose(choice); if (agentLabel) await setBackend('provider'); });
-  const usingModel = (choice: ModelChoice) => !agentLabel && models.current?.provider === choice.provider && models.current?.model === choice.model;
   return <div className="ros-dock" data-testid="ros-bar">
     <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
       {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
@@ -113,27 +65,14 @@ export function RosBar({ state, detail, focus, busy, onSend, onCancel, onClearFo
       <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
-        <div className="ros-model">
-          <button ref={modelButton} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} onClick={() => setMenu(!menu)}>
-            {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
-            <span>{modelLabel}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
-          </button>
-          {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
-            <p>Ros runs with</p>
-            {models.choices.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
-            <button type="button" role="menuitemradio" aria-checked={backend === 'claude'} onClick={() => void switchTo(() => setBackend('claude'))}><BrandLogo id="claude" size={16}/><span className="ros-menu-label">Claude Code<small>Your Anthropic API key</small></span>{backend === 'claude' && <Check size={14}/>}</button>
-            <button type="button" role="menuitemradio" aria-checked={backend === 'codex'} onClick={() => void switchTo(() => setBackend('codex'))}><BrandLogo id="codex" size={16}/><span className="ros-menu-label">Codex<small>This computer’s Codex sign-in</small></span>{backend === 'codex' && <Check size={14}/>}</button>
-            <hr/>
-            <button type="button" role="menuitem" onClick={() => { setMenu(false); onOpen('half'); }}><SlidersHorizontal size={14}/><span className="ros-menu-label">More settings</span></button>
-          </div>}
-        </div>
+        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
         {focusedNode
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedNode.title}`}><Focus size={12}/><span>{focusedNode.title}</span><button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button></span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
-        <button type="button" className="icon-button" aria-label="Open Ros as a half sheet" title="Half sheet" onClick={() => onOpen('half')}><PanelBottomOpen size={14}/></button>
-        <button type="button" className="icon-button" aria-label="Open Ros in full" title="Full panel" onClick={() => onOpen('full')}><Maximize2 size={13}/></button>
+        <button type="button" className="icon-button" aria-label={rosSizeLabel.half} title="Half sheet" onClick={() => onOpen('half')}><RosSizeIcon size="half" px={15}/></button>
+        <button type="button" className="icon-button" aria-label={rosSizeLabel.full} title="Side panel" onClick={() => onOpen('full')}><RosSizeIcon size="full" px={15}/></button>
         {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
           : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
