@@ -13,6 +13,7 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 - **Project folders:** each project lives in a folder you choose. Notes, code, notebooks and data are ordinary files (Markdown, `.py`, `.ipynb`, CSV) that Obsidian, VS Code or Jupyter open, and edits saved there come back as changes you can undo. See [RESULT.md](RESULT.md).
 - **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
 - **Notebooks:** a Notebook block opens a notebook over the canvas and runs its cells one by one, as Jupyter does, in a Python that stays running in the Docker sandbox. It is saved as `.ipynb` in the project folder, and a `.ipynb` file can be imported.
+- **Landing page:** `landing.html` is the public website, built by Vite next to the app and served by the public demo at `/` (the app stays at `/app`). A local checkout serves it at `/landing.html`.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
 - Dated build notes live in [docs/history](docs/history/). [CONTEXT.md](CONTEXT.md) records shared language.
 

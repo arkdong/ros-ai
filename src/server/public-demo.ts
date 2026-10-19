@@ -74,7 +74,7 @@ function visitorApp(store:Store):Express {
   return app;
 }
 
-export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSessions?:number;sessionDays?:number}) {
+export function createPublicDemoApp(options:{dataDir:string;origin:string;landing:string;maxSessions?:number;sessionDays?:number}) {
   const origin = new URL(options.origin);
   const loopback = ['localhost','127.0.0.1','[::1]'].includes(origin.hostname);
   if (origin.protocol !== 'https:' && !(loopback && origin.protocol === 'http:')) throw new Error('Public demo origin must use HTTPS, except local preview.');
@@ -125,8 +125,9 @@ export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSes
     res.setHeader('X-Frame-Options','DENY');
     next();
   });
-  // Retired signup URLs lead to the demo without opening or modifying its old database.
-  app.get(['/','/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302, '/app'));
+  // The landing page fronts the demo; retired signup URLs lead to the demo without opening or modifying its old database.
+  app.get('/',(_req,res) => res.sendFile(options.landing));
+  app.get(['/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302, '/app'));
   app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
   // Establish the browser identity with the document, before its JavaScript
   // starts parallel catalog/project requests without an existing cookie.
