@@ -11,6 +11,7 @@
     "start": "tsx src/server/index.ts",
     "dev": "ROS_DEV=1 tsx src/server/index.ts",
     "try": "node scripts/try.mjs",
+    "eval:aiso": "tsx scripts/aiso-eval.ts",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/*.test.ts",
     "lint": "tsc --noEmit"

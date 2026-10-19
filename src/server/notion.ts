@@ -151,7 +151,7 @@ export class NotionApi {
     catch (error) {
       if (!(error instanceof StoreError) || (error.status !== 404 && error.status !== 400)) throw error;
       const { database } = await this.database(id, signal);
-      return { kind: 'database', id: database.id, title: databaseTitle(database), url: database.url, description: text(database.description), columns: Object.entries(database.properties ?? {}).map(([name, value]: [string, any]) => ({ name, type: value.type, ...(value[value.type]?.options ? { options: value[value.type].options.map((option: Json) => option.name) } : {}) })), instruction: 'Query its rows with ros_notion_query.' };
+      return { kind: 'database' as const, id: database.id, title: databaseTitle(database), url: database.url, description: text(database.description), columns: Object.entries(database.properties ?? {}).map(([name, value]: [string, any]) => ({ name, type: value.type, ...(value[value.type]?.options ? { options: value[value.type].options.map((option: Json) => option.name) } : {}) })), instruction: 'Query its rows with ros_notion_query.' };
     }
     const lines: string[] = [];
     let next: string | undefined = cursor, length = 0;
@@ -161,12 +161,12 @@ export class NotionApi {
       next = children.has_more ? children.next_cursor : undefined;
     } while (next && length < CONTENT_CHARACTERS);
     const content = lines.join('\n');
-    return { kind: 'page', id: page.id, title: pageTitle(page), url: page.url, parent: page.parent, properties: properties(page), content: content.slice(0, CONTENT_CHARACTERS), ...(next || content.length > CONTENT_CHARACTERS ? { nextCursor: next ?? null, note: 'Content continues; pass nextCursor to read further.' } : {}) };
+    return { kind: 'page' as const, id: page.id, title: pageTitle(page), url: page.url, parent: page.parent, properties: properties(page), content: content.slice(0, CONTENT_CHARACTERS), ...(next || content.length > CONTENT_CHARACTERS ? { nextCursor: next ?? null, note: 'Content continues; pass nextCursor to read further.' } : {}) };
   }
   async query(target: string, filter: Json | undefined, sorts: Json[] | undefined, limit: number, cursor: string | undefined, signal?: AbortSignal) {
     const id = notionId(target);
     const result = await this.call('POST', `/v1/databases/${id}/query`, { page_size: limit, ...(filter ? { filter } : {}), ...(sorts?.length ? { sorts } : {}), ...(cursor ? { start_cursor: cursor } : {}) }, signal);
-    return { rows: (result.results ?? []).map((page: Json) => ({ id: page.id, url: page.url, title: pageTitle(page), properties: properties(page) })), nextCursor: result.has_more ? result.next_cursor : null };
+    return { rows: (result.results ?? []).map((page: Json) => ({ id: page.id, url: page.url, title: pageTitle(page), lastEdited: page.last_edited_time as string | undefined, properties: properties(page) })), nextCursor: result.has_more ? result.next_cursor : null };
   }
   /** Resolves the target and property types now, so a bad write fails before anyone is asked to approve it. */
   async prepare(write: NotionWrite, signal?: AbortSignal): Promise<PreparedNotionWrite> {
@@ -206,6 +206,12 @@ export class NotionApi {
     if (write.type === 'append') return { method: 'PATCH', path: `/v1/blocks/${pageId}/children`, body: { children: textBlocks(write.content) }, target, preview: `Add to the end of "${target.title}":\n\n${write.content.slice(0, 4000)}` };
     return { method: 'POST', path: '/v1/comments', body: { parent: { page_id: pageId }, rich_text: rich(write.text) }, target, preview: `Comment on "${target.title}":\n\n${write.text}` };
   }
+  /** Files attached to a page's file properties, with Notion's links (signed for about an hour, so fetch them at once). */
+  async attachments(target: string, signal?: AbortSignal) {
+    const page = await this.call('GET', `/v1/pages/${notionId(target)}`, undefined, signal);
+    return Object.entries(page.properties ?? {}).flatMap(([property, value]: [string, any]) => value?.type === 'files'
+      ? (value.files ?? []).flatMap((file: Json) => { const url = file.file?.url ?? file.external?.url; return typeof url === 'string' ? [{ property, name: String(file.name ?? 'file'), url }] : []; }) : []);
+  }
   async apply(prepared: PreparedNotionWrite, signal?: AbortSignal) {
     const result = await this.call(prepared.method, prepared.path, prepared.body, signal);
     return { id: (result.id as string | undefined) ?? prepared.target.id, url: (result.url as string | undefined) ?? prepared.target.url };
@@ -213,7 +219,7 @@ export class NotionApi {
 }
 
 /** Notion's API; a stand-in on this computer only, for checks without a real workspace. */
-function notionBase() {
+export function notionBase() {
   const value = process.env.ROS_NOTION_API_BASE?.replace(/\/+$/u, '');
   if (!value) return 'https://api.notion.com';
   if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/u.test(value)) throw new Error('ROS_NOTION_API_BASE may only point at a stand-in on this computer (http://127.0.0.1:<port>).');

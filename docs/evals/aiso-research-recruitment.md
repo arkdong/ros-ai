@@ -38,6 +38,27 @@ Set up 2026-10-19. Process source: AISO Notion, *Recruitment process 2026/27*, t
    Each fresh data folder then starts with those allowances (each Claude turn reserves up to US$1; `ROS_CLAUDE_TURN_USD` changes that), so the allowances are per run: keep them small. In the app, choose Claude Code in the assistant's settings and model Sonnet. Note the allowance in the run log so X2 can be read against it.
 5. **Templates as notes.** Put `snapshot/templates/candidate-assessment.md` (Background, Motivation, Evidence, Strong points, Concerns, Current recommendation, Rationale) and `snapshot/templates/interview-grid.md` (relevant skills, demonstrated ability, motivation, personal/cultural fit, each 1-5 with evidence; overall Proceed / Reject) in the snapshot, copied from the Notion templates.
 
+## One-command run
+
+`npm run eval:aiso` does the whole run with fixed prompts, on the connections in your keys file:
+
+1. **Sync.** Reads every row of the Notion applicants database (default *AISO Recruitment*), keeps the Research ones (Teams or Position contains Research), and writes one note per applicant to `~/ros-ai-evals/aiso-research/project/applicants/` with their Notion properties and application text, plus their attached files (CVs). New applicants are added; changed ones get their *From Notion* section replaced, and everything above it (the stage line, edits) is kept.
+2. **Start.** Starts ros.ai from this checkout on port 4330 with its own data folder (`~/ros-ai-evals/aiso-research/data`), checks the Anthropic key, Notion, Tavily and both allowances, and stops with what to fix if one is missing. It opens or creates the project *AISO Research recruitment* on that folder, adds new files to the canvas (PDFs as their text), sets the project to Full access and the assistant to Claude Code.
+3. **Stages.** For each applicant, one Ros turn with the same fixed prompt moves them one stage on (2 Screening, 3 Background research, 4 Interview 1 questions, 5 Interview 1 record or *not reached*), reading their stage from the first line of their note. Rounds repeat until everyone is at stage 5 or `--stages` rounds have run. Two failed turns in a row stop the run.
+4. **Close.** One turn writes a *Board brief* note per role and asks to write a summary to the Notion page *ros.ai eval sandbox*: accept or dismiss it in the browser. Nothing else is written to Notion.
+
+Every turn's outcome, time and reply go to `runs/<date-time>/log.md`, with a finding when an applicant's stage did not move; add the scorecard below and score it. Running it again continues from where each applicant is. `--sync-only` only brings Notion in; `--stages 1` moves everyone one stage.
+
+Before the first run: the keys file (Setup 4) and a Notion integration shared with the applicants database, *AISO Open Positions*, the two templates, *Interviews | Management* and *ros.ai eval sandbox* (Setup 2). Other names go in `~/ros-ai-evals/aiso-research/config.json`, written on the first run.
+
+Cost: each turn reserves up to US$2 of the Claude allowance (`ROS_CLAUDE_TURN_USD`), and a full pass is about 4 turns per applicant plus one. The eval keeps one data folder, so `ROS_START_ALLOWANCE_CLAUDE_USD` applies once, on the first run; top it up on the Budget page. Start with `--stages 1` to see the cost of one round.
+
+On the Mac, from the pull request copy that `npm run try -- 32` made:
+
+```sh
+cd ~/code/ros-ai-try/pr-32 && npm run eval:aiso -- --stages 1
+```
+
 ## Start a run
 
 From an up-to-date checkout of the build under test (main, or a pull request through `npm run try`):

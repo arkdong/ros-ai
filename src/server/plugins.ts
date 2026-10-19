@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import { z } from 'zod';
 import { StoreError } from './store.js';
+import { notionBase } from './notion.js';
 import type { PluginStatus, TokenPluginId } from '../shared/plugins.js';
 
 const ids = ['zotero', 'slack', 'notion', 'github'] as const satisfies readonly TokenPluginId[];
@@ -79,7 +80,7 @@ export class PluginTokens {
         verified = body?.ok === true;
         checkMessage = verified ? `Slack accepted the token${label(body?.team) ? ` for ${label(body?.team)}` : ''}.` : response.ok ? 'Slack rejected this token.' : `Slack returned HTTP ${response.status}.`;
       } else if (id === 'notion') {
-        const response = await request('https://api.notion.com/v1/users/me', { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
+        const response = await request(`${notionBase()}/v1/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
         verified = response.ok;
         checkMessage = response.ok ? 'Notion accepted the integration secret. Share pages with the integration to make them visible.' : response.status === 401 ? 'Notion rejected this secret.' : `Notion returned HTTP ${response.status}.`;
       } else {
