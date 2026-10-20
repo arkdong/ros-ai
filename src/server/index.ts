@@ -25,6 +25,7 @@ import { RemoteApps } from './remote-apps.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
+import { LocalRos } from './local-ros.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
@@ -61,6 +62,7 @@ let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
 let cloud:CloudAccount|undefined;
+let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
 let outside:OutsideAgents|undefined;
@@ -83,6 +85,7 @@ async function shutdown() {
     await claude?.shutdown();
     await loop?.shutdown();
     cloud?.shutdown();
+    localRos?.shutdown();
     await execution?.shutdown();
     await experiments?.shutdown();
     await research?.shutdown();
@@ -114,6 +117,9 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
+    // Ros on this computer starts with the app once its download is on disk.
+    localRos = new LocalRos(dataDir,inference);
+    void localRos.start();
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
@@ -128,7 +134,7 @@ try {
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
