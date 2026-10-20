@@ -5344,46 +5344,6 @@ button.outline-title:hover {
   font-size: 14px;
   line-height: 1.7;
 }
-.trash-project {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 17px 0;
-  border-top: 1px solid #dedede;
-}
-.trash-project>div {
-  min-width: 0;
-}
-.trash-project strong {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #171717;
-}
-.trash-project small {
-  font-size: 13px;
-  display: block;
-  color: #6b6b6b;
-  line-height: 1.5;
-  margin-top: 4px;
-}
-.trash-project .secondary {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.trash-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 45px 0;
-  color: #6b6b6b;
-}
-.trash-empty p {
-  font-size: 15px;
-  color: #6b6b6b;
-}
 @media (min-width:1800px) {
   .assistant-panel {
     width: 420px;
@@ -5649,13 +5609,6 @@ button.outline-title:hover {
   .single-canvas-shell .project-start-choices>button {
     padding: 13px 11px;
     gap: 11px;
-  }
-  .single-canvas-shell .trash-project {
-    gap: 10px;
-  }
-  .trash-project .secondary {
-    font-size: 13px;
-    padding: 8px;
   }
   .single-canvas-shell .canvas-empty h2 {
     font-size: 28px;

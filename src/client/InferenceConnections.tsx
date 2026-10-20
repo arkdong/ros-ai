@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, LoaderCircle, Plus, RefreshCw, Server, Square } from 'lucide-react';
+import { ChevronDown, LoaderCircle, Plus, RefreshCw, Server } from 'lucide-react';
 import type { InferenceConnectionInput, InferenceConnectionStatus, RegisteredInferenceModel } from '../shared/inference';
 import type { ModelMaker } from '../shared/model-settings';
-import { api, post } from './api';
+import { api } from './api';
 import { BrandLogo } from './brand-logos';
 import './inference-connections.css';
 
