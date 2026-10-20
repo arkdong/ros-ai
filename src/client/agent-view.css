@@ -3,14 +3,14 @@
 .agent-view header > div { display: grid; flex: 1; gap: 1px; }
 .agent-view header strong { font-size: 14px; }
 .agent-view header small { color: #6b6b67; font-size: 12px; }
-.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #f1f1ef; box-shadow: 0 0 0 1px #e1e1df; }
+.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #f1f1ef; box-shadow: 0 0 0 1px #e1e1e1; }
 .agent-goal .rich-text { font-size: 14px; color: #3d3d3a; }
 /* Section titles are not headings, so Markdown headings inside the answer keep their own style. */
 .agent-section-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #6b6b67; }
 .agent-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .agent-step { display: grid; grid-template-columns: 22px 1fr; gap: 8px; position: relative; padding-bottom: 12px; }
-.agent-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: #e3e3e0; }
-.agent-step-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f4f4f2; color: #4a4a46; }
+.agent-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: #e3e3e3; }
+.agent-step-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f4f4f4; color: #4a4a46; }
 .agent-step.waiting .agent-step-icon { background: #fbf3e4; color: #8a5a12; }
 .agent-step.failed .agent-step-icon, .agent-step.declined .agent-step-icon { background: #fbecea; color: #9b3a32; }
 .agent-step-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-height: 22px; font-size: 14px; line-height: 22px; color: #26302a; }

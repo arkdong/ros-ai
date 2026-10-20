@@ -1,26 +1,23 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Bot, Check, Search, ChevronDown, ChevronRight, CircleHelp, FileText, Focus, GitBranch, ListTree, LoaderCircle, MessageSquare, Maximize2, Minimize2, Minus, Plug, Quote, Settings2, ShieldCheck, Square, X } from 'lucide-react';
-import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn, OutlineEntry } from '../shared/assistant';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, ShieldCheck, Square, X } from 'lucide-react';
+import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { agentDirections } from '../shared/agent-work';
-import { buildOutlineHierarchy, type OutlineBranch } from '../shared/outline-hierarchy';
 import { presentAssistantResponse, type AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
 import { post } from './api';
-import { BrandLogo } from './brand-logos';
-import { ModelSettings } from './ModelSettings';
-import { WorkspaceGuide } from './WorkspaceGuide';
+import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import type { ResearchPolicy } from '../shared/research';
 import { AssistantStructurePreview, proposalStructurePreview } from './AssistantStructurePreview';
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
-import './outline-hierarchy.css';
 import './assistant-compact.css';
 
 type Props = {
-  state: AssistantState | null; detail: ProjectDetail; focus: AssistantFocus; busy: boolean; loadError?:string;
+  state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; loadError?:string;
   onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
   onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
@@ -29,25 +26,26 @@ type Props = {
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
 };
-const backendLabel = (backend?: AssistantBackend) => backend === 'claude' ? 'Planning with Claude Code' : backend === 'codex' ? 'Planning with Local Codex' : backend === 'agent' ? 'Working as an agent with your model' : 'Planning with your API model';
 
-export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onInspectAction, mode = 'full', onMode }: Props) {
-  const [tab, setTab] = useState<'conversation' | 'outline'>(() => readSaved(`assistant-tab:${detail.project.id}`, 'conversation'));
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onInspectAction, mode = 'full', onMode }: Props) {
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
-  const [settingsOpen,setSettingsOpen]=useState(false),[backendBusy,setBackendBusy]=useState(false),[guideOpen,setGuideOpen]=useState(false);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
   const [preparedNotice, setPreparedNotice] = useState('');
-  const settingsRef=useRef<HTMLDivElement>(null),settingsButton=useRef<HTMLButtonElement>(null);
   type Submission={message:string;at:string;status:'pending'|'failed'|'uncertain';error?:string};
   const [submission,setSubmission]=useState<Submission|null>(()=>{const saved=readSaved<Submission|null>(`assistant-submission:${detail.project.id}`,null);return saved?.status==='pending'?{...saved,status:'uncertain',error:'The browser closed before admission was confirmed. Refresh saved activity before sending again; ros.ai will not retry automatically.'}:saved;});
   const rememberSubmission=(value:Submission|null)=>{setSubmission(value);saveLocal(`assistant-submission:${detail.project.id}`,value);};
 
 
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.ros-model-menu, .modal, .cm-editor:focus-within')) onClose(); };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onClose]);
   const scroller = useRef<HTMLDivElement>(null); const textarea = useRef<HTMLTextAreaElement>(null); const followConversation=useRef(true);
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
-  const focusedGroup = detail.project.canvas.nodes.some(node => node.parentId === focus.nodeId && focus.nodeId);
   const focusedArtifact = detail.artifacts.find(artifact => artifact.id === focus.artifactId);
+  const blocks = detail.project.canvas.nodes.length;
   const turns = [...(state?.turns || [])].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)); const active = turns.find(turn => turn.id === state?.activeTurnId);
   const savedMessages = state?.messages || [];
   // The service stores the first user message just before its turn is created.
@@ -57,7 +55,6 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
   const onReference=(reference:AssistantReference)=>{
     const saved=detail.messages.find(item=>item.id===reference.id);
     if(reference.kind!=='message'||!saved||saved.nodeId){navigateReference(reference);return;}
-    setTab('conversation');
     const legacy=messages.some(item=>item.id===reference.id);if(legacy)setPreviousOpen(true);
     const matchingTurn=saved.role==='user'?turns.find(turn=>turn.userMessage===saved.content&&turn.createdAt>=saved.createdAt):turns.findLast(turn=>turn.createdAt<=saved.createdAt);
     setTimeout(()=>{const selector=legacy?`[data-message-id="${reference.id}"]`:matchingTurn?`[data-turn-id="${matchingTurn.id}"]`:null;if(selector)document.querySelector<HTMLElement>(selector)?.scrollIntoView({block:'center'});},0);
@@ -67,22 +64,20 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
   const blocker = state && !state.modelAvailable ? assistantBlocker(state.modelBlocker||'The selected model is unavailable.',state.backend) : null;
   const modelBlocked = Boolean(state && !state.modelAvailable);
   const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !turns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
-  useEffect(() => { saveLocal(`assistant-tab:${detail.project.id}`, tab); }, [tab, detail.project.id]);
   useEffect(() => { saveLocal(`assistant-draft:${detail.project.id}`, message); }, [message, detail.project.id]);
-  useEffect(() => { if (prefill) { setTab('conversation'); setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
-  useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy, tab]);
-  useEffect(()=>{const element=scroller.current;if(!element)return;const observer=new ResizeObserver(()=>{if(followConversation.current)element.scrollTop=element.scrollHeight;});observer.observe(element);return()=>observer.disconnect();},[tab]);
+  useEffect(() => { if (prefill) { setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
+  useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy]);
+  useEffect(()=>{const element=scroller.current;if(!element)return;const observer=new ResizeObserver(()=>{if(followConversation.current)element.scrollTop=element.scrollHeight;});observer.observe(element);return()=>observer.disconnect();},[]);
   useEffect(()=>{if(submission&&turns.some(turn=>turn.userMessage===submission.message&&turn.createdAt>=submission.at)){setSubmission(null);saveLocal(`assistant-submission:${detail.project.id}`,null);}},[state,detail.project.id,submission]);
-  useEffect(()=>{if(!settingsOpen)return;const dismiss=(event:PointerEvent)=>{if(!settingsRef.current?.contains(event.target as Node)&&!settingsButton.current?.contains(event.target as Node))setSettingsOpen(false);};const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSettingsOpen(false);settingsButton.current?.focus();}};document.addEventListener('pointerdown',dismiss);document.addEventListener('keydown',key);return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);};},[settingsOpen]);
-  const changeBackend=async(backend:AssistantBackend)=>{if(running||backendBusy)return;setBackendBusy(true);try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();setSettingsOpen(false);}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}finally{setBackendBusy(false);}};
+  const changeBackend=async(backend:AssistantBackend)=>{if(running)return;try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}};
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); if (!message.trim() || running || modelBlocked || backendBusy || submission?.status==='pending') return;
+    event.preventDefault(); if (!message.trim() || running || modelBlocked || submission?.status==='pending') return;
     setPreparedNotice('');
     const attempt:Submission={message:message.trim(),at:new Date().toISOString(),status:'pending'};rememberSubmission(attempt);
     try{if(await onSend(attempt.message)){setMessage('');rememberSubmission(null);}else rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}
     catch(cause){const error=cause instanceof Error?cause.message:String(cause);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
   };
-  const usePrompt = (value: string) => { setMessage(value); setTab('conversation'); textarea.current?.focus(); };
+  const usePrompt = (value: string) => { setMessage(value); textarea.current?.focus(); };
   const openAnswers = (turnId: string, questions: AssistantClarificationQuestion[]) => {
     if (!questions.length || busy || submission?.status === 'pending') return;
     setAnswerTarget({ projectId: detail.project.id, turnId, questions });
@@ -95,19 +90,14 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
       const combined = appendPreparedAnswers(current, answers);
       return combined.length <= 12000 ? combined : current;
     });
-    setTab('conversation'); setPreparedNotice('Answers added to your draft. No message was sent.'); setAnswerTarget(null);
+    setPreparedNotice('Answers added to your draft. No message was sent.'); setAnswerTarget(null);
     setTimeout(() => textarea.current?.focus(), 0);
     return null;
   };
   return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="Ros" data-testid="assistant-panel">
-    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><div><h2>Ros</h2><p>{running?'Working on your question':backendLabel(state?.backend)}</p></div><button ref={settingsButton} className="icon-button" aria-label="Assistant settings" aria-expanded={settingsOpen} aria-controls="assistant-settings" onClick={()=>setSettingsOpen(!settingsOpen)}><Settings2 size={17}/></button>{onMode&&<button className="icon-button" aria-label={mode==='half'?'Open Ros in full':'Open Ros as a half sheet'} title={mode==='half'?'Full panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}>{mode==='half'?<Maximize2 size={16}/>:<Minimize2 size={16}/>}</button>}<button className="icon-button" aria-label="Collapse Ros to the bar" title="Collapse" onClick={onClose}><Minus size={17}/></button></header>
-    {settingsOpen&&<div ref={settingsRef} id="assistant-settings" className="assistant-settings-popover" role="dialog" aria-label="Assistant settings"><h3>Assistant connection</h3><div role="group" aria-label="Assistant connection"><button type="button" aria-pressed={!state?.backend||state.backend==='provider'} disabled={running||backendBusy} onClick={()=>void changeBackend('provider')}><MessageSquare size={16}/><span><strong>API model</strong><small>Use the model selected below</small></span>{(!state?.backend||state.backend==='provider')&&<Check size={14}/>}</button><button type="button" aria-pressed={state?.backend==='agent'} disabled={running||backendBusy} onClick={()=>void changeBackend('agent')}><Bot size={16}/><span><strong>Agent with this model</strong><small>The model below works with ros.ai's tools, step by step</small></span>{state?.backend==='agent'&&<Check size={14}/>}</button><button type="button" aria-pressed={state?.backend==='claude'} disabled={running||backendBusy} onClick={()=>void changeBackend('claude')}><BrandLogo id="claude" size={16}/><span><strong>Claude Code</strong><small>Reads the project folder, with your Anthropic API key</small></span>{state?.backend==='claude'&&<Check size={14}/>}</button><button type="button" aria-pressed={state?.backend==='codex'} disabled={running||backendBusy} onClick={()=>void changeBackend('codex')}><BrandLogo id="codex" size={16}/><span><strong>Local Codex</strong><small>Use this computer’s Codex sign-in</small></span>{state?.backend==='codex'&&<Check size={14}/>}</button></div><div className="assistant-settings-links"><button type="button" onClick={onConnections}><Plug size={14}/> Model & budget</button><button type="button" onClick={()=>{setSettingsOpen(false);onPermissions();}}><ShieldCheck size={14}/> Research permissions</button></div>{state?.modelBlocker&&<details><summary>Connection details</summary><p>{state.modelBlocker}</p></details>}</div>}
-    <div className="assistant-tabs" role="tablist" aria-label="Assistant view" onKeyDown={event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const next=tab==='conversation'?'outline':'conversation';setTab(next);document.getElementById(`${next}-tab`)?.focus();}}}><button id="conversation-tab" role="tab" aria-selected={tab === 'conversation'} aria-controls="assistant-conversation" className={tab === 'conversation' ? 'active' : ''} onClick={() => setTab('conversation')}><MessageSquare size={15}/> Conversation</button><button id="outline-tab" role="tab" aria-selected={tab === 'outline'} aria-controls="assistant-outline" className={tab === 'outline' ? 'active' : ''} onClick={() => setTab('outline')}><ListTree size={15}/> Research outline</button></div>
-    <div className={`assistant-focus ${focusedNode ? 'has-focus' : ''}`} data-testid="assistant-focus"><Focus size={13}/><div><span>{focusedArtifact ? 'Artifact' : focusedNode ? focusedGroup ? 'Group' : 'Note' : 'Project'}</span><strong title={focusedArtifact?.title || focusedNode?.title || detail.project.title}>{focusedArtifact?.title || focusedNode?.title || detail.project.title}</strong></div>{focusedNode && <button className="icon-button" aria-label="Clear assistant focus" title="Return to project context" onClick={onClearFocus}><X size={13}/></button>}</div>
-    {tab === 'conversation' && <div className="assistant-model-row">{state?.backend==='claude'?<button type="button" className="assistant-runtime-trigger" disabled={running||backendBusy} onClick={()=>setSettingsOpen(!settingsOpen)}><BrandLogo id="claude" size={20}/><span><strong>Claude Code</strong><small>Anthropic API · model in Model, allowance in Budget</small></span><ChevronDown size={14}/></button>:state?.backend==='codex'?<button type="button" className="assistant-runtime-trigger" disabled={running||backendBusy} onClick={()=>setSettingsOpen(!settingsOpen)}><BrandLogo id="codex" size={20}/><span><strong>Codex connection</strong><small>Native CLI · processing destination depends on Codex</small></span><ChevronDown size={14}/></button>:<ModelSettings detail={detail} nodeId={focusedNode?.id} compact readOnly={running||backendBusy} agents={[{id:'claude',label:'Claude Code',detail:'Agent · your Anthropic API key',icon:<BrandLogo id="claude" size={20}/>,onChoose:()=>void changeBackend('claude')},{id:'codex',label:'Codex',detail:'Agent · this computer’s Codex sign-in',icon:<BrandLogo id="codex" size={20}/>,onChoose:()=>void changeBackend('codex')}]}/>}<button type="button" className="review-workspace-trigger" onClick={()=>setGuideOpen(true)}><ListTree size={13}/> Review workspace</button></div>}
-    {guideOpen&&<WorkspaceGuide key={detail.project.id} detail={detail} onClose={()=>setGuideOpen(false)} onConnections={()=>{setGuideOpen(false);onConnections();}} onChanged={onRefresh} onReference={reference=>{setGuideOpen(false);onReference(reference);}}/>}
+    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close Ros" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     {answerTarget?.projectId===detail.project.id&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>setAnswerTarget(null)}/>}
-    {tab === 'conversation' ? <><div className="assistant-scroll" id="assistant-conversation" role="tabpanel" aria-labelledby="conversation-tab" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
+    <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
       {state && !turns.length && !messages.length && <div className="assistant-welcome"><div className="assistant-welcome-signal" aria-hidden="true"><ResearchRing/></div><h3>What are you exploring?</h3><p>Start with a question or a half-formed idea. Keep the conversation here while your notes and evidence take shape.</p><div className="assistant-starters"><button onClick={() => usePrompt('Help me frame the question I want to explore: ')}>Shape a research question <ArrowRight size={14}/></button>{detail.project.canvas.nodes.length > 0 && <button onClick={() => usePrompt('What do we know so far, and what is still missing?')}>Make sense of this project <ArrowRight size={14}/></button>}</div></div>}
@@ -117,9 +107,23 @@ export function AssistantPanel({ state, detail, focus, busy, loadError, onSend, 
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
     </div>
-    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}} disabled={backendBusy}>{blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
+    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
-    <form className="assistant-composer" onSubmit={event => void submit(event)}><label className="sr-only" htmlFor="assistant-message">Message research assistant</label><textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={3} placeholder={focusedNode ? `Ask about ${focusedNode.title}…` : 'Ask, explore, or change direction…'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/><div className="assistant-composer-actions"><button type="button" className="assistant-permissions" onClick={onPermissions}><ShieldCheck size={13}/><span>Permissions</span></button>{active ? <button type="button" className="assistant-stop" aria-label="Stop assistant" onClick={() => void onCancel(active.id)}><Square size={13}/> Stop</button> : <button className="send-button" data-testid="send-project-message" aria-label="Send project message" title={blocker?.summary||'Send project message'} disabled={!message.trim() || running || !state || modelBlocked || backendBusy}><ArrowUp size={18}/></button>}</div></form><div className="assistant-provider-status"><span className={`status-dot ${state?.modelAvailable ? 'available' : ''}`}/>{!state ? 'Opening saved conversation…' : state.modelAvailable ? state.backend==='codex'?'Codex admission enabled':state.backend==='claude'?'Claude Code ready':'Model requests enabled' : 'Model unavailable · draft stays saved'}</div></> : <ResearchOutline state={state} detail={detail} onReference={onReference}/>}
+    <form className="assistant-composer ros-composer" onSubmit={event => void submit(event)}>
+      <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
+      <div className="ros-bar-footer">
+        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
+        <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
+        <span className="ros-footer-break" aria-hidden="true"/>
+        {focusedNode || focusedArtifact
+          ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
+          : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
+        <span className="ros-footer-spacer"/>
+        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
+          : <button className="ros-send" data-testid="send-project-message" aria-label="Send to Ros" title={blocker?.summary||'Send to Ros'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
+      </div>
+    </form>
   </aside>;
 }
 
@@ -155,14 +159,14 @@ function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
   });
   return <section className="assistant-turn" data-turn-id={turn.id}>
-    {outside ? null : <article className="assistant-message user"><div className="message-meta"><span>You</span><time>{time(turn.createdAt)}</time>{focus && <span className="turn-focus" title={focus.title}>{focus.title}</span>}</div><RichText text={turn.userMessage}/></article>}
-    <article className="assistant-message response"><div className="message-meta"><span className="assistant-message-mark" aria-hidden="true"/><span>{outside ? `Your ${turn.model ?? 'own agent'}` : 'ros.ai'}</span><span className="response-source">{outside ? <>Working from outside ros.ai · <time>{time(turn.createdAt)}</time></> : turn.source === 'local-records' ? 'Saved context' : turn.source==='codex-agent'?'Codex connection':turn.source==='claude-agent'?'Claude Code':turn.source==='model-agent'?'Agent':'Research model'}</span></div>{!outside&&turn.model&&<p className="assistant-actual-model">{turn.model}{turn.destination&&<> · {turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`}</>}</p>}{agentNode && <AgentWorkSummary node={agentNode} turn={turn} detail={detail} onReference={onReference}/>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
+    {outside ? null : <article className="assistant-message user">{focus && <span className="turn-focus" title={focus.title}><Focus size={11}/>{focus.title}</span>}<RichText text={turn.userMessage}/></article>}
+    <article className="assistant-message response">{outside&&<div className="message-meta"><span>{`Your ${turn.model ?? 'own agent'}`}</span><span className="response-source">Working from outside ros.ai</span></div>}{agentNode && <AgentWorkSummary node={agentNode} turn={turn} detail={detail} onReference={onReference}/>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
       {turn.warning&&<details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Reply saved · proposal details</span></summary><p>{turn.warning}</p><p>Unvalidated actions were not applied.</p></details>}
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
       {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onInspectAction={onInspectAction}/>)}
-      {turn.events.length > 0 && <details className="assistant-turn-events"><summary>Activity · {turn.events.length}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}
+      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'Ros'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
     </article>
   </section>;
 }
@@ -216,66 +220,3 @@ function ActionCard({ action, detail, onReference, onDecision, onInspectAction }
   return <div className={`assistant-action status-${status}`}><div className="assistant-action-title">{action.type === 'proposal' ? <GitBranch size={15}/> : action.type === 'reuse' ? <FileText size={15}/> : <BookOpen size={15}/>}<strong title={action.title}>{title.text}</strong><span>{status === 'pending' ? 'Review' : status}</span></div>{title.truncated&&<details className="assistant-action-description"><summary>Full request</summary><p>{action.title}</p></details>}{action.error && <p>{action.error}</p>}{structure&&<AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal"/>}{action.type === 'reuse' && action.status === 'pending' ? <><p>Use <strong>{reuseArtifact?.title||'the selected artifact'}</strong>{reuseArtifact&&<> · version <code>{reuseArtifact.hash.slice(0,8)}</code></>} as an input to <strong>{reuseTarget?.title||'the suggested note'}</strong>.</p>{reuseArtifact&&<ReferenceLinks references={[{kind:'artifact',id:reuseArtifact.id,label:'Inspect this version',nodeId:reuseArtifact.nodeId}]} onReference={onReference}/>}<div className="assistant-action-buttons"><button className="primary small" disabled={busy} onClick={() => void decide('accept')}><Check size={13}/> Accept reuse</button><button className="text-button" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button></div></> : <button className="assistant-action-open" disabled={!canOpen} onClick={open}>{action.type === 'proposal' ? (status === 'pending' ? action.reportProposalId?'Review report revision':'Review canvas changes' : status==='dismissed'?'Proposal dismissed':'View related note') : action.type === 'experiment' ? 'Inspect experiment' : 'Open saved work'}<ArrowRight size={13}/></button>}</div>;
 }
 
-function ResearchOutline({ state, detail, onReference }: { state: AssistantState | null; detail: ProjectDetail; onReference: Props['onReference'] }) {
-  const kinds: {kind:OutlineEntry['kind'];label:string}[] = [{kind:'decision',label:'Decisions'},{kind:'hypothesis',label:'Hypotheses'},{kind:'gap',label:'Open questions & gaps'}];
-  const entries = state?.outline || [];
-  const hierarchy = buildOutlineHierarchy(entries, detail);
-  const memory = state?.memory;
-  const originalQuestion = memory?.originalQuestion;
-  const longQuestion = Boolean(originalQuestion && originalQuestion.length > 220);
-  const questionPreview = longQuestion ? textPreview(originalQuestion!,180).text : originalQuestion;
-  return <div className="assistant-outline outline-hierarchy" id="assistant-outline" role="tabpanel" aria-labelledby="outline-tab">
-    <div className="outline-question"><span className="eyebrow"><CircleHelp size={14}/>Original question</span>{originalQuestion ? <><p className={longQuestion ? 'outline-question-preview' : undefined}>{questionPreview}</p>{longQuestion && <details className="outline-original-disclosure"><summary>Show full original question</summary><p>{originalQuestion}</p></details>}</> : <p className="outline-placeholder">{state ? 'Start a conversation to give this research a question.' : 'Opening the research outline…'}</p>}</div>
-    {memory && memory.questionHistory.length > 1 && <details className="question-history"><summary>How the question has evolved <span>{memory.questionHistory.length}</span></summary>{memory.questionHistory.map(question => <p key={question.id}><time>{time(question.at)}</time>{question.text}</p>)}</details>}
-    {hierarchy.directions.length > 0 && <OutlineSection id="directions" label="Research directions" count={hierarchy.directionCount} projectId={detail.project.id} defaultOpen><div className="outline-direction-list">{hierarchy.directions.map(branch => <OutlineDirection key={branch.entry.id} branch={branch} detail={detail} onReference={onReference}/>)}</div></OutlineSection>}
-    {hierarchy.sharedFindings.length > 0 && <OutlineSection id="shared-findings" label="Across directions" count={hierarchy.sharedFindings.length} projectId={detail.project.id} defaultOpen><p className="outline-section-caption">Findings with evidence from more than one direction.</p>{hierarchy.sharedFindings.map(entry => <OutlineItem key={entry.id} entry={entry} detail={detail} onReference={onReference}/>)}</OutlineSection>}
-    {hierarchy.unassignedFindings.length > 0 && <OutlineSection id="other-findings" label="Other findings" count={hierarchy.unassignedFindings.length} projectId={detail.project.id} defaultOpen><p className="outline-section-caption">Saved findings without a linked research direction.</p>{hierarchy.unassignedFindings.map(entry => <OutlineItem key={entry.id} entry={entry} detail={detail} onReference={onReference}/>)}</OutlineSection>}
-    {kinds.map(({kind,label}) => {const items = entries.filter(entry => entry.kind === kind);if(!items.length)return null;return <OutlineSection id={kind} label={label} count={items.length} projectId={detail.project.id} key={kind}>{items.map(entry => <OutlineItem key={entry.id} entry={entry} detail={detail} onReference={onReference}/>)}</OutlineSection>;})}
-    {state && !entries.some(entry => entry.kind !== 'question') && <div className="outline-empty"><ListTree size={25}/><h3>The shape of your research</h3><p>Questions, directions, decisions and findings collect here as you work. References take you back to the notes and evidence.</p></div>}
-    <p className="outline-footer">Your original question stays visible as the investigation changes.</p>
-  </div>;
-}
-
-function OutlineSection({ id, label, count, projectId, defaultOpen = false, children }: { id: string; label: string; count: number; projectId: string; defaultOpen?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(() => readSaved(`outline-section:${projectId}:${id}`, defaultOpen));
-  return <details className={`outline-hierarchy-section outline-group-${id}`} open={open} onToggle={event => { setOpen(event.currentTarget.open); saveLocal(`outline-section:${projectId}:${id}`, event.currentTarget.open); }}>
-    <summary className="outline-section-toggle"><ChevronRight size={15} className="outline-disclosure-icon"/><h3>{label}</h3><span className="outline-item-count">{count}</span></summary>
-    <div className="outline-section-content">{children}</div>
-  </details>;
-}
-
-function OutlineDirection({ branch, detail, onReference }: { branch: OutlineBranch; detail: ProjectDetail; onReference: Props['onReference'] }) {
-  const entry = branch.entry;
-  const note = detail.project.canvas.nodes.find(node => node.id === entry.nodeId);
-  const title = note?.title || entry.title, summary = note?.description ?? entry.summary;
-  const nestedFindings = (item: OutlineBranch): OutlineEntry[] => [...item.findings, ...item.children.flatMap(nestedFindings)];
-  const findings = [...new Map(nestedFindings(branch).map(finding => [finding.id, finding])).values()];
-  const findingSummary = findings.map(finding => finding.summary || finding.title).filter(Boolean).join(' · ');
-  const [open, setOpen] = useState(() => readSaved(`outline-direction:${detail.project.id}:${entry.id}`, branch.findings.length > 0 || branch.children.length > 0));
-  return <details className="outline-direction-branch" data-outline-node={entry.nodeId} open={open} onToggle={event => { setOpen(event.currentTarget.open); saveLocal(`outline-direction:${detail.project.id}:${entry.id}`, event.currentTarget.open); }}>
-    <summary className="outline-direction-toggle"><ChevronRight size={14} className="outline-disclosure-icon"/><div><strong title={title}>{textPreview(title, 100).text}</strong><p className="outline-collapsed-summary">{textPreview(findingSummary || summary, 160).text || 'Open this direction to inspect its saved context.'}</p><span className="outline-branch-meta">{findings.length ? `${findings.length} saved finding${findings.length === 1 ? '' : 's'}${findings.length > branch.findings.length ? ' across this stage' : ''}` : 'No linked findings yet'}{branch.children.length ? ` · ${branch.children.length} nested direction${branch.children.length === 1 ? '' : 's'}` : ''}</span></div></summary>
-    <div className="outline-direction-content">
-      <OutlineItem entry={entry} detail={detail} onReference={onReference} directionContext/>
-      {branch.findings.length > 0 && <section className="outline-linked-findings" aria-label={`Findings for ${title}`}><h4><FileText size={13}/>Findings<span>{branch.findings.length}</span></h4>{branch.findings.map(finding => <OutlineItem key={finding.id} entry={finding} detail={detail} onReference={onReference}/>)}</section>}
-      {branch.children.length > 0 && <div className="outline-nested-directions"><h4>Nested directions</h4>{branch.children.map(child => <OutlineDirection key={child.entry.id} branch={child} detail={detail} onReference={onReference}/>)}</div>}
-    </div>
-  </details>;
-}
-
-function OutlineItem({entry,detail,onReference,directionContext=false}:{entry:OutlineEntry;detail:ProjectDetail;onReference:Props['onReference'];directionContext?:boolean}) {
-  const note=entry.kind==='direction'?detail.project.canvas.nodes.find(node=>node.id===entry.nodeId):undefined;
-  const title=note?.title||entry.title,summary=note?.description??entry.summary;
-  const titlePreview=textPreview(title,64),summaryPreview=textPreview(summary,entry.kind==='direction'?110:170);
-  const genericTitle=['Saved finding','Hypothesis','Open question','Decision'].includes(title);
-  const hasSummary=summaryPreview.text&&summaryPreview.text!==textPreview(title,Number.MAX_SAFE_INTEGER).text;
-  const needsDisclosure=titlePreview.truncated||Boolean(hasSummary&&summaryPreview.truncated);
-  const refs=entry.references.filter(reference=>reference.kind!=='node'||reference.id!==entry.nodeId);
-  return <article className={`outline-entry ${directionContext ? 'outline-direction-context' : ''} ${entry.status === 'withdrawn' ? 'outline-withdrawn' : ''}`}>
-    {directionContext ? entry.nodeId && <button className="outline-open-direction" title={`Open ${title}`} onClick={()=>onReference({kind:'node',id:entry.nodeId!,label:title,nodeId:entry.nodeId})}>Open note<ArrowRight size={12}/></button> : !genericTitle&&(entry.nodeId?<button className="outline-title" title={title} onClick={()=>onReference({kind:'node',id:entry.nodeId!,label:title,nodeId:entry.nodeId})}><span>{titlePreview.text}</span><ArrowRight size={14}/></button>:<strong className="outline-title" title={title}>{titlePreview.text}</strong>)}
-    {hasSummary&&<p className={genericTitle?'outline-main-summary':undefined}>{summaryPreview.text}</p>}
-    {needsDisclosure&&<details className="outline-entry-details"><summary>Read full text</summary>{titlePreview.truncated&&<strong>{title}</strong>}{hasSummary&&<p>{summary}</p>}</details>}
-    {entry.status&&<span className="outline-status">{entry.status}</span>}
-    <ReferenceLinks references={refs.slice(0,2)} onReference={onReference}/>
-    {refs.length>2&&<details className="outline-entry-details outline-more-references"><summary>{refs.length-2} more references</summary><ReferenceLinks references={refs.slice(2)} onReference={onReference}/></details>}
-  </article>;
-}

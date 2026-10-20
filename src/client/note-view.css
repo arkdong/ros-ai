@@ -25,8 +25,8 @@
 .note-view .note-more-body h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .note-view .note-more-body > .text-button.danger { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
 
-.note-view .note-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #e6e8e6; background: #fbfbfa; }
-.note-view .note-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #ececea; font-size: 13px; }
+.note-view .note-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #e6e8e6; background: #fcfcfc; }
+.note-view .note-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #ebebeb; font-size: 13px; }
 .note-view .note-history-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid #e1e4e1; border-radius: 999px; background: #fff; color: #555; font-size: 12px; cursor: pointer; }
 .note-view .note-history-toggle:hover { border-color: #c9cdca; color: #171717; }
 .note-view .note-history-toggle span { min-width: 16px; padding: 0 5px; border-radius: 999px; background: #f0f1ef; font-size: 11px; text-align: center; }
@@ -37,7 +37,7 @@
 .note-view .note-message-actions { display: flex; gap: 14px; margin-top: 8px; }
 .note-view .note-message-actions .text-button { padding: 0; color: #6b6b6b; font-size: 12px; }
 .note-view .activity-card p, .note-view .run-notice, .note-view .run-notice p { font-size: 13px; }
-.note-view .note-composer { flex-shrink: 0; margin: 0; padding: 12px 14px 14px; border-top: 1px solid #ececea; background: #fff; }
+.note-view .note-composer { flex-shrink: 0; margin: 0; padding: 12px 14px 14px; border-top: 1px solid #ebebeb; background: #fff; }
 .note-view .note-composer textarea { width: 100%; box-sizing: border-box; resize: none; font-size: 14px; }
 .note-view .note-composer-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .note-view .note-composer-row .search-toggle { margin-left: auto; }

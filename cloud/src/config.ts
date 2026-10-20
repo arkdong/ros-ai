@@ -9,13 +9,17 @@ const modelSchema = z.object({
   contextTokens: z.number().int().positive(),
   temperature: z.number().min(0).max(2),
   maxOutputTokens: z.number().int().positive(),
+  /** Provider-specific request fields, such as a reasoning switch. Dropped for good if the provider refuses them. */
+  extraBody: z.record(z.string(), z.unknown()).optional(),
 });
 export type CloudModel = z.infer<typeof modelSchema> & { name: string };
 
 // Token Factory ids as its catalogue listed them on 2026-10-18; prices from secondary listings.
 // The catalogue check at start confirms the ids exist, and ROS_CLOUD_MODELS overrides any of this without a code change.
 const DEFAULT_MODELS: Record<string, z.infer<typeof modelSchema>> = {
-  ros: { upstream: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B', inputUsdPerMillion: 0.06, outputUsdPerMillion: 0.24, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
+  ros: { upstream: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B', inputUsdPerMillion: 0.06, outputUsdPerMillion: 0.24, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000,
+    // In a 10-task test (2026-10-19) Nano reasoned to the 8,000-token cap and answered nothing in 7 of 18 turns.
+    extraBody: { chat_template_kwargs: { enable_thinking: false } } },
   'ros-deep': { upstream: 'nvidia/nemotron-3-super-120b-a12b', inputUsdPerMillion: 0.30, outputUsdPerMillion: 0.90, contextTokens: 131_072, temperature: 0.6, maxOutputTokens: 8000 },
 };
 

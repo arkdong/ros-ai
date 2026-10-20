@@ -82,3 +82,41 @@ export function summarizeBudgetPeriod(entries: readonly BudgetUsage[], period: B
     inputTokens: sum('inputTokens'), outputTokens: sum('outputTokens'), credits: sum('credits'),
   };
 }
+
+/** One paid or recorded request, for the Usage page. No prompts, responses or credentials. */
+export type UsageEvent = {
+  id: string;
+  at: string;
+  provider: string;
+  providerName: string;
+  model: string | null;
+  task: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  nodeTitle: string | null;
+  costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
+export type UsageAnalytics = { generatedAt: string; events: UsageEvent[] };
+
+/** What a connected provider says is left, or that it does not say. Never a key or account id. */
+export type ProviderBalance = {
+  id: 'ros-cloud' | 'nebius' | 'openai' | 'claude' | 'codex' | 'tavily';
+  name: string;
+  /** Headline such as "US$4.20 left today"; null when the provider reports nothing. */
+  left: string | null;
+  detail: string;
+  link: string | null;
+  checkedAt: string | null;
+  /** Set when the person typed in this provider's credit. */
+  credit?: ProviderCredit | null;
+};
+export type CodexRateLimit = { usedPercent: number; windowMinutes: number | null; resetsAt: string | null };
+export type CodexRateLimits = { primary: CodexRateLimit | null; secondary: CodexRateLimit | null };
+
+/** Spend this calendar month against an optional monthly budget. */
+export type BudgetLine = { monthlyUsd: number | null; spentUsd: number; leftUsd: number | null };
+export type BudgetStatus = { month: string; all: BudgetLine; project: BudgetLine | null };
+/** Credit typed in from a provider's console, less what ros.ai recorded since. An estimate. */
+export type ProviderCredit = { amountUsd: number; setAt: string; spentUsd: number; leftUsd: number };

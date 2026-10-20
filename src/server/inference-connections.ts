@@ -8,6 +8,8 @@ import { modelMaker } from '../shared/model-settings.js';
 import type { UsageRecord } from '../shared/types.js';
 import { wireMessages, wireTools, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse } from './providers.js';
 import { Store, StoreError } from './store.js';
+import{spendingLimitsOn,UNLIMITED_REQUESTS}from'./spending-limits.js';
+import{SpendingBudget}from'./spending-budget.js';
 import { captureChatCompletion } from './response-normalization.js';
 
 const namespace='inference-connection';
@@ -78,7 +80,8 @@ export class InferenceConnections{
     if(!config&&!state)throw new StoreError('Inference connection not found.',404);
     const parsed=config?endpoint(config.endpoint):undefined,destination=parsed?.destination??state!.summary.destination;
     const accounted=state?this.accounted(state):0,usdCeiling=state?.usdCeiling??0,remaining=Math.max(0,ceilingUnits(usdCeiling)-accounted),usedRequests=state?.admissions.length??0,requestCeiling=state?.requestCeiling??0;
-    const enabled=Boolean(config?.enabled),allowanceEnabled=state?.allowanceEnabled??false,remainingRequests=Math.max(0,requestCeiling-usedRequests);
+    // Without spending limits a connection needs no allowance; its use is still recorded.
+    const limited=spendingLimitsOn(this.store),enabled=Boolean(config?.enabled),allowanceEnabled=limited?state?.allowanceEnabled??false:true,remainingRequests=limited?Math.max(0,requestCeiling-usedRequests):UNLIMITED_REQUESTS;
     const available=Boolean(config)&&(this.active.get(id)??0)<config!.caps.maxConcurrent;
     let reason=destination==='local-unverified'?'Configured loopback endpoint; processing location and runtime behavior are unverified. Requests use a retained request limit, deadline and byte/output caps.':'Configured remote endpoint; selected research is transferred there. Pricing and model context caps are user-declared conservative values, not verified account prices.';
     if(!config)reason='Connection removed. Its stable identity and previous usage remain retained.';
@@ -86,9 +89,9 @@ export class InferenceConnections{
     else if(!allowanceEnabled)reason='Enable a separate bounded connection allowance before inference. Setup and keys do not grant usage.';
     else if(!available)reason='This connection concurrency cap is reached. Wait for an active request to finish or stop it before requesting more usage.';
     else if(!remainingRequests)reason='Connection request ceiling exhausted. Failed and uncertain requests remain counted.';
-    else if(destination==='remote'&&(remaining===0||requiredUsd!==undefined&&units(requiredUsd)>remaining))reason='The conservative reservation exceeds this remote connection allowance. Previous reservations remain retained.';
+    else if(limited&&destination==='remote'&&(remaining===0||requiredUsd!==undefined&&units(requiredUsd)>remaining))reason='The conservative reservation exceeds this remote connection allowance. Previous reservations remain retained.';
     const amountValid=requiredUsd===undefined||Number.isFinite(requiredUsd)&&requiredUsd>=0&&(destination==='local-unverified'||requiredUsd>0);
-    const ready=enabled&&available&&allowanceEnabled&&remainingRequests>0&&amountValid&&(destination==='local-unverified'||remaining>0&&(requiredUsd===undefined||units(requiredUsd)<=remaining));
+    const ready=enabled&&available&&allowanceEnabled&&remainingRequests>0&&amountValid&&(!limited||destination==='local-unverified'||remaining>0&&(requiredUsd===undefined||units(requiredUsd)<=remaining));
     return {id,name:config?.name??state!.summary.name,enabled,deleted:!config,ready,reason,revision:state?.revision??0,endpointOrigin:parsed?.url.origin??state!.summary.endpointOrigin,keyConfigured:Boolean(config?.apiKey),destination,models:config?.models.map(model=>({...model,maker:model.maker??modelMaker(model.id)}))??state!.summary.models,caps:config?.caps??state!.summary.caps,allowanceEnabled,requestCeiling,usdCeiling,usedRequests,accountedUsd:accounted/UNITS_PER_USD,remainingRequests,remainingUsd:remaining/UNITS_PER_USD,pricingBasis:destination==='local-unverified'?'No provider USD debit; loopback processing location is unverified.':'Operator-declared input/output upper rates; both full input and full output model context are reserved because hidden/billed reasoning limits are unverified. Account prices and tokenizer are unverified.',updatedAt:state?.updatedAt??config!.updatedAt};
   }
   statuses(){return this.ids().map(id=>this.status(id));}
@@ -132,6 +135,7 @@ export class InferenceConnections{
       if(!state||!status.ready)throw new StoreError(status.reason,409);
       if(status.destination==='local-unverified'&&input.amountUsd!==0)throw new StoreError('Loopback inference must not debit provider USD.');
       if(!input.purpose.trim()||input.purpose.length>4000||!input.basis.trim()||input.basis.length>4000)throw new StoreError('Provide a bounded request purpose and pricing basis.');
+      if(input.amountUsd>0)new SpendingBudget(this.store).assertRoom(input.amountUsd,typeof input.trace?.projectId==='string'?input.trace.projectId:undefined);
       const at=new Date().toISOString(),reserved=units(input.amountUsd),usage:UsageRecord={id:randomUUID(),provider:input.provider,purpose:input.purpose,...(input.runId?{runId:input.runId}:{}),reservedUsd:reserved/UNITS_PER_USD,estimatedUsd:null,reportedUsage:{...(input.trace??{}),inferenceConnectionId:input.provider,inferenceConnectionRevision:expectedRevision,destination:status.destination},status:'reserved',basis:input.basis,createdAt:at};
       this.store.addUsage(usage);this.store.saveGlobalRecord(namespace,input.provider,{...state,admissions:[...state.admissions,{usageId:usage.id,reservedUnits:reserved,createdAt:at}]});this.syncIndex();return usage;
     });

@@ -30,6 +30,15 @@ npm start
 
 Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
+**Keys in one file.** To avoid typing keys into every fresh data folder (eval runs, `npm run try` copies), put them once in `~/.config/ros.ai/keys.env`, readable only by you (`chmod 600`). ros.ai reads it at each start; `ROS_KEYS_FILE` names another file and `ROS_KEYS_FILE=off` skips it. It takes only `*_API_KEY` names (`ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `NEBIUS_API_KEY`, `OPENAI_API_KEY`), `NOTION_TOKEN`, and optional starting allowances `ROS_START_ALLOWANCE_<CLAUDE|TAVILY|NEBIUS|OPENAI>_USD` (with `_REQUESTS`, default 200). A starting allowance is saved only in a data folder that has never had one for that service, so every fresh data folder gets its own; restarts never top it up.
+
+```sh
+mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
+open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  TAVILY_API_KEY=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
+```
+
+**Apps with their own hosted connection (Notion).** On the Apps page, Connect signs in to the app's hosted MCP server the way Claude and Claude Code do: ros.ai registers itself, you approve in the browser, and nothing is created or pasted. ros.ai's assistants then get the app's own tools through `ros_app_tools` and `ros_app_call`. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it, whatever the permission mode, and Undo in ros.ai does not take it back there. The sign-in is saved privately in the data folder (`app-connections.json`); the catalogue is in `src/server/remote-apps.ts`. A Notion integration secret (`NOTION_TOKEN`, or *Use a token instead*) still works for the older `ros_notion_*` tools.
+
 ```sh
 npm run dev       # frontend live reload and local server
 npm run lint      # TypeScript

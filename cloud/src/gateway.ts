@@ -51,7 +51,8 @@ gateway.post('/v1/chat/completions', json({ limit: MAX_BODY }), async (req, res)
   const maxOutput = Math.min(requested, item.maxOutputTokens);
   const wire: Record<string, unknown> = { model: item.upstream, n: 1, temperature: item.temperature, max_completion_tokens: maxOutput };
   for (const key of FORWARDED) if (body[key] !== undefined) wire[key] = body[key];
-  const text = JSON.stringify(wire), inputBound = Buffer.byteLength(text, 'utf8') + TEMPLATE_TOKENS;
+  const extra = item.extraBody;
+  const text = JSON.stringify(extra ? { ...extra, ...wire } : wire), inputBound = Buffer.byteLength(text, 'utf8') + TEMPLATE_TOKENS;
   if (inputBound > item.contextTokens) return fail(res, 400, 'The request is longer than this model accepts.');
 
   const busy = inFlight.get(person.orgId) ?? 0;
@@ -64,9 +65,16 @@ gateway.post('/v1/chat/completions', json({ limit: MAX_BODY }), async (req, res)
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
   res.on('close', () => { if (!res.writableFinished) abort.abort(); });
   try {
+    const send = (payload: string) => fetch(`${config.upstreamUrl}/chat/completions`, { method: 'POST', redirect: 'error', signal: abort.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.upstreamKey}` }, body: payload });
     let upstream: globalThis.Response;
     try {
-      upstream = await fetch(`${config.upstreamUrl}/chat/completions`, { method: 'POST', redirect: 'error', signal: abort.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.upstreamKey}` }, body: text });
+      upstream = await send(text);
+      // A refused request costs nothing, so a provider that rejects the extra fields gets the plain request once.
+      if (upstream.status === 400 && extra && item.extraBody === extra) {
+        const plain = await send(JSON.stringify(wire));
+        // Only when the plain request works were the extra fields the problem.
+        if (plain.ok) { console.warn(`ros.ai cloud: ${item.upstream} refused the extra fields ${Object.keys(extra).join(', ')}; sending without them from now on.`); item.extraBody = undefined; upstream = plain; }
+      }
     } catch {
       // The provider may have started work before the connection broke, so the reservation stands.
       await settle(usageId, 'unknown');
