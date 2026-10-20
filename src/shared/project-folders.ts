@@ -3,7 +3,8 @@ export type FolderFileKind = 'note'|'report'|'code'|'notebook'|'dataset'|'figure
 export const FOLDER_DIRECTORIES: Record<FolderFileKind, string> = { note:'notes', report:'reports', code:'code', notebook:'notebooks', dataset:'data', figure:'figures' };
 export type FolderFile = { nodeId:string; path:string; kind:FolderFileKind; missing?:boolean };
 /** A file in the folder that is not a block yet. Only the person adds it to the canvas. */
-export type UnplacedFile = { path:string; kind:Exclude<FolderFileKind,'report'|'figure'>; bytes:number };
+/** A PDF is never a block itself: adding it saves its text as a note file beside it (`CV.pdf` → `CV.pdf.md`). */
+export type UnplacedFile = { path:string; kind:Exclude<FolderFileKind,'report'|'figure'>|'pdf'; bytes:number };
 export type FolderProblem = { path:string; message:string };
 export type ProjectFolderStatus = {
   attached:boolean; path?:string; available?:boolean; reason?:string;

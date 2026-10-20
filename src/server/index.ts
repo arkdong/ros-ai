@@ -21,6 +21,7 @@ import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
+import { RemoteApps } from './remote-apps.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
@@ -28,11 +29,19 @@ import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
 import { OutsideAgents } from './outside-agents.js';
+import { Setup } from './setup.js';
+import { NotionApi } from './notion.js';
+import { AgentWorkspaceTools } from './agent-tools.js';
+import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
 import { PersonalMemory } from './personal-memory.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
 if (!publicMode) loadEnv({ path: resolve(root, '.env.local'), quiet: true });
+// Keys typed once into a file outside the code, before anything reads them.
+let keysFile: string | null = null;
+try { keysFile = publicMode ? null : loadLocalKeys(); }
+catch (error) { console.error(`ros.ai could not start: ${error instanceof Error ? error.message : error}`); process.exit(1); }
 // ros.ai's own records live in the usual app-data place, so reinstalling the code keeps them.
 // An install that already keeps them next to the code goes on using that folder.
 const appData = process.platform === 'darwin' ? join(homedir(), 'Library', 'Application Support', 'ros.ai')
@@ -101,6 +110,7 @@ try {
     const combinedBudget = new CombinedNebiusBudget(store);
     const inference = new InferenceConnections(store,dataDir);
     execution = new ExecutionService(store,{combinedBudget,inference});
+    const started = applyStartingAllowances(execution.connectionBudgets, provider => Boolean(store!.globalRecord('connection-allowance', provider)));
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
@@ -113,7 +123,13 @@ try {
     assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal);
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)}},agent,{credentials,googleDrive,claude,plugins:new PluginTokens(dataDir),outside,cloud,memory:personal},guide);
+    const plugins = new PluginTokens(dataDir);
+    AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
+    const apps = new RemoteApps(dataDir);
+    AgentWorkspaceTools.apps = apps;
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
+    if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

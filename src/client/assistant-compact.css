@@ -47,7 +47,7 @@
 @media (max-height:700px) { .assistant-compact .assistant-heading { min-height:50px; padding-top:9px; padding-bottom:9px; } .assistant-compact .assistant-composer textarea { min-height:56px; } }
 .assistant-compact .assistant-actual-model { color:#839078; font-size:10px; line-height:1.5; margin:2px 0 9px; overflow-wrap:anywhere; }
 /* An agent turn's work, stated once above its answer. */
-.agent-work-summary { display: grid; gap: 8px; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid #e6e6e3; border-radius: 8px; background: #fafaf9; }
+.agent-work-summary { display: grid; gap: 8px; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fafafa; }
 .agent-work-summary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 14px; color: #26302a; }
 .agent-work-summary li { display: flex; align-items: center; gap: 8px; }
 .agent-work-summary li svg { flex: none; color: #8a8a85; }

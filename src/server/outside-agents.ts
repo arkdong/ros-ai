@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
@@ -59,9 +59,12 @@ const inside = (root: string, target: string) => { const rel = relative(root, ta
 export class OutsideAgents {
   private readonly token = randomBytes(32).toString('hex');
   private readonly activity = new Map<string, string>();
-  readonly bridge: string;
+  /** The bridge agents run: a copy in the data folder, so links survive moving or updating the code. */
+  bridge: string;
+  private readonly source: string;
   constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, private readonly assistant: AssistantService, private readonly dataDir: string, root: string, private readonly personal?: PersonalMemory) {
-    this.bridge = resolve(root, 'scripts/ros-ai-mcp.mjs');
+    this.source = resolve(root, 'scripts/ros-ai-mcp.mjs');
+    this.bridge = join(dataDir, 'bin', 'ros-ai-mcp.mjs');
   }
   /** Written when the server listens: the bridge reads the port and a fresh token here, so
    * nothing has to be pasted and a restart revokes every older token. */
@@ -70,7 +73,11 @@ export class OutsideAgents {
     const file = join(this.dataDir, 'mcp.json');
     writeFileSync(file, JSON.stringify({ url: `http://127.0.0.1:${port}/mcp`, token: this.token }), { mode: 0o600 });
     chmodSync(file, 0o600);
+    try { mkdirSync(join(this.dataDir, 'bin'), { recursive: true, mode: 0o700 }); copyFileSync(this.source, join(this.dataDir, 'bin', 'ros-ai-mcp.mjs')); this.bridge = join(this.dataDir, 'bin', 'ros-ai-mcp.mjs'); }
+    catch { this.bridge = this.source; }
   }
+  /** The newest session an agent of this label opened, for the Linked and Seen states. */
+  seen(label: string) { return Object.values(this.sessions()).filter(item => item.label === label).sort((a, b) => b.lastAt.localeCompare(a.lastAt))[0]; }
   authorized(header: string | undefined) {
     const supplied = Buffer.from(/^Bearer (.+)$/.exec(header ?? '')?.[1] ?? ''), expected = Buffer.from(this.token);
     return supplied.length === expected.length && timingSafeEqual(supplied, expected);

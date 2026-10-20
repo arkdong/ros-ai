@@ -1,9 +1,12 @@
 /* Version A, refined: white cards on a calm grey, more room, one type scale.
    Loaded last; the shell prefix keeps these rules ahead of older component styles. */
 :root {
-  --page: #f6f6f4;
-  --card-line: #e6e6e3;
-  --card-divider: #efefec;
+  /* Three tones, like Codex: the rail a touch darker, the sidebar light grey, the page white. */
+  --page: #ffffff;
+  --rail-bg: #f2f2f2;
+  --sidebar-bg: #f7f7f7;
+  --card-line: #e5e5e5;
+  --card-divider: #eeeeee;
   --card-shadow: 0 1px 2px rgba(16, 16, 16, .04);
   --float-shadow: 0 2px 8px rgba(0, 0, 0, .05);
   --sheet-shadow: 0 24px 64px rgba(0, 0, 0, .14);
@@ -13,16 +16,16 @@
 }
 
 /* Shell: rail and sidebar share the calm grey; the map sits on the same grey. */
-.app-shell.single-canvas-shell { background: var(--page); }
-.single-canvas-shell .app-rail { flex: 0 0 64px; width: 64px; gap: 8px; padding: 16px 0; background: var(--page); border-right: 1px solid #e9e9e6; }
+.app-shell.single-canvas-shell { background: var(--sidebar-bg); }
+.single-canvas-shell .app-rail { flex: 0 0 64px; width: 64px; gap: 8px; padding: 16px 0; background: var(--rail-bg); border-right: 1px solid #e6e6e6; }
 .single-canvas-shell .app-rail-button { width: 40px; height: 40px; border-radius: 10px; }
-.single-canvas-shell .app-rail-button.active { background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .07), 0 0 0 1px #e4e4e1; }
-.single-canvas-shell .sidebar { width: 248px; min-width: 248px; padding: 0 14px; background: var(--page); border-right: 1px solid #e9e9e6; }
+.single-canvas-shell .app-rail-button.active { background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .07), 0 0 0 1px #e4e4e4; }
+.single-canvas-shell .sidebar { width: 248px; min-width: 248px; padding: 0 14px; background: var(--sidebar-bg); border-right: 1px solid #e6e6e6; }
 .single-canvas-shell .sidebar .new-project-button,
 .single-canvas-shell .sidebar .demo-entry-button { border-radius: var(--radius-button); }
 .single-canvas-shell .project-item.active,
 .single-canvas-shell .note-tree-row.selected { border-radius: var(--radius-button); }
-.single-canvas-shell .workspace-header { height: 64px; min-height: 64px; padding: 0 24px; background: #fff; border-bottom: 1px solid #ececea; }
+.single-canvas-shell .workspace-header { height: 64px; min-height: 64px; padding: 0 24px; background: #fff; border-bottom: 1px solid #ebebeb; }
 .single-canvas-shell .workspace-heading h1 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .single-canvas-shell .canvas-stage,
 .single-canvas-shell .workspace-welcome { background-color: var(--page); }
@@ -30,7 +33,7 @@
 
 /* Controls. */
 .single-canvas-shell .secondary,
-.modal .secondary { border-radius: var(--radius-button); padding: 7px 13px; border-color: #e3e3e0; background: #fff; box-shadow: 0 1px 1px rgba(0, 0, 0, .03); }
+.modal .secondary { border-radius: var(--radius-button); padding: 7px 13px; border-color: #e3e3e3; background: #fff; box-shadow: 0 1px 1px rgba(0, 0, 0, .03); }
 .single-canvas-shell .primary,
 .modal .primary { border-radius: var(--radius-button); padding: 8px 14px; }
 .single-canvas-shell .icon-button { border-radius: 8px; }
@@ -42,8 +45,8 @@
 .single-canvas-shell .canvas-dock .canvas-dock-item { border-radius: 10px; border: 1px solid var(--card-line); background: #fff; box-shadow: var(--float-shadow); }
 
 /* Blocks on the map. */
-.single-canvas-shell .research-card.research-block { border-radius: 12px; border-color: #e3e3e0; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); }
-.single-canvas-shell .research-card.organizational-group { border-radius: 18px; background: rgba(255, 255, 255, .45); border-color: #e1e1dd; box-shadow: none; }
+.single-canvas-shell .research-card.research-block { border-radius: 12px; border-color: #e3e3e3; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); }
+.single-canvas-shell .research-card.organizational-group { border-radius: 18px; background: rgba(255, 255, 255, .45); border-color: #e1e1e1; box-shadow: none; }
 
 /* Sheets: dialogs and opened blocks. */
 .modal-backdrop { background: rgba(244, 244, 242, .72); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
@@ -52,7 +55,7 @@
 .node-modal > .modal-heading { padding: 24px 28px 20px; background: #fff; border-bottom: 1px solid var(--card-divider); }
 .node-modal > .modal-heading h2 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
 .note-view .note-main { padding: 32px 48px 40px; }
-.note-view .note-side { border-left: 1px solid var(--card-divider); background: #fbfbfa; }
+.note-view .note-side { border-left: 1px solid var(--card-divider); background: #fcfcfc; }
 .note-view .note-side-heading { padding: 16px 20px; }
 .note-view .note-side-scroll { padding: 18px 20px; }
 .note-view .note-composer { margin: 0 16px 16px; padding: 14px 16px 12px; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: #fff; box-shadow: var(--card-shadow); }
@@ -106,22 +109,18 @@
 .executable-demo { border: 1px solid var(--card-line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--sheet-shadow); }
 
 /* Ros keeps its single green touch. */
-.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: var(--radius-sheet); }
+.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: 20px; }
 .single-canvas-shell .assistant-composer { border-radius: var(--radius-card); }
 
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
-.rail-page-header { gap: 16px; margin-bottom: 36px; }
-.rail-page-header h1 { font-size: 30px; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; }
-.rail-page-header p { font-size: 15px; line-height: 1.5; margin-top: 8px; }
-.rail-page-icon { width: 44px; height: 44px; border-radius: 12px; border-color: #ececea; }
 .rail-section-title { font-size: 12px; letter-spacing: .07em; margin: 32px 4px 12px; color: var(--muted); }
 .rail-page .tool-connection { border: 1px solid var(--card-line); border-radius: var(--radius-card); margin-bottom: 10px; background: #fff; box-shadow: var(--card-shadow); }
 .rail-page .tool-connection-heading { padding: 16px 20px; min-height: 72px; gap: 16px; }
-.rail-page .tool-connection-heading:hover { background: #fafaf9; border-radius: var(--radius-card); }
+.rail-page .tool-connection-heading:hover { background: #fafafa; border-radius: var(--radius-card); }
 .rail-page .tool-connection-name strong { font-size: 15px; letter-spacing: -.01em; }
 .rail-page .tool-connection-name small { font-size: 13px; color: var(--muted); margin-top: 3px; }
-.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #ececea; }
+.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #ebebeb; }
 .rail-page .connection-state { font-size: 13px; }
 .rail-page .resources-panel { border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
 
@@ -142,10 +141,10 @@
 
 /* Tables: values stay on one line, header on a calm grey. */
 .data-viewer .data-table-wrap { border-color: var(--card-line); border-radius: 12px; }
-.data-viewer th { background: #f6f6f4; }
+.data-viewer th { background: #f7f7f7; }
 .data-viewer th button { padding: 10px 14px; font-size: 13px; }
 .data-viewer td { padding: 9px 14px; overflow-wrap: break-word; vertical-align: middle; }
-.data-viewer .data-table th, .data-viewer .data-table td { border-color: #ececea; }
+.data-viewer .data-table th, .data-viewer .data-table td { border-color: #ebebeb; }
 
 /* Folded detail sections: one quiet heading style with a chevron, content in soft panels. */
 .artifact-provenance, .artifact-more { margin: 0; padding: 0; border-top: 1px solid var(--card-divider); font-size: 13px; }
@@ -164,9 +163,9 @@
 .artifact-provenance[open] > summary, .artifact-more[open] > summary { color: var(--ink); }
 .artifact-provenance[open], .artifact-more[open] { padding-bottom: 18px; }
 .artifact-provenance > p { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
-.artifact-provenance > p:first-of-type { padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafaf9; color: var(--body); font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.artifact-provenance > p:first-of-type { padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafafa; color: var(--body); font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .artifact-provenance > button { margin: 0 0 14px; }
-.artifact-provenance pre, .run-section pre { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafaf9; font-size: 12px; line-height: 1.6; }
+.artifact-provenance pre, .run-section pre { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafafa; font-size: 12px; line-height: 1.6; }
 .artifact-more > div:first-of-type { margin-bottom: 12px; }
 
 /* History runs: a status line, the request as the main text, details folded below. */
@@ -192,3 +191,13 @@
 /* The sticky title covers the sheet's top padding too, so scrolled content never shows above it. */
 .artifact-modal:has(.artifact-viewer) { padding-top: 0; }
 .artifact-modal:has(.artifact-viewer) > .modal-heading { top: 0; margin: 0 -30px 10px; padding: 26px 30px 12px; }
+
+/* Projects like a chat list: the open project's blocks nest under it, a few at a time. */
+.single-canvas-shell .project-group { display: flex; flex-direction: column; }
+.single-canvas-shell .project-fold { width: 24px; height: 28px; flex-shrink: 0; margin-right: 4px; color: var(--muted); }
+.single-canvas-shell .project-blocks { padding: 2px 0 8px 14px; }
+.single-canvas-shell .project-blocks .note-tree { padding-bottom: 0; }
+.single-canvas-shell .project-blocks .note-tree-row { min-height: 32px; font-size: var(--text-sm); }
+.single-canvas-shell .project-blocks .sidebar-empty { margin: 6px 8px; font-size: var(--text-sm); color: var(--muted); }
+.single-canvas-shell .note-tree-more { display: block; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; font: inherit; font-size: var(--text-sm); color: var(--muted); }
+.single-canvas-shell .note-tree-more:hover { background: #ececec; color: var(--ink); }

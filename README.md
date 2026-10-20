@@ -31,6 +31,15 @@ npm start
 
 Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
+**Keys in one file.** To avoid typing keys into every fresh data folder (eval runs, `npm run try` copies), put them once in `~/.config/ros.ai/keys.env`, readable only by you (`chmod 600`). ros.ai reads it at each start; `ROS_KEYS_FILE` names another file and `ROS_KEYS_FILE=off` skips it. It takes only `*_API_KEY` names (`ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `NEBIUS_API_KEY`, `OPENAI_API_KEY`), `NOTION_TOKEN`, and optional starting allowances `ROS_START_ALLOWANCE_<CLAUDE|TAVILY|NEBIUS|OPENAI>_USD` (with `_REQUESTS`, default 200). A starting allowance is saved only in a data folder that has never had one for that service, so every fresh data folder gets its own; restarts never top it up.
+
+```sh
+mkdir -p ~/.config/ros.ai && touch ~/.config/ros.ai/keys.env && chmod 600 ~/.config/ros.ai/keys.env
+open -e ~/.config/ros.ai/keys.env   # ANTHROPIC_API_KEY=…  TAVILY_API_KEY=…  ROS_START_ALLOWANCE_CLAUDE_USD=5
+```
+
+**Apps with their own hosted connection (Notion).** On the Apps page, Connect signs in to the app's hosted MCP server the way Claude and Claude Code do: ros.ai registers itself, you approve in the browser, and nothing is created or pasted. ros.ai's assistants then get the app's own tools through `ros_app_tools` and `ros_app_call`. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it, whatever the permission mode, and Undo in ros.ai does not take it back there. The sign-in is saved privately in the data folder (`app-connections.json`); the catalogue is in `src/server/remote-apps.ts`. A Notion integration secret (`NOTION_TOKEN`, or *Use a token instead*) still works for the older `ros_notion_*` tools.
+
 ```sh
 npm run dev       # frontend live reload and local server
 npm run lint      # TypeScript
@@ -110,16 +119,20 @@ export_csv("Data used", df)
 
 The container has no external network, no original source/user folder mounts, read-only root/input files, non-root identity, dropped capabilities, seccomp, 512 MB memory, one CPU, process/output limits and a 30-second wall deadline. Python can access installed container files and create processes within those limits; this is not a VM per run or proof against kernel vulnerabilities. See [the precise runtime boundary](docs/python-sandbox.md). The earlier closed numerical interpreter remains an explicitly selectable compatibility backend.
 
-## Use your own Claude Code or Codex
+## Use your own Claude Code, Codex or Cursor
 
-ros.ai is also an MCP server, so you can keep researching in your own Claude Code or Codex, signed in with your own plan or key. ros.ai never sees or handles that login. With ros.ai running, paste once in a terminal (the **Model** page shows the exact path):
+ros.ai is also an MCP server, so you can keep researching in your own Claude Code, Codex, Cursor or Gemini CLI, signed in with your own plan or key. ros.ai never sees or handles that login.
+
+At first launch ros.ai looks at this computer (the Applications folder, your PATH, the names in those agents' settings and the model servers on `127.0.0.1`; nothing is sent anywhere, and no credential file is opened) and shows one **Connect your tools** screen with what it found: your agents, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go: for Claude Code and Codex it runs their own `mcp add`, for Cursor and Gemini CLI it adds one `ros-ai` entry to their settings file (with a one-time backup). Every link is one entry you can undo from the **Agents** page, which also shows when each agent was last seen in a project. Set `ROS_NO_DETECT=1` to skip the scan.
+
+You can also paste the command yourself (the **Agents** page shows the exact path):
 
 ```bash
-claude mcp add --scope user ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
-codex mcp add ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
+claude mcp add --scope user ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
+codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 ```
 
-The agent can then read the canvas, artifacts and your saved preferences (`ros_read_memory`) and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; set `ROS_DATA_DIR` for the bridge too if you set it for ros.ai.
+The agent can then read the canvas, artifacts and your saved preferences (`ros_read_memory`) and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. ros.ai copies the bridge (`scripts/ros-ai-mcp.mjs`) into its data folder at every start and links point at that copy, so moving or updating the code keeps them working. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; it looks for that file next to itself, in a checkout's `.ros-ai` and in the usual app-data folder, and `ROS_DATA_DIR` overrides all three.
 
 ## Models and spending
 
@@ -156,6 +169,7 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 - [Data provenance](docs/amsterdam-data.md)
 - [Current verification](RESULT.md)
 - Strategy notes of 16 October 2026 (internal): [product and market report](docs/strategy/product-and-market-report-2026-10-16.md), [investor brief](docs/strategy/investor-brief-2026-10-16.md), [YC application answers](docs/strategy/yc-application-answers-2026-10-16.md)
+- Onboarding design of 19 October 2026 (internal): [find and connect your tools](docs/strategy/onboarding-connections-2026-10-19.md), a design doc and screen mockup; its first slice (the scan, the first-launch screen, silent links for Claude Code, Codex and Cursor, the rows on Agents) is built
 - Strategy note of 19 October 2026 (internal): [voice presenter and personal memory](docs/strategy/voice-presenter-and-personal-memory-2026-10-19.md), an investigation of two extension features and their moat value
 
 ## Optional public demonstration

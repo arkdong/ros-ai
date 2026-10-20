@@ -1,10 +1,13 @@
-import { useState, type FormEvent } from 'react';
-import { ArrowUp, Folder, LoaderCircle, Maximize2, PanelBottomOpen, SlidersHorizontal } from 'lucide-react';
-import type { AssistantState } from '../shared/assistant';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, Square, X } from 'lucide-react';
+import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
-import { textPreview } from '../shared/presentation';
 import { ResearchRing } from './Brand';
+import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import type { ResearchPolicy } from '../shared/research';
 import { useFolderSuggestion } from './ProjectFolder';
+import { readSaved, saveLocal } from './persistence';
+import { textPreview } from '../shared/presentation';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -15,16 +18,27 @@ export function RosMark({ working = false }: { working?: boolean }) {
 }
 
 const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
-/** Ros folded down: a floating input at the bottom of the map with a fading peek of the last reply. */
-export function RosBar({ state, detail, busy, onSend, onOpen }: { state: AssistantState | null; detail: ProjectDetail; busy: boolean; onSend: (message: string) => Promise<boolean>; onOpen: (mode: 'half' | 'full') => void }) {
-  const [draft, setDraft] = useState('');
+/** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
+export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
+  const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
+  const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const last = turns.at(-1), running = busy || Boolean(state?.activeTurnId);
+  const active = turns.find(turn => turn.id === state?.activeTurnId) || turns.findLast(turn => turn.status === 'running');
+  const running = busy || Boolean(active);
+  // The last finished request stays in the bar, with its outcome, until the user clicks OK.
+  const finished = !running ? turns.findLast(turn => turn.status !== 'running') : undefined;
+  const done = finished && finished.id !== seenTurn ? finished : undefined;
+  const dismiss = () => { if (done) { setSeenTurn(done.id); saveLocal(`ros-seen-turn:${detail.project.id}`, done.id); } };
+  const outcome = done ? done.status === 'completed' ? (done.reply ? textPreview(plain(done.reply), 140).text : done.question ? textPreview(plain(done.question), 140).text : 'Done') : done.status === 'failed' ? (done.error || 'Ros could not finish this request') : done.status === 'cancelled' ? 'Stopped' : 'Interrupted' : '';
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
   // Suggestions waiting for a decision: open proposals, pending actions that carry no proposal of their own, and lines Ros noticed about the person.
   const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0);
-  const peek = running ? 'Working on your question…' : last?.reply ? textPreview(plain(last.reply), 180).text : '';
+  const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
+  const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
+  const blocks = detail.project.canvas.nodes.length;
+  useEffect(() => { if (!running) return; setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [running]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const message = draft.trim();
@@ -34,14 +48,36 @@ export function RosBar({ state, detail, busy, onSend, onOpen }: { state: Assista
     if (!await onSend(message)) setDraft(message);
   };
   return <div className="ros-dock" data-testid="ros-bar">
-    {peek && <button type="button" className="ros-peek" onClick={() => onOpen('half')} aria-label="Open the conversation with Ros"><span>{peek}</span></button>}
-    <form className="ros-bar" onSubmit={submit}>
-      <RosMark working={running}/>
-      <input aria-label="Ask Ros" placeholder="Ask Ros, or @ an agent" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
-      {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
-      <button type="button" className="icon-button" aria-label="Open Ros as a half sheet" title="Half sheet" onClick={() => onOpen('half')}><PanelBottomOpen size={16}/></button>
-      <button type="button" className="icon-button" aria-label="Open Ros in full" title="Full panel" onClick={() => onOpen('full')}><Maximize2 size={15}/></button>
-      <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={15} className="spin"/> : <ArrowUp size={15}/>}</button>
+    <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
+      {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
+        <LoaderCircle size={15} className="spin" aria-hidden="true"/>
+        <span className="ros-progress-text"><strong>{active?.userMessage || draft || 'Your question'}</strong><span role="status">{currentStep}</span></span>
+        {active && <span className="ros-progress-meta">{clock(now - Date.parse(active.createdAt))}</span>}
+        <ChevronUp size={12} aria-hidden="true"/>
+      </button>}
+      {done && <div className={`ros-progress done ${done.status}`} data-testid="ros-done">
+        <button type="button" className="ros-done-open" onClick={() => onOpen('half')} aria-label="Open the reply from Ros">
+          {done.status === 'completed' ? <Check size={15} aria-hidden="true"/> : <CircleAlert size={15} aria-hidden="true"/>}
+          <span className="ros-progress-text"><strong>{done.userMessage}</strong><span>{outcome}</span></span>
+          <span className="ros-progress-meta">{clock(Date.parse(done.updatedAt) - Date.parse(done.createdAt))}</span>
+        </button>
+        <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
+      </div>}
+      <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
+      <div className="ros-bar-footer">
+        <RosMark working={running}/>
+        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
+        <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={() => onOpen('half')}/>
+        {focusedNode
+          ? <span className="ros-context focused" title={`Ros is looking at ${focusedNode.title}`}><Focus size={12}/><span>{focusedNode.title}</span><button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button></span>
+          : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
+        <span className="ros-footer-spacer"/>
+        {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
+        <button type="button" className="icon-button" aria-label={rosSizeLabel.half} title="Half sheet" onClick={() => onOpen('half')}><RosSizeIcon size="half" px={15}/></button>
+        <button type="button" className="icon-button" aria-label={rosSizeLabel.full} title="Side panel" onClick={() => onOpen('full')}><RosSizeIcon size="full" px={15}/></button>
+        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
+          : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
+      </div>
     </form>
   </div>;
 }

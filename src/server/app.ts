@@ -12,16 +12,20 @@ import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
+import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
-import { projectBudgetReport } from './budget-report.js';
+import { projectBudgetReport, usageAnalytics } from './budget-report.js';
+import { providerBalances } from './provider-balances.js';
+import { attachSpendingBudgetRoutes, SpendingBudget } from './spending-budget.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
 import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
+import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
@@ -33,7 +37,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;outside?:OutsideAgents;cloud?:CloudAccount;memory?:PersonalMemory},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string};localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;memory?:PersonalMemory;setup?:Setup},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -72,7 +76,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps)attachAppRoutes(app,tools.apps);if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
@@ -135,6 +139,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   });
   app.get('/api/connections', (_req, res) => res.json(execution.connectionStatuses()));
   app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
+  app.get('/api/settings/general', (_req, res) => res.json({ dataDir: options.localPaths?.dataDir ?? null, keysFile: options.localPaths?.keysFile ?? null }));
+  const spendingBudget = new SpendingBudget(store);
+  if (!options.publicDemo) attachSpendingBudgetRoutes(app, spendingBudget);
+  if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
+  app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
     res.json({ ...report, providerAccounts: await providerUsage.read() });

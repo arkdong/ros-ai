@@ -5,6 +5,8 @@ export type ConnectionBudgetStatus = {
   source: 'app' | 'environment' | 'none';
   enabled: boolean;
   ready: boolean;
+  /** False while spending limits are off: requests are recorded, not capped. */
+  limited?: boolean;
   limitUsd: number;
   accountedUsd: number;
   remainingUsd: number;

@@ -11,6 +11,7 @@
     "start": "tsx src/server/index.ts",
     "dev": "ROS_DEV=1 tsx src/server/index.ts",
     "try": "node scripts/try.mjs",
+    "eval:aiso": "tsx scripts/aiso-eval.ts",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/*.test.ts",
     "lint": "tsc --noEmit"
@@ -35,6 +36,7 @@
     "openai": "^7.23.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "unpdf": "^1.3.2",
     "zod": "^4.1.5"
   },
   "devDependencies": {

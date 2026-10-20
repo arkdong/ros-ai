@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FolderOpen, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { MEMORY_KINDS, MEMORY_LIMITS, type MemoryEntry, type MemoryKind, type PersonalMemoryState } from '../shared/personal-memory';
 import { api, post } from './api';
 import { RosMark } from './RosDock';
 import { message } from './ModelPage';
+import { Row } from './SettingsPage';
 import './memory.css';
 
 const when = (at: string) => at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
@@ -13,11 +14,11 @@ type Decision = 'keep' | 'forget';
 /** One line, where it came from, and the one action that fits its state. */
 function MemoryLineRow({ entry, busy, onDecide, showKind }: { entry: MemoryEntry; busy: boolean; onDecide: (id: string, decision: Decision) => void; showKind?: boolean }) {
   const date = when(entry.at);
-  return <div className={`memory-line ${entry.status}`}>
-    <div className="memory-line-body"><p>{entry.text}</p><small>{showKind ? `${kindLabel(entry.kind)} · ` : ''}{entry.from}{date ? ` · ${date}` : ''}</small></div>
-    {entry.status === 'proposed'
+  return <div className={`settings-row memory-line ${entry.status}`}>
+    <div><strong>{entry.text}</strong><small>{showKind ? `${kindLabel(entry.kind)} · ` : ''}{entry.from}{date ? ` · ${date}` : ''}</small></div>
+    <div className="settings-row-control">{entry.status === 'proposed'
       ? <><button type="button" className="primary small" disabled={busy} onClick={() => onDecide(entry.id, 'keep')}>Keep</button><button type="button" className="text-button" disabled={busy} onClick={() => onDecide(entry.id, 'forget')}>Not this</button></>
-      : <button type="button" className="text-button" disabled={busy} onClick={() => onDecide(entry.id, 'forget')}>Forget</button>}
+      : <button type="button" className="text-button" disabled={busy} onClick={() => onDecide(entry.id, 'forget')}>Forget</button>}</div>
   </div>;
 }
 
@@ -31,44 +32,40 @@ export function MemoryPage({ publicDemo }: { publicDemo: boolean }) {
   }, [publicDemo]);
   useEffect(() => { void refresh(); }, [refresh]);
   const run = async (work: () => Promise<unknown>) => { setBusy(true); try { await work(); await refresh(); } catch (cause) { setError(message(cause)); } finally { setBusy(false); } };
-  if (publicDemo) return <p className="rail-page-note">This demo keeps no memory of its own. In the local workspace, Ros remembers how you work.</p>;
-  if (!state) return error ? <p className="inline-error" role="alert">{error}</p> : <p className="rail-page-note"><LoaderCircle size={14} className="spin"/> Reading memory…</p>;
   const decide = (id: string, decision: Decision) => void run(() => post(`/api/memory/${id}`, { decision }));
-  const waiting = state.entries.filter(entry => entry.status === 'proposed');
-  const kept = (value: MemoryKind) => state.entries.filter(entry => entry.status === 'kept' && entry.kind === value);
-  return <div className="memory-page" data-testid="memory-page">
-    {error && <p className="inline-error" role="alert">{error}</p>}
-    <section className="memory-panel memory-switch">
-      <button type="button" role="switch" aria-checked={state.enabled} aria-label="Ros remembers how you work" className={`switch ${state.enabled ? 'on' : ''}`} disabled={busy} onClick={() => void run(() => api('/api/memory', { method: 'PUT', body: JSON.stringify({ enabled: !state.enabled }) }))}><span/></button>
-      <div>
-        <h2>Ros remembers how you work</h2>
-        <p>Taste, habits, people and commitments Ros notices while you work on the map. Each line waits for you under the project's permission choice, and every agent that works on your map gets the kept lines as your preferences. Project memory (the question, decisions and findings) is separate and stays with each project.</p>
-        {!state.enabled && <p className="memory-off">Off: nothing is proposed or shared. The lines below stay in your files.</p>}
-      </div>
-    </section>
-    {waiting.length > 0 && <>
-      <h3 className="rail-section-title memory-waiting-title"><span className="ros-dot" aria-hidden="true"/>Waiting for you · {waiting.length}</h3>
-      <section className="memory-panel memory-list" aria-label="Waiting for you">{waiting.map(entry => <MemoryLineRow key={entry.id} entry={entry} busy={busy} onDecide={decide} showKind/>)}</section>
+  const waiting = state?.entries.filter(entry => entry.status === 'proposed') ?? [];
+  const kept = (value: MemoryKind) => state?.entries.filter(entry => entry.status === 'kept' && entry.kind === value) ?? [];
+  return <div className="settings-page memory-page" data-testid="memory-page">
+    <header className="settings-head">
+      <div><h1>Memory</h1><p className="settings-lead">What Ros remembers about how you work: taste and style, working habits, people and commitments. Each line waits for you under the project's permission choice, and every agent that works on your map gets the kept lines as your preferences, never as instructions. Project memory (the question, decisions and findings) stays with each project.</p></div>
+      {state && <button type="button" role="switch" aria-checked={state.enabled} aria-label="Ros remembers how you work" className={`switch ${state.enabled ? 'on' : ''}`} disabled={busy} onClick={() => void run(() => api('/api/memory', { method: 'PUT', body: JSON.stringify({ enabled: !state.enabled }) }))}><span/></button>}
+    </header>
+    {publicDemo && <p className="rail-page-note">This demo keeps no memory of its own. In the local workspace, Ros remembers how you work.</p>}
+    {!publicDemo && !state && (error ? <p className="inline-error" role="alert">{error}</p> : <p className="rail-page-note"><LoaderCircle size={14} className="spin"/> Reading memory…</p>)}
+    {state && <>
+      {error && <p className="inline-error" role="alert">{error}</p>}
+      {!state.enabled && <p className="settings-lead memory-off">Off: nothing is proposed or shared. The lines below stay in your files.</p>}
+      {waiting.length > 0 && <section><h2 className="memory-waiting-title"><span className="ros-dot" aria-hidden="true"/>Waiting for you · {waiting.length}</h2>
+        <div className="settings-card" role="region" aria-label="Waiting for you">{waiting.map(entry => <MemoryLineRow key={entry.id} entry={entry} busy={busy} onDecide={decide} showKind/>)}</div></section>}
+      {MEMORY_KINDS.map(item => {
+        const lines = kept(item.kind);
+        return <section key={item.kind}><h2>{item.title}{lines.length ? ` · ${lines.length}` : ''}</h2>
+          {lines.length ? <div className="settings-card" role="region" aria-label={item.title}>{lines.map(entry => <MemoryLineRow key={entry.id} entry={entry} busy={busy} onDecide={decide}/>)}</div> : <p className="rail-page-note">{item.about} Nothing kept yet.</p>}
+        </section>;
+      })}
+      <section><h2>Tell Ros something to remember</h2>
+        <div className="settings-card"><form className="settings-row memory-add" onSubmit={event => { event.preventDefault(); if (!text.trim() || busy) return; void run(async () => { await post('/api/memory', { kind, text: text.trim() }); setText(''); }); }}>
+          <label className="sr-only" htmlFor="memory-kind">Kind</label>
+          <select id="memory-kind" value={kind} onChange={event => setKind(event.target.value as MemoryKind)}>{MEMORY_KINDS.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select>
+          <label className="sr-only" htmlFor="memory-text">What to remember</label>
+          <input id="memory-text" value={text} maxLength={MEMORY_LIMITS.text} onChange={event => setText(event.target.value)} placeholder="One sentence, in your own words"/>
+          <button type="submit" className="primary small" disabled={busy || !text.trim()}>Add</button>
+        </form></div></section>
+      <section><h2>Files</h2><div className="settings-card">
+        <Row title="Folder" detail="One Markdown file per subject, a line each, with where it came from. Edit or delete lines freely; Ros reads the files again at the start of every turn."><code title={state.folder}>{state.folder}</code><button type="button" className="text-button" disabled={busy} onClick={() => void run(() => post('/api/memory/open'))}>Open folder</button></Row>
+        <Row title="Who reads it" detail="Ros in every project, and Claude Code, Codex or any agent connected over MCP, labelled as your preferences and never as instructions. Nothing leaves this computer."><span/></Row>
+      </div></section>
     </>}
-    {MEMORY_KINDS.map(item => {
-      const lines = kept(item.kind);
-      return <div key={item.kind}>
-        <h3 className="rail-section-title">{item.title}{lines.length ? ` · ${lines.length}` : ''}</h3>
-        {lines.length ? <section className="memory-panel memory-list" aria-label={item.title}>{lines.map(entry => <MemoryLineRow key={entry.id} entry={entry} busy={busy} onDecide={decide}/>)}</section> : <p className="memory-empty">{item.about} Nothing kept yet.</p>}
-      </div>;
-    })}
-    <h3 className="rail-section-title">Tell Ros something to remember</h3>
-    <form className="memory-panel memory-add" onSubmit={event => { event.preventDefault(); if (!text.trim() || busy) return; void run(async () => { await post('/api/memory', { kind, text: text.trim() }); setText(''); }); }}>
-      <label className="sr-only" htmlFor="memory-kind">Kind</label>
-      <select id="memory-kind" value={kind} onChange={event => setKind(event.target.value as MemoryKind)}>{MEMORY_KINDS.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select>
-      <label className="sr-only" htmlFor="memory-text">What to remember</label>
-      <input id="memory-text" value={text} maxLength={MEMORY_LIMITS.text} onChange={event => setText(event.target.value)} placeholder="One sentence, in your own words"/>
-      <button type="submit" className="primary small" disabled={busy || !text.trim()}>Add</button>
-    </form>
-    <footer className="memory-footer">
-      <p><FolderOpen size={14}/><span>Saved as Markdown you can open and edit: <code>{state.folder}</code></span><button type="button" className="text-button" disabled={busy} onClick={() => void run(() => post('/api/memory/open'))}>Open folder</button></p>
-      <p>Reaches Ros in every project, and Claude Code, Codex or any agent connected over MCP, labelled as your preferences and never as instructions. Nothing leaves this computer.</p>
-    </footer>
   </div>;
 }
 
@@ -85,7 +82,7 @@ export function RememberCard({ remembered, person, onChanged }: { remembered: { 
     <div className="assistant-action-title"><RosMark/><strong>{proposed ? 'Ros noticed' : 'Remembered'}</strong><span>{person?.enabled === false ? 'Memory off' : proposed ? 'Waiting for you' : 'Memory'}</span></div>
     {remembered.map((line, index) => {
       const entry = entries[index];
-      return entry ? <MemoryLineRow key={line.id} entry={entry} busy={busy} onDecide={(id, decision) => void decide(id, decision)} showKind/> : <div key={line.id} className="memory-line gone"><div className="memory-line-body"><p>{line.text}</p><small>{kindLabel(line.kind)} · not kept</small></div></div>;
+      return entry ? <MemoryLineRow key={line.id} entry={entry} busy={busy} onDecide={(id, decision) => void decide(id, decision)} showKind/> : <div key={line.id} className="settings-row memory-line gone"><div><strong>{line.text}</strong><small>{kindLabel(line.kind)} · not kept</small></div></div>;
     })}
     {error && <p className="inline-error" role="alert">{error}</p>}
   </div>;

@@ -2,6 +2,22 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:chil
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CodexRateLimit, CodexRateLimits } from '../shared/budget-report.js';
+
+const rateLimit = (value: unknown): CodexRateLimit | null => {
+  const item = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  if (!item || typeof item.usedPercent !== 'number' || !Number.isFinite(item.usedPercent)) return null;
+  const minutes = typeof item.windowDurationMins === 'number' && item.windowDurationMins > 0 ? item.windowDurationMins : null;
+  const resets = typeof item.resetsAt === 'number' && item.resetsAt > 0 ? new Date(item.resetsAt * (item.resetsAt < 1e12 ? 1000 : 1)).toISOString() : null;
+  return { usedPercent: Math.min(100, Math.max(0, item.usedPercent)), windowMinutes: minutes, resetsAt: resets };
+};
+/** Codex reports how much of the ChatGPT plan's rolling windows has been used. */
+function parseRateLimits(value: unknown): CodexRateLimits | null {
+  const limits = value && typeof value === 'object' ? (value as { rateLimits?: Record<string, unknown> }).rateLimits : undefined;
+  if (!limits) return null;
+  const parsed = { primary: rateLimit(limits.primary), secondary: rateLimit(limits.secondary) };
+  return parsed.primary || parsed.secondary ? parsed : null;
+}
 import { StoreError } from './store.js';
 
 type Rpc = { id?: string | number; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { code?: number; message?: string } };
@@ -27,7 +43,7 @@ export function codexProcessArgs(disabledMcp: string[] = []) {
   ];
   return ['app-server', '--listen', 'stdio://', ...entries.flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`])];
 }
-function childEnvironment(): NodeJS.ProcessEnv {
+export function childEnvironment(): NodeJS.ProcessEnv {
   // Provider keys from the ros.ai server are not forwarded to the agent process.
   const env: NodeJS.ProcessEnv = {};
   for (const key of ['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CODEX_CA_CERTIFICATE', 'SYSTEMROOT']) if (process.env[key]) env[key] = process.env[key];
@@ -123,7 +139,10 @@ export class CodexAppServer {
     // rather than treating argv as proof of disabled upstream request replay.
     const noRetry = config.model_provider === 'ros_ai_local' && provider?.requires_openai_auth === true && provider.request_max_retries === 0 && provider.stream_max_retries === 0;
     const enforced = noRetry && disabledFeatures.every(key => config.features?.[key] === false);
-    return { signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced };
+    // Plan limits are best effort: older Codex versions do not answer this request.
+    let rateLimits: CodexRateLimits | null = null;
+    if (account.account) try { rateLimits = parseRateLimits(await this.request('account/rateLimits/read', {}, 5000)); } catch { rateLimits = null; }
+    return { rateLimits, signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced };
   }
   private fail(error: Error) { if (this.closed) return; this.onFailure(error); this.close(error); }
   close(reason: Error = new StoreError('Codex connection closed; active outcomes are preserved.', 503)) {

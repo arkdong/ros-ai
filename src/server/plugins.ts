@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import { z } from 'zod';
 import { StoreError } from './store.js';
+import { notionBase } from './notion.js';
 import type { PluginStatus, TokenPluginId } from '../shared/plugins.js';
 
 const ids = ['zotero', 'slack', 'notion', 'github'] as const satisfies readonly TokenPluginId[];
@@ -12,6 +13,8 @@ const tokenSchema = z.string().trim().min(8).max(4096).refine(value => !/\s|[\x0
 const savedSchema = z.object({ version: z.literal(1), tokens: z.object({ zotero: tokenSchema.optional(), slack: tokenSchema.optional(), notion: tokenSchema.optional(), github: tokenSchema.optional() }).strict() }).strict();
 type Check = Pick<PluginStatus, 'checkedAt' | 'verified' | 'checkMessage'>;
 /** Names from a provider are echoed back only as a short label. */
+/** Tokens a local keys file or the shell may provide instead of the Plugins page. */
+const environment: Partial<Record<TokenPluginId, string>> = { notion: 'NOTION_TOKEN' };
 const label = (value: unknown) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80) : '';
 
 /** Plugin tokens stay in an owner-only file on this computer; the browser only learns whether one is saved and the last check. */
@@ -42,11 +45,11 @@ export class PluginTokens {
     this.tokens = tokens;
   }
   status(id: TokenPluginId): PluginStatus {
-    return { id, configured: Boolean(this.tokens[id]), ...(this.checks.get(id) ?? { checkedAt: null, verified: null, checkMessage: null }) };
+    return { id, configured: Boolean(this.token(id)), ...(this.checks.get(id) ?? { checkedAt: null, verified: null, checkMessage: null }) };
   }
   statuses() { return ids.map(id => this.status(id)); }
-  /** For later plugin features on the server; never sent to the browser. */
-  token(id: TokenPluginId) { return this.tokens[id]; }
+  /** For plugin features on the server; never sent to the browser. A saved token wins over the environment. */
+  token(id: TokenPluginId) { const name = environment[id]; return this.tokens[id] ?? (name ? process.env[name]?.trim() || undefined : undefined); }
   save(id: TokenPluginId, supplied: unknown) {
     const { token } = z.object({ token: tokenSchema }).strict().parse(supplied);
     this.persist({ ...this.tokens, [id]: token });
@@ -54,13 +57,14 @@ export class PluginTokens {
     return this.status(id);
   }
   disconnect(id: TokenPluginId) {
+    if (!this.tokens[id] && this.token(id)) throw new StoreError(`This token comes from ${environment[id]} in your keys file or environment. Remove it there and restart to disconnect.`);
     const tokens = { ...this.tokens }; delete tokens[id];
     this.persist(tokens); this.checks.delete(id);
     return this.status(id);
   }
   /** One read-only identity request per check: it confirms the token without reading or changing any content. */
   async check(id: TokenPluginId) {
-    const token = this.tokens[id];
+    const token = this.token(id);
     if (!token) throw new StoreError('Save a token first.');
     let verified = false, checkMessage = 'Could not reach the service. The token has not been checked.';
     try {
@@ -76,7 +80,7 @@ export class PluginTokens {
         verified = body?.ok === true;
         checkMessage = verified ? `Slack accepted the token${label(body?.team) ? ` for ${label(body?.team)}` : ''}.` : response.ok ? 'Slack rejected this token.' : `Slack returned HTTP ${response.status}.`;
       } else if (id === 'notion') {
-        const response = await request('https://api.notion.com/v1/users/me', { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
+        const response = await request(`${notionBase()}/v1/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
         verified = response.ok;
         checkMessage = response.ok ? 'Notion accepted the integration secret. Share pages with the integration to make them visible.' : response.status === 401 ? 'Notion rejected this secret.' : `Notion returned HTTP ${response.status}.`;
       } else {
@@ -87,7 +91,7 @@ export class PluginTokens {
       }
     } catch { /* Keep a short message without provider details. */ }
     // A replacement saved during the check must not inherit this result.
-    if (this.tokens[id] !== token) throw new StoreError('The token changed during this check. Check the current token again.');
+    if (this.token(id) !== token) throw new StoreError('The token changed during this check. Check the current token again.');
     this.checks.set(id, { checkedAt: new Date().toISOString(), verified, checkMessage });
     return this.status(id);
   }
