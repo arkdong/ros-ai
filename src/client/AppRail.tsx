@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { Bot, LayoutDashboard, Plug, Settings2, type LucideIcon } from 'lucide-react';
 import './app-rail.css';
 
-export type RailPage = 'canvas' | 'model' | 'usage' | 'balances' | 'general' | 'resources' | 'plugins';
+export type RailPage = 'canvas' | 'model' | 'usage' | 'balances' | 'general' | 'resources' | 'memory' | 'plugins';
 type RailItem = { id: string; pages: RailPage[]; label: string; subtitle: string; icon: LucideIcon };
 // Usage, Balances, General and Resources share the Settings entry; its sections sit in the left menu.
 const items: RailItem[] = [
   { id: 'canvas', pages: ['canvas'], label: 'Canvas', subtitle: '', icon: LayoutDashboard },
   { id: 'agents', pages: ['model'], label: 'Agents', subtitle: 'Every agent that can work in your projects, connected the same way', icon: Bot },
   { id: 'plugins', pages: ['plugins'], label: 'Plugins', subtitle: 'Connect plugins so your agents work across your tools', icon: Plug },
-  { id: 'settings', pages: ['usage', 'balances', 'general', 'resources'], label: 'Settings', subtitle: '', icon: Settings2 },
+  { id: 'settings', pages: ['usage', 'balances', 'general', 'resources', 'memory'], label: 'Settings', subtitle: '', icon: Settings2 },
 ];
 
 /** The slim icon column at the far left; each icon opens its own page over the canvas. */

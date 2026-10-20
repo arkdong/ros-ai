@@ -122,7 +122,7 @@ export class ClaudeAgentService {
     const scopeHash = createHash('sha256').update(JSON.stringify({ cwd, nodeIds: request.nodeIds.slice().sort(), artifactIds: toolkit.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })).sort((a, b) => a.id.localeCompare(b.id)) })).digest('hex');
     const prior = this.store.record<Session>('claude-session', request.projectId);
     const resume = prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
-    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\nResearcher's message:\n${message}`;
+    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
     const allowedTools = [...(root ? FILE_TOOLS : []), ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, usageId: usage.id, reservedUsd, request: { prompt, model, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, maxBudgetUsd: reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
     const save = () => this.store.saveRecord('claude-attempt', requestId, request.projectId, attempt);

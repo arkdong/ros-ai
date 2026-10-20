@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
+import { Brain, ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
 import { modeLabel } from './ResearchControls';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
@@ -8,11 +8,12 @@ import { BrandLogo } from './brand-logos';
 import { RosMark } from './RosDock';
 import './settings.css';
 
-export type SettingsSection = 'general' | 'usage' | 'balances' | 'resources';
+export type SettingsSection = 'general' | 'usage' | 'balances' | 'memory' | 'resources';
 const sections: { id: SettingsSection; label: string; icon: typeof Settings2 }[] = [
   { id: 'usage', label: 'Usage', icon: ChartColumn },
   { id: 'balances', label: 'Balances', icon: Wallet },
   { id: 'general', label: 'General', icon: Settings2 },
+  { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'resources', label: 'Resources', icon: FolderOpen },
 ];
 
@@ -24,7 +25,7 @@ export function SettingsSidebar({ section, onSection }: { section: SettingsSecti
   </div>;
 }
 
-function Row({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
+export function Row({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
   return <div className="settings-row"><div><strong>{title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
 }
 

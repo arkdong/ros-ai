@@ -33,6 +33,7 @@ import { Setup } from './setup.js';
 import { NotionApi } from './notion.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
+import { PersonalMemory } from './personal-memory.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -118,15 +119,16 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
-    assistant=new AssistantService(store,execution,experiments,agent,claude,loop);
+    const personal=new PersonalMemory(store,dataDir);
+    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal);
     guide=new WorkspaceGuideService(store,execution);
-    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root);
+    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal);
     const plugins = new PluginTokens(dataDir);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

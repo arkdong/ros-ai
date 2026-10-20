@@ -33,8 +33,8 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
   const dismiss = () => { if (done) { setSeenTurn(done.id); saveLocal(`ros-seen-turn:${detail.project.id}`, done.id); } };
   const outcome = done ? done.status === 'completed' ? (done.reply ? textPreview(plain(done.reply), 140).text : done.question ? textPreview(plain(done.question), 140).text : 'Done') : done.status === 'failed' ? (done.error || 'Ros could not finish this request') : done.status === 'cancelled' ? 'Stopped' : 'Interrupted' : '';
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
-  // Suggestions waiting for a decision: open proposals plus pending actions that carry no proposal of their own.
-  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length;
+  // Suggestions waiting for a decision: open proposals, pending actions that carry no proposal of their own, and lines Ros noticed about the person.
+  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0);
   const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const blocks = detail.project.canvas.nodes.length;
