@@ -1,0 +1,44 @@
+# ros.ai on one Nebius VM: the cloud gateway and the public demo behind Caddy, which serves HTTPS.
+# Postgres is Nebius Managed PostgreSQL, outside this file. Settings live in /etc/ros-ai/, never in the repository.
+# Guide: docs/nebius-deployment.md
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [cloud, demo]
+
+  cloud:
+    build: ../../cloud
+    restart: unless-stopped
+    env_file: /etc/ros-ai/cloud.env
+    environment:
+      PORT: "8080"
+    volumes:
+      # The managed database's CA certificate; DATABASE_URL names it with sslrootcert=/certs/postgres-ca.pem.
+      - /etc/ros-ai/postgres-ca.pem:/certs/postgres-ca.pem:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+
+  demo:
+    build: ../..
+    restart: unless-stopped
+    environment:
+      ROS_PUBLIC_ORIGIN: https://demo.ros-ai.io
+    volumes:
+      - demo-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+
+volumes:
+  caddy-data:
+  demo-data:

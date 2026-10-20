@@ -19,7 +19,7 @@ npm start                 # http://127.0.0.1:4400
 
 Then start the app with `ROS_CLOUD_URL=http://127.0.0.1:4400 npm start` and choose **Ros, hosted by ros.ai** on the Agents page.
 
-`docker build -t ros-ai-cloud cloud` builds an image that migrates and starts on its own, so the same service runs on Railway, Nebius AI Cloud or an organisation's own servers. Deploying it is a separate step that needs the owner's approval, because it holds the provider key.
+`docker build -t ros-ai-cloud cloud` builds an image that migrates and starts on its own, so the same service runs on Railway, Nebius AI Cloud or an organisation's own servers. Deploying it is a separate step that needs the owner's approval, because it holds the provider key. On Nebius it runs with the demo on one VM: [docs/nebius-deployment.md](../docs/nebius-deployment.md).
 
 ## Numbers and errors
 

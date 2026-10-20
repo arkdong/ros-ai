@@ -1,0 +1,8 @@
+# Caddy gets and renews the certificates itself. Both names must point at this VM (Cloudflare DNS only, grey cloud).
+cloud.ros-ai.io {
+	reverse_proxy cloud:8080
+}
+
+demo.ros-ai.io {
+	reverse_proxy demo:8080
+}

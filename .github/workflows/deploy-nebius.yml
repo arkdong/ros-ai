@@ -1,0 +1,57 @@
+# Deploys the cloud gateway and the public demo to the Nebius VM when main changes either of them.
+# Needs repository secrets NEBIUS_SSH_HOST, NEBIUS_SSH_USER and NEBIUS_SSH_KEY (see docs/nebius-deployment.md).
+name: Deploy to Nebius
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - cloud/**
+      - src/**
+      - public/**
+      - examples/dutch-ai-adoption/**
+      - examples/tutorial-results/banking.json
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - index.html
+      - vite.config.ts
+      - deploy/nebius/**
+  workflow_dispatch:
+
+concurrency: deploy-nebius
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Until the VM exists and its secrets are set, the job does nothing instead of failing.
+    env:
+      HOST: ${{ secrets.NEBIUS_SSH_HOST }}
+    steps:
+      - name: Skip until the VM is set up
+        if: env.HOST == ''
+        run: echo "NEBIUS_SSH_HOST is not set, so nothing is deployed."
+
+      - uses: actions/checkout@v4
+        if: env.HOST != ''
+
+      - name: Load the SSH key
+        if: env.HOST != ''
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.NEBIUS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.NEBIUS_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy the repository to the VM
+        if: env.HOST != ''
+        run: |
+          rsync -az --delete --exclude .git --exclude node_modules --exclude 'cloud/node_modules' \
+            ./ "${{ secrets.NEBIUS_SSH_USER }}@${{ secrets.NEBIUS_SSH_HOST }}:/opt/ros-ai/"
+
+      - name: Build and restart
+        if: env.HOST != ''
+        run: |
+          ssh "${{ secrets.NEBIUS_SSH_USER }}@${{ secrets.NEBIUS_SSH_HOST }}" \
+            'cd /opt/ros-ai/deploy/nebius && docker compose up -d --build --remove-orphans && docker image prune -f'
