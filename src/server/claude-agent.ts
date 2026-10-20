@@ -116,7 +116,7 @@ export class ClaudeAgentService {
     if (reservedUsd < MIN_TURN_USD) throw new StoreError(`Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains.`, 409);
     const usage = this.store.atomic(() => {
       this.experiments.authority.reserve(request.projectId, { kind: 'model', nodeId: request.nodeIds[0] ?? 'project', fingerprint: `claude:${requestId}`, spendUsd: reservedUsd });
-      return this.execution.connectionBudgets.reserve({ provider: 'claude', amountUsd: reservedUsd, purpose: 'Claude Code assistant turn', basis: `Claude Code budget for one turn (maxBudgetUsd ${reservedUsd}); settled at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice`, trace: { requestId, model } }, budget.revision);
+      return this.execution.connectionBudgets.reserve({ provider: 'claude', amountUsd: reservedUsd, purpose: 'Claude Code assistant turn', basis: `Claude Code budget for one turn (maxBudgetUsd ${reservedUsd}); settled at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice`, trace: { requestId, model, projectId: request.projectId, nodeId: request.nodeIds[0] ?? null } }, budget.revision);
     });
 
     const scopeHash = createHash('sha256').update(JSON.stringify({ cwd, nodeIds: request.nodeIds.slice().sort(), artifactIds: toolkit.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })).sort((a, b) => a.id.localeCompare(b.id)) })).digest('hex');

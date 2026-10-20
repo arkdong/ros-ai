@@ -14,7 +14,7 @@ import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
-import { projectBudgetReport } from './budget-report.js';
+import { projectBudgetReport, usageAnalytics } from './budget-report.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
@@ -33,7 +33,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:{owner:string};localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -135,6 +135,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   });
   app.get('/api/connections', (_req, res) => res.json(execution.connectionStatuses()));
   app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
+  app.get('/api/settings/general', (_req, res) => res.json({ dataDir: options.localPaths?.dataDir ?? null, keysFile: options.localPaths?.keysFile ?? null }));
+  app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
     res.json({ ...report, providerAccounts: await providerUsage.read() });

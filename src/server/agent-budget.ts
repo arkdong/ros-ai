@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import { Authority } from './authority.js';
+import { spendingLimitsOn } from './spending-limits.js';
 import type { AgentScope } from '../shared/agent-runtime.js';
 import type { CodexAllowanceLimits, CodexAllowanceResources, CodexAllowanceScope, CodexAllowanceStatus } from '../shared/agent-budget-settings.js';
 
@@ -94,6 +95,12 @@ export class AgentBudget {
     const app = this.app(projectId), usage = this.usage(projectId);
     const used = { turns: usage.turns, runtimeSeconds: usage.runtimeSeconds, toolCalls: usage.toolCalls };
     const notes = usage.legacyToolUncertainty ? [...limitations, 'Some older admissions lack exact tool reservations; their maximum 20 calls remain conservatively reserved.'] : limitations;
+    if (!spendingLimitsOn(this.store)) {
+      // No allowance to set: turns still count, each within the largest per-turn time and tool bounds, over the whole project.
+      const project = this.store.getProject(projectId), stopped = this.authority.policy(projectId).stopped;
+      const limits: CodexAllowanceLimits = { maxTurns: used.turns + 100, maxRuntimeSeconds: used.runtimeSeconds + 30000, maxToolCalls: used.toolCalls + 2000, perTurnSeconds: 300, perTurnToolCalls: 20 };
+      return { projectId, source: 'app', enabled: true, ready: !stopped, reason: stopped ? 'Project research is stopped. Resume it deliberately before new Codex work.' : 'No usage limit is set. Every turn is recorded.', grantId: app?.id ?? `unlimited-${projectId}`, limits, used, remaining: remaining(limits, used), scope: { nodeIds: project.canvas.nodes.map(node => node.id), artifactIds: this.store.listArtifacts(projectId).map(artifact => artifact.id), capturedAt: null, projectRevision: project.revision }, createdAt: app?.createdAt ?? null, updatedAt: app?.updatedAt ?? null, expiresAt: null, limitations: notes };
+    }
     if (app) {
       const reason = !app.enabled ? 'This project Codex allowance is paused; the historical environment grant will not be used.' : this.resourceReason(projectId, app.limits, used);
       return { projectId, source: 'app', enabled: app.enabled, ready: reason === null, reason: reason ?? 'Explicit cumulative Codex allowance is available; authentication and isolation are checked separately.', grantId: app.id, limits: app.limits, used, remaining: remaining(app.limits, used), scope: app.scope, createdAt: app.createdAt, updatedAt: app.updatedAt, expiresAt: null, limitations: notes };
@@ -160,12 +167,12 @@ export class AgentBudget {
       this.authority.reserve(scope.projectId, { kind: 'model', nodeId: scope.nodeIds[0] ?? 'project', fingerprint: `codex:${requestId}`, runtimeSeconds: limits.perTurnSeconds });
       const reservation = { requestId, projectId: scope.projectId, at, seconds: limits.perTurnSeconds, toolCalls: limits.perTurnToolCalls };
       this.store.saveRecord('codex-project-usage', scope.projectId, scope.projectId, { ...usage, turns: usage.turns + 1, runtimeSeconds: usage.runtimeSeconds + limits.perTurnSeconds, toolCalls: usage.toolCalls + limits.perTurnToolCalls, reservations: [...usage.reservations, reservation] });
-      if (!app) {
+      if (!app && status.source === 'environment') {
         const ledger = this.ledger()!;
         ledger.usedTurns++; ledger.reservedSeconds += limits.perTurnSeconds; ledger.toolCalls += limits.perTurnToolCalls; ledger.attempts.push(reservation);
         this.store.saveRecord('agent-grant', ledger.grant.id, ledger.grant.projectIds[0], ledger);
       }
-      return { seconds: limits.perTurnSeconds, toolCalls: limits.perTurnToolCalls, grantId: status.grantId, scope: app ? 'Local Codex collaboration in this project, restricted to its explicitly authorized saved block and artifact identifiers.' : this.ledger()!.grant.scope };
+      return { seconds: limits.perTurnSeconds, toolCalls: limits.perTurnToolCalls, grantId: status.grantId, scope: app || status.source === 'app' ? 'Local Codex collaboration in this project, restricted to its explicitly authorized saved block and artifact identifiers.' : this.ledger()!.grant.scope };
     });
   }
 }

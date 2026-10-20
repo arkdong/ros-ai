@@ -82,3 +82,20 @@ export function summarizeBudgetPeriod(entries: readonly BudgetUsage[], period: B
     inputTokens: sum('inputTokens'), outputTokens: sum('outputTokens'), credits: sum('credits'),
   };
 }
+
+/** One paid or recorded request, for the Usage page. No prompts, responses or credentials. */
+export type UsageEvent = {
+  id: string;
+  at: string;
+  provider: string;
+  providerName: string;
+  model: string | null;
+  task: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  nodeTitle: string | null;
+  costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
+export type UsageAnalytics = { generatedAt: string; events: UsageEvent[] };

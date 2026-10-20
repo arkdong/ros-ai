@@ -114,10 +114,6 @@
 
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
-.rail-page-header { gap: 16px; margin-bottom: 36px; }
-.rail-page-header h1 { font-size: 30px; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; }
-.rail-page-header p { font-size: 15px; line-height: 1.5; margin-top: 8px; }
-.rail-page-icon { width: 44px; height: 44px; border-radius: 12px; border-color: #ebebeb; }
 .rail-section-title { font-size: 12px; letter-spacing: .07em; margin: 32px 4px 12px; color: var(--muted); }
 .rail-page .tool-connection { border: 1px solid var(--card-line); border-radius: var(--radius-card); margin-bottom: 10px; background: #fff; box-shadow: var(--card-shadow); }
 .rail-page .tool-connection-heading { padding: 16px 20px; min-height: 72px; gap: 16px; }
