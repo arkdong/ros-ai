@@ -25,7 +25,7 @@ export function AppRail({ page, onPage }: { page: RailPage; onPage: (page: RailP
 export function RailPageFrame({ page, onPage, children }: { page: Exclude<RailPage, 'canvas'>; onPage: (page: RailPage) => void; children: ReactNode }) {
   const item = items.find(entry => entry.pages.includes(page))!;
   // The Plugins page draws its own heading, like its catalogue rows.
-  if (item.id === 'plugins') return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner">{children}</div></section>;
+  if (item.id === 'plugins' || item.id === 'agents') return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner">{children}</div></section>;
   return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner"><header className="rail-page-header"><span className="rail-page-icon"><item.icon size={20}/></span><div><h1>{item.label}</h1><p>{item.subtitle}</p></div></header>
     {item.id === 'settings' && <div className="rail-page-tabs" role="tablist" aria-label="Settings">{settingsTabs.map(tab => <button key={tab.page} role="tab" aria-selected={page === tab.page} className={page === tab.page ? 'active' : ''} onClick={() => onPage(tab.page)}>{tab.label}</button>)}</div>}
     {children}</div></section>;

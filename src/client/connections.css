@@ -1,10 +1,10 @@
 .connections-intro { display:flex; gap:12px; align-items:flex-start; padding:0 0 18px; color:#626866; font-size:13px; line-height:1.55; }
 .connections-intro p { flex:1; }
 .connections-intro .icon-button { flex-shrink:0; }
-.tool-connection { border:1px solid #e1e5e2; border-radius:9px; margin-bottom:8px; background:#fff; }
+.tool-connection { border:1px solid #e3e3e3; border-radius:9px; margin-bottom:8px; background:#fff; }
 .tool-connection-heading { display:flex; align-items:center; gap:9px; padding:13px 11px; cursor:pointer; list-style:none; min-height:62px; }
 .tool-connection-heading::-webkit-details-marker { display:none; }
-.tool-connection-heading:hover { background:#f8faf6; border-radius:9px; }
+.tool-connection-heading:hover { background:#f7f7f7; border-radius:9px; }
 .tool-connection-heading:focus-visible { outline:2px solid #679a43; outline-offset:2px; border-radius:9px; }
 .tool-connection-name { flex:1; min-width:0; }
 .tool-connection-name strong { display:block; font-size:13px; font-weight:600; line-height:1.45; color:#222a26; }
@@ -78,7 +78,7 @@
 .claude-model-choice { display:grid; gap:6px; margin:8px 0; }
 .claude-model-choice select { width:100%; min-height:34px; border:1px solid #dedede; border-radius:7px; padding:5px 8px; background:#fff; font:inherit; font-size:13px; }
 .claude-model-choice .subtle { margin:0; font-size:12px; }
-.outside-command { display:flex; align-items:center; gap:6px; margin:10px 0; padding:7px 7px 7px 10px; border:1px solid #e1e5e2; border-radius:6px; background:#f7f8f6; }
+.outside-command { display:flex; align-items:center; gap:6px; margin:10px 0; padding:7px 7px 7px 10px; border:1px solid #e3e3e3; border-radius:6px; background:#f7f8f6; }
 .outside-command code { flex:1; min-width:0; font-size:11px; line-height:1.5; overflow-wrap:anywhere; user-select:all; }
 .cloud-code strong{display:inline-block;font:600 20px/1.2 ui-monospace,monospace;letter-spacing:3px;padding:8px 14px;border:1px dashed var(--line,#dfe2de);border-radius:10px}
 .cloud-waiting{display:grid;gap:10px;justify-items:start}.cloud-waiting p{margin:0}

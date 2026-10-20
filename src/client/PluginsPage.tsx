@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, ChevronRight, ExternalLink, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
@@ -15,21 +16,36 @@ function PluginMark({id,size}:{id:string;size?:number}) {
 
 /** Tools outside ros.ai, each connected with something the person already has. Using them from the canvas comes later. */
 type PluginState = { label: string; connected: boolean };
+
+/** One row of a catalogue: logo, name, one line, a status when connected, and + or ··· . Shared by Plugins and Agents. */
+export function CatalogueRow({mark,name,summary,state,unavailable,onClick}:{mark:ReactNode;name:string;summary:string;state?:PluginState;unavailable?:boolean;onClick:()=>void}) {
+  return <button type="button" className="plugin-row" onClick={onClick}><span className="plugin-row-mark">{mark}</span><span className="plugin-row-text"><strong>{name}</strong><small>{summary}</small></span>{state?.connected&&<span className="plugin-row-state"><i/>{state.label}</span>}<span className="plugin-row-action">{unavailable?<small>Not yet</small>:state?.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>}</span></button>;
+}
+/** The page's sections and installed list in the sidebar, like Codex's left column. */
+export function CatalogueSidebar({sections,installed,selected,onSelect,note}:{sections:{id:string;label:string;later?:boolean}[];installed:{id:string;name:string;mark:ReactNode}[];selected:string|null;onSelect:(id:string|null)=>void;note:string}) {
+  return <div className="plugins-sidebar">
+    {sections.map(section=>section.later?<button key={section.id} type="button" className="plugins-nav" disabled title={`${section.label} come in a later round`}>{section.label}<span className="plugins-later">later</span></button>:<button key={section.id} type="button" className={`plugins-nav ${selected?'':'active'}`} onClick={()=>onSelect(null)}>{section.label}</button>)}
+    <div className="sidebar-label plugins-installed-label">Installed</div>
+    {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span>{item.name}</span><i className="plugins-dot" aria-hidden="true"/></button>):<p className="sidebar-empty">Nothing connected yet</p>}
+    <p className="plugins-sidebar-note">{note}</p>
+  </div>;
+}
+/** Breadcrumb and hero of one item's page. */
+export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses}:{crumb:string;onBack:()=>void;mark:ReactNode;name:string;summary:string;state?:PluginState;uses?:string[]}) {
+  return <>
+    <nav className="plugin-crumbs" aria-label="Breadcrumb"><button type="button" className="text-button" onClick={onBack}>{crumb}</button><ChevronRight size={13}/><span>{name}</span></nav>
+    <header className="plugin-hero"><span className="plugin-hero-mark">{mark}</span><div><h1>{name}</h1><p>{summary}</p></div>{state&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}</header>
+    {uses&&<ul className="plugin-uses">{uses.map(use=><li key={use}>{use}</li>)}</ul>}
+  </>;
+}
 const groups: { title: string; ids: PluginId[] }[] = [
   { title: 'Sources', ids: ['google-drive', 'google-docs', 'zotero', 'tavily'] },
   { title: 'Team', ids: ['notion', 'slack', 'github'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
 
-/** The left column on the Plugins page, like Codex's: the page's sections and what is connected. */
 export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void}) {
-  return <div className="plugins-sidebar">
-    <button type="button" className={`plugins-nav ${selected?'':'active'}`} onClick={()=>onSelect(null)}>Plugins</button>
-    <button type="button" className="plugins-nav" disabled title="Skills come in a later round">Skills<span className="plugins-later">later</span></button>
-    <div className="sidebar-label plugins-installed-label">Installed</div>
-    {installed.length?installed.map(id=>{const plugin=PLUGINS.find(item=>item.id===id)!;return <button key={id} type="button" className={`plugins-nav plugins-installed ${selected===id?'active':''}`} onClick={()=>onSelect(id)}><PluginMark id={id} size={16}/><span>{plugin.name}</span><i className="plugins-dot" aria-hidden="true"/></button>;}):<p className="sidebar-empty">Nothing connected yet</p>}
-    <p className="plugins-sidebar-note">Connected on this computer. Click one to manage it.</p>
-  </div>;
+  return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'},{id:'skills',label:'Skills',later:true}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
 }
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources,onBudget}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void;onBudget:()=>void}) {
@@ -71,11 +87,9 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
   };
   const current=selected?PLUGINS.find(plugin=>plugin.id===selected):undefined;
-  const row=(plugin:PluginDefinition)=>{const state=stateOf(plugin);return <button key={plugin.id} type="button" className="plugin-row" onClick={()=>onSelect(plugin.id)}><span className="plugin-row-mark"><PluginMark id={plugin.id} size={22}/></span><span className="plugin-row-text"><strong>{plugin.name}</strong><small>{plugin.summary}</small></span>{state.connected&&<span className="plugin-row-state"><i/>{state.label}</span>}<span className="plugin-row-action">{plugin.connect==='unavailable'?<small>Not yet</small>:state.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>}</span></button>;};
-  if(current){const state=stateOf(current);return <div className="plugins-page plugin-detail">
-    <nav className="plugin-crumbs" aria-label="Breadcrumb"><button type="button" className="text-button" onClick={()=>onSelect(null)}>Plugins</button><ChevronRight size={13}/><span>{current.name}</span></nav>
-    <header className="plugin-hero"><span className="plugin-hero-mark"><PluginMark id={current.id} size={34}/></span><div><h1>{current.name}</h1><p>{current.summary}</p></div><span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span></header>
-    {current.uses&&<ul className="plugin-uses">{current.uses.map(use=><li key={use}>{use}</li>)}</ul>}
+  const row=(plugin:PluginDefinition)=><CatalogueRow key={plugin.id} mark={<PluginMark id={plugin.id} size={22}/>} name={plugin.name} summary={plugin.summary} state={stateOf(plugin)} unavailable={plugin.connect==='unavailable'} onClick={()=>onSelect(plugin.id)}/>;
+  if(current){return <div className="plugins-page plugin-detail">
+    <CatalogueHero crumb="Plugins" onBack={()=>onSelect(null)} mark={<PluginMark id={current.id} size={34}/>} name={current.name} summary={current.summary} state={stateOf(current)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
     <h2 className="plugin-section">Connection</h2>
