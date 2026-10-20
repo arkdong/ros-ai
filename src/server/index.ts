@@ -16,6 +16,8 @@ import { ToolLoopAgentService } from './tool-loop-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
+import { LocalPythonBackend } from './sandbox.js';
+import { PythonRuntime, systemConfine } from './local-python.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
@@ -114,7 +116,9 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
-    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
+    // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
+    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(join(dataDir, 'python')), confine } : undefined;
+    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine)}:{})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
@@ -128,7 +132,7 @@ try {
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

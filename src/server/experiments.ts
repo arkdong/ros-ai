@@ -70,7 +70,7 @@ export class ExperimentService {
     this.recoverRemoteRuns();
   }
 
-  capabilities(): ExperimentCapabilities { return structuredClone({...this.capabilitiesValue,nebiusSandbox:{...this.nebiusSandbox.capabilities(),costGate:this.sandboxBudget.status()}}); }
+  capabilities(): ExperimentCapabilities { return structuredClone({...this.capabilitiesValue,sandbox:this.sandbox.capabilities(),nebiusSandbox:{...this.nebiusSandbox.capabilities(),costGate:this.sandboxBudget.status()}}); }
   private backend(config:LocalConfiguration){return config.backend==='nebius-sandbox'?this.nebiusSandbox:this.sandbox;}
   private isSandbox(config:LocalConfiguration){return config.backend==='docker-python'||config.backend==='nebius-sandbox';}
   private remoteProgress(runId:string,state:RemoteExecutionState){
@@ -332,7 +332,7 @@ export class ExperimentService {
   private executeSandbox(run:Run,config:LocalConfiguration){
     this.store.updateRun(run.id,{status:'running',startedAt:now()});
     const backend=this.backend(config);
-    this.event(run.id,'process-start',config.backend==='nebius-sandbox'?'Submitting the approved Python and captured inputs to a disposable Nebius sandbox.':'Executing model/user Python in the isolated local research container.',{backend:backend.capabilities()});
+    this.event(run.id,'process-start',config.backend==='nebius-sandbox'?'Submitting the approved Python and captured inputs to a disposable Nebius sandbox.':'Executing model/user Python in the local sandbox.',{backend:backend.capabilities()});
     try {
       const handle=backend.start({code:config.code,...(config.manualCode&&config.inputMode==='none'?{}:{csv:config.csv}),parameters:config.parameters,timeoutMs:this.timeout(config),...(config.backend==='nebius-sandbox'?{onProgress:(state:RemoteExecutionState)=>this.remoteProgress(run.id,state)}:{})});
       const active:Active={done:Promise.resolve(),cancel:()=>handle.cancel('User stopped this experiment.')};

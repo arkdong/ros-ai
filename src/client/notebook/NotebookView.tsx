@@ -39,7 +39,7 @@ type Props = {
   onOpenArtifact(artifact: Artifact): void; onReport(artifact: Artifact): void; onInterpret(artifact: Artifact, destinationId: string): void;
 };
 
-/** A Notebook block, opened over the canvas: cells run one at a time in this notebook's own Python in the Docker sandbox. */
+/** A Notebook block, opened over the canvas: cells run one at a time in this notebook's own sandboxed Python. */
 export function NotebookView({ node, detail, file, mode: chosenMode, onClose, onRefresh, onError, onPermissions, onOpenArtifact, onReport, onInterpret }: Props) {
   const base = `/api/projects/${encodeURIComponent(detail.project.id)}/nodes/${encodeURIComponent(node.id)}/notebook`;
   const [state, setState] = useState<NotebookState | null>(null), [loadError, setLoadError] = useState('');
@@ -327,7 +327,7 @@ export function NotebookView({ node, detail, file, mode: chosenMode, onClose, on
   const codeIds = useMemo(() => cells.filter(cell => cell.cell_type === 'code').map(cell => cell.id), [cells]);
   const active = Object.keys(queue).length > 0, runtime = state?.runtime, mode = chosenMode ?? state?.mode;
   const pristine = cells.length === 1 && !cells[0].source && !cells[0].outputs?.length;
-  const kernelLabel = kernel.status === 'busy' ? 'Running' : kernel.status === 'starting' ? 'Starting Python…' : kernel.status === 'idle' ? 'Python ready' : 'Python off';
+  const kernelLabel = kernel.status === 'busy' ? 'Running' : kernel.status === 'starting' ? kernel.message ?? 'Starting Python…' : kernel.status === 'idle' ? 'Python ready' : 'Python off';
   const kernelTitle = kernel.python ? `Python ${kernel.python}${Object.entries(kernel.libraries ?? {}).map(([name, version]) => ` · ${name} ${version}`).join('')}` : 'Python starts when you run a cell, and keeps variables until it restarts.';
 
   if (!state) return <section className="notebook-view" aria-label={`Notebook ${node.title}`}>
@@ -375,7 +375,7 @@ export function NotebookView({ node, detail, file, mode: chosenMode, onClose, on
           onOpenArtifact={onOpenArtifact} onReport={onReport} onInterpret={onInterpret} onRefresh={onRefresh}/>)}
         <div className="nb-add"><button className="secondary small" onClick={() => insert('code', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Code</button><button className="secondary small" onClick={() => insert('markdown', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Text</button></div>
         <footer className="nb-footer">
-          <p>Python runs in ros.ai’s Docker sandbox with no network. {state.outputs ? <>It can read this project’s folder and save files in <code>{state.outputs}/</code>.</> : 'It can save files in /tmp only, because this project has no folder.'}</p>
+          <p>Python runs in a sandbox with no network. {state.outputs ? <>It can read this project’s folder and save files in <code>{state.outputs}/</code>.</> : 'It can save files in /tmp only, because this project has no folder.'}</p>
           <p><kbd>Shift</kbd>+<kbd>Enter</kbd> runs a cell · <kbd>{modKey === '⌘' ? '⌘' : 'Ctrl'}</kbd>+<kbd>Enter</kbd> runs it in place · <kbd>Esc</kbd> then <kbd>A</kbd> or <kbd>B</kbd> adds a cell, <kbd>M</kbd> or <kbd>Y</kbd> makes it text or code, <kbd>D</kbd><kbd>D</kbd> deletes, <kbd>Z</kbd> brings it back</p>
         </footer>
       </div>

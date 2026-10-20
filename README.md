@@ -12,7 +12,7 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 - **Inference:** the user's own **Research model** and the separate **Workspace guide** are described in [the inference design](docs/inference-design-2026-10-01.md) and [setup](docs/inference-setup.md). Managed Nemotron packaging and fine-tuning are deferred.
 - **Project folders:** each project lives in a folder you choose. Notes, code, notebooks and data are ordinary files (Markdown, `.py`, `.ipynb`, CSV) that Obsidian, VS Code or Jupyter open, and edits saved there come back as changes you can undo. See [RESULT.md](RESULT.md).
 - **Code editor:** Code blocks open straight into an editor with Python highlighting, completion for ros.ai helpers, CSV columns and parameters, and error underlines. `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves.
-- **Notebooks:** a Notebook block opens a notebook over the canvas and runs its cells one by one, as Jupyter does, in a Python that stays running in the Docker sandbox. It is saved as `.ipynb` in the project folder, and a `.ipynb` file can be imported.
+- **Notebooks:** a Notebook block opens a notebook over the canvas and runs its cells one by one, as Jupyter does, in a Python that stays running in the sandbox. It is saved as `.ipynb` in the project folder, and a `.ipynb` file can be imported.
 - **Ros remembers:** Ros notices how you like work done (taste and style, working habits, people, commitments) and proposes one line at a time, kept under the project's permission choice as Markdown files in the app data folder (`memory/`). Settings › Memory lists the lines, and every agent (Ros, the agent loop, Claude Code or Codex over MCP) receives the kept lines as your preferences, never as instructions. The switch there turns it off.
 - **Landing page:** `landing.html` is the public website, built by Vite next to the app and served by the public demo at `/` (the app stays at `/app`). A local checkout serves it at `/landing.html`.
 - **Public demo:** Railway builds the root Dockerfile from `main`, so pushing to `main` can deploy. Use branches and pull requests; deployment needs explicit approval under [AGENTS.md](AGENTS.md).
@@ -20,14 +20,15 @@ The CLI serves a browser canvas on loopback. Blocks are Knowledge, Action, Code,
 
 ## Start locally
 
-Use Node.js 24+, Python 3 for permission analysis/legacy experiments, and a running local Docker engine for research Python:
+Use Node.js 24+ and Python 3 for permission analysis/legacy experiments:
 
 ```sh
 npm ci
-docker build -t ros-ai-research-python:1 src/server/sandbox
 npm run build
 npm start
 ```
+
+On macOS, Code and Notebook blocks need nothing else: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs it in the macOS sandbox, the way Codex and Claude Code run commands. On Linux and Windows they still use Docker for now: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
 
 Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
@@ -106,7 +107,7 @@ Use a project’s **… → Delete project** action to move it to local **Trash*
 
 ## Actual Python boundary
 
-Python executes inside Docker with pandas, NumPy, matplotlib and SciPy. The dedicated Code block receives `params`, `pd`, `np`, `plt`, `scipy` and output helpers; `df` exists only when a full CSV is deliberately selected. Legacy dataset experiments retain their captured `df` contract:
+Python executes with pandas, NumPy, matplotlib and SciPy inside the macOS sandbox (Seatbelt: no network, the home folder unreadable except the project, writes only to the notebook's outputs folder and a private temporary folder, memory and process caps) or, on other systems, inside Docker. The dedicated Code block receives `params`, `pd`, `np`, `plt`, `scipy` and output helpers; `df` exists only when a full CSV is deliberately selected. Legacy dataset experiments retain their captured `df` contract:
 
 ```python
 metric("Mean", df["value"].mean())

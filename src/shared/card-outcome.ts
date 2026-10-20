@@ -68,7 +68,7 @@ function executionBlocker(run: Run, options: CardOutcomeOptions): string | undef
   const runtime = record(backend === 'nebius-sandbox' ? capabilities.nebiusSandbox : backend === 'docker-python' ? capabilities.sandbox : capabilities);
   const costGate = record(runtime.costGate);
   if (costGate.ready === false && typeof costGate.reason === 'string') return costGate.reason;
-  if (runtime.available === false) return `${backend === 'nebius-sandbox' ? 'Nebius Sandbox' : backend === 'docker-python' ? 'Local Docker' : 'Local Python'} is unavailable; execution cannot start.`;
+  if (runtime.available === false) return `${backend === 'nebius-sandbox' ? 'Nebius Sandbox' : backend === 'docker-python' ? 'Sandboxed Python' : 'Local Python'} is unavailable; execution cannot start.`;
 }
 
 /** Display-only, deterministic evidence selection. This does not produce new

@@ -1,8 +1,8 @@
 """ros.ai notebook kernel: one long-running Python process per open notebook.
 
-It runs inside the ros.ai Docker sandbox: no network, the project folder mounted
-read-only except the notebook's own outputs folder, and memory, CPU and process
-caps. The host sends JSON lines on stdin and reads JSON lines from a private copy
+It runs inside the ros.ai sandbox (the macOS sandbox, or Docker): no network,
+the project folder read-only except the notebook's own outputs folder, and
+memory, CPU and process caps. The host sends JSON lines on stdin and reads JSON lines from a private copy
 of stdout. Cells see neither: their printed text and figures come back as
 messages, and stray writes to file descriptor 1 land on stderr.
 """
@@ -409,7 +409,7 @@ def failure_output(failure, filename):
     if isinstance(failure, SyntaxError) and failure.filename == filename:
         line = failure.lineno
     lines = "".join(traceback.format_exception(type(failure), failure, traceback_object)).rstrip("\n").split("\n")
-    if isinstance(failure, OSError) and failure.errno == errno.EROFS:
+    if isinstance(failure, OSError) and failure.errno in (errno.EROFS, errno.EPERM, errno.EACCES):
         lines.append(f"ros.ai: notebooks can read the project folder but not change it. Save files in {OUTPUTS or 'the outputs folder'} instead." if OUTPUTS
                      else "ros.ai: notebooks can only write to /tmp in this project, because it has no project folder.")
     return {"ename": type(failure).__name__, "evalue": str(failure)[:4000], "traceback": lines[-400:], "line": line}

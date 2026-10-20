@@ -1,7 +1,8 @@
-"""Trusted capture helpers. Security boundary is Docker/Linux, not Python exec.
+"""Trusted capture helpers. The security boundary is the operating system sandbox
+(Seatbelt on macOS) or the Docker container, not Python exec.
 
-The program has ordinary Python semantics inside its restricted container. Never
-mount user folders, credentials, the Docker socket, or the original data source.
+The program has ordinary Python semantics inside that boundary. It sees only one
+copied input folder: never user folders, credentials, or the original data source.
 """
 import contextlib
 import io
@@ -13,6 +14,8 @@ import resource
 import sys
 import traceback
 from datetime import date, datetime
+
+INPUT = os.environ.get("ROS_SANDBOX_INPUT", "/input")
 
 import matplotlib
 matplotlib.use("Agg")
@@ -99,7 +102,7 @@ def conclusion(text):
 
 
 def main():
-    # These limits supplement container memory/CPU/PID and parent wall-clock caps.
+    # These limits supplement the sandbox memory/process caps and the parent wall-clock cap.
     resource.setrlimit(resource.RLIMIT_CPU, (25, 25))
     resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024, 16 * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
@@ -109,13 +112,13 @@ def main():
     error = None
     try:
         frame = None
-        if os.path.isfile("/input/dataset.csv"):
-            frame = pd.read_csv("/input/dataset.csv")
+        if os.path.isfile(os.path.join(INPUT, "dataset.csv")):
+            frame = pd.read_csv(os.path.join(INPUT, "dataset.csv"))
             if len(frame) > 100_000 or len(frame.columns) > 100:
                 raise ValueError("Dataset exceeds 100,000 rows or 100 columns.")
-        with open("/input/parameters.json", encoding="utf-8") as handle:
+        with open(os.path.join(INPUT, "parameters.json"), encoding="utf-8") as handle:
             parameters = json.load(handle)
-        with open("/input/program.py", encoding="utf-8") as handle:
+        with open(os.path.join(INPUT, "program.py"), encoding="utf-8") as handle:
             code = handle.read()
         scope = {"__name__": "__research__", "params": parameters,
                  "pd": pd, "np": np, "plt": plt, "scipy": scipy,
