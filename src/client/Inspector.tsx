@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUp, Check, ChevronDown, Clock3, FileText, Globe2, History, LoaderCircle, MessageSquare, Pencil, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
 import type { Artifact, CanvasNode, Mutation, ProjectDetail, Run } from '../shared/types';
+import { TEXT_LABELS, kindName, textLabel } from '../shared/vocabulary';
 import { useDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
 import { ActionPolicy } from './ResearchControls';
@@ -36,7 +37,6 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
   // The conversation stays out of the way until asked for.
   const [chatOpen, setChatOpen] = useState(false);
   const dirty = title !== node.title || description !== node.description;
-  const kindChangeLocked = isGroup(node) && (detail.project.canvas.nodes.some(child=>child.parentId===node.id) || Boolean(node.groupHighlights?.length));
   const priorNode = useRef(node);
   useEffect(() => { if (title === priorNode.current.title) setTitle(node.title); if (description === priorNode.current.description) setDescription(node.description); priorNode.current = node; }, [node]);
   const runs = detail.runs.filter(r => r.nodeId === node.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -63,11 +63,11 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
         ? <div className="row gap note-edit-actions"><button className="small primary" data-testid="save-node" onClick={async()=>{if(await mutate([{type:'updateNode',id:node.id,patch:{title:title.trim()||'Untitled node',description}}],'Edit node'))setEditing(false);}}><Check size={13}/> Save changes</button><button className="small text-button" onClick={()=>{setTitle(node.title);setDescription(node.description);setEditing(false);}}>Discard</button></div>
         : <button className="text-button small note-edit-toggle" aria-expanded={editing} onClick={()=>setEditing(!editing)}>{editing?'Done':description?<><Pencil size={12}/> Edit text</>:<><Plus size={12}/> Add a description</>}</button>)}
       {primary&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
-      {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{isGroup(child)?'Group':child.blockType??(child.kind==='activity'?'Action':'Note')}</small></span><ArrowRight size={14}/></button>)}</section>}
+      {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}
       {!description&&!primary&&!children.length&&!editing&&!node.notion&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
       <details className="note-more"><summary>More</summary><div className="note-more-body">
         <GroupTools node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>
-        <div className="node-kind-row"><label>Kind<select aria-label="Node kind" value={node.kind||'unspecified'} disabled={readOnly||kindChangeLocked} onChange={event=>void mutate([{type:'updateNode',id:node.id,patch:{kind:event.target.value as CanvasNode['kind']}}],'Change node kind')}><option value="unspecified">Unspecified</option><option value="topic">Knowledge</option><option value="activity">Action</option><option value="group">Group</option></select></label>{kindChangeLocked&&<span className="subtle">Use Ungroup to change the kind.</span>}</div>
+        {kindName(node)==='Text'&&<LabelRow node={node} mutate={mutate} readOnly={readOnly}/>}
         {!readOnly&&<ActionPolicy nodeId={node.id} policy={policy} onRefresh={onRefresh}/>}
         {inputs.length>0&&<div className="note-inputs"><h4>Inputs this node uses</h4>{inputs.map(input=>{const artifact=detail.artifacts.find(a=>a.id===input.artifactId);const sourceNode=detail.project.canvas.nodes.find(n=>n.id===artifact?.nodeId);return <div className="relationship-row" key={input.id}><ArrowDownToLine size={14}/><div><strong>{artifact?.title||'Saved artifact'}</strong><span className="subtle">From {sourceNode?.title||'removed node'}{artifact?` · ${date(artifact.createdAt)}`:''}</span></div><button className="icon-button danger" aria-label={`Remove input ${artifact?.title||''}`} disabled={readOnly} onClick={()=>void onRemoveInput(input.id)}><X size={13}/></button></div>;})}</div>}
         <DecisionLog node={node} detail={detail} readOnly={readOnly} onOpenArtifact={onOpenArtifact} save={(decisions,label)=>mutate([{type:'updateNode',id:node.id,patch:{decisions}}],label)}/>
@@ -122,4 +122,24 @@ function RunDetails({ run, detail, initialOpen, onAttach, onCancel, onRetry, rea
 
 function evidenceForRun(run: Run, detail: ProjectDetail): Artifact[] {
   return [...detail.artifacts.filter(a => a.runId === run.id && a.kind === 'source'), ...run.inputs.map((input, index) => ({ ...input.artifact, content: input.excerpt || input.artifact.content, sourceId: `I${index + 1}`, locator: `Selected input · artifact ${input.artifact.id.slice(0, 8)} · source run ${input.artifact.runId.slice(0, 8)}` }))];
+}
+
+/** The label of a Text block: one of the eight words, or the researcher's own. A Report or Finding keeps
+ * the label its block type implies; an older Action block becomes a plain note when its task label is removed. */
+function LabelRow({node,mutate,readOnly}:{node:CanvasNode;mutate:(operations:Mutation[],label:string)=>Promise<boolean>;readOnly:boolean}){
+  const current=textLabel(node)??'';
+  const known=(TEXT_LABELS as readonly string[]).includes(current);
+  const fixed=!node.label&&(node.blockType==='report'||node.blockType==='finding');
+  const [other,setOther]=useState(false);
+  const [draft,setDraft]=useState('');
+  useEffect(()=>{setOther(false);setDraft('');},[current]);
+  const save=(value:string)=>{
+    const label=value.trim().slice(0,40);
+    const legacyTask=!label&&(node.kind==='activity'||node.blockType==='action');
+    return mutate([{type:'updateNode',id:node.id,patch:{label,...(legacyTask?{kind:'topic',...(node.blockType==='action'?{blockType:'note'}:{})}:{})}}],label?`Label as ${label}`:'Remove label');
+  };
+  return <div className="node-kind-row"><label>Label<select aria-label="Block label" value={other?'other':!current||known?current:'custom'} disabled={readOnly} onChange={event=>{const value=event.target.value;if(value==='other'){setOther(true);setDraft(known?'':current);}else{setOther(false);if(value!=='custom'&&value!==current)void save(value);}}}>
+    {!fixed&&<option value="">None</option>}{TEXT_LABELS.map(word=><option key={word} value={word}>{word}</option>)}{current&&!known&&<option value="custom">{current}</option>}<option value="other">Other…</option></select></label>
+    {other&&<input className="node-label-input" aria-label="Your own label" value={draft} maxLength={40} placeholder="Your own word" autoFocus disabled={readOnly} onChange={event=>setDraft(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();if(draft.trim())void save(draft);setOther(false);}else if(event.key==='Escape'){event.stopPropagation();setOther(false);}}} onBlur={()=>{if(draft.trim()&&draft.trim()!==current)void save(draft);setOther(false);}}/>}
+  </div>;
 }

@@ -618,7 +618,7 @@ const COLUMN = snapUp(CARD_DEFAULT_WIDTH + LAYOUT_GAP);
 type Direction = z.infer<typeof fanOutSchema>['directions'][number];
 const resultCard = (direction: Direction) => ({ title: `Found: ${direction.title}`, description: RESULT_PLACEHOLDER, kind: 'topic' as const, blockType: 'note' as const, label: 'result' as const });
 const findingCard = (finding: z.infer<typeof findingsSchema>['findings'][number], source: { title: string; url?: string }) => ({
-  title: finding.claim, description: `> ${finding.quote.replace(/\s+/gu, ' ')}\n\n**Why it matters:** ${finding.why}\n\n${formatSources([{ n: 1, title: source.title, url: source.url }])}`, kind: 'topic' as const, blockType: 'finding' as const });
+  title: finding.claim, description: `> ${finding.quote.replace(/\s+/gu, ' ')}\n\n**Why it matters:** ${finding.why}\n\n${formatSources([{ n: 1, title: source.title, url: source.url }])}`, kind: 'topic' as const, blockType: 'finding' as const, label: 'finding' as const });
 /** Quotes are compared word for word, ignoring case, spacing and the style of quotation marks and dashes.
  * An ellipsis may leave words out between parts, which must appear in order. */
 export function quoted(text: string, quote: string): boolean {
