@@ -9,6 +9,8 @@ type Props = {
   structure: StructurePreview;
   existingNodes: readonly CanvasNode[];
   validation?: 'draft' | 'proposal';
+  /** Only the cards and warnings, for a review card that has its own title and actions. */
+  compact?: boolean;
 };
 type PreviewNote = StructurePreview['notes'][number];
 const kindLabel = (kind: PreviewNote['kind']) => kind === 'group' ? 'Group' : kind === 'activity' ? 'Action' : 'Knowledge';
@@ -43,7 +45,7 @@ export function proposalStructurePreview(proposal: Proposal, existingNodes: read
   return notes.length || relationships.length ? { summary: proposal.summary, validated: false, notes, relationships } : null;
 }
 
-export function AssistantStructurePreview({ structure, existingNodes, validation = 'draft' }: Props) {
+export function AssistantStructurePreview({ structure, existingNodes, validation = 'draft', compact = false }: Props) {
   const notes = [...new Map(structure.notes.map(note => [note.id, note])).values()];
   const byId = new Map(notes.map(note => [note.id, note]));
   const existingById = new Map(existingNodes.map(node => [node.id, node]));
@@ -87,9 +89,9 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     visit(note, 0);
   }
   const titleFor = (id: string) => byId.get(id)?.title ?? existingById.get(id)?.title ?? 'Unresolved card';
-  return <section className={`assistant-structure-preview ${validation}`} aria-label={validation === 'draft' ? 'Draft card structure, not applied' : 'Pending canvas proposal outline'}>
-    <header><GitBranch size={14} aria-hidden="true"/><strong>{validation === 'draft' ? 'Proposed card outline' : 'Canvas changes'}</strong><span>{validation === 'draft' ? 'Draft · not applied' : 'Pending review'}</span></header>
-    {structure.summary && <div className="structure-summary"><RichText text={structure.summary}/></div>}
+  return <section className={`assistant-structure-preview ${validation}${compact ? ' compact' : ''}`} aria-label={validation === 'draft' ? 'Draft card structure, not applied' : 'Pending canvas proposal outline'}>
+    {!compact && <header><GitBranch size={14} aria-hidden="true"/><strong>{validation === 'draft' ? 'Proposed card outline' : 'Canvas changes'}</strong><span>{validation === 'draft' ? 'Draft · not applied' : 'Pending review'}</span></header>}
+    {!compact && structure.summary && <div className="structure-summary"><RichText text={structure.summary}/></div>}
     {warnings.length > 0 && <div className="structure-warning" role="note"><CircleAlert size={13} aria-hidden="true"/><p>{[...new Set(warnings)].join(' ')}</p></div>}
     {rows.length > 0 && <ol className="structure-card-outline" aria-label="Proposed cards in parent order">{rows.map(({ note, depth, cycle }) => {
       const Icon = note.kind === 'group' ? FolderTree : note.kind === 'activity' ? FlaskConical : BookOpen;
@@ -102,7 +104,7 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
       </li>;
     })}</ol>}
     {structure.relationships.length > 0 && <details className="structure-relationships"><summary>{structure.relationships.length} relationship{structure.relationships.length === 1 ? '' : 's'}</summary><p>Relationships do not schedule work or import inputs.</p><ul>{structure.relationships.map((relationship, index) => <li key={index}><div><strong>{titleFor(relationship.source)}</strong><ArrowRight size={12} aria-label="relates to"/><strong>{titleFor(relationship.target)}</strong></div><span>{relationship.label || 'Related'}</span>{(!byId.has(relationship.source) && !existingById.has(relationship.source) || !byId.has(relationship.target) && !existingById.has(relationship.target)) && <small>Endpoint needs review.</small>}</li>)}</ul></details>}
-    <details className="structure-identifiers"><summary>Exact card identifiers</summary><ul>{notes.map(note => <li key={note.id}><span>{note.title || 'Untitled card'}</span><code>{note.id}</code>{note.parentId && <small>Parent: <code>{note.parentId}</code></small>}</li>)}{structure.relationships.map((relationship, index) => <li key={`relationship-${index}`}><span>{relationship.label || 'Related'}</span><code>{relationship.source} → {relationship.target}</code></li>)}</ul></details>
+    {!compact && <details className="structure-identifiers"><summary>Exact card identifiers</summary><ul>{notes.map(note => <li key={note.id}><span>{note.title || 'Untitled card'}</span><code>{note.id}</code>{note.parentId && <small>Parent: <code>{note.parentId}</code></small>}</li>)}{structure.relationships.map((relationship, index) => <li key={`relationship-${index}`}><span>{relationship.label || 'Related'}</span><code>{relationship.source} → {relationship.target}</code></li>)}</ul></details>}
     {validation === 'draft' && <p className="structure-draft-caption">This preview has not been validated or applied.</p>}
   </section>;
 }
