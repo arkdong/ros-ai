@@ -397,6 +397,7 @@ export class AssistantService {
     return this.state(projectId);
   }
   cancel(projectId:string,turnId:string){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
+  devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);return this.state(projectId);}
   stopProject(projectId:string){for(const turn of this.turns(projectId))if(turn.status==='running')this.cancel(projectId,turn.id);}
   async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
@@ -406,6 +407,7 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.post('/api/projects/:id/assistant/backend',(req,res)=>res.json(service.setBackend(String(req.params.id),req.body)));
   app.post('/api/projects/:id/assistant/focus',(req,res)=>res.json(service.setFocus(String(req.params.id),focusSchema.parse(req.body))));
   app.post('/api/projects/:id/assistant/messages',(req,res)=>res.status(202).json(service.start(String(req.params.id),req.body)));
+  if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));
   app.post('/api/projects/:id/assistant/actions/:actionId/decision',(req,res)=>{const {decision}=z.object({decision:z.enum(['accept','dismiss'])}).strict().parse(req.body);res.json(service.decide(String(req.params.id),String(req.params.actionId),decision));});
 }
