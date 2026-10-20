@@ -8,7 +8,7 @@ type RailItem = { id: string; pages: RailPage[]; label: string; subtitle: string
 const items: RailItem[] = [
   { id: 'canvas', pages: ['canvas'], label: 'Canvas', subtitle: '', icon: LayoutDashboard },
   { id: 'agents', pages: ['model'], label: 'Agents', subtitle: 'Every agent that can work in your projects, connected the same way', icon: Bot },
-  { id: 'apps', pages: ['plugins'], label: 'Apps', subtitle: 'Connect the apps your External blocks read from', icon: Plug },
+  { id: 'plugins', pages: ['plugins'], label: 'Plugins', subtitle: 'Connect plugins so your agents work across your tools', icon: Plug },
   { id: 'settings', pages: ['budget', 'resources'], label: 'Settings', subtitle: 'Spending, sources and saved versions', icon: Settings2 },
 ];
 const settingsTabs: { page: RailPage; label: string }[] = [{ page: 'budget', label: 'Budget' }, { page: 'resources', label: 'Resources' }];
@@ -24,6 +24,8 @@ export function AppRail({ page, onPage }: { page: RailPage; onPage: (page: RailP
 
 export function RailPageFrame({ page, onPage, children }: { page: Exclude<RailPage, 'canvas'>; onPage: (page: RailPage) => void; children: ReactNode }) {
   const item = items.find(entry => entry.pages.includes(page))!;
+  // The Plugins page draws its own heading, like its catalogue rows.
+  if (item.id === 'plugins' || item.id === 'agents') return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner">{children}</div></section>;
   return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner"><header className="rail-page-header"><span className="rail-page-icon"><item.icon size={20}/></span><div><h1>{item.label}</h1><p>{item.subtitle}</p></div></header>
     {item.id === 'settings' && <div className="rail-page-tabs" role="tablist" aria-label="Settings">{settingsTabs.map(tab => <button key={tab.page} role="tab" aria-selected={page === tab.page} className={page === tab.page ? 'active' : ''} onClick={() => onPage(tab.page)}>{tab.label}</button>)}</div>}
     {children}</div></section>;

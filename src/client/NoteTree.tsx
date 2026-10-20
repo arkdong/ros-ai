@@ -5,9 +5,10 @@ import { KindIcon } from './Canvas';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
 
-export function NoteTree({ projectId, nodes, runs, selectedId, onSelect }: {
-  projectId: string; nodes: CanvasNode[]; runs: Run[]; selectedId: string | null; onSelect: (id: string) => void;
+export function NoteTree({ projectId, nodes, runs, selectedId, limit, onSelect }: {
+  projectId: string; nodes: CanvasNode[]; runs: Run[]; selectedId: string | null; limit?: number; onSelect: (id: string) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const [collapsed, setCollapsed] = useState<string[]>(() => readSaved(`notes-collapsed:${projectId}`, []));
   const tree = useRef<HTMLDivElement>(null);
   useEffect(() => { saveLocal(`notes-collapsed:${projectId}`, collapsed); }, [projectId, collapsed]);
@@ -38,5 +39,13 @@ export function NoteTree({ projectId, nodes, runs, selectedId, onSelect }: {
       {nested.length > 0 && expanded && <div role="group">{nested.map(child => render(child, depth + 1, next))}</div>}
     </div>;
   };
-  return <div className="note-tree" role="tree" aria-label="Project blocks and groups" ref={tree}>{nodes.length ? children(null).map(node => render(node, 0, new Set())) : <p className="sidebar-empty">Blocks and Groups you add to the canvas will appear here.</p>}</div>;
+  const roots = children(null);
+  // Like a chat list: the first few blocks, then "Show more" for the rest.
+  const hidden = limit && !showAll && roots.length > limit ? roots.length - limit : 0;
+  const shown = hidden ? roots.slice(0, limit) : roots;
+  return <div className="note-tree" role="tree" aria-label="Project blocks and groups" ref={tree}>
+    {nodes.length ? shown.map(node => render(node, 0, new Set())) : <p className="sidebar-empty">No blocks yet</p>}
+    {hidden > 0 && <button type="button" className="note-tree-more" onClick={() => setShowAll(true)}>Show more</button>}
+    {limit && showAll && roots.length > limit && <button type="button" className="note-tree-more" onClick={() => setShowAll(false)}>Show less</button>}
+  </div>;
 }
