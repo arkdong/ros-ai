@@ -148,7 +148,8 @@ export class CodexAgentService implements AgentRuntime {
     const toolkit = new AgentWorkspaceTools(this.store, this.execution, this.experiments, request, request.turnId);
     const stopped$ = new AbortController(); toolkit.signal = AbortSignal.any([request.signal, stopped$.signal]);
     const requestId = randomUUID(), reservation = this.budget.reserve(request, requestId);
-    const scopeHash = createHash('sha256').update(JSON.stringify({ nodeIds: request.nodeIds.slice().sort(), artifactIds: toolkit.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })).sort((a, b) => a.id.localeCompare(b.id)) })).digest('hex');
+    // A new selection moves focus, not the conversation: each prompt states the current selection and scope.
+    const scopeHash = createHash('sha256').update(JSON.stringify({ tools: toolkit.definitions.map(item => item.name).sort() })).digest('hex');
     const prior = this.store.record<Session>('codex-session', request.projectId);
     const reuse = prior && prior.scopeHash === scopeHash && prior.state !== 'uncertain';
     const cwd = reuse ? prior.cwd : mkdtempSync(join(tmpdir(), 'ros-ai-agent-session-'));

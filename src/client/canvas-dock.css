@@ -88,3 +88,17 @@
 .canvas-notices .canvas-notice .text-button { font-size: 14px; text-decoration: underline; }
 .canvas-notices .canvas-feedback { background: #ffffff; pointer-events: none; }
 .canvas-notices .proposal-preview { position: static; translate: none; transform: none; width: min(440px, calc(100vw - 48px)); }
+
+/* The canvas proposal: a short title, the reason in grey, the changes, then the decision. */
+.single-canvas-shell .proposal-preview, .proposal-preview { width:min(380px, calc(100vw - 48px)); padding:12px 14px; border-radius:10px; border-color:#e4e4e4; box-shadow:0 6px 18px #0000000f; }
+.proposal-preview>header { display:flex; align-items:center; justify-content:space-between; }
+.proposal-preview>header .eyebrow { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#6b6b6b; letter-spacing:0; text-transform:none; }
+.single-canvas-shell .proposal-preview h3, .proposal-preview h3 { font-size:14px; font-weight:500; line-height:1.5; margin:6px 0 2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.proposal-preview .proposal-reason { font-size:12px; line-height:1.55; color:#6b6b6b; margin:0 0 8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.proposal-preview .proposal-operations { margin:6px 0 0; }
+.proposal-preview .proposal-operations .operation-tag { font-size:12px; padding:2px 6px; }
+.proposal-preview .stale-warning { font-size:12px; color:#6b6b6b; margin:8px 0 0; }
+.proposal-preview .proposal-actions { display:flex; align-items:center; gap:4px; margin-top:10px; }
+.proposal-preview .proposal-actions .text-button { font-size:12px; color:#6b6b6b; }
+/* A proposal's card sits beside the blocks it changes. */
+.proposal-anchor .proposal-preview { width: 360px; max-width: calc(100vw - 48px); margin: 0; }

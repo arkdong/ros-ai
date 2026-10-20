@@ -530,3 +530,6 @@
 .direct-canvas .result-page-dots button::after { content: ''; display: block; width: 6px; height: 6px; border-radius: 50%; background: #d0d0d0; }
 .direct-canvas .result-page-dots button.current::after { background: #454545; }
 .direct-canvas .result-range { color: #6b6b6b; font-size: 12px; white-space: nowrap; }
+/* Dragging across the canvas pans it; the empty-state hint and the header labels are not text to select. */
+.direct-canvas .canvas-empty, .direct-canvas .canvas-empty > * { pointer-events: none; user-select: none; -webkit-user-select: none; }
+.direct-canvas .canvas-context { user-select: none; -webkit-user-select: none; }

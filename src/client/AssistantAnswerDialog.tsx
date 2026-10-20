@@ -1,7 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { createPortal } from 'react-dom';
-import { ArrowDownToLine, Check, X } from 'lucide-react';
-import type { AssistantClarificationQuestion } from '../shared/assistant-clarifications';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { ArrowDownToLine, ArrowRight, ArrowUp, Check, Pencil, X } from 'lucide-react';
+import { ASSISTANT_CLARIFICATION_LIMITS, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
 import { InlineText, RichText } from './Content';
 import { readSaved, saveLocal } from './persistence';
 import './assistant-answer-dialog.css';
@@ -44,76 +43,81 @@ function savedAnswers(key: string, signature: string, questions: readonly Assist
 }
 
 export function AssistantAnswerDialog({ projectId, turnId, questions, composerText, onPrepare, onClose }: Props) {
-  const id = useId(), panel = useRef<HTMLDivElement>(null), close = useRef(onClose);
-  close.current = onClose;
+  const id = useId(), panel = useRef<HTMLDivElement>(null);
   const signature = JSON.stringify(questions);
   const storageKey = `assistant-answers:${projectId}:${turnId}:${answerQuestionFingerprint(questions)}`;
   const [answers, setAnswers] = useState(() => savedAnswers(storageKey, signature, questions));
+  const [step, setStep] = useState(0);
   const [error, setError] = useState('');
-  const count = answers.filter(answer => answer.leaveOut || answer.selected.length || answer.custom.trim()).length;
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    panel.current?.querySelector<HTMLElement>('input:not(:disabled),textarea:not(:disabled),button:not(:disabled)')?.focus();
-    const keyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close.current(); return; }
-      if (event.key !== 'Tab') return;
-      const elements = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]') ?? [])].filter(element => element.getClientRects().length);
-      const first = elements[0], last = elements.at(-1);
-      if (!first || !last) { event.preventDefault(); panel.current?.focus(); return; }
-      if (event.shiftKey && (document.activeElement === first || !panel.current?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !panel.current?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', keyDown, true);
-    return () => {
-      document.removeEventListener('keydown', keyDown, true);
-      document.body.style.overflow = previousOverflow;
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
+  const count = answers.filter(answered).length;
+  const question = questions[step], answer = answers[step], last = step === questions.length - 1;
+  const multiple = questions.length > 1;
+  // Keep the keyboard in the card as questions change; a question without choices starts in its answer field.
+  useEffect(() => { (question.options.length ? panel.current : panel.current?.querySelector('textarea'))?.focus(); }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
   const change = (index: number, patch: Partial<AnswerDraft>) => {
-    const next = answers.map((answer, position) => position === index ? { ...answer, ...patch } : answer);
+    const next = answers.map((item, position) => position === index ? { ...item, ...patch } : item);
     setAnswers(next); setError(''); saveLocal(storageKey, { signature, answers: next });
   };
-  const prepare = (event: FormEvent) => {
-    event.preventDefault();
+  const toggle = (option: number) => {
+    const selected = answer.selected.includes(option) ? answer.selected.filter(value => value !== option) : answer.selected.length >= ASSISTANT_CLARIFICATION_LIMITS.selectedOptions ? answer.selected : [...answer.selected, option];
+    change(step, { selected, leaveOut: false });
+  };
+  const go = (next: number) => { setStep(Math.max(0, Math.min(questions.length - 1, next))); setError(''); };
+  const prepare = () => {
     if (!count) return;
-    const prepared = questions.flatMap((question, index) => {
-      const answer = answers[index];
-      if (answer.leaveOut) return [`${index + 1}. ${question.question}\nAnswer: Not important — leave this out of the research.`];
-      const values = answer.selected.map(option => question.options[option]);
-      if (answer.custom.trim()) values.push(answer.custom.trim());
-      return values.length ? [`${index + 1}. ${question.question}\nAnswer: ${values.join('; ')}`] : [];
+    const prepared = questions.flatMap((item, index) => {
+      const draft = answers[index];
+      if (draft.leaveOut) return [`${index + 1}. ${item.question}\nAnswer: Not important — leave this out of the research.`];
+      const values = draft.selected.map(option => item.options[option]);
+      if (draft.custom.trim()) values.push(draft.custom.trim());
+      return values.length ? [`${index + 1}. ${item.question}\nAnswer: ${values.join('; ')}`] : [];
     });
     const text = `Answers to your follow-up questions:\n\n${prepared.join('\n\n')}`;
-    if (appendPreparedAnswers(composerText, text).length > 12000) {
-      setError('These answers and your current draft exceed the 12,000 character message limit. Shorten an answer or close this dialog to edit your draft. Both drafts are retained.'); return;
-    }
+    if (appendPreparedAnswers(composerText, text).length > 12000) { setError('These answers and your draft exceed the 12,000 character limit. Shorten an answer first.'); return; }
     const problem = onPrepare(text);
     if (problem) setError(problem);
   };
-  return createPortal(<div className="assistant-answer-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={panel} className="assistant-answer-dialog" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-help`} tabIndex={-1}>
-      <header><div><h2 id={`${id}-title`}>Answer follow-up questions</h2><p id={`${id}-help`}>Choose up to two options for each question, add your own answer, or leave it out.</p></div><button className="icon-button" type="button" aria-label="Close answers" onClick={onClose}><X size={17}/></button></header>
-      <form onSubmit={prepare}>
-        <div className="assistant-answer-questions">{questions.map((question, index) => {
-          const answer = answers[index];
-          return <fieldset key={question.id} className="assistant-answer-question"><legend><span>{index + 1}</span><span><InlineText text={question.question}/></span></legend>
-            {question.options.length > 0 && <><div className="assistant-answer-options">{question.options.map((option, optionIndex) => {
-              const selected = answer.selected.includes(optionIndex);
-              return <label key={optionIndex} className={selected ? 'selected' : ''}><input type="checkbox" checked={selected} disabled={answer.leaveOut || (!selected && answer.selected.length >= 2)} onChange={event => { if (event.target.checked && answer.selected.length >= 2) return; change(index, { selected: event.target.checked ? [...answer.selected, optionIndex] : answer.selected.filter(value => value !== optionIndex) }); }}/><span><InlineText text={option}/></span>{selected && <Check size={13} aria-hidden="true"/>}</label>;
-            })}</div><small className="assistant-answer-selection-help">{answer.selected.length === 2 && !answer.leaveOut ? 'Two selected. Uncheck one to choose another.' : 'Select up to two.'}</small></>}
-            <label className="assistant-answer-custom" htmlFor={`${id}-custom-${index}`}>Your own answer · up to 2,000 characters<textarea id={`${id}-custom-${index}`} rows={2} maxLength={2000} disabled={answer.leaveOut} value={answer.custom} placeholder="Add a detail, a preference, or a different answer…" onChange={event => change(index, { custom: event.target.value })}/></label>
-            <label className="assistant-answer-leave-out"><input type="checkbox" checked={answer.leaveOut} onChange={event => change(index, { leaveOut: event.target.checked })}/><span>Not important · leave out</span></label>
-          </fieldset>;
-        })}</div>
-        {error && <p className="assistant-answer-error" role="alert">{error}</p>}
-        <footer><div><strong>{count} of {questions.length} answered</strong><p>Added to your existing draft. You decide when to send.</p></div><button type="submit" className="primary small" disabled={!count}><ArrowDownToLine size={14}/> Add answers to draft</button></footer>
-      </form>
+  const advance = () => last ? prepare() : go(step + 1);
+  const skip = () => { change(step, { leaveOut: true, selected: [], custom: '' }); if (!last) go(step + 1); };
+  const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); return; }
+    if (event.target instanceof HTMLTextAreaElement) return;
+    const digit = Number(event.key);
+    if (Number.isInteger(digit) && digit >= 1 && digit <= question.options.length) { event.preventDefault(); toggle(digit - 1); }
+    else if (event.key === 'Enter' && !(event.target instanceof HTMLButtonElement)) { event.preventDefault(); advance(); }
+    else if (event.key === 'ArrowLeft' && multiple) { event.preventDefault(); go(step - 1); }
+    else if (event.key === 'ArrowRight' && multiple) { event.preventDefault(); go(step + 1); }
+  };
+  return <div ref={panel} className="ros-question" role="group" aria-labelledby={`${id}-question`} tabIndex={-1} onKeyDown={keyDown}>
+    <header>
+      {multiple ? <nav className="ros-question-steps" aria-label="Questions">{questions.map((item, index) => <button key={item.id} type="button" className={`${index === step ? 'current' : ''} ${answered(answers[index]) ? 'answered' : ''}`} aria-current={index === step ? 'step' : undefined} aria-label={`Question ${index + 1}${answered(answers[index]) ? ', answered' : ''}`} onClick={() => go(index)}>{answered(answers[index]) && index !== step ? <Check size={11}/> : index + 1}</button>)}</nav> : <span className="ros-question-kicker">Ros asks</span>}
+      <button className="icon-button" type="button" aria-label="Close questions" title="Close (Esc)" onClick={onClose}><X size={15}/></button>
+    </header>
+    <div className="ros-question-body">
+      <p id={`${id}-question`} className="ros-question-text"><InlineText text={question.question}/></p>
+      <div className="ros-question-options" role="group" aria-label="Choices">
+        {question.options.map((option, index) => {
+          const selected = answer.selected.includes(index);
+          return <button key={index} type="button" className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => toggle(index)}><kbd>{index + 1}</kbd><span><InlineText text={option}/></span>{selected && <Check size={14} aria-hidden="true"/>}</button>;
+        })}
+        <label className={`ros-question-other ${answer.custom.trim() ? 'selected' : ''}`}><Pencil size={13} aria-hidden="true"/><textarea key={question.id} rows={1} maxLength={2000} value={answer.custom} placeholder={question.options.length ? 'Something else…' : 'Type your answer…'} aria-label="Your own answer" onChange={event => { change(step, { custom: event.target.value, leaveOut: false }); grow(event.target); }} ref={grow} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); advance(); } }}/></label>
+      </div>
+      {question.options.length > 1 && <small className="ros-question-hint">Pick up to two{question.options.length < 10 ? ', or press 1–' + question.options.length : ''}</small>}
+      {answer.leaveOut && <small className="ros-question-hint">Skipped. Ros will leave this out.</small>}
     </div>
-  </div>, document.body);
+    {error && <p className="ros-question-error" role="alert">{error}</p>}
+    <footer>
+      <button type="button" className="text-button" onClick={skip}>Skip</button>
+      <span className="ros-question-spacer"/>
+      {step > 0 && <button type="button" className="secondary small" onClick={() => go(step - 1)}>Back</button>}
+      {last ? <button type="button" className="primary small" disabled={!count} title="Adds your answers to the message. You decide when to send." onClick={prepare}>Add to message <ArrowUp size={13}/></button> : <button type="button" className="primary small" onClick={() => go(step + 1)}>Next <ArrowRight size={13}/></button>}
+    </footer>
+  </div>;
 }
+
+const answered = (answer: AnswerDraft) => answer.leaveOut || answer.selected.length > 0 || Boolean(answer.custom.trim());
+/** The answer field grows with its text, up to a few lines. */
+const grow = (element: HTMLTextAreaElement | null) => { if (!element) return; element.style.height = 'auto'; element.style.height = `${Math.min(element.scrollHeight, 160)}px`; };
 
 export function AssistantFollowUpQuestions({ questions, onAnswer }: { questions: AssistantClarificationQuestion[]; onAnswer?: () => void }) {
   if (!questions.length) return null;

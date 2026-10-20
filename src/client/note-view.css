@@ -54,3 +54,13 @@
   .note-view .note-main { overflow: visible; }
   .note-view .note-side { border-left: 0; border-top: 1px solid #e6e8e6; }
 }
+/* The conversation is hidden until opened from the top-right button. */
+.node-modal .inspector.note-view.chat-closed { grid-template-columns: minmax(0, 1fr); }
+.note-view .note-main { position: relative; }
+.note-view .note-chat-toggle { position: absolute; top: 18px; right: 20px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line, #dedede); border-radius: 999px; background: #fff; color: #4a4a4a; font: inherit; font-size: 12px; cursor: pointer; }
+.note-view .note-chat-toggle:hover { border-color: #c9cdca; color: #171717; }
+.note-view .note-chat-toggle span { min-width: 16px; padding: 0 5px; border-radius: 999px; background: #f0f1ef; font-size: 11px; text-align: center; }
+.note-view.chat-closed .note-title { padding-right: 140px; }
+.note-view .note-side-spacer { flex: 1; }
+.note-view .note-side-heading .icon-button { margin: -4px -6px -4px 0; color: #6b6b6b; }
+@media (max-width: 850px) { .node-modal .inspector.note-view.chat-closed { grid-template-rows: auto; } }

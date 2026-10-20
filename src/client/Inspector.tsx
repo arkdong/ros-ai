@@ -8,6 +8,7 @@ import type { ResearchPolicy } from '../shared/research';
 import { date, Evidence, RichText, time } from './Content';
 import { ModelSettings, type ModelDisplay } from './ModelSettings';
 import './detail-polish.css';
+import { NotionDatabase } from './NotionView';
 import './note-view.css';
 import { groupMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
@@ -32,6 +33,8 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
   const [request, setRequest] = useDraft(`node-request:${node.id}`); const [useSearch, setUseSearch] = useState(false); const [submitting, setSubmitting] = useState(false);
   const [reasoningModel, setReasoningModel] = useState<ModelDisplay | null>(null);
   const [editing, setEditing] = useState(false);
+  // The conversation stays out of the way until asked for.
+  const [chatOpen, setChatOpen] = useState(false);
   const dirty = title !== node.title || description !== node.description;
   const kindChangeLocked = isGroup(node) && (detail.project.canvas.nodes.some(child=>child.parentId===node.id) || Boolean(node.groupHighlights?.length));
   const priorNode = useRef(node);
@@ -47,10 +50,12 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
     if (!request.trim() || submitting || active || readOnly) return;
     setSubmitting(true); const success = await onRun(node.id, request.trim(), useSearch); setSubmitting(false); if (success) setRequest('');
   };
-  return <aside className="inspector note-view" aria-label="Node work tools">
+  return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}`} aria-label="Node work tools">
     <div className="note-main">
+      {!chatOpen&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
       <label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Untitled node" maxLength={200}/>
       {readOnly&&<div className="history-inspector-note">Historical canvas · return to the current canvas to make changes.</div>}
+      {node.notion&&<section className="note-content"><NotionDatabase projectId={detail.project.id} nodeId={node.id} view={node.notion} full/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {editing
         ? <textarea className="note-description-input" aria-label="Node description" value={description} readOnly={readOnly} onChange={event=>setDescription(event.target.value)} placeholder="What would you like to explore here?" rows={6} autoFocus/>
         : description ? <div className="note-description"><RichText text={description}/></div> : null}
@@ -59,7 +64,7 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
         : <button className="text-button small note-edit-toggle" aria-expanded={editing} onClick={()=>setEditing(!editing)}>{editing?'Done':description?<><Pencil size={12}/> Edit text</>:<><Plus size={12}/> Add a description</>}</button>)}
       {primary&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{isGroup(child)?'Group':child.blockType??(child.kind==='activity'?'Action':'Note')}</small></span><ArrowRight size={14}/></button>)}</section>}
-      {!description&&!primary&&!children.length&&!editing&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
+      {!description&&!primary&&!children.length&&!editing&&!node.notion&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
       <details className="note-more"><summary>More</summary><div className="note-more-body">
         <GroupTools node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>
         <div className="node-kind-row"><label>Kind<select aria-label="Node kind" value={node.kind||'unspecified'} disabled={readOnly||kindChangeLocked} onChange={event=>void mutate([{type:'updateNode',id:node.id,patch:{kind:event.target.value as CanvasNode['kind']}}],'Change node kind')}><option value="unspecified">Unspecified</option><option value="topic">Knowledge</option><option value="activity">Action</option><option value="group">Group</option></select></label>{kindChangeLocked&&<span className="subtle">Use Ungroup to change the kind.</span>}</div>
@@ -69,8 +74,8 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
         {!readOnly&&<button className="text-button danger small" data-testid="remove-node" onClick={async()=>{if(await mutate([{type:'removeNode',id:node.id}],'Remove node'))onClose();}}><Trash2 size={12}/> Remove node</button>}
       </div></details>
     </div>
-    <div className="note-side">
-      <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button></div>
+    {chatOpen&&<div className="note-side" id={`note-side-${node.id}`}>
+      <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><span className="note-side-spacer"/><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button><button className="icon-button" aria-label="Hide conversation" title="Hide conversation" onClick={()=>setChatOpen(false)}><X size={15}/></button></div>
       {side==='history'
         ? <div className="note-side-scroll runs-section">{!runs.length&&<div className="empty-small"><Clock3 size={22} strokeWidth={1.2}/><p>Each run of this node will appear here.</p></div>}{runs.map((run,index)=><RunDetails key={run.id} run={run} detail={detail} initialOpen={index===0} onAttach={onAttach} onCancel={onCancel} onRetry={onRetry} readOnly={readOnly}/>)}</div>
         : <div ref={thread} className="note-side-scroll conversation" data-testid="node-conversation">
@@ -85,7 +90,7 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
           {!active && runs[0] && ['failed', 'cancelled', 'interrupted'].includes(runs[0].status) && <div className="run-notice"><strong>Run {runs[0].status}</strong><p>{runs[0].error || 'The attempt stays in History.'}</p><button disabled={readOnly} className="small secondary" onClick={() => void onRetry(runs[0].id)}><RotateCcw size={12} /> Try again</button></div>}
         </div>}
       {!readOnly && <div className="node-composer note-composer"><label className="sr-only" htmlFor="node-request">Message this node</label><textarea id="node-request" data-testid="node-request" placeholder="Ask about this note…" value={request} onChange={event => setRequest(event.target.value)} rows={3} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit(); } }} /><div className="note-composer-row"><ModelSettings detail={detail} nodeId={node.id} readOnly={readOnly} compact onSelectionChange={setReasoningModel}/><label className={`search-toggle ${useSearch ? 'enabled' : ''}`} title="Also search the web with Tavily"><input type="checkbox" checked={useSearch} onChange={event => setUseSearch(event.target.checked)} /><Globe2 size={13} /> Web</label><button className="send-button" data-testid="run-node" aria-label="Run node research" title="Send (⌘ Enter)" disabled={!request.trim() || submitting || Boolean(active)} onClick={() => void submit()}>{submitting ? <LoaderCircle size={15} className="spin" /> : <ArrowUp size={17} />}</button></div>{reasoningModel && !reasoningModel.configured && <div className="provider-note">Add a key for {reasoningModel.provider} on Model to send.</div>}</div>}
-    </div>
+    </div>}
   </aside>;
 }
 

@@ -54,3 +54,4 @@
 .agent-work-summary li.waiting { color: #8a5a12; }
 .agent-work-summary li.waiting svg { color: inherit; }
 .agent-work-summary > .text-button { justify-self: start; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.assistant-dev-clear { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#8a8a8a; margin-right:4px; }
