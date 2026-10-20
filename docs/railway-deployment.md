@@ -25,7 +25,7 @@ The waitlist is retired. Preserve any existing `/data/visitor-workspaces/waitlis
 
 ## What visitors can do
 
-Share the domain root or `/app` for the demonstration. Legacy `/waitlist` and `/waitlist/pitch` links redirect to `/app`; the retired signup/count API returns 410.
+Share `/app` for the demonstration; the domain root redirects to the website at https://ros-ai.io. Legacy `/waitlist` and `/waitlist/pitch` links redirect to `/app`; the retired signup/count API returns 410.
 
 The banking tutorial creates an independent visitor workspace and progressively loads four stages, attributed evidence, genuine saved calculations, figures and the cited draft. The public image contains no Docker daemon or Python runner. New code execution and paid model/search requests remain disabled in public demo mode. Local ros.ai retains its separately approved rerun controls and provider settings. Railway Sandboxes would be a separate execution integration; this deployment does not implement that adapter or establish its cost authorization.
 
