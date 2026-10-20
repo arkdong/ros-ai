@@ -99,3 +99,16 @@ export type UsageEvent = {
   outputTokens: number | null;
 };
 export type UsageAnalytics = { generatedAt: string; events: UsageEvent[] };
+
+/** What a connected provider says is left, or that it does not say. Never a key or account id. */
+export type ProviderBalance = {
+  id: 'ros-cloud' | 'nebius' | 'openai' | 'claude' | 'codex' | 'tavily';
+  name: string;
+  /** Headline such as "US$4.20 left today"; null when the provider reports nothing. */
+  left: string | null;
+  detail: string;
+  link: string | null;
+  checkedAt: string | null;
+};
+export type CodexRateLimit = { usedPercent: number; windowMinutes: number | null; resetsAt: string | null };
+export type CodexRateLimits = { primary: CodexRateLimit | null; secondary: CodexRateLimit | null };

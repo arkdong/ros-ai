@@ -13,6 +13,7 @@ import { CodexAppServer, inspectCodexProtocol, readCliStatus, type CodexProtocol
 import { agentStep, type AgentConnectionStatus, type AgentEvent, type AgentExecuteRequest, type AgentResult, type AgentRuntime } from '../shared/agent-runtime.js';
 import type { LocalAgentId, LocalAgentSetup } from '../shared/local-agent-setup.js';
 import type { CodexAllowanceStatus } from '../shared/agent-budget-settings.js';
+import type { CodexRateLimits } from '../shared/budget-report.js';
 import { LocalAgentOnboarding } from './local-agent-onboarding.js';
 
 type Session = { projectId: string; threadId: string; scopeHash: string; cwd: string; state: 'ready' | 'interrupted' | 'uncertain'; at: string };
@@ -26,7 +27,7 @@ const instructions = 'You are the local ros.ai research collaborator. Use only t
  */
 export class CodexAgentService implements AgentRuntime {
   private readonly budget: AgentBudget;
-  private checked: { at: number; cli: ReturnType<typeof readCliStatus>; protocol: CodexProtocol; rpc: { signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | null; disabledMcp: string[]; toolRestrictionsConfigured: boolean } | null } | null = null;
+  private checked: { at: number; cli: ReturnType<typeof readCliStatus>; protocol: CodexProtocol; rpc: { signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | null; disabledMcp: string[]; toolRestrictionsConfigured: boolean; rateLimits?: CodexRateLimits | null } | null } | null = null;
   private checking: Promise<void> | null = null;
   private active = new Map<string, { rpc: CodexAppServer; stop: () => void; done: Promise<unknown> }>();
   private readonly onboarding = new LocalAgentOnboarding(() => { this.checked = null; });
@@ -44,7 +45,7 @@ export class CodexAgentService implements AgentRuntime {
     if (this.checking) return this.checking;
     this.checking = (async () => {
       const cli = readCliStatus(), protocol = cli.installed ? inspectCodexProtocol() : { appServer: false, dynamicTools: false, interrupt: false, restrictedReadAccess: false };
-      let rpc: { signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | null; disabledMcp: string[]; toolRestrictionsConfigured: boolean } | null = null;
+      let rpc: { signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | null; disabledMcp: string[]; toolRestrictionsConfigured: boolean; rateLimits?: CodexRateLimits | null } | null = null;
       if (protocol.appServer) {
         const cwd = mkdtempSync(join(tmpdir(), 'ros-ai-agent-probe-')), connection = new CodexAppServer(cwd);
         try { rpc = await connection.inspectConnection(); } catch { /* Protocol unavailable is a status, not inferred success. */ }
@@ -82,6 +83,8 @@ export class CodexAgentService implements AgentRuntime {
     const saved = this.store.record<AgentConnectionStatus>('agent-connection-status', projectId);
     return saved ?? null;
   }
+  /** The plan limits Codex reported at its last connection check, if any. */
+  rateLimits() { return this.checked?.rpc?.rateLimits ? { checkedAt: new Date(this.checked.at).toISOString(), limits: this.checked.rpc.rateLimits } : null; }
   allowance(projectId: string): CodexAllowanceStatus {
     const value = this.budget.allowance(projectId), checked = this.checked;
     const isolationReady = Boolean(checked?.protocol.restrictedReadAccess && checked.rpc?.toolRestrictionsConfigured);

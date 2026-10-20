@@ -21,7 +21,7 @@ export function parseTavilyUsage(value: unknown): Pick<TavilyAccountUsage, 'key'
  * last good snapshot; concurrent reads coalesce and retry at most once per minute.
  */
 export class ProviderUsage {
-  private readonly key: string;
+  private readonly configuredKey?: string;
   private readonly fetcher: typeof fetch;
   private readonly clock: () => number;
   private readonly enabled: boolean;
@@ -29,12 +29,14 @@ export class ProviderUsage {
   private pending?: Promise<void>;
   private lastAttempt = -Infinity;
   constructor(private readonly store?: Pick<Store, 'record'>, options: { key?: string; fetch?: typeof fetch; now?: () => number; enabled?: boolean } = {}) {
-    this.key = options.key ?? process.env.TAVILY_API_KEY ?? '';
+    this.configuredKey = options.key;
     this.fetcher = options.fetch ?? fetch;
     this.clock = options.now ?? Date.now;
-    this.enabled = options.enabled ?? process.env.ROS_TAVILY_USAGE_SYNC === '1';
-    if (this.key && !this.enabled) this.snapshot.status = 'disabled';
+    // Reading the key's own usage is free and read-only, so it is on unless turned off.
+    this.enabled = options.enabled ?? process.env.ROS_TAVILY_USAGE_SYNC !== '0';
   }
+  // A key saved in the app after start-up is picked up on the next read.
+  private get key() { return this.configuredKey ?? process.env.TAVILY_API_KEY?.trim() ?? ''; }
   private async refresh(): Promise<void> {
     this.lastAttempt = this.clock();
     this.snapshot.attemptedAt = new Date(this.lastAttempt).toISOString();
@@ -56,6 +58,8 @@ export class ProviderUsage {
     } finally { clearTimeout(timer); }
   }
   async read(): Promise<ProviderAccounts> {
+    if (!this.key) this.snapshot = { status: 'unconfigured', fetchedAt: null, attemptedAt: null, error: null, key: null, account: null };
+    else if (!this.enabled) this.snapshot.status = 'disabled';
     if (this.key && this.enabled) {
       if (!this.pending && this.clock() - this.lastAttempt >= 60_000) this.pending = this.refresh().finally(() => { this.pending = undefined; });
       if (this.pending) await this.pending;

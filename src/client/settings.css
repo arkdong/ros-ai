@@ -8,7 +8,7 @@
 .settings-card { background: #fff; border: 1px solid #e4e4e4; border-radius: 12px; }
 .settings-row { display: flex; align-items: center; gap: 20px; padding: 14px 18px; }
 .settings-row + .settings-row { border-top: 1px solid var(--line-soft); }
-.settings-row > div:first-child { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.settings-row > div:first-child, .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .settings-row strong { font-size: 14px; font-weight: 500; color: var(--ink); }
 .settings-row small { font-size: var(--text-sm); color: var(--muted); line-height: 1.45; }
 .settings-row-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; max-width: 48%; }
@@ -69,3 +69,12 @@
   .settings-row-control { max-width: 100%; }
 }
 .rail-page-inner.rail-page-wide { max-width: 860px; }
+
+/* Balances */
+.settings-head { display: flex; align-items: flex-start; gap: 14px; }
+.settings-head > div { flex: 1; }
+.balance-row { gap: 14px; }
+.balance-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 9px; border: 1px solid var(--line); background: #fff; }
+.balance-ros .ros-mark, .balance-ros svg { width: 20px; height: 20px; }
+.balance-left { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.balance-row .text-button { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); }

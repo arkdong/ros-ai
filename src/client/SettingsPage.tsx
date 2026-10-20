@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, ChartColumn, FolderOpen, LoaderCircle, Settings2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
 import { modeLabel } from './ResearchControls';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
-import type { UsageAnalytics, UsageEvent } from '../shared/budget-report';
+import type { ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
+import { BrandLogo } from './brand-logos';
+import { RosMark } from './RosDock';
 import './settings.css';
 
-export type SettingsSection = 'general' | 'usage' | 'resources';
+export type SettingsSection = 'general' | 'usage' | 'balances' | 'resources';
 const sections: { id: SettingsSection; label: string; icon: typeof Settings2 }[] = [
   { id: 'usage', label: 'Usage', icon: ChartColumn },
+  { id: 'balances', label: 'Balances', icon: Wallet },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'resources', label: 'Resources', icon: FolderOpen },
 ];
@@ -142,5 +145,26 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
           : <p className="usage-empty">Nothing in this period.</p>}
       </div>
     </section>
+  </div>;
+}
+
+/** What each connected model, agent or tool says is left, and where the provider keeps it to itself. */
+export function BalanceSettings({ publicDemo }: { publicDemo: boolean }) {
+  const [balances, setBalances] = useState<ProviderBalance[] | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const load = async () => { setBusy(true); try { setBalances((await api<{ balances: ProviderBalance[] }>('/api/usage/balances')).balances); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
+  useEffect(() => { if (!publicDemo) void load(); }, [publicDemo]);
+  const mark = (id: ProviderBalance['id']) => id === 'ros-cloud' ? <span className="plugins-mark-small balance-ros"><RosMark/></span> : <BrandLogo id={id} size={20}/>;
+  // Ros cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
+  const reports = (item: ProviderBalance) => ['ros-cloud', 'codex', 'tavily'].includes(item.id);
+  const reported = balances?.filter(reports) ?? [], silent = balances?.filter(item => !reports(item)) ?? [];
+  const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
+  return <div className="settings-page">
+    <header className="settings-head"><div><h1>Balances</h1><p className="settings-lead">What is left with each connected model, agent and tool, where the provider reports it.</p></div>{!publicDemo && <button className="icon-button" aria-label="Check balances again" disabled={busy} onClick={() => void load()}><RefreshCw size={15} className={busy ? 'spin' : ''}/></button>}</header>
+    {publicDemo && <p className="rail-page-note">The demo has no connected accounts.</p>}
+    {error && <p className="inline-error" role="alert">{error}</p>}
+    {!balances && !publicDemo && !error && <p className="usage-empty"><LoaderCircle size={14} className="spin"/> Checking…</p>}
+    {balances && !balances.length && <p className="rail-page-note">Nothing is connected yet. Connect agents and tools on the Agents and Plugins pages.</p>}
+    {reported.length > 0 && <section><h2>Reported by the provider</h2><div className="settings-card">{reported.map(row)}</div></section>}
+    {silent.length > 0 && <section><h2>Shown only in the provider’s console</h2><div className="settings-card">{silent.map(row)}</div></section>}
   </div>;
 }
