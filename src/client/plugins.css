@@ -30,18 +30,18 @@
 .plugin-section { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin: 26px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
 .plugin-section small { font-size: var(--text-sm); font-weight: 400; color: var(--muted); }
 .plugin-later { margin-top: 0; }
-/* Sidebar */
+/* Sidebar: rows match the project rows (39px, 8px radius, white tile when active). */
 .plugins-sidebar { display: flex; flex-direction: column; gap: 2px; }
-.single-canvas-shell .sidebar .plugins-nav, .plugins-nav { display: flex; justify-content: flex-start; box-sizing: border-box; flex: none; min-height: 36px; margin: 0; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: var(--body); text-align: left; cursor: pointer; }
-.plugins-nav:hover { background: #ececec; }
-.plugins-nav:disabled { color: var(--muted); cursor: default; background: transparent; opacity: 1; }
-.plugins-nav.active { background: #fff; color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px #e4e4e4, 0 1px 2px rgba(0,0,0,.05); }
-.plugins-installed { font-weight: 400; }
+.single-canvas-shell .sidebar .plugins-nav, .plugins-nav { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 39px; height: 39px; box-sizing: border-box; flex: none; margin: 0; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; line-height: 1.3; color: var(--muted); text-align: left; cursor: pointer; }
+.single-canvas-shell .sidebar .plugins-nav:hover, .plugins-nav:hover { background: #ececec; color: var(--ink); }
+.single-canvas-shell .sidebar .plugins-nav:disabled, .plugins-nav:disabled { color: var(--muted); cursor: default; background: transparent; opacity: 1; }
+.single-canvas-shell .sidebar .plugins-nav.active, .plugins-nav.active { background: #fff; color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px #e4e4e4, 0 1px 2px rgba(0,0,0,.05); }
 .plugins-installed.active { font-weight: 500; }
-.plugins-installed > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.plugins-later { margin-left: auto; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
-.plugins-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.plugins-installed .plugins-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plugins-installed .brand-logo, .plugins-mark-small { width: 16px; height: 16px; flex: none; }
+.plugins-mark-small { display: inline-grid; place-items: center; }
+.plugins-mark-small .ros-mark, .plugins-mark-small .ros-mark .research-ring, .plugins-mark-small svg, .plugins-mark-small img { width: 16px; height: 16px; }
+.plugins-later { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+.plugins-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; margin-left: auto; }
 .single-canvas-shell .plugins-installed-label { margin: 18px 0 6px; }
-.plugins-sidebar-note { font-size: var(--text-xs); color: var(--muted); line-height: 1.5; padding: 10px 10px 0; }
-.plugins-mark-small { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; }
-.plugins-mark-small > * { width: 16px !important; height: 16px !important; }
+.plugins-sidebar-note { font-size: var(--text-xs); color: var(--muted); line-height: 1.5; padding: 10px 8px 0; }

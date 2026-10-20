@@ -26,7 +26,7 @@ export function CatalogueSidebar({sections,installed,selected,onSelect,note}:{se
   return <div className="plugins-sidebar">
     {sections.map(section=>section.later?<button key={section.id} type="button" className="plugins-nav" disabled title={`${section.label} come in a later round`}>{section.label}<span className="plugins-later">later</span></button>:<button key={section.id} type="button" className={`plugins-nav ${selected?'':'active'}`} onClick={()=>onSelect(null)}>{section.label}</button>)}
     <div className="sidebar-label plugins-installed-label">Installed</div>
-    {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span>{item.name}</span><i className="plugins-dot" aria-hidden="true"/></button>):<p className="sidebar-empty">Nothing connected yet</p>}
+    {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span className="plugins-name">{item.name}</span><i className="plugins-dot" aria-hidden="true"/></button>):<p className="sidebar-empty">Nothing connected yet</p>}
     <p className="plugins-sidebar-note">{note}</p>
   </div>;
 }
