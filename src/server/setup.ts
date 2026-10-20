@@ -7,6 +7,7 @@ import type { InferenceConnections } from './inference-connections.js';
 import type { ToolCredentials } from './tool-credentials.js';
 import type { PluginTokens } from './plugins.js';
 import type { CloudAccount } from './cloud-account.js';
+import type { RemoteApps } from './remote-apps.js';
 import { detectAgents, detectApps, detectDocker, detectModels, mac, pretty, win, type Found } from './setup-detect.js';
 import { SetupLinks, linkCommand } from './setup-links.js';
 import type { DetectedAgent, DetectedApp, DetectedKey, DetectedModel, LinkResult, ModelLinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup.js';
@@ -18,14 +19,14 @@ const AGENTS = ['claude-code', 'codex', 'cursor', 'gemini-cli'] as const;
 const MODELS = ['ollama', 'lm-studio'] as const;
 const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Anthropic key', openai: 'OpenAI key', tavily: 'Tavily key' };
 const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor and Gemini CLI (names only)', 'model servers on 127.0.0.1'];
-type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
+type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: Omit<DetectedApp, 'connectable' | 'account'>[]; docker: { found: boolean; running: boolean } };
 
 export class Setup {
   private readonly file: string;
   private readonly links: SetupLinks;
   private cache: { at: number; scan: Scan } | null = null;
   private scanning: Promise<Scan> | null = null;
-  constructor(private readonly deps: { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount }) {
+  constructor(private readonly deps: { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; apps: RemoteApps }) {
     this.file = join(deps.dataDir, 'setup.json');
     this.links = new SetupLinks(deps.dataDir);
   }
@@ -45,7 +46,7 @@ export class Setup {
     const at = new Date().toISOString();
     if (process.env.ROS_NO_DETECT === '1') return { at, agents: [], models: [], apps: [], docker: { found: false, running: false } };
     const agents = detectAgents();
-    const connected = new Set<string>(this.deps.plugins.statuses().filter(item => item.configured).map(item => item.id));
+    const connected = new Set<string>([...this.deps.plugins.statuses().filter(item => item.configured).map(item => item.id), ...this.deps.apps.connected()]);
     const [models, apps, docker] = await Promise.all([detectModels(), detectApps(agents, connected), detectDocker()]);
     return { at, agents, models, apps, docker };
   }
@@ -59,11 +60,14 @@ export class Setup {
     });
     const connections = this.deps.inference.statuses().filter(item => !item.deleted);
     const models = scan.models.map(model => ({ ...model, connectionId: connections.find(item => item.endpointOrigin === new URL(model.endpoint).origin)?.id ?? null }));
+    // Apps with a hosted connection (Notion) can be signed in to from the screen; the others are only listed.
+    const hosted = new Map<string, { connected: boolean; account: string | null }>(this.deps.apps.statuses().map(item => [item.id, item]));
+    const apps: DetectedApp[] = scan.apps.map(app => { const remote = hosted.get(app.id); return { ...app, connectable: Boolean(remote), connected: app.connected || Boolean(remote?.connected), account: remote?.account ?? null }; });
     const keys: DetectedKey[] = this.deps.credentials.statuses().filter(item => item.configured && item.source !== 'none').map(item => ({ provider: item.provider, label: keyLabels[item.provider] ?? item.provider, source: item.source === 'saved' ? 'saved' : 'environment' }));
     return {
       seenAt, scannedAt: scan.at, platform: process.platform, computer: mac ? 'this Mac' : win ? 'this PC' : 'this computer', lookedAt, bridge,
-      agents, models, keys, apps: scan.apps, docker: scan.docker, cloud: { available: cloud.available, signedIn: cloud.state === 'signed-in' },
-      show: !seenAt && (agents.some(agent => agent.found) || models.some(model => model.running)),
+      agents, models, keys, apps, docker: scan.docker, cloud: { available: cloud.available, signedIn: cloud.state === 'signed-in' },
+      show: !seenAt && (agents.some(agent => agent.found) || models.some(model => model.running) || apps.some(app => app.connectable && !app.connected)),
     };
   }
   async link(request: unknown): Promise<SetupLinkResponse> {

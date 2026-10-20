@@ -143,7 +143,7 @@ const specs: AppSpec[] = [
   { id: 'dropbox', label: 'Dropbox', apps: ['Dropbox'], folders: [join(home, 'Dropbox'), ...(mac ? [join(home, 'Library', 'CloudStorage', 'Dropbox')] : [])], pattern: /dropbox/i },
 ];
 /** Apps on this computer, by their bundles and folders, plus the ones the person's agents already talk to. */
-export async function detectApps(agents: Found[], connected: Set<string>): Promise<DetectedApp[]> {
+export async function detectApps(agents: Found[], connected: Set<string>): Promise<Omit<DetectedApp, 'connectable' | 'account'>[]> {
   const [zoteroRunning, driveFolder] = await Promise.all([
     fetch('http://127.0.0.1:23119/connector/ping', { signal: AbortSignal.timeout(400) }).then(response => response.ok, () => false),
     Promise.resolve(mac && (() => { try { return readdirSync(join(home, 'Library', 'CloudStorage')).some(name => name.startsWith('GoogleDrive-')); } catch { return false; } })()),

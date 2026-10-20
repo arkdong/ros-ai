@@ -125,7 +125,7 @@ try {
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,apps});
     app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }

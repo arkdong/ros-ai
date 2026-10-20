@@ -36,7 +36,7 @@ export function appUrl(id: AppId) {
 }
 
 type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redirectUri?: string; connectedAt?: string; account?: string };
-type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number };
+type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number; popup?: boolean };
 export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean };
 export type AppStatus = AppConnectionStatus & { id: AppId };
 
@@ -103,11 +103,12 @@ export class RemoteApps {
   }
   statuses() { return appIds.map(id => this.status(id)); }
   connected() { return appIds.filter(id => this.status(id).connected); }
-  /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. */
-  async begin(id: AppId, redirectUri: string) {
+  /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. A `popup`
+   * sign-in was opened in its own tab (the setup screen), so the callback shows a closing note instead of the app. */
+  async begin(id: AppId, redirectUri: string, popup = false) {
     for (const [state, item] of this.pending) if (item.expiresAt < Date.now()) this.pending.delete(state);
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
-    const pending: Pending = { app: id, nonceHash: digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL };
+    const pending: Pending = { app: id, nonceHash: digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL, popup };
     let opened: URL | undefined;
     let result: Awaited<ReturnType<typeof auth>>;
     try { result = await auth(this.provider(id, redirectUri, { state, pending, open: url => { opened = url; } }), { serverUrl: appUrl(id) }); }
@@ -135,7 +136,7 @@ export class RemoteApps {
       const account = label(self?.text.match(/"(?:name|workspace_name)"\s*:\s*"([^"]+)"/)?.[1]);
       if (account) this.save('notion', { ...this.saved.notion, account });
     }
-    return pending.app;
+    return { app: pending.app, popup: Boolean(pending.popup) };
   }
   disconnect(id: AppId) {
     const entry = this.clients.get(id); this.clients.delete(id);
@@ -180,19 +181,21 @@ export class RemoteApps {
 /** The address an app sends the browser back to: this ros.ai's own (loopback) address, registered by ros.ai itself. */
 export const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
 const cookie = (res: Response, value: string, maxAge: number) => res.cookie(COOKIE, value, { httpOnly: true, sameSite: 'lax', path: CALLBACK, maxAge, secure: false });
+/** The tab a sign-in opened from the setup screen: nothing to do there once the app has answered. */
+const closePage = (name: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${name} connected</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;color:#1d1d1b;background:#f6f6f4}p{margin:0;padding:24px;text-align:center}</style></head><body><p><strong>${name} is connected to ros.ai.</strong><br>You can close this tab and go back to ros.ai.</p><script>setTimeout(function(){window.close()},900)</script></body></html>`;
 const nonceOf = (req: Request) => { const item = (req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${COOKIE}=`)); const value = item?.slice(COOKIE.length + 1) ?? ''; return /^[\w-]{43}$/u.test(value) ? value : ''; };
 
 export function attachAppRoutes(app: Express, apps: RemoteApps) {
   app.get('/api/apps', (_req, res) => res.json({ apps: apps.statuses() }));
   app.post('/api/apps/:id/connect', async (req, res) => {
-    const id = appIdSchema.parse(req.params.id);
-    const started = await apps.begin(id, appRedirectUri(req.headers.host));
+    const id = appIdSchema.parse(req.params.id), { popup } = z.object({ popup: z.boolean().optional() }).strict().parse(req.body ?? {});
+    const started = await apps.begin(id, appRedirectUri(req.headers.host), popup === true);
     if ('alreadyConnected' in started) return res.json({ connected: true, app: apps.status(id) });
     cookie(res, started.nonce, SIGN_IN_TTL);
     res.json({ authorizationUrl: started.url });
   });
   app.get(CALLBACK, async (req, res) => {
-    try { const id = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0); res.redirect(303, `/?app=${id}`); }
+    try { const { app: id, popup } = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0); if (popup) { res.type('html').send(closePage(appCatalogue[id].name)); return; } res.redirect(303, `/?app=${id}`); }
     catch (error) { cookie(res, '', 0); res.status(400).type('text/plain').send(`${error instanceof Error ? error.message : 'The sign-in failed.'}\n\nClose this tab and try again from Apps in ros.ai.`); }
   });
   app.delete('/api/apps/:id', (req, res) => res.json(apps.disconnect(appIdSchema.parse(req.params.id))));

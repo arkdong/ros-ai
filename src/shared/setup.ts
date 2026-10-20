@@ -33,7 +33,8 @@ export type LocalModelId = 'ollama' | 'lm-studio';
 export type DetectedModel = { id: LocalModelId; label: string; endpoint: string; found: boolean; running: boolean; models: string[]; connectionId: string | null };
 export type DetectedKey = { provider: string; label: string; source: 'environment' | 'saved' };
 export type AppId = 'notion' | 'slack' | 'zotero' | 'github' | 'obsidian' | 'linear' | 'figma' | 'google-drive' | 'dropbox';
-export type DetectedApp = { id: AppId; label: string; signals: string[]; usedBy: string[]; connected: boolean };
+/** `connectable` apps have a hosted connection ros.ai can sign in to from the screen; the rest are only listed. */
+export type DetectedApp = { id: AppId; label: string; signals: string[]; usedBy: string[]; connected: boolean; connectable: boolean; account: string | null };
 export type SetupStatus = {
   seenAt: string | null;
   scannedAt: string;
