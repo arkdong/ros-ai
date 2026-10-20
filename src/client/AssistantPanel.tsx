@@ -155,7 +155,7 @@ function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer
   const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable/i.test(reply);
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.
-  const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && operation.node.blockType === 'search'));
+  const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && (operation.node.blockType === 'search' || operation.node.label === 'result')));
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));

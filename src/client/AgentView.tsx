@@ -78,9 +78,9 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
   });
   const unlisted = work.directions.slice(next);
   // A demo's agent block holds a run recorded while the demo was prepared, not a turn of this assistant.
-  const recorded = detail.artifacts.some(item => item.metadata?.tutorialOrigin === 'recorded' && (item.nodeId === node.id || work.directions.some(({ search }) => search.id === item.nodeId)));
-  const directionList = (list: AgentDirection[]) => <ul className="agent-items">{list.map(({ search, sources, written, findings }) => <li key={search.id}>
-    <button onClick={() => onOpenNode(search.id)}><SearchIcon size={13}/><span>{search.title}</span></button>
+  const recorded = detail.artifacts.some(item => item.metadata?.tutorialOrigin === 'recorded' && (item.nodeId === node.id || work.directions.some(({ result, legacySearch }) => result.id === item.nodeId || legacySearch?.id === item.nodeId)));
+  const directionList = (list: AgentDirection[]) => <ul className="agent-items">{list.map(({ result, legacySearch, sources, written, findings }) => <li key={result.id}>
+    <button onClick={() => onOpenNode(result.id)}><SearchIcon size={13}/><span>{legacySearch?.title ?? result.title}</span></button>
     <small>{plural(sources, 'source')}{findings.length ? ` · ${plural(findings.length, 'finding')}` : ''}{!written && !running ? ' · no note written' : ''}</small>
   </li>)}</ul>;
   // Pages read in full: their saved text, with the original page beside it.

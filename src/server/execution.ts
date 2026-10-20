@@ -335,7 +335,7 @@ export class ExecutionService {
   async assistantSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
     return this.searchRun(projectId,nodeId,query,signal,turnId,true);
   }
-  /** One Tavily search saved on a Search block. An agent's searches run side by side inside its own turn,
+  /** One Tavily search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
    * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes. */
   agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
     return this.searchRun(projectId,nodeId,query,signal,turnId,false);

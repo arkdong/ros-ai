@@ -8,7 +8,9 @@ export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };
 /** Recorded by the researcher through canvas edits, so Undo removes it. Withdrawing keeps the entry. */
 export type Decision = { id:string; text:string; reason:string; at:string; basedOn:{artifactId:string; hash:string}[]; withdrawnAt?:string };
 // Missing fields on foundation records mean unspecified kind and project scope.
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+/** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
+ * 'result' marks the note an agent's search direction fills; its searches run on that note. */
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };
