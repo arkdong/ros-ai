@@ -10,10 +10,6 @@
 .workspace { position:relative; }
 .rail-page { position:absolute; inset:0; z-index:40; overflow:auto; background:#fcfcfc; }
 .rail-page-inner { max-width:760px; margin:0 auto; padding:36px 28px 64px; }
-.rail-page-header { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
-.rail-page-header h1 { font-size:22px; font-weight:600; letter-spacing:-.3px; color:#171717; line-height:1.3; }
-.rail-page-header p { font-size:13px; color:#6b6b6b; margin-top:2px; }
-.rail-page-icon { display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:10px; background:#fff; border:1px solid #e4e4e4; color:#2d322f; flex-shrink:0; }
 .rail-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:22px 0 10px; }
 .rail-page-note { font-size:13px; color:#6b6b6b; line-height:1.55; }
 
@@ -25,9 +21,6 @@
 .rail-page .connection-state { font-size:11px; }
 .rail-page .connections-footnote { margin-top:16px; }
 .rail-page .resources-panel { background:#fff; border:1px solid #e4e4e4; border-radius:10px; padding-top:16px; }
-.rail-page .budget-panel { margin-top:28px; }
-.rail-page .budget-scroll { padding:0; overflow:visible; }
-.rail-page .budget-allowances .tool-connection-body .connection-allowance { margin:0; padding:0; border:0; }
 .inference-presets { display:flex; gap:8px; margin-bottom:10px; }
 .brand-logo { display:block; object-fit:contain; flex-shrink:0; }
 .inference-presets button { display:inline-flex; align-items:center; gap:6px; }
@@ -45,6 +38,3 @@
 
 .app-rail-spacer { flex:1; }
 .app-rail-button:focus-visible { outline-color:var(--accent); }
-.rail-page-tabs { display:inline-flex; gap:4px; padding:3px; margin:-6px 0 18px; border:1px solid var(--line); border-radius:var(--radius-block); background:var(--paper); }
-.rail-page-tabs button { height:28px; padding:0 12px; border:0; border-radius:var(--radius-control); background:transparent; color:var(--muted); font-size:var(--text-sm); cursor:pointer; }
-.rail-page-tabs button.active { background:#f0f0ef; color:var(--ink); font-weight:600; }

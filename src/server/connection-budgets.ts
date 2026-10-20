@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { connectionBudgetProviders, type ConnectionBudgetProvider, type ConnectionBudgetStatus } from '../shared/connection-budgets.js';
 import type { UsageRecord } from '../shared/types.js';
 import { Store, StoreError } from './store.js';
+import { spendingLimitsOn, UNLIMITED_REQUESTS, UNLIMITED_USD } from './spending-limits.js';
+import { SpendingBudget } from './spending-budget.js';
 
 const providerSchema = z.enum(connectionBudgetProviders);
 const inputSchema = z.object({ limitUsd: z.number().finite().min(0.000001).max(1000), maxRequests: z.number().int().min(1).max(10000), enabled: z.literal(true), acknowledged: z.literal(true) }).strict();
@@ -38,6 +40,11 @@ export class ConnectionBudgets {
 
   status(provider: ConnectionBudgetProvider, requiredUsd = 1 / UNITS_PER_USD): ConnectionBudgetStatus {
     const saved = this.saved(provider);
+    if (!spendingLimitsOn(this.store)) {
+      // No ceiling: every request is still recorded, so Usage shows what was spent.
+      const blocker = this.appBlocker?.() ?? null;
+      return { provider, source: 'app', enabled: true, ready: !blocker, limited: false, limitUsd: 0, accountedUsd: saved ? this.accounted(saved) / UNITS_PER_USD : 0, remainingUsd: UNLIMITED_USD, maxRequests: 0, usedRequests: saved?.admissions.length ?? 0, remainingRequests: UNLIMITED_REQUESTS, reason: blocker ?? 'No spending limit is set. Every request is recorded in Usage.', revision: saved?.revision ?? null, updatedAt: saved?.updatedAt ?? null };
+    }
     if (!saved) {
       const environment = this.environment?.(provider) ?? { source: 'none' as const, enabled: false, ready: false, limitUsd: 0, accountedUsd: 0, maxRequests: 0, usedRequests: 0, reason: 'Save an explicit connection allowance before paid research. A credential or account balance does not authorize spending.' };
       const remainingUsd = Math.max(0, limitUnits(environment.limitUsd) - chargeUnits(environment.accountedUsd)) / UNITS_PER_USD;
@@ -85,9 +92,16 @@ export class ConnectionBudgets {
   reserve(input: Reservation, expectedRevision: number | null): UsageRecord {
     return this.store.atomic(() => {
       this.assertRevision(input.provider, expectedRevision);
-      const saved = this.saved(input.provider), status = this.status(input.provider, input.amountUsd);
-      if (!saved || !status.ready) throw new StoreError(status.reason, 409);
+      const status = this.status(input.provider, input.amountUsd), unlimited = !spendingLimitsOn(this.store);
+      let saved = this.saved(input.provider);
+      if (!status.ready || (!saved && !unlimited)) throw new StoreError(status.reason, 409);
+      if (!saved) {
+        // The first request without a limit opens the ledger that records this connection's use.
+        const created = new Date().toISOString();
+        saved = { provider: input.provider, grantId: randomUUID(), limitUsd: 0, maxRequests: 0, enabled: true, revision: 1, createdAt: created, updatedAt: created, admissions: [] };
+      }
       if (!input.purpose.trim() || input.purpose.length > 4000 || !input.basis.trim() || input.basis.length > 4000) throw new StoreError('Invalid connection reservation purpose or pricing basis.');
+      new SpendingBudget(this.store).assertRoom(input.amountUsd, typeof input.trace?.projectId === 'string' ? input.trace.projectId : undefined);
       const at = new Date().toISOString(), units = chargeUnits(input.amountUsd);
       const usage: UsageRecord = { id: randomUUID(), provider: input.provider, purpose: input.purpose, ...(input.runId ? { runId: input.runId } : {}), reservedUsd: units / UNITS_PER_USD, estimatedUsd: null, reportedUsage: { ...(input.trace ?? {}), connectionBudgetSource: 'app', connectionBudgetGrantId: saved.grantId, connectionBudgetRevision: saved.revision }, status: 'reserved', basis: input.basis, createdAt: at };
       this.store.addUsage(usage);

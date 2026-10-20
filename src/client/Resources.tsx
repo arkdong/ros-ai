@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUpRight, ChevronDown, FileSpreadsheet, FileText, FolderOutput, Link2, LoaderCircle, Plus, Upload, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FileSpreadsheet, FileText, Link2, LoaderCircle, Plus, Upload, X } from 'lucide-react';
 import { api, post } from './api';
 import { groupResources } from '../shared/resource-groups';
 import type { Artifact, ProjectDetail } from '../shared/types';
@@ -19,7 +19,7 @@ function ResourceDialog({ title, onClose, children }: { title: string; onClose: 
   return createPortal(<dialog ref={dialog} className="resource-dialog" aria-label={title} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}><div className="resource-dialog-inner"><header><h2>{title}</h2><button className="icon-button" aria-label="Close resource dialog" onClick={onClose}><X size={18}/></button></header>{children}</div></dialog>, document.body);
 }
 
-export function Resources({ detail, onChanged, onOpenArtifact, onExports }: { detail: ProjectDetail; onChanged: () => Promise<unknown>; onOpenArtifact: (artifact: Artifact, nodeId: string) => void; onExports: () => void }) {
+export function Resources({ detail, onChanged, onOpenArtifact }: { detail: ProjectDetail; onChanged: () => Promise<unknown>; onOpenArtifact: (artifact: Artifact, nodeId: string) => void }) {
   const projectId = detail.project.id, base = `/api/projects/${projectId}/resources`;
   const [resources, setResources] = useState<ProjectResource[]>([]), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [adding, setAdding] = useState(false), [mode, setMode] = useState<'copy' | 'link'>('copy'), [name, setName] = useState(''), [path, setPath] = useState('');
@@ -77,7 +77,7 @@ export function Resources({ detail, onChanged, onOpenArtifact, onExports }: { de
     {resource.storage === 'linked' ? <Link2 size={18}/> : resource.kind === 'source' ? <FileText size={18}/> : <FileSpreadsheet size={18}/>}<span><strong>{resource.name}</strong><small>{storageLabel(resource)} · {new Date(resource.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</small><small className="resource-owner">{ownerTitle(resource) ? `From ${ownerTitle(resource)}` : 'Project file'}</small>{(resource.url || resource.path || resource.locator) && <small className="resource-origin">{resource.url || resource.path || resource.locator}</small>}{resource.hash && <small className="resource-version">Saved version {resource.hash.slice(0, 10)}</small>}</span><ArrowUpRight size={14}/>
   </button>;
   return <section id="research-resources-panel" className="resources-panel" aria-label="Project resources" data-tour-target="resources-panel">
-    <div className="resources-actions"><button className="secondary" onClick={() => { setAdding(true); setError(''); setNotice(''); }}><Plus size={15}/> Add file</button><button className="text-button" onClick={onExports}><FolderOutput size={15}/> Exports</button><span>{resources.length} item{resources.length === 1 ? '' : 's'}</span></div>
+    <div className="resources-actions"><button className="secondary" onClick={() => { setAdding(true); setError(''); setNotice(''); }}><Plus size={15}/> Add file</button><span>{resources.length} item{resources.length === 1 ? '' : 's'}</span></div>
     <div className="resources-list">{groupResources(resources).map(group => group.versions.length === 1 ? renderResource(group.versions[0]) : <details className="resource-group" key={group.id}><summary><span><strong>{group.versions.find(resource => resource.storage !== 'captured' || resource.originKey === `artifact:${resource.id}`)?.name || group.versions[0].name}</strong><small>{group.versions.length} linked records · expand exact captures</small></span><ChevronDown size={15}/></summary>{group.versions.map(renderResource)}</details>)}{!resources.length && <p className="resources-empty">Add a CSV or capture research evidence. Resources stay with this project.</p>}</div>
     <p className="resources-format-note">File import supports UTF-8 CSV up to 500 KB. Writing references in other formats can be saved as attributed source notes.</p>
     {!adding && !selected && error && <p className="resource-error" role="alert">{error}</p>}{!adding && !selected && notice && <p className="resource-notice" role="status">{notice}</p>}

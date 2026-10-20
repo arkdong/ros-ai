@@ -1,4 +1,4 @@
-import type { BudgetReport, BudgetUsage } from '../shared/budget-report.js';
+import type { BudgetReport, BudgetUsage, UsageAnalytics, UsageEvent } from '../shared/budget-report.js';
 import type { ConnectionStatus, Run, UsageRecord } from '../shared/types.js';
 import type { SandboxCostGate, RemoteExecutionState } from '../shared/experiments.js';
 import { Authority } from './authority.js';
@@ -74,4 +74,39 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
     sandbox: options.sandbox ? { remainingUsd: options.sandbox.remainingUsd, remainingRuns: options.sandbox.remainingRuns, perAttemptUsd: options.sandbox.maxCostPerRunUsd, enabled: options.sandbox.ready } : null,
     providerAccountCredit: null,
   };
+}
+
+const providerNames: Record<string, string> = { nebius: 'Nebius', openai: 'OpenAI', tavily: 'Tavily', claude: 'Claude Code', 'nebius-sandbox': 'Nebius Sandbox' };
+// The work a request did, named the way the app names it.
+const tasks: [RegExp, string][] = [
+  [/^Continuous project assistant/, 'Ros'], [/^Project discussion/, 'Project chat'], [/^Claude Code/, 'Claude Code'], [/^Codex/, 'Codex'],
+  [/^Node synthesis/, 'Block summary'], [/^Experiment code/, 'Code plan'], [/^Research collaborator/, 'Research'], [/workspace guide/i, 'Workspace guide'],
+  [/search|reading|source discovery/i, 'Web search'], [/experiment/i, 'Code run'],
+];
+const taskName = (purpose: string) => tasks.find(([pattern]) => pattern.test(purpose))?.[1] ?? purpose;
+const claudeModels: Record<string, string> = { sonnet: 'Claude Sonnet', opus: 'Claude Opus', haiku: 'Claude Haiku' };
+// Catalogue ids read as names: nvidia/nemotron-3-super-120b-a12b becomes Nemotron 3 Super.
+const modelName = (id: string) => { const short = id.split('/').pop()!, nemotron = /^nemotron-3-(nano|super|ultra)/i.exec(short); return nemotron ? `Nemotron 3 ${nemotron[1][0].toUpperCase()}${nemotron[1].slice(1).toLowerCase()}` : short; };
+
+/** Every recorded request across projects, for spend by model and by task. Read-only. */
+export function usageAnalytics(store: Store, connectionNames: Record<string, string> = {}, now = new Date()): UsageAnalytics {
+  const projects = new Map([...store.listProjects(), ...store.listTrashedProjects()].map(project => [project.id, project]));
+  const runs = new Map<string, Run>();
+  const events: UsageEvent[] = store.listUsage().map(row => {
+    const trace = object(row.reportedUsage), response = object(trace.response), usage = object(response.usage);
+    const projectId = usageProject(store, row) ?? null, project = projectId ? projects.get(projectId) : undefined;
+    let run: Run | undefined;
+    if (row.runId) { try { run = runs.get(row.runId) ?? store.getRun(row.runId); runs.set(row.runId, run); } catch { run = undefined; } }
+    const nodeId = run?.nodeId ?? (typeof trace.nodeId === 'string' ? trace.nodeId : null);
+    const rawModel = typeof trace.model === 'string' ? trace.model : row.provider === 'tavily' ? null : run?.model ?? null;
+    const model = rawModel ? row.provider === 'claude' ? claudeModels[rawModel] ?? rawModel : modelName(rawModel) : row.provider === 'tavily' ? 'Tavily search' : null;
+    return {
+      id: row.id, at: row.createdAt, provider: row.provider, providerName: connectionNames[row.provider] ?? providerNames[row.provider] ?? row.provider,
+      model, task: taskName(row.purpose), projectId, projectTitle: project?.title ?? null,
+      nodeTitle: nodeId ? project?.canvas.nodes.find(node => node.id === nodeId)?.title ?? run?.node.title ?? null : null,
+      costUsd: amount(row.estimatedUsd),
+      inputTokens: row.provider !== 'tavily' ? amount(usage.inputTokens) : null, outputTokens: row.provider !== 'tavily' ? amount(usage.outputTokens) : null,
+    };
+  });
+  return { generatedAt: now.toISOString(), events: events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) };
 }
