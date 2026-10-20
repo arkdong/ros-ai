@@ -9,6 +9,7 @@ import type { UsageRecord } from '../shared/types.js';
 import { wireMessages, wireTools, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse } from './providers.js';
 import { Store, StoreError } from './store.js';
 import{spendingLimitsOn,UNLIMITED_REQUESTS}from'./spending-limits.js';
+import{SpendingBudget}from'./spending-budget.js';
 import { captureChatCompletion } from './response-normalization.js';
 
 const namespace='inference-connection';
@@ -134,6 +135,7 @@ export class InferenceConnections{
       if(!state||!status.ready)throw new StoreError(status.reason,409);
       if(status.destination==='local-unverified'&&input.amountUsd!==0)throw new StoreError('Loopback inference must not debit provider USD.');
       if(!input.purpose.trim()||input.purpose.length>4000||!input.basis.trim()||input.basis.length>4000)throw new StoreError('Provide a bounded request purpose and pricing basis.');
+      if(input.amountUsd>0)new SpendingBudget(this.store).assertRoom(input.amountUsd,typeof input.trace?.projectId==='string'?input.trace.projectId:undefined);
       const at=new Date().toISOString(),reserved=units(input.amountUsd),usage:UsageRecord={id:randomUUID(),provider:input.provider,purpose:input.purpose,...(input.runId?{runId:input.runId}:{}),reservedUsd:reserved/UNITS_PER_USD,estimatedUsd:null,reportedUsage:{...(input.trace??{}),inferenceConnectionId:input.provider,inferenceConnectionRevision:expectedRevision,destination:status.destination},status:'reserved',basis:input.basis,createdAt:at};
       this.store.addUsage(usage);this.store.saveGlobalRecord(namespace,input.provider,{...state,admissions:[...state.admissions,{usageId:usage.id,reservedUnits:reserved,createdAt:at}]});this.syncIndex();return usage;
     });

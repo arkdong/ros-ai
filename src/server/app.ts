@@ -16,6 +16,7 @@ import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
 import { projectBudgetReport, usageAnalytics } from './budget-report.js';
 import { providerBalances } from './provider-balances.js';
+import { attachSpendingBudgetRoutes, SpendingBudget } from './spending-budget.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
@@ -137,7 +138,9 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.get('/api/connections', (_req, res) => res.json(execution.connectionStatuses()));
   app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
   app.get('/api/settings/general', (_req, res) => res.json({ dataDir: options.localPaths?.dataDir ?? null, keysFile: options.localPaths?.keysFile ?? null }));
-  if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
+  const spendingBudget = new SpendingBudget(store);
+  if (!options.publicDemo) attachSpendingBudgetRoutes(app, spendingBudget);
+  if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
   app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });

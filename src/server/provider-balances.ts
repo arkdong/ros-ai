@@ -1,6 +1,7 @@
 import type { CodexRateLimit, CodexRateLimits, ProviderBalance } from '../shared/budget-report.js';
 import type { CloudAccount } from './cloud-account.js';
 import type { ProviderUsage } from './provider-usage.js';
+import type { SpendingBudget } from './spending-budget.js';
 
 const money = (usd: number) => `US$${usd.toFixed(2)}`;
 const credits = (value: number) => `${new Intl.NumberFormat('en-US').format(value)} credits`;
@@ -9,7 +10,7 @@ const window = (limit: CodexRateLimit) => limit.windowMinutes === null ? 'plan' 
 const resets = (limit: CodexRateLimit) => limit.resetsAt ? `, resets ${new Date(limit.resetsAt).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : '';
 
 /** What each connected model, agent or tool says is left. Providers without a balance API say so. */
-export async function providerBalances(sources: { usage: ProviderUsage; cloud?: CloudAccount; codex?: () => { checkedAt: string; limits: CodexRateLimits } | null }): Promise<ProviderBalance[]> {
+export async function providerBalances(sources: { usage: ProviderUsage; budget: SpendingBudget; cloud?: CloudAccount; codex?: () => { checkedAt: string; limits: CodexRateLimits } | null }): Promise<ProviderBalance[]> {
   const rows: ProviderBalance[] = [];
   const cloud = await sources.cloud?.status().catch(() => null);
   if (cloud?.state === 'signed-in') rows.push({ id: 'ros-cloud', name: 'Ros (hosted)', left: typeof cloud.leftTodayUsd === 'number' ? `${money(cloud.leftTodayUsd)} left today` : null, detail: typeof cloud.dailyUsd === 'number' ? `Free allowance of ${money(cloud.dailyUsd)} a day.` : cloud.error ?? 'ros.ai cloud did not report an allowance.', link: null, checkedAt: new Date().toISOString() });
@@ -26,9 +27,13 @@ export async function providerBalances(sources: { usage: ProviderUsage; cloud?: 
       detail: tavily.status === 'disabled' ? 'Balance checks are turned off on this computer.' : tavily.error ?? (account ? `${account.plan ? `${account.plan} plan: ` : ''}${credits(account.planUsage ?? 0)} of ${account.planLimit === null ? 'an unlimited plan' : credits(account.planLimit)} used${paygo ? `, plus ${credits(paygo)} pay as you go` : ''}.` : 'Checking with Tavily…'),
       link: 'https://app.tavily.com/', checkedAt: tavily.fetchedAt });
   }
-  // These providers have no balance API for an ordinary key; their own consoles show it.
-  if (key('NEBIUS_API_KEY')) rows.push({ id: 'nebius', name: 'Nebius Token Factory', left: null, detail: 'Nebius does not share your credit with apps. Your Token Factory console shows it.', link: 'https://tokenfactory.nebius.com/', checkedAt: null });
-  if (key('OPENAI_API_KEY')) rows.push({ id: 'openai', name: 'OpenAI', left: null, detail: 'OpenAI does not share your balance with an API key. Your billing page shows it.', link: 'https://platform.openai.com/settings/organization/billing/overview', checkedAt: null });
-  if (key('ANTHROPIC_API_KEY')) rows.push({ id: 'claude', name: 'Claude Code', left: null, detail: 'Anthropic does not share your credit with an API key. The Claude Console shows it.', link: 'https://console.anthropic.com/settings/billing', checkedAt: null });
+  // These providers have no balance API for an ordinary key. Credit typed in from their console, less what ros.ai records, is an estimate.
+  const typed = (id: 'nebius' | 'openai' | 'claude', none: string, link: string, name: string) => {
+    const credit = sources.budget.credit(id);
+    rows.push({ id, name, left: credit ? `≈ ${money(credit.leftUsd)} left` : null, detail: credit ? `${money(credit.amountUsd)} entered on ${new Date(credit.setAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, less ${money(credit.spentUsd)} ros.ai recorded since. Spending outside ros.ai is not counted.` : none, link, checkedAt: null, credit });
+  };
+  if (key('NEBIUS_API_KEY')) typed('nebius', 'Nebius does not share your credit with apps. Enter what your Token Factory console shows.', 'https://tokenfactory.nebius.com/', 'Nebius Token Factory');
+  if (key('OPENAI_API_KEY')) typed('openai', 'OpenAI does not share your balance with an API key. Enter what your billing page shows.', 'https://platform.openai.com/settings/organization/billing/overview', 'OpenAI');
+  if (key('ANTHROPIC_API_KEY')) typed('claude', 'Anthropic does not share your credit with an API key. Enter what the Claude Console shows.', 'https://console.anthropic.com/settings/billing', 'Claude Code');
   return rows;
 }

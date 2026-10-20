@@ -78,3 +78,18 @@
 .balance-ros .ros-mark, .balance-ros svg { width: 20px; height: 20px; }
 .balance-left { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 .balance-row .text-button { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); }
+
+/* Budget and credit amounts */
+.amount-field { display: flex; align-items: center; gap: 6px; }
+.amount-prefix { font-size: var(--text-sm); color: var(--muted); }
+.amount-field input { width: 92px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: var(--text-sm); color: var(--ink); text-align: right; }
+.amount-field .inline-error { font-size: var(--text-xs); white-space: normal; max-width: 220px; }
+.budget-meter { position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-top: 22px; padding: 16px 20px 22px; overflow: hidden; }
+.budget-meter > div { display: flex; flex-direction: column; gap: 4px; }
+.budget-meter span { font-size: var(--text-sm); color: var(--body); }
+.budget-meter strong { font-size: 20px; font-weight: 600; color: var(--ink); }
+.budget-meter strong small { font-size: var(--text-sm); font-weight: 400; color: var(--muted); }
+.budget-meter .budget-meter-left { font-weight: 500; color: var(--ink); }
+.budget-track { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #f0f0f0; }
+.budget-track i { display: block; height: 100%; background: var(--ink); }
+.balance-note { margin: -4px 0 10px; }

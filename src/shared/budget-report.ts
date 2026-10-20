@@ -109,6 +109,14 @@ export type ProviderBalance = {
   detail: string;
   link: string | null;
   checkedAt: string | null;
+  /** Set when the person typed in this provider's credit. */
+  credit?: ProviderCredit | null;
 };
 export type CodexRateLimit = { usedPercent: number; windowMinutes: number | null; resetsAt: string | null };
 export type CodexRateLimits = { primary: CodexRateLimit | null; secondary: CodexRateLimit | null };
+
+/** Spend this calendar month against an optional monthly budget. */
+export type BudgetLine = { monthlyUsd: number | null; spentUsd: number; leftUsd: number | null };
+export type BudgetStatus = { month: string; all: BudgetLine; project: BudgetLine | null };
+/** Credit typed in from a provider's console, less what ros.ai recorded since. An estimate. */
+export type ProviderCredit = { amountUsd: number; setAt: string; spentUsd: number; leftUsd: number };

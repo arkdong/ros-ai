@@ -5,6 +5,7 @@ import { connectionBudgetProviders, type ConnectionBudgetProvider, type Connecti
 import type { UsageRecord } from '../shared/types.js';
 import { Store, StoreError } from './store.js';
 import { spendingLimitsOn, UNLIMITED_REQUESTS, UNLIMITED_USD } from './spending-limits.js';
+import { SpendingBudget } from './spending-budget.js';
 
 const providerSchema = z.enum(connectionBudgetProviders);
 const inputSchema = z.object({ limitUsd: z.number().finite().min(0.000001).max(1000), maxRequests: z.number().int().min(1).max(10000), enabled: z.literal(true), acknowledged: z.literal(true) }).strict();
@@ -100,6 +101,7 @@ export class ConnectionBudgets {
         saved = { provider: input.provider, grantId: randomUUID(), limitUsd: 0, maxRequests: 0, enabled: true, revision: 1, createdAt: created, updatedAt: created, admissions: [] };
       }
       if (!input.purpose.trim() || input.purpose.length > 4000 || !input.basis.trim() || input.basis.length > 4000) throw new StoreError('Invalid connection reservation purpose or pricing basis.');
+      new SpendingBudget(this.store).assertRoom(input.amountUsd, typeof input.trace?.projectId === 'string' ? input.trace.projectId : undefined);
       const at = new Date().toISOString(), units = chargeUnits(input.amountUsd);
       const usage: UsageRecord = { id: randomUUID(), provider: input.provider, purpose: input.purpose, ...(input.runId ? { runId: input.runId } : {}), reservedUsd: units / UNITS_PER_USD, estimatedUsd: null, reportedUsage: { ...(input.trace ?? {}), connectionBudgetSource: 'app', connectionBudgetGrantId: saved.grantId, connectionBudgetRevision: saved.revision }, status: 'reserved', basis: input.basis, createdAt: at };
       this.store.addUsage(usage);
