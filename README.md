@@ -118,16 +118,20 @@ export_csv("Data used", df)
 
 The container has no external network, no original source/user folder mounts, read-only root/input files, non-root identity, dropped capabilities, seccomp, 512 MB memory, one CPU, process/output limits and a 30-second wall deadline. Python can access installed container files and create processes within those limits; this is not a VM per run or proof against kernel vulnerabilities. See [the precise runtime boundary](docs/python-sandbox.md). The earlier closed numerical interpreter remains an explicitly selectable compatibility backend.
 
-## Use your own Claude Code or Codex
+## Use your own Claude Code, Codex or Cursor
 
-ros.ai is also an MCP server, so you can keep researching in your own Claude Code or Codex, signed in with your own plan or key. ros.ai never sees or handles that login. With ros.ai running, paste once in a terminal (the **Model** page shows the exact path):
+ros.ai is also an MCP server, so you can keep researching in your own Claude Code, Codex, Cursor or Gemini CLI, signed in with your own plan or key. ros.ai never sees or handles that login.
+
+At first launch ros.ai looks at this computer (the Applications folder, your PATH, the names in those agents' settings and the model servers on `127.0.0.1`; nothing is sent anywhere, and no credential file is opened) and shows one **Connect your tools** screen with what it found: your agents, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go: for Claude Code and Codex it runs their own `mcp add`, for Cursor and Gemini CLI it adds one `ros-ai` entry to their settings file (with a one-time backup). Every link is one entry you can undo from the **Agents** page, which also shows when each agent was last seen in a project. Set `ROS_NO_DETECT=1` to skip the scan.
+
+You can also paste the command yourself (the **Agents** page shows the exact path):
 
 ```bash
-claude mcp add --scope user ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
-codex mcp add ros-ai -- node /path/to/ros-ai/scripts/ros-ai-mcp.mjs
+claude mcp add --scope user ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
+codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 ```
 
-The agent can then read the canvas and artifacts and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; set `ROS_DATA_DIR` for the bridge too if you set it for ros.ai.
+The agent can then read the canvas and artifacts and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's Permissions choice, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project; otherwise it names one. ros.ai copies the bridge (`scripts/ros-ai-mcp.mjs`) into its data folder at every start and links point at that copy, so moving or updating the code keeps them working. The bridge talks to `127.0.0.1` with a token ros.ai writes to its data folder (`mcp.json`) at every start; it looks for that file next to itself, in a checkout's `.ros-ai` and in the usual app-data folder, and `ROS_DATA_DIR` overrides all three.
 
 ## Models and spending
 
@@ -164,6 +168,7 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 - [Data provenance](docs/amsterdam-data.md)
 - [Current verification](RESULT.md)
 - Strategy notes of 16 October 2026 (internal): [product and market report](docs/strategy/product-and-market-report-2026-10-16.md), [investor brief](docs/strategy/investor-brief-2026-10-16.md), [YC application answers](docs/strategy/yc-application-answers-2026-10-16.md)
+- Onboarding design of 19 October 2026 (internal): [find and connect your tools](docs/strategy/onboarding-connections-2026-10-19.md), a design doc and screen mockup; its first slice (the scan, the first-launch screen, silent links for Claude Code, Codex and Cursor, the rows on Agents) is built
 
 ## Optional public demonstration
 

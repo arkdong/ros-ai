@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Copy, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
@@ -9,14 +9,16 @@ import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
 import { InferenceConnections } from './InferenceConnections';
 import { CloudAccount } from './CloudAccount';
-import type { OutsideAgentsStatus } from '../shared/outside-agents';
+import type { AgentId as SetupAgentId, LinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup';
+import { AgentIcon, agentWhy, CommandBox } from './Setup';
+import { date } from './Content';
 import { api, post } from './api';
 import { RosMark } from './RosDock';
 import { CatalogueHero, CatalogueRow, CatalogueSidebar } from './PluginsPage';
 import type { CloudAccountStatus } from '../shared/cloud-account';
 import './connections.css';
 
-export type AgentId = 'ros' | 'claude' | 'codex' | 'own-claude' | 'own-codex' | 'nebius' | 'openai' | 'local';
+export type AgentId = 'ros' | 'claude' | 'codex' | 'own-claude' | 'own-codex' | 'own-cursor' | 'own-gemini' | 'nebius' | 'openai' | 'local';
 type AgentItem = { id: AgentId; name: string; summary: string; mark: ReactNode; uses: string[] };
 const agentItems: AgentItem[] = [
   { id: 'ros', name: 'Ros', summary: 'ros.ai’s own assistant, hosted for free', mark: <RosMark/>, uses: ['Plans and runs research on the map with ros.ai’s tools', 'Free with a ros.ai account; nothing to install', 'Switch to it from the model name in the Ros bar'] },
@@ -24,25 +26,27 @@ const agentItems: AgentItem[] = [
   { id: 'codex', name: 'Codex', summary: 'This computer’s Codex sign-in', mark: <BrandLogo id="codex"/>, uses: ['Works as Ros through the Codex CLI on this computer', 'Uses Codex’s own sign-in; ros.ai never sees it', 'Spend shows in Settings › Usage'] },
   { id: 'own-claude', name: 'Your own Claude Code', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="claude"/>, uses: ['Keep working in Claude Code the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'own-codex', name: 'Your own Codex', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="codex"/>, uses: ['Keep working in Codex the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-cursor', name: 'Your own Cursor', summary: 'In Cursor, on your plan, working on the map', mark: <AgentIcon id="cursor"/>, uses: ['Keep working in Cursor the way you already do', 'Its agent reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-gemini', name: 'Your own Gemini CLI', summary: 'In your terminal, on your plan, working on the map', mark: <AgentIcon id="gemini-cli"/>, uses: ['Keep working in Gemini CLI the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'nebius', name: 'Nebius Token Factory', summary: 'Open models through your key', mark: <BrandLogo id="nebius"/>, uses: ['Nemotron, Kimi and other open models for Ros', 'Billed to your Token Factory key; spend shows in Settings › Usage'] },
   { id: 'openai', name: 'OpenAI API', summary: 'Direct model access, separate from Codex', mark: <BrandLogo id="openai"/>, uses: ['GPT models for Ros through your API key', 'Separate from the Codex sign-in'] },
   { id: 'local', name: 'Local models', summary: 'Ollama, LM Studio or any OpenAI-compatible server', mark: <BrandLogo id="ollama"/>, uses: ['Models running on this computer or your own server', 'Nothing leaves the machine'] },
 ];
-const agentGroups: { title: string; ids: AgentId[] }[] = [{ title: 'Agents', ids: ['ros', 'claude', 'codex', 'own-claude', 'own-codex'] }, { title: 'Models', ids: ['nebius', 'openai', 'local'] }];
+const agentGroups: { title: string; ids: AgentId[] }[] = [{ title: 'Agents', ids: ['ros', 'claude', 'codex', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] }, { title: 'Models', ids: ['nebius', 'openai', 'local'] }];
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
 export function ModelPage({projectId,connections,publicDemo,selected,onSelect,onInstalled,onChanged}:Props) {
   const [credentials,setCredentials]=useState<CredentialStatus[]>([]),[codex,setCodex]=useState<LocalAgentSetup>(),[claude,setClaude]=useState<ClaudeAgentSettings>();
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
-  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[cloud,setCloud]=useState<CloudAccountStatus>(),[outside,setOutside]=useState<OutsideAgentsStatus>();
+  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[cloud,setCloud]=useState<CloudAccountStatus>(),[setup,setSetup]=useState<SetupStatus>();
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const paths=['/api/connections/credentials',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets','/api/cloud','/api/outside-agents'];
+    const paths=['/api/connections/credentials',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets','/api/cloud','/api/setup'];
     const values=await Promise.allSettled(paths.map(path=>!path?Promise.resolve(null):path.includes('/agents/setup/')?post<unknown>(path):api<unknown>(path)));
     const failures:Record<string,string>={};
-    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets','cloud','outside'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);if(index===4)setCloud(result.value as CloudAccountStatus);if(index===5)setOutside(result.value as OutsideAgentsStatus);});
+    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets','cloud','setup'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);if(index===4)setCloud(result.value as CloudAccountStatus);if(index===5)setSetup(result.value as SetupStatus);});
     setErrors(failures);setLoading(false);
   },[projectId,publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -50,8 +54,9 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const saved=async(provider:CredentialProvider,key:string)=>{await api(`/api/connections/credentials/${provider}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Key saved on this computer.');await changed();};
   const disconnected=async(provider:CredentialProvider)=>{await api(`/api/connections/credentials/${provider}`,{method:'DELETE'});setNotice('Locally saved key removed. Any environment configuration remains active.');await changed();};
   const key=(provider:CredentialProvider)=>{const item=credentials.find(entry=>entry.provider===provider);return item?.configured?(item.verified===false?{label:'Check failed',connected:false}:{label:'Key saved',connected:true}):{label:'Not connected',connected:false};};
-  const used=(label:string)=>outside?.sessions.some(item=>item.label===label)?{label:'Used before',connected:true}:{label:'Set up once',connected:false};
-  const stateOf=(id:AgentId)=>id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?used('Claude Code'):id==='own-codex'?used('Codex'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):{label:'',connected:false};
+  const own=(id:SetupAgentId)=>{const agent=setup?.agents.find(item=>item.id===id);return !setup?{label:'',connected:false}:agent?.link||agent?.entry?{label:'Linked',connected:true}:agent?.seenAt?{label:'Used before',connected:true}:agent?.found?{label:'Not linked',connected:false}:{label:'Not found',connected:false};};
+  const showAgain=async()=>{try{await api('/api/setup/seen',{method:'DELETE'});window.dispatchEvent(new Event('ros-setup-reset'));}catch(cause){setErrors(current=>({...current,setup:message(cause)}));}};
+  const stateOf=(id:AgentId)=>id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):{label:'',connected:false};
   const installedKey=agentItems.filter(item=>stateOf(item.id).connected).map(item=>item.id).join(',');
   useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as AgentId[]:[]);},[installedKey,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
@@ -61,8 +66,10 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     claude:()=><KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
     codex:()=><CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>,
     openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
-    'own-claude':()=><OutsideAgents only="claude"/>,
-    'own-codex':()=><OutsideAgents only="codex"/>,
+    'own-claude':()=><OutsideAgents only="claude-code" onChanged={changed}/>,
+    'own-codex':()=><OutsideAgents only="codex" onChanged={changed}/>,
+    'own-cursor':()=><OutsideAgents only="cursor" onChanged={changed}/>,
+    'own-gemini':()=><OutsideAgents only="gemini-cli" onChanged={changed}/>,
     local:()=><InferenceConnections onChanged={changed}/>,
   };
   const current=selected?agentItems.find(item=>item.id===selected):undefined;
@@ -79,13 +86,13 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
     {agentGroups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={id==='local'?undefined:stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
-    <p className="plugins-footnote">What every agent and model spends shows in Settings › Usage.</p>
+    <p className="plugins-footnote">What every agent and model spends shows in Settings › Usage. <button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
   </div>;
 }
 
 /** The left column on the Agents page: its sections and what is connected. */
 export function AgentsSidebar({installed,selected,onSelect}:{installed:AgentId[];selected:AgentId|null;onSelect:(id:AgentId|null)=>void}) {
-  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
+  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:id==='own-cursor'?<AgentIcon id="cursor" size={16}/>:id==='own-gemini'?<AgentIcon id="gemini-cli" size={16}/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
 }
 
 function ClaudeModelChoice({settings,onChanged}:{settings:ClaudeAgentSettings;onChanged:(value:ClaudeAgentSettings)=>void}) {
@@ -162,18 +169,32 @@ function GoogleOAuthForm({busy,onSave}:{busy:boolean;onSave:(value:{clientId:str
 }
 export function message(cause:unknown) { return cause instanceof Error?cause.message:String(cause); }
 
-/** Claude Code or Codex in the person's own terminal or app, on their own plan, using ros.ai as an MCP server. */
-function OutsideAgents({only}:{only?:'claude'|'codex'}) {
-  const [status,setStatus]=useState<OutsideAgentsStatus>(),[error,setError]=useState(''),[copied,setCopied]=useState('');
-  useEffect(()=>{api<OutsideAgentsStatus>('/api/outside-agents').then(setStatus,cause=>setError(message(cause)));},[]);
-  const copy=async(command:string)=>{try{await navigator.clipboard.writeText(command);setCopied(command);setTimeout(()=>setCopied(''),2000);}catch{setError('Copying was blocked. Select the command and copy it yourself.');}};
-  const card=(id:'claude'|'codex',label:string)=>{
-    const sessions=status?.sessions.filter(item=>item.label===label)??[],command=status?.commands[id];
-    return <ConnectionCard key={id} label={`Your own ${label}`} icon={<BrandLogo id={id}/>} subtitle={sessions[0]?`Last used ${new Date(sessions[0].lastAt).toLocaleString()}${sessions[0].projectTitle?` in ${sessions[0].projectTitle}`:''}`:'Not used yet'} connected={sessions.length>0} status={sessions.length?'Connected before':'Set up once'}>
-      <p>Keep researching in {label} the way you already do. It signs in with your own {id==='claude'?'Claude':'ChatGPT'} plan or key; ros.ai never sees that login. Paste this once in a terminal:</p>
-      {command&&<div className="outside-command"><code>{command}</code><button className="icon-button" aria-label={`Copy the ${label} command`} title="Copy" onClick={()=>void copy(command)}>{copied===command?<Check size={14}/>:<Copy size={14}/>}</button></div>}
-      <p className="subtle">While ros.ai is open, {label} can read your canvas and propose notes, reports and analysis code. Proposals follow your Permissions choice and show in the assistant panel. Start {label} inside a project's folder and it works in that project.</p>
-    </ConnectionCard>;
+/** The person's own Claude Code, Codex, Cursor or Gemini CLI, on their own plan, using ros.ai as an MCP server. */
+function OutsideAgents({only,onChanged}:{only:SetupAgentId;onChanged?:()=>Promise<unknown>}) {
+  const [setup,setSetup]=useState<SetupStatus>(),[error,setError]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState<LinkResult>();
+  const load=useCallback(async(rescan=false)=>{try{setSetup(await api<SetupStatus>(`/api/setup${rescan?'?rescan=1':''}`));}catch(cause){setError(message(cause));}},[]);
+  useEffect(()=>{void load();},[load]);
+  const act=async(remove:boolean)=>{
+    setBusy(true);setError('');
+    try{const result=remove?await api<LinkResult>(`/api/setup/links/${only}`,{method:'DELETE'}):(await post<SetupLinkResponse>('/api/setup/links',{agents:[only]})).agents[0];if(result)setNote(result);await load(true);await onChanged?.();}
+    catch(cause){setError(message(cause));}finally{setBusy(false);}
   };
-  return <>{error&&<p className="inline-error" role="alert">{error}</p>}{only!=='codex'&&card('claude','Claude Code')}{only!=='claude'&&card('codex','Codex')}</>;
+  const agent=setup?.agents.find(item=>item.id===only);
+  if(!agent)return error?<p className="inline-error" role="alert">{error}</p>:<p className="subtle">Looking on this computer…</p>;
+  const linked=Boolean(agent.link||agent.entry);
+  const status=linked?'Linked':agent.found?'Not linked':agent.seenAt?'Seen before':'Not found';
+  const day=(value:string)=>new Date(value).toLocaleDateString([],{day:'numeric',month:'short'});
+  const subtitle=[agent.link?`Linked ${day(agent.link.writtenAt)}`:agent.entry?'Linked outside ros.ai':agent.found?`Found${agent.signals.length?` · ${agent.signals.join(' · ')}`:''}`:'Not found on this computer',agent.seenAt?`Seen ${date(agent.seenAt)}${agent.seenIn?` in ${agent.seenIn}`:''}`:''].filter(Boolean).join(' · ');
+  return <ConnectionCard label={`Your own ${agent.label}`} icon={<AgentIcon id={agent.id} size={22}/>} subtitle={subtitle} connected={linked} status={status}>
+    <p>{agentWhy[agent.id]}{agent.note?` ${agent.note}`:''} While ros.ai is open, {agent.label} can read the map and propose notes, reports and analysis code through ros.ai’s MCP server. Proposals follow your approval mode. Started inside a project’s folder, it works in that project.</p>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+    {note&&<p className={note.ok?'connection-notice':'inline-error'} role="status">{note.message}</p>}
+    <div className="connection-actions">
+      {!linked&&agent.linkable&&<button className="primary small" disabled={busy} onClick={()=>void act(false)}>{busy&&<LoaderCircle size={13} className="spin"/>}Link</button>}
+      {agent.entry&&!agent.link&&agent.linkable&&<button className="secondary small" disabled={busy} onClick={()=>void act(false)}>Relink to this ros.ai</button>}
+      {linked&&<button className="text-button" disabled={busy} onClick={()=>void act(true)}>Undo link</button>}
+    </div>
+    <p className="subtle">The link is one entry in {agent.target}. {agent.method==='cli'?'To add it yourself, paste this once in a terminal:':'To add it yourself, put this entry under mcpServers:'}</p>
+    <CommandBox command={note&&!note.ok&&note.command?note.command:agent.command} label={agent.label}/>
+  </ConnectionCard>;
 }

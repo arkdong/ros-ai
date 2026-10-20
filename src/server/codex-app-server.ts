@@ -43,7 +43,7 @@ export function codexProcessArgs(disabledMcp: string[] = []) {
   ];
   return ['app-server', '--listen', 'stdio://', ...entries.flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`])];
 }
-function childEnvironment(): NodeJS.ProcessEnv {
+export function childEnvironment(): NodeJS.ProcessEnv {
   // Provider keys from the ros.ai server are not forwarded to the agent process.
   const env: NodeJS.ProcessEnv = {};
   for (const key of ['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CODEX_CA_CERTIFICATE', 'SYSTEMROOT']) if (process.env[key]) env[key] = process.env[key];

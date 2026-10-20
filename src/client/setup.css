@@ -1,0 +1,42 @@
+/* First launch: the "Connect your tools" screen, in the refined style (white card on calm grey). */
+.setup-screen { flex:1; min-height:0; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:36px 24px 24px; background:var(--page, #f6f6f4); }
+.setup-column { width:100%; max-width:720px; display:flex; flex-direction:column; gap:14px; }
+.setup-card { background:#fff; border:1px solid var(--card-line, #e6e6e3); border-radius:var(--radius-card, 14px); box-shadow:0 1px 2px rgba(16, 16, 16, .04); padding:28px 32px 22px; box-sizing:border-box; }
+.setup-card h2 { margin:0; font-size:22px; font-weight:600; letter-spacing:-.3px; line-height:1.3; color:var(--ink); }
+.setup-lead { margin:6px 0 0; font-size:14px; color:var(--muted); line-height:1.5; }
+.setup-section { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:18px 0 2px; }
+.setup-row { display:flex; align-items:center; gap:14px; padding:12px 0; cursor:pointer; }
+.setup-row + .setup-row { border-top:1px solid var(--card-divider, #efefec); }
+.setup-row.static { cursor:default; align-items:flex-start; }
+.setup-check { appearance:none; -webkit-appearance:none; width:18px; height:18px; margin:0; border:1px solid #c9c9c6; border-radius:5px; background:#fff; display:grid; place-items:center; flex-shrink:0; cursor:pointer; }
+.setup-check:checked { background:var(--ink); border-color:var(--ink); }
+.setup-check:checked::after { content:''; width:9px; height:5px; border:2px solid #fff; border-top:0; border-right:0; transform:translateY(-1px) rotate(-45deg); }
+.setup-check:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.setup-check:disabled { opacity:.4; cursor:default; }
+.setup-tile { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; background:#fff; border:1px solid #e4e4e2; flex-shrink:0; color:#4a4a4a; }
+.setup-tile img, .setup-tile svg { width:20px; height:20px; display:block; }
+.setup-body { flex:1; min-width:0; }
+.setup-name { font-size:14px; font-weight:600; color:var(--ink); line-height:1.3; }
+.setup-why { font-size:13px; color:var(--muted); line-height:1.45; margin-top:2px; }
+.setup-why strong { color:var(--ink); font-weight:600; letter-spacing:.5px; }
+.setup-signal { margin-left:auto; padding-left:16px; font-size:12px; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+.setup-state { margin-left:auto; padding-left:16px; display:inline-flex; align-items:center; gap:7px; font-size:12px; color:#4a4a4a; white-space:nowrap; flex-shrink:0; padding-top:2px; }
+.setup-state i { width:6px; height:6px; border-radius:50%; background:#b7bfba; flex-shrink:0; }
+.setup-state.ok i { background:var(--ok); }
+.setup-state.wait i { background:var(--wait); }
+.setup-state.fail i { background:var(--fail); }
+.setup-command { display:flex; align-items:center; gap:10px; margin-top:10px; padding:8px 10px; border:1px solid var(--card-line, #e6e6e3); border-radius:9px; background:#f8f8f6; }
+.setup-command code { flex:1; min-width:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--ink); overflow-wrap:anywhere; user-select:all; }
+.setup-command .icon-button { width:28px; height:28px; flex-shrink:0; }
+.setup-actions { display:flex; align-items:center; gap:10px; margin-top:10px; }
+.setup-actions a.secondary { display:inline-flex; align-items:center; gap:6px; }
+.setup-also { margin:14px 0 0; font-size:13px; color:var(--muted); line-height:1.5; }
+.setup-footer { display:flex; align-items:center; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--card-divider, #efefec); }
+.setup-footer .setup-space { flex:1; }
+.setup-footer p { margin:0; flex:1; font-size:13px; color:var(--muted); line-height:1.45; }
+.setup-footer p span { color:var(--ink); }
+.setup-footer .primary, .setup-footer .secondary { border-radius:var(--radius-button, 9px); height:36px; padding:0 16px; font-size:14px; }
+.setup-footer .text-button, .setup-footer .secondary { white-space:nowrap; }
+.setup-fineprint { margin:0; text-align:center; font-size:12.5px; color:var(--muted); line-height:1.5; }
+.setup-screen .inline-error { margin:12px 0 0; font-size:13px; }
+@media (max-width: 700px) { .setup-card { padding:22px 18px 18px; } .setup-signal { display:none; } .setup-footer { flex-wrap:wrap; } }
