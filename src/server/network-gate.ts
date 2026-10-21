@@ -5,6 +5,7 @@ import { isIP, connect, type Socket } from 'node:net';
 import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
 
+import type { PythonRuntime, PythonSetupEvent } from './local-python.js';
 import type { Store } from './store.js';
 
 /** Network for sandboxed Python, the way Claude Code gives its sandbox network: the sandbox may reach only a proxy
@@ -164,6 +165,19 @@ export function attachNetworkRoutes(app: Express, gate: NetworkGate): void {
     res.write('retry: 2000\n\n');
     for (const request of gate.requests()) res.write(`data: ${JSON.stringify({ type: 'request', request } satisfies NetworkEvent)}\n\n`);
     const unsubscribe = gate.subscribe(event => res.write(`data: ${JSON.stringify(event)}\n\n`));
+    const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
+    req.on('close', () => { clearInterval(keepAlive); unsubscribe(); });
+  });
+}
+
+/** The one-time Python setup, streamed to the notice that explains it. */
+export function attachPythonSetupRoute(app: Express, runtime: PythonRuntime): void {
+  app.get('/api/python/setup/events', (req: Request, res: Response) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.write('retry: 2000\n\n');
+    const current = runtime.setup();
+    if (current) res.write(`data: ${JSON.stringify(current)}\n\n`);
+    const unsubscribe = runtime.subscribe((event: PythonSetupEvent) => res.write(`data: ${JSON.stringify(event)}\n\n`));
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 25_000);
     req.on('close', () => { clearInterval(keepAlive); unsubscribe(); });
   });

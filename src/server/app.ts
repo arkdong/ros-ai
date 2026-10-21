@@ -32,7 +32,7 @@ import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
-import { attachNetworkRoutes } from './network-gate.js';
+import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
 
 const identifier = z.string().min(1).max(120);
@@ -76,6 +76,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
   const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store,authority,options.notebooks);
   if(!options.publicDemo&&options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
+  if(!options.publicDemo&&options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
