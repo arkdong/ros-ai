@@ -1,9 +1,11 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { posix } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { confinedEnv, killGroup, proxyEnv, watchGroup, type Confine } from './local-python.js';
 import { SANDBOX_IMAGE } from './sandbox.js';
 
 const KERNEL = readFileSync(fileURLToPath(new URL('./sandbox/notebook_kernel.py', import.meta.url)), 'utf8');
@@ -64,7 +66,11 @@ export function removeLeftoverKernels(owner: string, docker = 'docker'): void {
   });
 }
 
-/** One long-running Python process in its own container, speaking JSON lines. */
+/** Notebook Python without Docker: ros.ai's own Python in the operating system's sandbox, with the same caps. */
+export type LocalKernel = { python: string; home: string; confine: Confine; packages?: string; proxy?: { port: number; certFile: string } };
+const kernelLimits = { memoryMb: 2048, processes: 128 };
+
+/** One long-running Python process, in its own container or the OS sandbox, speaking JSON lines. */
 export class NotebookKernelProcess {
   readonly id = randomUUID();
   readonly name = `ros-ai-notebook-${this.id}`;
@@ -77,16 +83,38 @@ export class NotebookKernelProcess {
   private ignoring = false;
   private overflow?: string;
 
-  constructor(private readonly options: { image: string; owner: string; folder?: KernelFolder; docker?: string;
+  private temporary?: string;
+  private unwatch?: () => void;
+
+  constructor(private readonly options: { image: string; owner: string; folder?: KernelFolder; docker?: string; local?: LocalKernel;
     onMessage: (message: KernelMessage) => void; onExit: (exit: KernelExit) => void }) {}
 
   start(): void {
+    if (this.options.local) return this.startLocal(this.options.local);
     const folder = this.options.folder, workdir = folder ? posix.join('/project', folder.notebookDir) : '/work';
     const outputs = folder ? posix.join('/project', folder.outputs) : undefined;
     const args = ['run', '--rm', '-i', '--name', this.name, '--label', `ros-ai.notebook-owner=${this.options.owner}`, ...KERNEL_RESTRICTIONS, `--user=${kernelUser()}`,
       ...(folder && outputs ? ['--mount', bind(folder.root, '/project', true), '--mount', bind(folder.outputsPath, outputs, false), `--env=ROS_NOTEBOOK_OUTPUTS=${posix.relative(workdir, outputs) || '.'}`] : []),
       `--workdir=${workdir}`, '--entrypoint=python', this.options.image, '-I', '-u', '-c', KERNEL];
-    const child = spawn(this.options.docker ?? 'docker', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    this.attach(spawn(this.options.docker ?? 'docker', args, { stdio: ['pipe', 'pipe', 'pipe'] }));
+  }
+  /** The project folder can be read, and only the notebook's outputs folder and a private temporary folder written. */
+  private startLocal(local: LocalKernel): void {
+    const folder = this.options.folder, temporary = mkdtempSync(join(tmpdir(), 'ros-ai-notebook-'));
+    const work = join(temporary, 'work'), tmp = join(temporary, 'tmp');
+    mkdirSync(work); mkdirSync(tmp);
+    this.temporary = temporary;
+    const cwd = folder ? join(folder.root, folder.notebookDir) : work;
+    if (local.packages) mkdirSync(local.packages, { recursive: true });
+    const wrapped = local.confine(local.python, ['-I', '-u', '-c', KERNEL], { read: [local.home, temporary, ...(folder ? [folder.root] : [])],
+      write: [work, tmp, ...(folder ? [folder.outputsPath] : []), ...(local.packages ? [local.packages] : [])], ...(local.proxy ? { proxyPort: local.proxy.port } : {}) });
+    const child = spawn(wrapped.command, wrapped.args, { cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
+      env: confinedEnv(work, tmp, { ...(folder ? { ROS_NOTEBOOK_OUTPUTS: relative(cwd, folder.outputsPath) || '.' } : {}),
+        ...(local.packages ? { ROS_NOTEBOOK_PACKAGES: local.packages } : {}), ...(local.proxy ? proxyEnv(local.proxy.port, local.proxy.certFile) : {}) }) });
+    if (child.pid) this.unwatch = watchGroup(child.pid, kernelLimits, reason => void this.stop(`Python stopped because it ${reason} (a notebook can use 2 GB and ${kernelLimits.processes} processes). Its variables were cleared; run the cells again.`));
+    this.attach(child);
+  }
+  private attach(child: ChildProcessWithoutNullStreams): void {
     this.child = child;
     child.stdout.on('data', (chunk: Buffer) => this.read(chunk));
     child.stderr.setEncoding('utf8').on('data', (text: string) => { this.stderr = (this.stderr + text).slice(-4000); });
@@ -103,6 +131,7 @@ export class NotebookKernelProcess {
   /** Ctrl+C for the running cell: Docker's init process passes SIGINT on to Python. */
   interrupt(): void {
     if (this.exited) return;
+    if (this.options.local) { try { this.child?.kill('SIGINT'); } catch { /* already gone */ } return; }
     execFile(this.options.docker ?? 'docker', ['kill', '--signal=INT', this.name], { timeout: 10_000 }, () => undefined);
   }
   /** Closing stdin ends an idle kernel at once; removing the container also ends a busy one. */
@@ -111,6 +140,15 @@ export class NotebookKernelProcess {
     if (reason && !this.overflow) this.overflow = reason;
     this.stopping = true;
     this.child?.stdin.end();
+    if (this.options.local) {
+      const child = this.child;
+      return new Promise(resolve => {
+        // An idle kernel ends when its input closes; a busy one is ended with everything it started.
+        const timer = setTimeout(() => killGroup(child?.pid), 2000);
+        if (this.exited || !child) { clearTimeout(timer); return resolve(); }
+        child.once('close', () => { clearTimeout(timer); resolve(); });
+      });
+    }
     const docker = this.options.docker ?? 'docker', remove = () => execFile(docker, ['rm', '--force', this.name], { timeout: 10_000 }, () => undefined);
     remove();
     return new Promise(resolve => {
@@ -147,6 +185,9 @@ export class NotebookKernelProcess {
   private finish(code: number | null, signal: NodeJS.Signals | null, failure?: string): void {
     if (this.exited) return;
     this.exited = true;
+    this.unwatch?.();
+    if (this.options.local) killGroup(this.child?.pid);
+    if (this.temporary) rmSync(this.temporary, { recursive: true, force: true });
     const detail = this.overflow ?? failure ?? this.stderr.replace(/\s+/gu, ' ').trim().slice(-600);
     this.options.onExit({ code, signal, detail, stopped: this.stopping && !this.overflow });
   }

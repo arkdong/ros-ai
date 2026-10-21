@@ -16,14 +16,6 @@
 .note-view .note-content img { max-width: 100%; }
 .note-view .note-empty { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding: 18px; border: 1px dashed #dcdfdc; border-radius: 8px; color: #6b6b6b; }
 .note-view .note-empty p { margin: 0; font-size: 13px; }
-.note-view .note-more { margin-top: 28px; border-top: 1px solid #e6e8e6; }
-.note-view .note-more > summary { padding: 12px 0 0; color: #6b6b6b; font-size: 13px; cursor: pointer; }
-.note-view .note-more-body { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; }
-.note-view .note-more-body .group-organize, .note-view .note-more-body .node-kind-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; border: 0; }
-.note-view .note-more-body .group-organize label, .note-view .note-more-body .node-kind-row label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b6b6b; white-space: nowrap; }
-.note-view .note-more-body .decision-log { margin: 0; }
-.note-view .note-more-body h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.note-view .note-more-body > .text-button.danger { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
 
 .note-view .note-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #e6e8e6; background: #fcfcfc; }
 .note-view .note-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #ebebeb; font-size: 13px; }

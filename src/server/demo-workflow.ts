@@ -99,7 +99,7 @@ export class WorkflowTutorial {
     const content = research(), live = new Set(this.store.getProject(session.projectId).canvas.nodes.map(node => node.id));
     const id = (key: string) => { const value = session.nodes[key]; return value && live.has(value) ? [value] : []; };
     const directions = content.directions.map(direction => direction.id), figures = ['figure:adoption', 'figure:denominator', 'figure:gap'];
-    const frames = [['idea'], ['agent', ...directions.flatMap(key => [`search:${key}`, `result:${key}`])],
+    const frames = [['idea'], ['agent', ...directions.map(key => `result:${key}`)],
       [...directions.map(key => `result:${key}`), ...content.findings.map(finding => `finding:${finding.id}`)],
       [...content.themes.map(theme => `group:${theme.id}`), 'group:aside', 'conclusion'], ['conclusion', 'dataset', 'code'],
       ['dataset', 'code', 'notebook', ...figures], [...figures, 'report']];
@@ -130,12 +130,11 @@ export class WorkflowTutorial {
         const operations: Mutation[] = [{ type: 'addNode', node: agent }, this.link(idea.id, agent.id, 'taken on by')];
         for (const direction of content.directions) {
           const cited = new Set([...direction.result.matchAll(/\[(\d+)\]/gu)].map(match => Number(match[1])));
-          const search = this.node(session, `search:${direction.id}`, { title: direction.title, description: direction.queries.join('\n'), kind: 'activity', blockType: 'search' });
-          const result = this.node(session, `result:${direction.id}`, { title: `Found: ${direction.title}`, description: `${direction.result}\n\n${formatSources(direction.sources.filter(item => cited.has(item.n)))}`, kind: 'topic', blockType: 'note' });
-          operations.push({ type: 'addNode', node: search }, { type: 'addNode', node: result }, this.link(agent.id, search.id, direction.why), this.link(search.id, result.id, 'found'));
+          const result = this.node(session, `result:${direction.id}`, { title: `Found: ${direction.title}`, description: `${direction.result}\n\n${formatSources(direction.sources.filter(item => cited.has(item.n)))}`, kind: 'topic', blockType: 'note', label: 'result' });
+          operations.push({ type: 'addNode', node: result }, this.link(agent.id, result.id, direction.why));
         }
         this.step(session, operations, 'Demo: the agent searches the web in six directions');
-        for (const direction of content.directions) this.importArtifacts(projectId, session.nodes[`search:${direction.id}`], direction.sources.map(item => ({
+        for (const direction of content.directions) this.importArtifacts(projectId, session.nodes[`result:${direction.id}`], direction.sources.map(item => ({
           kind: 'source', title: item.title, url: item.url, content: item.snippet, capture: 'search-snippet', sourceId: `S${item.n}`,
           metadata: { tutorialOrigin: 'recorded', provenance: `${RECORDED} Titles and addresses as the search returned them; for a page that was read, the excerpt is a passage from it.` },
         })), `Recorded web search: ${direction.queries.join(' · ')}`);

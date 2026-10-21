@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CircleAlert, FlaskConical, FolderTree, GitBranch } from 'lucide-react';
+import { ArrowRight, CircleAlert, FolderTree, GitBranch, Text as TextIcon } from 'lucide-react';
 import type { AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { layoutOnly } from '../shared/canvas-position';
 import type { CanvasNode, Proposal } from '../shared/types';
@@ -13,7 +13,7 @@ type Props = {
   compact?: boolean;
 };
 type PreviewNote = StructurePreview['notes'][number];
-const kindLabel = (kind: PreviewNote['kind']) => kind === 'group' ? 'Group' : kind === 'activity' ? 'Action' : 'Knowledge';
+const kindLabel = (kind: PreviewNote['kind']) => kind === 'group' ? 'Group' : 'Text';
 
 /** Read-only projection. A saved proposal supplies authority separately from
  * this presentation; recovering model JSON never creates an actionable draft. */
@@ -61,7 +61,7 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     if (!note.parentId) continue;
     const parent = byId.get(note.parentId) ?? existingById.get(note.parentId);
     if (!parent) parentWarning.set(note.id, 'The proposed parent is unavailable. Placement needs review.');
-    else if (parent.kind !== 'group') invalidParents.set(note.parentId, `${parent.title || 'This parent'} is ${parent.kind === 'activity' ? 'an Action' : 'a Knowledge card'}. Only a Group can contain other cards.`);
+    else if (parent.kind !== 'group') invalidParents.set(note.parentId, `${parent.title || 'This parent'} is a block, not a Group. Only a Group can contain other blocks.`);
   }
   warnings.push(...invalidParents.values());
   const rows: { note: PreviewNote; depth: number; cycle: boolean }[] = [];
@@ -94,7 +94,7 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     {!compact && structure.summary && <div className="structure-summary"><RichText text={structure.summary}/></div>}
     {warnings.length > 0 && <div className="structure-warning" role="note"><CircleAlert size={13} aria-hidden="true"/><p>{[...new Set(warnings)].join(' ')}</p></div>}
     {rows.length > 0 && <ol className="structure-card-outline" aria-label="Proposed cards in parent order">{rows.map(({ note, depth, cycle }) => {
-      const Icon = note.kind === 'group' ? FolderTree : note.kind === 'activity' ? FlaskConical : BookOpen;
+      const Icon = note.kind === 'group' ? FolderTree : TextIcon;
       const externalParent = note.parentId && !byId.has(note.parentId) ? existingById.get(note.parentId) : undefined;
       return <li key={note.id} className={`structure-card ${note.kind}${depth ? ' nested' : ''}`} data-depth={depth} style={{ marginInlineStart: Math.min(depth, 4) * 26 }}>
         {depth > 0 && <span className="structure-branch" aria-hidden="true"/>}

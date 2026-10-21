@@ -16,6 +16,9 @@ import { ToolLoopAgentService } from './tool-loop-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
+import { LocalPythonBackend } from './sandbox.js';
+import { PythonRuntime, systemConfine } from './local-python.js';
+import { NetworkGate } from './network-gate.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
@@ -120,7 +123,9 @@ try {
     // Ros on this computer starts with the app once its download is on disk.
     localRos = new LocalRos(dataDir,inference);
     void localRos.start();
-    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
+    // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
+    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(join(dataDir, 'python')), confine, gate: new NetworkGate(store) } : undefined;
+    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
@@ -134,7 +139,7 @@ try {
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

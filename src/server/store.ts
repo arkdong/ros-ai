@@ -6,13 +6,14 @@ import { z } from 'zod';
 import { LAYOUT_GAP } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MAX_HEIGHT, cardWidth, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
+import { convertDecisionLogs } from '../shared/decisions.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion']).optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion']).optional(), label:z.string().trim().max(40).optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
@@ -232,17 +233,23 @@ export class Store {
   getProject(id: string): Project {
     if(this.db.prepare('SELECT 1 FROM project_trash WHERE project_id = ?').get(id))throw new StoreError('This project is in Trash. Restore it before opening or changing it.',410);
     const project = this.one<Project>('SELECT data FROM projects WHERE id = ?', id, 'Project');
-    const canvas = convertLegacyGroups(project.canvas);
+    const titleOf = (artifactId: string) => { const row = this.db.prepare('SELECT data FROM artifacts WHERE id = ?').get(artifactId) as JsonRow | undefined; return row ? (JSON.parse(row.data) as { title?: string }).title : undefined; };
+    const convert = (value: Canvas) => convertDecisionLogs(convertLegacyGroups(value), titleOf);
+    const grouped = convertLegacyGroups(project.canvas), canvas = convertDecisionLogs(grouped, titleOf);
     if (JSON.stringify(canvas) === JSON.stringify(project.canvas)) return project;
     // A compatibility conversion is persisted, including history, without a new
     // content revision or rewriting immutable runs/evidence/pending approvals.
     return this.transaction(() => {
       const history = this.getHistory(id);
-      history.stack = history.stack.map(convertLegacyGroups);
+      history.stack = history.stack.map(convert);
       const updated = { ...project, canvas };
       this.db.prepare('UPDATE projects SET data=?, history=? WHERE id=?').run(JSON.stringify(updated), JSON.stringify(history), id);
-      this.preserveModels(project, canvas, true);
-      this.saveRecord('group-conversion', id, id, { at:now(), nodes:canvas.nodes.filter(node => node.legacyKind).map(node => ({id:node.id,legacyKind:node.legacyKind})), detail:'Research identity, overview, versions, conversations, execution records and effective models retained.' });
+      if (JSON.stringify(grouped) !== JSON.stringify(project.canvas)) {
+        this.preserveModels(project, canvas, true);
+        this.saveRecord('group-conversion', id, id, { at:now(), nodes:canvas.nodes.filter(node => node.legacyKind).map(node => ({id:node.id,legacyKind:node.legacyKind})), detail:'Research identity, overview, versions, conversations, execution records and effective models retained.' });
+      }
+      // A decision log becomes Text blocks labelled decision, each linked to the block it was recorded in.
+      if (canvas !== grouped) this.saveRecord('decision-conversion', id, id, { at:now(), blocks:canvas.nodes.filter(node => !grouped.nodes.some(item => item.id === node.id)).map(node => node.id), detail:'Recorded decisions became Text blocks labelled decision, each linked to the block it was recorded in.' });
       return updated;
     });
   }
