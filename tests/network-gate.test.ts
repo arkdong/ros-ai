@@ -42,3 +42,18 @@ test('Full network lets every site through without asking', async () => {
   try { assert.doesNotMatch(await connectStatus(proxy.port, 'anything.invalid:443'), /not allowed/u); assert.equal(asked, 0); }
   finally { proxy.close(); }
 });
+
+test('a session reports waiting while a site waits for the person, so wall-clock limits can pause', async () => {
+  const gate = new NetworkGate(memoryStore()); let pending: string | undefined;
+  gate.subscribe(event => { if (event.type === 'request') pending = event.request.id; });
+  const proxy = await gate.open('p1', 'A Code block');
+  try {
+    assert.equal(proxy.waiting(), false);
+    const status = connectStatus(proxy.port, 'slow.invalid:443');
+    while (!pending) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(proxy.waiting(), true);
+    gate.answer(pending, 'deny');
+    assert.match(await status, /^403/u);
+    assert.equal(proxy.waiting(), false);
+  } finally { proxy.close(); }
+});

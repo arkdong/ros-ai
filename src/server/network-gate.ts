@@ -29,8 +29,10 @@ const blockedAddress = (address: string) => {
   return /^127\.|^0\.|^169\.254\./u.test(ip) || ip === '::1' || ip === '::' || /^fe80:/iu.test(ip);
 };
 
+/** One Python process's proxy. `waiting` is true while a site waits for the person, so wall-clock limits can pause. */
+export type NetworkSession = { port: number; waiting: () => boolean; close: () => void };
 type Pending = NetworkRequest & { session: string; resolve: (allowed: boolean) => void; timer: ReturnType<typeof setTimeout> };
-type Session = { id: string; projectId: string | null; source: string; once: Set<string>; denied: Set<string> };
+type Session = { id: string; projectId: string | null; source: string; once: Set<string>; denied: Set<string>; waiting: number };
 
 export class NetworkGate {
   private readonly pending = new Map<string, Pending>();
@@ -70,8 +72,9 @@ export class NetworkGate {
     if (session.denied.has(host)) return Promise.resolve(false);
     // Requests for the same site from one session share the question.
     const waiting = [...this.pending.values()].find(item => item.host === host && item.projectId === session.projectId);
+    session.waiting++;
     return new Promise<boolean>(resolve => {
-      const settle = (allowed: boolean) => { (allowed ? session.once : session.denied).add(host); resolve(allowed); };
+      const settle = (allowed: boolean) => { session.waiting--; (allowed ? session.once : session.denied).add(host); resolve(allowed); };
       if (waiting) { const previous = waiting.resolve; waiting.resolve = allowed => { previous(allowed); settle(allowed); }; return; }
       const request: NetworkRequest = { id: randomUUID(), host, projectId: session.projectId, source: session.source, at: new Date().toISOString() };
       const timer = setTimeout(() => { this.pending.delete(request.id); settle(false); this.emit({ type: 'settled', id: request.id }); }, WAIT_MS);
@@ -82,8 +85,8 @@ export class NetworkGate {
   }
 
   /** A proxy for one sandboxed Python process, on a port of its own. */
-  async open(projectId: string | null, source: string): Promise<{ port: number; close: () => void }> {
-    const session: Session = { id: randomUUID(), projectId, source, once: new Set(), denied: new Set() };
+  async open(projectId: string | null, source: string): Promise<NetworkSession> {
+    const session: Session = { id: randomUUID(), projectId, source, once: new Set(), denied: new Set(), waiting: 0 };
     const sockets = new Set<Socket>();
     const server: Server = createServer((req, res) => void this.forward(session, req, res));
     server.on('connect', (req: IncomingMessage, client: Socket, head: Buffer) => void this.tunnel(session, req, client, head));
@@ -91,7 +94,7 @@ export class NetworkGate {
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('The network proxy could not start.');
-    return { port: address.port, close: () => {
+    return { port: address.port, waiting: () => session.waiting > 0, close: () => {
       server.close();
       for (const socket of sockets) socket.destroy();
       for (const item of this.pending.values()) if (item.session === session.id) this.answer(item.id, 'deny');

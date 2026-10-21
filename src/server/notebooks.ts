@@ -6,7 +6,7 @@ import { Store, StoreError } from './store.js';
 import type { Authority } from './authority.js';
 import { forgetNotebookNames, reviewNotebookCell, type NotebookNames } from './review-code.js';
 import type { Confine, PythonRuntime } from './local-python.js';
-import type { NetworkGate } from './network-gate.js';
+import type { NetworkGate, NetworkSession } from './network-gate.js';
 /** Sandboxed Python without Docker, and the proxy that gives it network. */
 export type SandboxedPython = { runtime: PythonRuntime; confine: Confine; gate?: NetworkGate };
 import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage, type LocalKernel } from './notebook-kernel.js';
@@ -38,7 +38,7 @@ type Previous = { content: Stored; reason: string; at: string };
 /** `names` are what the automatic reviewer knows after this cell, if it and every cell before it finish. */
 type Pending = { execution: string; cellId: string; source: string; reviewable: string; names?: NotebookNames; queuedAt: string; approval: { mode: ApprovalMode; outcome: 'allow' | 'approved'; reason: string } };
 type Running = Pending & { count: number; session: string; startedAt: string; outputs: NotebookOutput[] };
-type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; proxy?: { port: number; close: () => void }; status: NotebookKernel['status']; count: number;
+type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; proxy?: NetworkSession; status: NotebookKernel['status']; count: number;
   queue: Pending[]; running?: Running; info?: { python: string; libraries: Record<string, string>; cwd: string }; message?: string; stopMessage?: string;
   settled?: NotebookNames; idle?: NodeJS.Timeout; startup?: NodeJS.Timeout; usedAt: number; folder?: KernelFolder };
 type Execution = { id: string; projectId: string; nodeId: string; cellId: string; session: string; executionCount: number; source: string; sourceHash: string;
