@@ -5,6 +5,9 @@
 .notion-database table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.45; }
 .notion-database th { position: sticky; top: 0; background: #fafafa; color: #6b6b6b; font-weight: 500; text-align: left; white-space: nowrap; }
 .notion-database th, .notion-database td { padding: 5px 8px; border-bottom: 1px solid #f0f0f0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name column stays put while the other columns scroll sideways under it. */
+.notion-database th:first-child, .notion-database td:first-child { position: sticky; left: 0; background: #fff; box-shadow: inset -1px 0 #f0f0f0; }
+.notion-database th:first-child { background: #fafafa; z-index: 1; }
 .notion-database tr:last-child td { border-bottom: 0; }
 .notion-database td a { color: #171717; text-decoration: none; }
 .notion-database td a:hover { text-decoration: underline; }

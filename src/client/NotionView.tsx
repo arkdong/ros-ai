@@ -4,7 +4,6 @@ import type { NotionTable, NotionView } from '../shared/types';
 import { api } from './api';
 import './notion-view.css';
 
-const PREVIEW_COLUMNS = 5;
 /** When the rows were read: the time today, with the date on another day (a read kept across restarts). */
 const clock = (at: string) => { const date = new Date(at), time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`; };
 
@@ -20,7 +19,7 @@ export function NotionDatabase({ projectId, nodeId, view, full = false }: { proj
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, nodeId, key]);
   useEffect(() => { void load(); }, [load]);
-  const columns = table ? (full ? table.columns : table.columns.slice(0, PREVIEW_COLUMNS)) : [];
+  const columns = table?.columns ?? [];
   return <div className={`notion-database${full ? ' full' : ''}`}>
     {/* One box of fixed height in a card, whatever the state, so the card is measured once at its full size. */}
     <div className="notion-database-scroll nowheel">{error ? <p className="notion-database-error">{error}</p>
@@ -31,7 +30,7 @@ export function NotionDatabase({ projectId, nodeId, view, full = false }: { proj
       </table>{!table.rows.length && <p className="notion-database-empty">No rows match.</p>}</>}</div>
     {table?.notice && <p className="notion-database-notice">{table.notice}</p>}
     <footer>
-      <span>{table ? `${table.rows.length}${table.truncated ? '+' : ''} row${table.rows.length === 1 ? '' : 's'}${!full && table.columns.length > columns.length ? ` · ${table.columns.length} columns` : ''} · read ${clock(table.fetchedAt)}` : 'Live from Notion'}</span>
+      <span>{table ? `${table.rows.length}${table.truncated ? '+' : ''} row${table.rows.length === 1 ? '' : 's'} · read ${clock(table.fetchedAt)}` : 'Live from Notion'}</span>
       <button className="icon-button" aria-label="Read again from Notion" title="Read again from Notion (otherwise a read is reused for 10 minutes)" disabled={loading} onClick={event => { event.stopPropagation(); void load(true); }}>{loading ? <LoaderCircle size={13} className="spin"/> : <RotateCw size={13}/>}</button>
       {table?.link && <a className="notion-database-open" href={table.link} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>Open in Notion <ArrowUpRight size={12}/></a>}
     </footer>
