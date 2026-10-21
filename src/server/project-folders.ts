@@ -203,7 +203,7 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion']).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional() }).strict().optional(),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional() }).strict().optional(),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
@@ -429,7 +429,7 @@ export class ProjectFolders implements NotebookFolders {
       const kind = kindForFile(block.file!, block.blockType);
       try {
         if (!files.exists(block.file!)) continue;
-        this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, parentId: parentOf(block), x: block.x, y: block.y, width: block.width });
+        this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, label: block.label, parentId: parentOf(block), x: block.x, y: block.y, width: block.width });
         placed.push(block.id);
       } catch { /* listed as an unplaced file instead */ }
     }
@@ -473,12 +473,12 @@ export class ProjectFolders implements NotebookFolders {
     return { nodeId: node.id };
   }
 
-  private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'parentId' | 'x' | 'y' | 'width'>>): CanvasNode {
+  private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'label' | 'parentId' | 'x' | 'y' | 'width'>>): CanvasNode {
     const projectId = record.projectId, read = files.read(rel, READ_BYTES[kind]);
     if (kind === 'figure') throw new StoreError('Figures are written by ros.ai and cannot be added from the folder yet.');
     const text = decodeText(read.bytes), id = placement.id ?? randomUUID();
     const base: CanvasNode = { id, title: placement.title ?? titleFromPath(rel), description: '', x: placement.x ?? 0, y: placement.y ?? 0, kind: placement.kind && placement.kind !== 'group' ? placement.kind : 'topic',
-      ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}) };
+      ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}), ...(placement.label ? { label: placement.label } : {}) };
     let node: CanvasNode;
     if (kind === 'note') {
       if (text.length > 20_000) throw new StoreError(`${rel} is longer than 20,000 characters, the most a note holds.`);
@@ -867,7 +867,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: node.notion } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: node.notion } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(entry && !entry.removed ? { file: entry.path } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));

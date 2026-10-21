@@ -1,4 +1,5 @@
 import type { Canvas, CanvasNode, Mutation } from './types.js';
+import { DECISION_LINK } from './vocabulary.js';
 
 export const isGroup = (node: CanvasNode) => node.kind === 'group';
 
@@ -21,11 +22,12 @@ export function groupMembers(canvas: Canvas, groupId: string): CanvasNode[] {
 }
 
 /** A collapsed Group lists the first few blocks inside it, by position, leaving out a block another
- * block in the group points to, so a search and the note it led to show once. */
+ * block in the group points to, so a search and the note it led to show once. A decision's link to the
+ * block it rests on does not hide that block. */
 export const GROUP_PREVIEW_MEMBERS = 4;
 export function groupPreviewMembers(canvas: Canvas, groupId: string): CanvasNode[] {
   const members = canvas.nodes.filter(node => node.parentId === groupId), ids = new Set(members.map(node => node.id));
-  const pointed = new Set(canvas.connections.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => edge.target));
+  const pointed = new Set(canvas.connections.filter(edge => edge.label !== DECISION_LINK && ids.has(edge.source) && ids.has(edge.target)).map(edge => edge.target));
   return members.filter(node => !pointed.has(node.id)).sort((a, b) => a.y - b.y || a.x - b.x);
 }
 

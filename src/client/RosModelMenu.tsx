@@ -132,7 +132,7 @@ export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError
       {approvalModes.map(item => { const ItemIcon = item.icon; return <button key={item.mode} type="button" role="menuitemradio" aria-checked={policy.mode === item.mode} className={`mode-${item.mode}`} onClick={() => void choose(item.mode)}><ItemIcon size={16}/><span className="ros-menu-label">{item.label}<small>{item.detail}</small></span>{policy.mode === item.mode && <Check size={14}/>}</button>; })}
       {policy.mode === 'full' && <p className="ros-menu-note"><TriangleAlert size={12}/> Runs in the isolated sandbox; the map keeps its history.</p>}
       <hr/>
-      <button type="button" role="menuitem" onClick={() => { setMenu(false); onDetails(); }}><ShieldCheck size={14}/><span className="ros-menu-label">Per-block overrides and usage</span></button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(false); onDetails(); }}><ShieldCheck size={14}/><span className="ros-menu-label">Permissions and usage</span></button>
     </div>}
   </div>;
 }

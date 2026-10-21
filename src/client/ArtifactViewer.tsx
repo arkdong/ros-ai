@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeft, Code2, Download, Edit3, ExternalLink, LoaderCircle, ZoomIn, ZoomOut } from 'lucide-react';
-import type { Artifact, Decision, ProjectDetail } from '../shared/types';
+import type { Artifact, ProjectDetail } from '../shared/types';
 import { artifactTable, type DataTransform } from '../shared/data-view';
 import { evidenceClaim, svgImageUrl } from '../shared/reports';
 import { ArtifactContent } from './Experiment';
@@ -10,7 +10,6 @@ import { DerivedDataset } from './DerivedDataset';
 import { newerEvidence, reportEvidence, ReportDownloads, ReportEditor } from './ReportEditor';
 import { post } from './api';
 import { outputFreshness } from '../shared/output-provenance';
-import { DecisionLog } from './Decisions';
 import './viewers.css';
 
 export function ArtifactViewer({ artifact, detail, onChanged, onOpenArtifact, onOpenAttempt, onReviseFigure, readOnly = false, more }: { more?:ReactNode; artifact:Artifact; detail:ProjectDetail; onChanged:()=>Promise<unknown>; onOpenArtifact:(artifact:Artifact)=>void; onOpenAttempt?:(runId:string)=>void; onReviseFigure?:(artifact:Artifact)=>void; readOnly?:boolean }) {
@@ -25,8 +24,6 @@ export function ArtifactViewer({ artifact, detail, onChanged, onOpenArtifact, on
   while(typeof generated.metadata?.sourceArtifactId==='string'&&!visited.has(generated.id)){visited.add(generated.id);const previous=detail.artifacts.find(value=>value.id===generated.metadata?.sourceArtifactId);if(!previous)break;generated=previous;}
   const code = detail.artifacts.find(value => value.runId === generated.runId && value.kind === 'code');
   const inspect = (value:Artifact) => {setInspected(value);setDerived(null);setZoom(100);setRefining(false);setError('');};
-  const block = detail.project.canvas.nodes.find(node => node.id === current.nodeId);
-  const saveDecisions = async (decisions:Decision[],label:string) => {await post(`/api/projects/${current.projectId}/mutations`,{operations:[{type:'updateNode',id:current.nodeId,patch:{decisions}}],label,expectedRevision:detail.project.revision});await onChanged();return true;};
   const savePresentation = async () => {
     setBusy(true);setError('');
     try {const saved = await post<Artifact>(`/api/projects/${current.projectId}/artifacts/${current.id}/presentation`,{expectedHash:current.hash,title,caption,width});await onChanged();setRefining(false);onOpenArtifact(saved);}
@@ -41,7 +38,7 @@ export function ArtifactViewer({ artifact, detail, onChanged, onOpenArtifact, on
     : <ArtifactContent artifact={current}/>}
     {error&&<p className="inline-error" role="alert">{error}</p>}<details className="artifact-provenance" open={Boolean(inspected)}><summary>Producing attempt, captured inputs & provenance</summary><p>Artifact {current.id}<br/>SHA256 {current.hash}<br/>Attempt {current.runId}</p>{run&&<p>{run.provider} · {run.model} · {run.status}</p>}{onOpenAttempt&&<button className="secondary small" onClick={()=>onOpenAttempt(current.runId)}>Open producing attempt</button>}{sources.length>0&&<div className="artifact-input-links"><strong>Exact captured inputs</strong>{sources.map(value=><button key={value.id} className="text-button" onClick={()=>inspect(value)}>{value.title} · {value.hash.slice(0,12)}</button>)}</div>}{typeof current.metadata?.sourceArtifactId==='string'&&<button className="text-button" onClick={()=>{const value=detail.artifacts.find(item=>item.id===current.metadata?.sourceArtifactId);if(value)inspect(value);}}>Open original derived-version source</button>}{typeof current.metadata?.notebookSourceArtifactId==='string'&&<button className="text-button" onClick={()=>{const source=detail.artifacts.find(value=>value.id===current.metadata?.notebookSourceArtifactId);if(source)inspect(source);}}>Open exact notebook source snapshot</button>}<pre>{JSON.stringify(current.metadata??{},null,2)}</pre>{detail.inputs.filter(input=>input.artifactId===current.id).map(input=><p key={input.id}>Selected exact version in {detail.project.canvas.nodes.find(node=>node.id===input.nodeId)?.title??input.nodeId} · {date(input.createdAt)}. Selection does not imply execution.</p>)}</details>
     {/* Linking a result elsewhere is mostly the assistant's job; it stays reachable here. */}
-    {(more||(!report&&block))&&<details className="artifact-more"><summary>More{!report&&block?.decisions?.length?` · ${block.decisions.length} decision${block.decisions.length===1?'':'s'}`:''}</summary>{more}{!report&&block&&<DecisionLog key={`${block.id}:${current.id}`} node={block} detail={detail} basis={current} readOnly={readOnly} onOpenArtifact={inspect} save={saveDecisions}/>}</details>}
+    {more&&<details className="artifact-more"><summary>More</summary>{more}</details>}
   </div>;
 }
 
