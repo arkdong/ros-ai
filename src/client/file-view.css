@@ -1,0 +1,23 @@
+/* File blocks: a PDF's first page or an image on the card; the opened view is a reader. Three neutral greys, no colour. */
+.file-page-preview,.direct-canvas .file-page-preview{display:flex;align-items:center;justify-content:center;overflow:hidden;color:#8a918c}
+.file-page-preview .pdf-page{box-shadow:0 1px 3px rgba(0,0,0,.18);background:#fff}
+.file-preview-note{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6b726d;padding:8px;text-align:center}
+.file-line{display:flex;gap:0;font-size:11px;color:#758079;margin:6px 0 0}
+.file-line small+small::before{content:' · ';white-space:pre}
+.file-viewer{display:flex;flex-direction:column;gap:10px;margin:16px 0 0;min-width:0}
+.file-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#4b5c54}
+.file-toolbar-space{flex:1}
+.file-page-counter{font-variant-numeric:tabular-nums;font-weight:500}
+.file-zoom{display:inline-flex;align-items:center;gap:2px}
+.file-zoom span{min-width:42px;text-align:center;font-variant-numeric:tabular-nums}
+.file-modes{display:inline-flex;border:1px solid #dce3de;border-radius:6px;overflow:hidden}
+.file-modes button{border:0;background:transparent;padding:4px 10px;font-size:12px;color:#4b5c54;cursor:pointer}
+.file-modes button.active{background:#1f2421;color:#fff}
+.file-download{display:inline-flex;align-items:center;gap:5px;text-decoration:none}
+.file-viewport{background:#f5f7f4;border:1px solid #e0e6df;border-radius:8px;overflow:auto;max-height:65vh;min-height:200px}
+.file-viewport img{display:block;height:auto;margin:0}
+.file-viewport.pdf-pages{display:flex;flex-direction:column;align-items:center;gap:16px;padding:16px}
+.pdf-page-box{flex-shrink:0;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.16)}
+.pdf-page-box .pdf-page{display:block}
+.file-text{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:65vh;overflow:auto;padding:16px;margin:0;background:#f5f7f4;border:1px solid #e0e6df;border-radius:8px}
+.canvas-drop-target{outline:2px dashed #9aa19c;outline-offset:-6px}
