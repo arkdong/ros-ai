@@ -82,3 +82,7 @@
 .outside-command code { flex:1; min-width:0; font-size:11px; line-height:1.5; overflow-wrap:anywhere; user-select:all; }
 .cloud-code strong{display:inline-block;font:600 20px/1.2 ui-monospace,monospace;letter-spacing:3px;padding:8px 14px;border:1px dashed var(--line,#dfe2de);border-radius:10px}
 .cloud-waiting{display:grid;gap:10px;justify-items:start}.cloud-waiting p{margin:0}
+
+/* Ros on this computer: download progress */
+.local-ros-progress{height:6px;border-radius:3px;background:var(--line,#e6e8e5);overflow:hidden;margin:2px 0 12px}
+.local-ros-progress span{display:block;height:100%;border-radius:3px;background:var(--ink,#1d211f);transition:width .4s ease}
