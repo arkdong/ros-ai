@@ -128,3 +128,13 @@ Timing: UI-only changes are safe at any time; no change to agent-tools.ts, agent
 4. External generalising the Notion block, web page first.
 5. The provenance line on every block.
 6. After 30 October: the storage rename, the files/, external/ and agents/ folders, the src/blocks/<kind>/ registry and the .canvas mapping.
+
+## The More section · October 21, 2026
+
+Before the vocabulary PR went up, Adam asked whether the block view's More section (Move to, Label, Approval, Decisions) still fits the direction. Decision: remove it. What still matters moves out of it.
+
+- **Move to.** A block joins an expanded Group when dropped on it and leaves when dragged out; the Group under the pointer is outlined while dragging. Ungroup is a dock action for a selected Group. Ros keeps proposing groups.
+- **Label.** The pill beside the kind on the card opens the label menu: the eight words, your own word, or none. Add block keeps its Label field.
+- **Approval.** The per-block override is gone from the app; the project permission mode in the Ros bar is the only setting. Code runs and notebooks still honour overrides saved earlier, and the agent loop never read them.
+- **Decisions.** A decision is a Text block labelled decision, linked to the blocks it rests on and visible to every agent. Saved decision logs convert once into such blocks, keeping text, reason, basis versions and withdrawals in the block text. The report's process record lists decision blocks with who wrote them.
+- **Remove node and Inputs.** Delete is in the dock; inputs stay with the Code block that runs them.

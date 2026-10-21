@@ -215,12 +215,6 @@
 .note-detail .note-settings .disclosure-body {
   padding: 14px 0 1px;
 }
-.note-detail .note-settings .action-policy {
-  margin-top: 14px;
-}
-.note-detail .note-settings .node-kind-row {
-  margin: 0;
-}
 .node-modal .note-detail .inspector-tabs {
   min-height: 49px;
 }
@@ -383,10 +377,6 @@
   }
   .node-modal .note-detail .experiment-tools {
     padding: 18px 17px 24px;
-  }
-  .detail-polish .action-policy {
-    align-items: flex-start;
-    gap: 7px;
   }
 }
 .permission-status { display: flex; align-items: center; gap: 6px; min-height: 20px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }

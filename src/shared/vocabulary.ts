@@ -1,4 +1,4 @@
-import type { CanvasNode } from './types.js';
+import type { Canvas, CanvasNode } from './types.js';
 
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
@@ -37,4 +37,33 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
   return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : 'Agent';
+}
+
+/** The caption of the link from a decision block to the block it rests on. */
+export const DECISION_LINK = 'based on';
+
+/** A Report or Finding block carries the label its block type implies; only a plain Text block's label changes. */
+export const labelFixed = (node: Pick<CanvasNode, 'label' | 'blockType'>) => !node.label && (node.blockType === 'report' || node.blockType === 'finding');
+
+/** The canvas edit that sets or clears a Text block's label. Clearing the task label of an older Action block
+ * makes it a plain note, so the old kind no longer implies a label. */
+export function labelPatch(node: Pick<CanvasNode, 'kind' | 'blockType'>, value: string): Partial<CanvasNode> {
+  const label = value.trim().slice(0, 40);
+  const legacyTask = !label && (node.kind === 'activity' || node.blockType === 'action');
+  return { label, ...(legacyTask ? { kind: 'topic' as const, ...(node.blockType === 'action' ? { blockType: 'note' as const } : {}) } : {}) };
+}
+
+/** The agent that made a block, for its provenance line: a Result note through its link from the Agent block,
+ * a finding through its Result note. */
+export function blockOrigin(canvas: Pick<Canvas, 'nodes' | 'connections'>, id: string, depth = 0): string | undefined {
+  if (depth > 3) return undefined;
+  for (const edge of canvas.connections) {
+    if (edge.target !== id) continue;
+    const source = canvas.nodes.find(node => node.id === edge.source);
+    if (!source) continue;
+    if (source.blockType === 'agent') return agentName(source.agent?.runtime);
+    const through = source.label === 'result' || source.blockType === 'search' || source.blockType === 'finding' ? blockOrigin(canvas, source.id, depth + 1) : undefined;
+    if (through) return through;
+  }
+  return undefined;
 }

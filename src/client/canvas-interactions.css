@@ -36,6 +36,99 @@
   letter-spacing: 0;
   text-transform: none;
 }
+.direct-canvas .research-card .card-type-button {
+  margin: 0;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.direct-canvas .research-card .card-type-button:hover .card-label,
+.direct-canvas .research-card .card-type-button:focus-visible .card-label {
+  background: #e4e4e4;
+}
+.direct-canvas .research-card .card-label-add {
+  margin-left: 2px;
+  color: #8a8a8a;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.direct-canvas .research-card:hover .card-label-add,
+.direct-canvas .research-card .card-type-button:focus-visible .card-label-add {
+  opacity: 1;
+}
+.direct-canvas .card-label-menu {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 156px;
+  padding: 6px;
+  border: 1px solid #e3e3e3;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+}
+.direct-canvas .card-label-menu:focus {
+  outline: none;
+}
+.direct-canvas .card-label-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: #222;
+  text-align: left;
+  cursor: pointer;
+}
+.direct-canvas .card-label-menu button:hover,
+.direct-canvas .card-label-menu button:focus-visible {
+  background: #f1f1f1;
+}
+.direct-canvas .card-label-menu button[aria-checked="true"] {
+  font-weight: 600;
+}
+.direct-canvas .card-label-menu form {
+  margin-top: 2px;
+  padding: 6px 2px 2px;
+  border-top: 1px solid #ececec;
+}
+.direct-canvas .card-label-menu input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid #e3e3e3;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+.direct-canvas .card-label-menu .card-label-clear {
+  color: #6b6b6b;
+}
+.direct-canvas .drop-target-outline {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border: 2px dashed #9a9a9a;
+  border-radius: 14px;
+}
 .direct-canvas .research-card .card-title {
   font-weight: 600;
   letter-spacing: -.35px;

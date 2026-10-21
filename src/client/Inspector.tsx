@@ -1,33 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUp, Check, ChevronDown, Clock3, FileText, Globe2, History, LoaderCircle, MessageSquare, Pencil, Plus, RotateCcw, Square, Trash2, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, Check, ChevronDown, Clock3, FileText, Globe2, History, LoaderCircle, MessageSquare, Pencil, Plus, RotateCcw, Square, X } from 'lucide-react';
 import type { Artifact, CanvasNode, Mutation, ProjectDetail, Run } from '../shared/types';
-import { TEXT_LABELS, kindName, textLabel } from '../shared/vocabulary';
+import { kindName, textLabel } from '../shared/vocabulary';
 import { useDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
-import { ActionPolicy } from './ResearchControls';
-import type { ResearchPolicy } from '../shared/research';
 import { date, Evidence, RichText, time } from './Content';
 import { ModelSettings, type ModelDisplay } from './ModelSettings';
 import './detail-polish.css';
 import { NotionDatabase } from './NotionView';
 import './note-view.css';
-import { groupMembers, isGroup, ungroupOperations } from '../shared/groups';
+import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
-import { DecisionLog } from './Decisions';
 
 type Props = {
-  node: CanvasNode; detail: ProjectDetail; onClose: () => void;
+  node: CanvasNode; detail: ProjectDetail;
   mutate: (operations: Mutation[], label: string) => Promise<boolean>;
   onRun: (nodeId: string, request: string, useSearch: boolean) => Promise<boolean>;
   onCancel: (runId: string) => Promise<boolean>; onRetry: (runId: string) => Promise<boolean>;
   onAttach: (artifact?: Artifact, destinationId?: string) => void;
-  onRefresh: () => Promise<unknown>;
   onOpenArtifact: (artifact: Artifact) => void; onOpenNote: (nodeId: string) => void;
-  policy: ResearchPolicy | null;
-  onRemoveInput: (inputId: string) => Promise<boolean>; readOnly?: boolean;
+  readOnly?: boolean;
 };
 
-export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRetry, onAttach, onRemoveInput, onRefresh, onOpenArtifact, onOpenNote, policy, readOnly = false }: Props) {
+export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
   const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description);
@@ -41,7 +36,6 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
   useEffect(() => { if (title === priorNode.current.title) setTitle(node.title); if (description === priorNode.current.description) setDescription(node.description); priorNode.current = node; }, [node]);
   const runs = detail.runs.filter(r => r.nodeId === node.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const active = runs.find(run => run.configuration.kind !== 'local-experiment' && ['running', 'queued'].includes(run.status));
-  const inputs = detail.inputs.filter(input => input.nodeId === node.id);
   const messages = detail.messages.filter(message => message.nodeId === node.id);
   const primary = isGroup(node) ? undefined : primaryArtifact(node, detail), children = detail.project.canvas.nodes.filter(item => item.parentId === node.id);
   const thread = useRef<HTMLDivElement>(null);
@@ -64,15 +58,8 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
         : <button className="text-button small note-edit-toggle" aria-expanded={editing} onClick={()=>setEditing(!editing)}>{editing?'Done':description?<><Pencil size={12}/> Edit text</>:<><Plus size={12}/> Add a description</>}</button>)}
       {primary&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}
+      {isGroup(node)&&<GroupHighlights node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>}
       {!description&&!primary&&!children.length&&!editing&&!node.notion&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
-      <details className="note-more"><summary>More</summary><div className="note-more-body">
-        <GroupTools node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>
-        {kindName(node)==='Text'&&<LabelRow node={node} mutate={mutate} readOnly={readOnly}/>}
-        {!readOnly&&<ActionPolicy nodeId={node.id} policy={policy} onRefresh={onRefresh}/>}
-        {inputs.length>0&&<div className="note-inputs"><h4>Inputs this node uses</h4>{inputs.map(input=>{const artifact=detail.artifacts.find(a=>a.id===input.artifactId);const sourceNode=detail.project.canvas.nodes.find(n=>n.id===artifact?.nodeId);return <div className="relationship-row" key={input.id}><ArrowDownToLine size={14}/><div><strong>{artifact?.title||'Saved artifact'}</strong><span className="subtle">From {sourceNode?.title||'removed node'}{artifact?` · ${date(artifact.createdAt)}`:''}</span></div><button className="icon-button danger" aria-label={`Remove input ${artifact?.title||''}`} disabled={readOnly} onClick={()=>void onRemoveInput(input.id)}><X size={13}/></button></div>;})}</div>}
-        <DecisionLog node={node} detail={detail} readOnly={readOnly} onOpenArtifact={onOpenArtifact} save={(decisions,label)=>mutate([{type:'updateNode',id:node.id,patch:{decisions}}],label)}/>
-        {!readOnly&&<button className="text-button danger small" data-testid="remove-node" onClick={async()=>{if(await mutate([{type:'removeNode',id:node.id}],'Remove node'))onClose();}}><Trash2 size={12}/> Remove node</button>}
-      </div></details>
     </div>
     {chatOpen&&<div className="note-side" id={`note-side-${node.id}`}>
       <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><span className="note-side-spacer"/><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button><button className="icon-button" aria-label="Hide conversation" title="Hide conversation" onClick={()=>setChatOpen(false)}><X size={15}/></button></div>
@@ -94,17 +81,14 @@ export function Inspector({ node, detail, onClose, mutate, onRun, onCancel, onRe
   </aside>;
 }
 
-function GroupTools({node,detail,mutate,onOpenArtifact,onOpenNote,readOnly}:{node:CanvasNode;detail:ProjectDetail;mutate:Props['mutate'];onOpenArtifact:Props['onOpenArtifact'];onOpenNote:Props['onOpenNote'];readOnly:boolean}) {
-  const members=groupMembers(detail.project.canvas,node.id), excluded=new Set([node.id,...members.map(member=>member.id)]);
-  const destinations=detail.project.canvas.nodes.filter(item=>isGroup(item)&&!excluded.has(item.id));
-  const group=isGroup(node), memberIds=new Set([node.id,...members.map(member=>member.id)]);
+/** What a collapsed Group shows on its card: up to three exact saved versions from the blocks inside it. */
+function GroupHighlights({node,detail,mutate,onOpenArtifact,onOpenNote,readOnly}:{node:CanvasNode;detail:ProjectDetail;mutate:Props['mutate'];onOpenArtifact:Props['onOpenArtifact'];onOpenNote:Props['onOpenNote'];readOnly:boolean}) {
+  const members=groupMembers(detail.project.canvas,node.id), memberIds=new Set([node.id,...members.map(member=>member.id)]);
   const represented=new Set([node.artifactId,...members.map(member=>member.artifactId)].filter(Boolean));
   const candidates=detail.artifacts.filter(artifact=>(memberIds.has(artifact.nodeId)||represented.has(artifact.id))&&!['log','code','source','dataset'].includes(artifact.kind)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const chosen=node.groupHighlights??[];
   const choose=(artifact:Artifact,checked:boolean)=>{const next=checked?[...chosen,{nodeId:artifact.nodeId,artifactId:artifact.id,hash:artifact.hash}]:chosen.filter(item=>item.artifactId!==artifact.id);void mutate([{type:'updateNode',id:node.id,patch:{groupHighlights:next}}],'Choose exact Group highlights');};
-  return <><div className="group-organize"><label>Move to<select aria-label={`Move ${node.title} to group`} value={node.parentId??''} disabled={readOnly} onChange={event=>void mutate([{type:'updateNode',id:node.id,patch:{parentId:event.target.value||null,x:0,y:0}}],'Move block between groups')}><option value="">Canvas root</option>{destinations.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label>{group&&<button className="secondary small" disabled={readOnly} onClick={()=>void mutate(ungroupOperations(detail.project.canvas,node),'Ungroup; retain overview and research identity')}>Ungroup</button>}</div>
-    {group&&<details className="detail-disclosure"><summary>Choose collapsed highlights <small>{chosen.length} / 3 · exact saved versions</small></summary><div className="disclosure-body group-highlight-picker">{candidates.length?candidates.map(artifact=>{const checked=chosen.some(item=>item.artifactId===artifact.id);return <label key={artifact.id}><input type="checkbox" aria-label={`Highlight ${artifact.title}`} checked={checked} disabled={readOnly||!checked&&chosen.length>=3} onChange={event=>choose(artifact,event.target.checked)}/><span>{artifact.title}<small>{detail.project.canvas.nodes.find(item=>item.id===artifact.nodeId)?.title??'Saved block'} · {artifact.hash.slice(0,8)}</small></span><button className="text-button small" type="button" onClick={()=>onOpenArtifact(artifact)}>Inspect</button></label>;}):<p className="subtle">Contained blocks have no saved results yet.</p>}<p className="subtle">Selections retain their originating block and version. New results never replace them.</p>{detail.project.canvas.nodes.filter(item=>item.parentId===node.id).map(member=><button key={member.id} className="text-button" onClick={()=>onOpenNote(member.id)}>{member.title}</button>)}</div></details>}
-  </>;
+  return <details className="detail-disclosure group-highlights"><summary>Choose collapsed highlights <small>{chosen.length} / 3 · exact saved versions</small></summary><div className="disclosure-body group-highlight-picker">{candidates.length?candidates.map(artifact=>{const checked=chosen.some(item=>item.artifactId===artifact.id);return <label key={artifact.id}><input type="checkbox" aria-label={`Highlight ${artifact.title}`} checked={checked} disabled={readOnly||!checked&&chosen.length>=3} onChange={event=>choose(artifact,event.target.checked)}/><span>{artifact.title}<small>{detail.project.canvas.nodes.find(item=>item.id===artifact.nodeId)?.title??'Saved block'} · {artifact.hash.slice(0,8)}</small></span><button className="text-button small" type="button" onClick={()=>onOpenArtifact(artifact)}>Inspect</button></label>;}):<p className="subtle">Contained blocks have no saved results yet.</p>}<p className="subtle">Selections retain their originating block and version. New results never replace them.</p>{detail.project.canvas.nodes.filter(item=>item.parentId===node.id).map(member=><button key={member.id} className="text-button" onClick={()=>onOpenNote(member.id)}>{member.title}</button>)}</div></details>;
 }
 function RunDetails({ run, detail, initialOpen, onAttach, onCancel, onRetry, readOnly }: { run: Run; detail: ProjectDetail; initialOpen: boolean; onAttach: Props['onAttach']; onCancel: Props['onCancel']; onRetry: Props['onRetry']; readOnly: boolean }) {
   const sources = evidenceForRun(run, detail);
@@ -122,24 +106,4 @@ function RunDetails({ run, detail, initialOpen, onAttach, onCancel, onRetry, rea
 
 function evidenceForRun(run: Run, detail: ProjectDetail): Artifact[] {
   return [...detail.artifacts.filter(a => a.runId === run.id && a.kind === 'source'), ...run.inputs.map((input, index) => ({ ...input.artifact, content: input.excerpt || input.artifact.content, sourceId: `I${index + 1}`, locator: `Selected input · artifact ${input.artifact.id.slice(0, 8)} · source run ${input.artifact.runId.slice(0, 8)}` }))];
-}
-
-/** The label of a Text block: one of the eight words, or the researcher's own. A Report or Finding keeps
- * the label its block type implies; an older Action block becomes a plain note when its task label is removed. */
-function LabelRow({node,mutate,readOnly}:{node:CanvasNode;mutate:(operations:Mutation[],label:string)=>Promise<boolean>;readOnly:boolean}){
-  const current=textLabel(node)??'';
-  const known=(TEXT_LABELS as readonly string[]).includes(current);
-  const fixed=!node.label&&(node.blockType==='report'||node.blockType==='finding');
-  const [other,setOther]=useState(false);
-  const [draft,setDraft]=useState('');
-  useEffect(()=>{setOther(false);setDraft('');},[current]);
-  const save=(value:string)=>{
-    const label=value.trim().slice(0,40);
-    const legacyTask=!label&&(node.kind==='activity'||node.blockType==='action');
-    return mutate([{type:'updateNode',id:node.id,patch:{label,...(legacyTask?{kind:'topic',...(node.blockType==='action'?{blockType:'note'}:{})}:{})}}],label?`Label as ${label}`:'Remove label');
-  };
-  return <div className="node-kind-row"><label>Label<select aria-label="Block label" value={other?'other':!current||known?current:'custom'} disabled={readOnly} onChange={event=>{const value=event.target.value;if(value==='other'){setOther(true);setDraft(known?'':current);}else{setOther(false);if(value!=='custom'&&value!==current)void save(value);}}}>
-    {!fixed&&<option value="">None</option>}{TEXT_LABELS.map(word=><option key={word} value={word}>{word}</option>)}{current&&!known&&<option value="custom">{current}</option>}<option value="other">Other…</option></select></label>
-    {other&&<input className="node-label-input" aria-label="Your own label" value={draft} maxLength={40} placeholder="Your own word" autoFocus disabled={readOnly} onChange={event=>setDraft(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();if(draft.trim())void save(draft);setOther(false);}else if(event.key==='Escape'){event.stopPropagation();setOther(false);}}} onBlur={()=>{if(draft.trim()&&draft.trim()!==current)void save(draft);setOther(false);}}/>}
-  </div>;
 }

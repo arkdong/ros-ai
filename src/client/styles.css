@@ -2197,27 +2197,6 @@ a {
   font-weight: 600;
   margin-top: 3px;
 }
-.node-kind-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.node-kind-row label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  color: #171717;
-}
-.node-kind-row select {
-  font-size: 13px;
-  padding: 3px 7px;
-  max-width: 130px;
-}
-.node-kind-row .subtle {
-  font-size: 13px;
-}
 .description-toggle {
   padding: 7px 0 0;
   font-weight: 400;
@@ -2867,9 +2846,6 @@ a {
   .workspace-breadcrumb {
     display: none;
   }
-  .node-kind-row>.subtle {
-    display: none;
-  }
   .inspector-tabs {
     padding: 0 4px;
   }
@@ -3011,9 +2987,6 @@ a {
   }
   .experiment-tools {
     padding: 12px;
-  }
-  .node-kind-row select {
-    font-size: 13px;
   }
   .inspector .node-heading {
     padding: 8px 13px 4px;
@@ -3503,12 +3476,6 @@ a {
   font-size: 22px;
   margin: 8px 0;
 }
-.node-modal .node-kind-row {
-  max-width: none;
-}
-.node-modal .node-kind-row .subtle {
-  display: inline;
-}
 .node-modal .inspector-tabs {
   padding: 0 17px;
   min-height: 47px;
@@ -3896,9 +3863,6 @@ a {
   }
   .selection-toolbar {
     max-width: calc(100% - 32px);
-  }
-  .node-modal .inspector .node-kind-row .subtle {
-    display: inline;
   }
 }
 @media (max-width:600px) {
