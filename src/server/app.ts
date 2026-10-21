@@ -13,6 +13,7 @@ import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
+import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
@@ -82,7 +83,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);attachNotionViewRoutes(app,store,new NotionViews(tools.apps,new ProjectCache(store)));}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);

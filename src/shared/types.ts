@@ -1,9 +1,16 @@
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
 export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion';
-/** A Notion database shown live on the canvas: only where it is and which rows; its rows stay in Notion. */
-export type NotionView = { url:string; filter?:string; columns?:string[] };
-/** What a Notion database block shows, read live: the rows are never saved by ros.ai. */
-export type NotionTable = { title:string; url:string; link:string|null; columns:string[]; rows:Record<string,string>[]; truncated:boolean; fetchedAt:string; notice?:string };
+/** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
+ * the content stays in Notion. `kind` is learnt at the first read; an older block without it is a database. */
+export type NotionView = { url:string; filter?:string; columns?:string[]; kind?:'database'|'page' };
+/** What a Notion database block shows, read live: the rows are never saved by ros.ai. `titleColumn` names the
+ * column that holds each row's title, so one block per row can be made from the rows. */
+export type NotionTable = { kind?:'database'; title:string; url:string; link:string|null; columns:string[]; titleColumn?:string|null; rows:Record<string,string>[]; truncated:boolean; fetchedAt:string; notice?:string };
+/** One property of a Notion page as text; `links` are the pages or addresses the value points to. */
+export type NotionProperty = { name:string; value:string; links?:{ text:string; url:string }[] };
+/** What a Notion page block shows, read live: its properties, its content as Markdown and where it lives. */
+export type NotionPage = { kind:'page'; title:string; url:string; link:string|null; properties:NotionProperty[]; content:string; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string };
+export type NotionRead = NotionTable | NotionPage;
 /** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
 export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};

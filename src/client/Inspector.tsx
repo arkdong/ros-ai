@@ -7,7 +7,8 @@ import { ArtifactContent } from './Experiment';
 import { date, Evidence, RichText, time } from './Content';
 import { ModelSettings, type ModelDisplay } from './ModelSettings';
 import './detail-polish.css';
-import { NotionDatabase } from './NotionView';
+import { NotionBlock } from './NotionView';
+import { rowBlockOperations } from '../shared/notion-rows';
 import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
@@ -49,7 +50,7 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
       {!chatOpen&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
       <label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Untitled node" maxLength={200}/>
       {readOnly&&<div className="history-inspector-note">Historical canvas · return to the current canvas to make changes.</div>}
-      {node.notion&&<section className="note-content"><NotionDatabase projectId={detail.project.id} nodeId={node.id} view={node.notion} full/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
+      {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {editing
         ? <textarea className="note-description-input" aria-label="Node description" value={description} readOnly={readOnly} onChange={event=>setDescription(event.target.value)} placeholder="What would you like to explore here?" rows={6} autoFocus/>
         : description ? <div className="note-description"><RichText text={description}/></div> : null}
