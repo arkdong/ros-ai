@@ -6,6 +6,9 @@
 .notion-block table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.45; }
 .notion-block th { position: sticky; top: 0; background: #fafafa; color: #6b6b6b; font-weight: 500; text-align: left; white-space: nowrap; }
 .notion-block th, .notion-block td { padding: 5px 8px; border-bottom: 1px solid #f0f0f0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name column stays put while the other columns scroll sideways under it. */
+.notion-block th:first-child, .notion-block td:first-child { position: sticky; left: 0; background: #fff; box-shadow: inset -1px 0 #f0f0f0; }
+.notion-block th:first-child { background: #fafafa; z-index: 1; }
 .notion-block tr:last-child td { border-bottom: 0; }
 .notion-block td a, .notion-page-properties a { color: #171717; text-decoration: none; }
 .notion-block td a:hover, .notion-page-properties a:hover { text-decoration: underline; }

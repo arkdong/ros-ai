@@ -6,7 +6,7 @@ import { api } from './api';
 import { MarkdownPreview, RichText } from './Content';
 import './notion-view.css';
 
-const PREVIEW_COLUMNS = 5, PREVIEW_PROPERTIES = 4;
+const PREVIEW_PROPERTIES = 4;
 /** When it was read: the time today, with the date on another day (a read kept across restarts). */
 const clock = (at: string) => { const date = new Date(at), time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`; };
 const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
@@ -32,28 +32,27 @@ export function NotionBlock({ projectId, nodeId, view, full = false, onRows }: {
     {/* One box of fixed height in a card, whatever the state, so the card is measured once at its full size. */}
     <div className="notion-block-scroll nowheel">{error ? <p className="notion-block-error">{error}</p>
       : !read ? <p className="notion-block-loading"><LoaderCircle size={13} className="spin"/> Reading from Notion…</p>
-      : page ? <PageBody page={page} full={full}/> : <TableBody table={table!} full={full}/>}</div>
+      : page ? <PageBody page={page} full={full}/> : <TableBody table={table!}/>}</div>
     {read?.notice && <p className="notion-block-notice">{read.notice}</p>}
     <footer>
-      {page ? <PageFooter page={page} full={full}/> : <TableFooter table={table} full={full} onRows={onRows} asking={asking} setAsking={setAsking}/>}
+      {page ? <PageFooter page={page} full={full}/> : <TableFooter table={table} onRows={onRows} asking={asking} setAsking={setAsking}/>}
       {!asking && <button className="icon-button" aria-label="Read again from Notion" title="Read again from Notion (otherwise a read is reused for 10 minutes)" disabled={loading} onClick={event => { stop(event); void load(true); }}>{loading ? <LoaderCircle size={13} className="spin"/> : <RotateCw size={13}/>}</button>}
       {!asking && read?.link && <a className="notion-block-open" href={read.link} target="_blank" rel="noreferrer" onClick={stop}>Open in Notion <ArrowUpRight size={12}/></a>}
     </footer>
   </div>;
 }
 
-function TableBody({ table, full }: { table: NotionTable; full: boolean }) {
-  const columns = full ? table.columns : table.columns.slice(0, PREVIEW_COLUMNS);
+function TableBody({ table }: { table: NotionTable }) {
+  const columns = table.columns;
   return <><table>
     <thead><tr>{columns.map(name => <th key={name} title={name}>{name}</th>)}</tr></thead>
     <tbody>{table.rows.map((row, index) => <tr key={row.url || index}>{columns.map((name, column) => <td key={name} title={row[name]}>{column === 0 && row.url ? <a href={row.url} target="_blank" rel="noreferrer" onClick={stop}>{row[name] || 'Untitled'}</a> : row[name]}</td>)}</tr>)}</tbody>
   </table>{!table.rows.length && <p className="notion-block-empty">No rows match.</p>}</>;
 }
 
-function TableFooter({ table, full, onRows, asking, setAsking }: { table: NotionTable | null; full: boolean; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null>; asking: boolean; setAsking: (value: boolean) => void }) {
+function TableFooter({ table, onRows, asking, setAsking }: { table: NotionTable | null; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null>; asking: boolean; setAsking: (value: boolean) => void }) {
   const [busy, setBusy] = useState(false), [done, setDone] = useState('');
   if (!table) return <span>Live from Notion</span>;
-  const columns = full ? table.columns.length : Math.min(PREVIEW_COLUMNS, table.columns.length);
   const count = Math.min(MAX_ROW_BLOCKS, table.rows.length);
   if (asking) return <>
     <span title="Each block shows its page live and is linked to this database. Rows already on the canvas are skipped.">{table.rows.length > MAX_ROW_BLOCKS ? `First ${MAX_ROW_BLOCKS} of ${table.rows.length} rows; narrow the filter for the rest.` : `Add one block per row?`}</span>
@@ -61,7 +60,7 @@ function TableFooter({ table, full, onRows, asking, setAsking }: { table: Notion
     <button className="small primary notion-block-action" disabled={busy} onClick={async event => { stop(event); setBusy(true); try { const outcome = await onRows!(table); if (outcome) setDone(outcome.added ? `Added ${outcome.added} block${outcome.added === 1 ? '' : 's'}${outcome.skipped ? ` · ${outcome.skipped} already on the canvas` : ''}` : outcome.skipped ? 'Every row is on the canvas already' : 'No rows to add'); } finally { setBusy(false); setAsking(false); } }}>{busy ? <LoaderCircle size={12} className="spin"/> : null}Add {count}</button>
   </>;
   return <>
-    <span>{done || `${table.rows.length}${table.truncated ? '+' : ''} row${table.rows.length === 1 ? '' : 's'}${table.columns.length > columns ? ` · ${table.columns.length} columns` : ''} · read ${clock(table.fetchedAt)}`}</span>
+    <span>{done || `${table.rows.length}${table.truncated ? '+' : ''} row${table.rows.length === 1 ? '' : 's'} · read ${clock(table.fetchedAt)}`}</span>
     {onRows && table.rows.length > 0 && <button className="icon-button" aria-label="One block per row" title="One block per row: a page block for each row, linked to this database" onClick={event => { stop(event); setDone(''); setAsking(true); }}><Rows3 size={13}/></button>}
   </>;
 }
