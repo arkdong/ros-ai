@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-import { confinedEnv, killGroup, PYTHON_PACKAGES, watchGroup, type Confine, type PythonRuntime } from './local-python.js';
+import { confinedEnv, killGroup, proxyEnv, PYTHON_PACKAGES, watchGroup, type Confine, type PythonRuntime } from './local-python.js';
+import type { NetworkGate } from './network-gate.js';
 
 import type { RemoteExecutionState } from '../shared/experiments.js';
 export type { RemoteExecutionState } from '../shared/experiments.js';
-export type SandboxInput = { code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
+export type SandboxInput = { projectId?: string; code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
 export type SandboxOutput = { kind: 'table' | 'metric' | 'plot' | 'result' | 'dataset'; title: string; content: string; mediaType: string; metadata?: Record<string, unknown> };
 export type SandboxCapabilities = {
   available: boolean; backend: 'docker-python' | 'nebius-sandbox'; policy: string; runtime: string | null;
@@ -199,7 +200,10 @@ export class LocalPythonBackend implements ExecutionBackend {
   private readonly worker = readFileSync(join(supportPath, 'sandbox_worker.py'), 'utf8');
   private readonly timeoutMs: number;
 
-  constructor(private readonly runtime: PythonRuntime, private readonly confine: Confine | null, options: { timeoutMs?: number } = {}) {
+  private readonly gate?: NetworkGate;
+
+  constructor(private readonly runtime: PythonRuntime, private readonly confine: Confine | null, options: { timeoutMs?: number; gate?: NetworkGate } = {}) {
+    this.gate = options.gate;
     this.timeoutMs = Math.max(100, Math.min(30_000, options.timeoutMs ?? 30_000));
   }
 
@@ -212,7 +216,7 @@ export class LocalPythonBackend implements ExecutionBackend {
       workerHash: sha(JSON.stringify({ worker: sha(this.worker), spec: this.runtime.specHash, limits: codeLimits })), imageId: `local-python:${this.runtime.specHash.slice(0, 16)}`,
       libraries, timeoutMs: this.timeoutMs, maxMemoryMb: codeLimits.memoryMb, maxOutputBytes,
       enforcement: [
-        'macOS sandbox (Seatbelt): no network; the home folder and other drives cannot be read; writes only in a private temporary folder.',
+        `macOS sandbox (Seatbelt): ${this.gate ? 'network only through the ros.ai proxy, which asks before each new site (PyPI allowed)' : 'no network'}; the home folder and other drives cannot be read; writes only in a private temporary folder.`,
         'Only copied, read-only per-run code, parameters and an optional CSV. No original files, project folders, keys or tokens; the environment is emptied.',
         `${codeLimits.memoryMb} MB memory and ${codeLimits.processes} processes (checked twice a second), CPU 25 s, wall time at most ${this.timeoutMs / 1000} s; stop ends every process it started.`,
         'Per-file 16 MB, stdout 2 MB, stderr 100 KB, 20 captured outputs of at most 500 KB each.',
@@ -239,10 +243,11 @@ export class LocalPythonBackend implements ExecutionBackend {
     if (input.csv !== undefined) files.push(['dataset.csv', input.csv]);
     for (const [filename, content] of files) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
     chmodSync(inputs, 0o555);
-    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined;
+    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined, proxy: { port: number; close: () => void } | undefined;
     const done = (async (): Promise<SandboxResult> => {
       const result: SandboxResult = { status: 'failed', outputs: [], stdout: '', stderr: '', exitCode: null, signal: null, runtime: capabilities.runtime, startedAt, endedAt: '', enforcement: [...capabilities.enforcement] };
       const close = () => {
+        proxy?.close();
         result.endedAt = new Date().toISOString();
         try { chmodSync(inputs, 0o755); rmSync(temporary, { recursive: true, force: true }); }
         catch { result.stderr += '\nTemporary input cleanup failed; the folder holds only this run\'s copied inputs.'; }
@@ -251,12 +256,15 @@ export class LocalPythonBackend implements ExecutionBackend {
       let python: string;
       try { python = await this.runtime.ensure(); }
       catch (error) { result.error = error instanceof Error ? error.message : String(error); return close(); }
+      try { proxy = await this.gate?.open(input.projectId ?? null, 'A Code block'); }
+      catch (error) { result.error = error instanceof Error ? error.message : String(error); return close(); }
       if (stopped) { result.status = 'cancelled'; result.error = stopped; return close(); }
-      const wrapped = confine(python, ['-I', '-c', this.worker], { read: [this.runtime.home, temporary], write: [work, tmp] });
+      const packages = input.projectId ? this.runtime.packages(input.projectId) : undefined;
+      const wrapped = confine(python, ['-I', '-c', this.worker], { read: [this.runtime.home, temporary], write: [work, tmp], ...(proxy ? { proxyPort: proxy.port } : {}) });
       return new Promise<SandboxResult>(resolve => {
         let wire = '', stderr = '', wireBytes = 0, errorMessage: string | undefined, ended = false;
         const proc = spawn(wrapped.command, wrapped.args, { cwd: work, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-          env: confinedEnv(work, tmp, { ROS_SANDBOX_INPUT: inputs }) });
+          env: confinedEnv(work, tmp, { ROS_SANDBOX_INPUT: inputs, ...(packages ? { ROS_SANDBOX_PACKAGES: packages } : {}), ...(proxy ? proxyEnv(proxy.port, this.runtime.certFile) : {}) }) });
         child = proc;
         const end = (message: string) => { errorMessage ??= message; killGroup(proc.pid); };
         const unwatch = proc.pid ? watchGroup(proc.pid, codeLimits, reason => end(`Isolated experiment ${reason}.`)) : () => undefined;

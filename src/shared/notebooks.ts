@@ -24,7 +24,7 @@ export type NotebookState = {
   notebook:NotebookContent; kernel:NotebookKernel; queue:NotebookQueued[]; mode:ApprovalMode;
   /** The .ipynb file and the folder cells may write to, relative to the project folder. */
   file:string|null; outputs:string|null;
-  runtime:{ available:boolean; reason?:string };
+  runtime:{ available:boolean; reason?:string; network?:boolean };
   /** A version replaced by an import or an edit in another app, which Undo brings back. */
   previous?:{ reason:string; at:string };
   /** Outputs saved as results, as `cellId/index` → artifact id, while the output is unchanged. */

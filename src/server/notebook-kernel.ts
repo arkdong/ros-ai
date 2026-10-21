@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { confinedEnv, killGroup, watchGroup, type Confine } from './local-python.js';
+import { confinedEnv, killGroup, proxyEnv, watchGroup, type Confine } from './local-python.js';
 import { SANDBOX_IMAGE } from './sandbox.js';
 
 const KERNEL = readFileSync(fileURLToPath(new URL('./sandbox/notebook_kernel.py', import.meta.url)), 'utf8');
@@ -67,7 +67,7 @@ export function removeLeftoverKernels(owner: string, docker = 'docker'): void {
 }
 
 /** Notebook Python without Docker: ros.ai's own Python in the operating system's sandbox, with the same caps. */
-export type LocalKernel = { python: string; home: string; confine: Confine };
+export type LocalKernel = { python: string; home: string; confine: Confine; packages?: string; proxy?: { port: number; certFile: string } };
 const kernelLimits = { memoryMb: 2048, processes: 128 };
 
 /** One long-running Python process, in its own container or the OS sandbox, speaking JSON lines. */
@@ -105,9 +105,12 @@ export class NotebookKernelProcess {
     mkdirSync(work); mkdirSync(tmp);
     this.temporary = temporary;
     const cwd = folder ? join(folder.root, folder.notebookDir) : work;
-    const wrapped = local.confine(local.python, ['-I', '-u', '-c', KERNEL], { read: [local.home, temporary, ...(folder ? [folder.root] : [])], write: [work, tmp, ...(folder ? [folder.outputsPath] : [])] });
+    if (local.packages) mkdirSync(local.packages, { recursive: true });
+    const wrapped = local.confine(local.python, ['-I', '-u', '-c', KERNEL], { read: [local.home, temporary, ...(folder ? [folder.root] : [])],
+      write: [work, tmp, ...(folder ? [folder.outputsPath] : []), ...(local.packages ? [local.packages] : [])], ...(local.proxy ? { proxyPort: local.proxy.port } : {}) });
     const child = spawn(wrapped.command, wrapped.args, { cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
-      env: confinedEnv(work, tmp, folder ? { ROS_NOTEBOOK_OUTPUTS: relative(cwd, folder.outputsPath) || '.' } : {}) });
+      env: confinedEnv(work, tmp, { ...(folder ? { ROS_NOTEBOOK_OUTPUTS: relative(cwd, folder.outputsPath) || '.' } : {}),
+        ...(local.packages ? { ROS_NOTEBOOK_PACKAGES: local.packages } : {}), ...(local.proxy ? proxyEnv(local.proxy.port, local.proxy.certFile) : {}) }) });
     if (child.pid) this.unwatch = watchGroup(child.pid, kernelLimits, reason => void this.stop(`Python stopped because it ${reason} (a notebook can use 2 GB and ${kernelLimits.processes} processes). Its variables were cleared; run the cells again.`));
     this.attach(child);
   }

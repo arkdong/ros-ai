@@ -24,6 +24,7 @@ import { DemoOnboarding } from './DemoOnboarding';
 import { ExecutableDemo } from './ExecutableDemo';
 import { WorkflowDemo } from './WorkflowDemo';
 import type { TutorialSession } from '../shared/tutorial';
+import { NetworkPrompt } from './NetworkPrompt';
 import { BalanceSettings, GeneralSettings, SettingsSidebar, UsageSettings, type SettingsSection } from './SettingsPage';
 import { PluginsPage, PluginsSidebar } from './PluginsPage';
 import { AgentsSidebar, type AgentId } from './ModelPage';
@@ -237,6 +238,7 @@ export function App(){
     {newProject&&<NewProjectModal folders={!publicDemo} onClose={()=>setNewProject(false)} onCreate={createProject} onOpenFolder={openFolder} onDemo={()=>{setNewProject(false);setDemoPicker(true);}}/>}
     {demoPicker&&!setupOpen&&<Modal title="Explore ros.ai" className="demo-onboarding-modal" onClose={dismissDemoPicker}><DemoOnboarding onCreated={session=>{void openCreatedDemo(session).catch(report);}} onSkip={dismissDemoPicker}/></Modal>}
     {attachment&&detail&&<AttachModal detail={detail} initial={attachment} onClose={()=>setAttachment(null)} onAttach={async(artifactId,nodeId,excerpt)=>{if(await action(()=>post(`/api/projects/${projectId}/inputs`,{artifactId,nodeId,...(excerpt?{excerpt}:{})}))){setAttachment(null);setExpandedIds(ids=>[...new Set([...ids,nodeId])]);}}}/>}
+    <NetworkPrompt publicDemo={publicDemo}/>
   </div>;
 }
 

@@ -28,7 +28,7 @@ npm run build
 npm start
 ```
 
-On macOS, Code and Notebook blocks need nothing else: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs it in the macOS sandbox, the way Codex and Claude Code run commands. On Linux and Windows they still use Docker for now: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
+On macOS, Code and Notebook blocks need nothing else: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs it in the macOS sandbox, the way Codex and Claude Code run commands. Its only network is a proxy on this computer that asks before each new website (Allow once, Always for this project, Deny; PyPI is always allowed, so `%pip install` works in notebooks); Settings → General → Python network can switch to Full network. On Linux and Windows they still use Docker for now: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
 
 Open **http://127.0.0.1:4310**. The service binds to loopback. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Keep it and `.env.local` intact. Build after frontend changes and restart the service after backend changes. Docker/image absence disables isolated experiments; it never falls back to unrestricted host Python.
 
@@ -107,7 +107,7 @@ Use a project’s **… → Delete project** action to move it to local **Trash*
 
 ## Actual Python boundary
 
-Python executes with pandas, NumPy, matplotlib and SciPy inside the macOS sandbox (Seatbelt: no network, the home folder unreadable except the project, writes only to the notebook's outputs folder and a private temporary folder, memory and process caps) or, on other systems, inside Docker. The dedicated Code block receives `params`, `pd`, `np`, `plt`, `scipy` and output helpers; `df` exists only when a full CSV is deliberately selected. Legacy dataset experiments retain their captured `df` contract:
+Python executes with pandas, NumPy, matplotlib and SciPy inside the macOS sandbox (Seatbelt: network only through ros.ai's asking proxy, the home folder unreadable except the project, writes only to the notebook's outputs folder and a private temporary folder, memory and process caps) or, on other systems, inside Docker. The dedicated Code block receives `params`, `pd`, `np`, `plt`, `scipy` and output helpers; `df` exists only when a full CSV is deliberately selected. Legacy dataset experiments retain their captured `df` contract:
 
 ```python
 metric("Mean", df["value"].mean())

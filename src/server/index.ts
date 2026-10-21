@@ -18,6 +18,7 @@ import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
 import { LocalPythonBackend } from './sandbox.js';
 import { PythonRuntime, systemConfine } from './local-python.js';
+import { NetworkGate } from './network-gate.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
@@ -117,8 +118,8 @@ try {
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
-    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(join(dataDir, 'python')), confine } : undefined;
-    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine)}:{})});
+    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(join(dataDir, 'python')), confine, gate: new NetworkGate(store) } : undefined;
+    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);

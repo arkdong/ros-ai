@@ -334,7 +334,7 @@ export class ExperimentService {
     const backend=this.backend(config);
     this.event(run.id,'process-start',config.backend==='nebius-sandbox'?'Submitting the approved Python and captured inputs to a disposable Nebius sandbox.':'Executing model/user Python in the local sandbox.',{backend:backend.capabilities()});
     try {
-      const handle=backend.start({code:config.code,...(config.manualCode&&config.inputMode==='none'?{}:{csv:config.csv}),parameters:config.parameters,timeoutMs:this.timeout(config),...(config.backend==='nebius-sandbox'?{onProgress:(state:RemoteExecutionState)=>this.remoteProgress(run.id,state)}:{})});
+      const handle=backend.start({projectId:run.projectId,code:config.code,...(config.manualCode&&config.inputMode==='none'?{}:{csv:config.csv}),parameters:config.parameters,timeoutMs:this.timeout(config),...(config.backend==='nebius-sandbox'?{onProgress:(state:RemoteExecutionState)=>this.remoteProgress(run.id,state)}:{})});
       const active:Active={done:Promise.resolve(),cancel:()=>handle.cancel('User stopped this experiment.')};
       this.active.set(run.id,active);
       active.done=handle.done.then(result=>{

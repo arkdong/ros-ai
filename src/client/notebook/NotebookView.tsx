@@ -375,7 +375,7 @@ export function NotebookView({ node, detail, file, mode: chosenMode, onClose, on
           onOpenArtifact={onOpenArtifact} onReport={onReport} onInterpret={onInterpret} onRefresh={onRefresh}/>)}
         <div className="nb-add"><button className="secondary small" onClick={() => insert('code', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Code</button><button className="secondary small" onClick={() => insert('markdown', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Text</button></div>
         <footer className="nb-footer">
-          <p>Python runs in a sandbox with no network. {state.outputs ? <>It can read this project’s folder and save files in <code>{state.outputs}/</code>.</> : 'It can save files in /tmp only, because this project has no folder.'}</p>
+          <p>{state.runtime.network ? 'Python runs in a sandbox and asks before reaching a new website; %pip install works.' : 'Python runs in a sandbox with no network.'} {state.outputs ? <>It can read this project’s folder and save files in <code>{state.outputs}/</code>.</> : 'It can save files in /tmp only, because this project has no folder.'}</p>
           <p><kbd>Shift</kbd>+<kbd>Enter</kbd> runs a cell · <kbd>{modKey === '⌘' ? '⌘' : 'Ctrl'}</kbd>+<kbd>Enter</kbd> runs it in place · <kbd>Esc</kbd> then <kbd>A</kbd> or <kbd>B</kbd> adds a cell, <kbd>M</kbd> or <kbd>Y</kbd> makes it text or code, <kbd>D</kbd><kbd>D</kbd> deletes, <kbd>Z</kbd> brings it back</p>
         </footer>
       </div>

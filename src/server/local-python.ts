@@ -9,6 +9,8 @@ import { delimiter, join } from 'node:path';
  * the first time a block runs, into its data folder, so a person installs nothing. */
 
 export const PYTHON_PACKAGES = ['numpy==2.2.6', 'pandas==2.2.3', 'matplotlib==3.10.3', 'scipy==1.15.3'];
+/** certifi gives Python the certificates HTTPS needs, and pip (seeded into the environment) installs packages. */
+const INSTALL = [...PYTHON_PACKAGES, 'certifi==2026.7.22'];
 const PYTHON_SERIES = '3.12';
 const UV_VERSION = '0.11.32';
 /** Checksums of the uv release archives ros.ai downloads when uv is not installed. */
@@ -16,7 +18,7 @@ const UV_ARCHIVES: Record<string, string> = {
   'darwin-arm64': 'aarch64-apple-darwin:ed336d0ba49db8ef89b2b41fffa372ce63bd032f22a56f001c265891aec32829',
   'darwin-x64': 'x86_64-apple-darwin:77f5ca26c0de20e992a3677a174fe1121ee25c36f9b1434a863f75bf077a05eb',
 };
-const SPEC = createHash('sha256').update(JSON.stringify({ python: PYTHON_SERIES, packages: PYTHON_PACKAGES })).digest('hex');
+const SPEC = createHash('sha256').update(JSON.stringify({ python: PYTHON_SERIES, packages: INSTALL, seed: true })).digest('hex');
 
 export type PythonState = { status: 'ready'; python: string; version: string } | { status: 'missing' | 'installing' | 'failed'; message: string };
 type Ready = { spec: string; version: string };
@@ -34,6 +36,10 @@ export class PythonRuntime {
 
   get python(): string { return join(this.home, 'env', 'bin', 'python'); }
   get specHash(): string { return SPEC; }
+  /** The project's own packages, installed from a notebook with %pip install. */
+  packages(projectId: string): string { return join(this.home, 'projects', createHash('sha256').update(projectId).digest('hex').slice(0, 24)); }
+  /** Certificates for HTTPS through the network proxy. */
+  get certFile(): string { return join(this.home, 'env', 'lib', `python${PYTHON_SERIES}`, 'site-packages', 'certifi', 'cacert.pem'); }
 
   state(): PythonState {
     const ready = this.ready();
@@ -70,8 +76,8 @@ export class PythonRuntime {
     const venv = join(this.home, 'env');
     rmSync(join(this.home, 'ready.json'), { force: true });
     rmSync(venv, { recursive: true, force: true });
-    await run(uv, ['venv', '--quiet', '--no-project', '--python', PYTHON_SERIES, venv], env);
-    await run(uv, ['pip', 'install', '--quiet', '--python', this.python, ...PYTHON_PACKAGES], env);
+    await run(uv, ['venv', '--quiet', '--seed', '--no-project', '--python', PYTHON_SERIES, venv], env);
+    await run(uv, ['pip', 'install', '--quiet', '--python', this.python, ...INSTALL], env);
     const version = (await run(this.python, ['-I', '-c', 'import platform; print(platform.python_version())'], { PATH: '/usr/bin:/bin' }, 60_000)).trim();
     // The downloaded wheels are not needed once installed; this keeps the folder near 400 MB.
     rmSync(join(this.home, 'cache'), { recursive: true, force: true });
@@ -106,7 +112,7 @@ export class PythonRuntime {
 }
 
 /** Folders a confined Python may read beyond the system's own files, and the only folders it may write. */
-export type Confinement = { read: string[]; write: string[] };
+export type Confinement = { read: string[]; write: string[]; proxyPort?: number };
 /** Wraps a command so the operating system enforces a confinement, or null where ros.ai has no sandbox for this system. */
 export type Confine = (command: string, args: string[], paths: Confinement) => { command: string; args: string[] };
 
@@ -114,7 +120,8 @@ const real = (path: string) => { try { return realpathSync(path); } catch { retu
 const quote = (value: string) => `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 
 /** A Seatbelt profile in the spirit of Codex's: everything denied, then process basics, system files, the named folders.
- * No network rule is granted, so every socket to another computer fails. The person's home folder and other drives
+ * The only network it grants is the ros.ai network proxy on this computer (see network-gate.ts), so every other
+ * socket fails and each site passes the proxy's own check. The person's home folder and other drives
  * stay unreadable except the folders named in `read`. */
 export function seatbeltProfile(paths: Confinement, home = homedir()): string {
   const read = paths.read.map(real), write = paths.write.map(real);
@@ -134,6 +141,7 @@ export function seatbeltProfile(paths: Confinement, home = homedir()): string {
     ...read.map(path => `(allow file-read* (subpath ${quote(path)}))`),
     '(allow file-read* file-write-data (literal "/dev/null") (literal "/dev/zero") (literal "/dev/urandom") (literal "/dev/random"))',
     ...write.map(path => `(allow file-read* file-write* (subpath ${quote(path)}))`),
+    ...(paths.proxyPort ? [`(allow network-outbound (remote ip "localhost:${Math.trunc(paths.proxyPort)}"))`] : []),
   ].join('\n');
 }
 
@@ -148,6 +156,13 @@ export function confinedEnv(home: string, tmp: string, extra: Record<string, str
   return { PATH: '/usr/bin:/bin', HOME: home, TMPDIR: tmp, MPLCONFIGDIR: join(tmp, 'matplotlib'), MPLBACKEND: 'Agg', LANG: 'en_US.UTF-8',
     PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1', PYTHONNOUSERSITE: '1',
     OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1', MKL_NUM_THREADS: '1', NUMEXPR_NUM_THREADS: '1', VECLIB_MAXIMUM_THREADS: '1', ...extra };
+}
+
+/** Sends Python's web traffic (pip, urllib, requests) through the ros.ai network proxy. */
+export function proxyEnv(port: number, certFile: string): Record<string, string> {
+  const proxy = `http://127.0.0.1:${port}`;
+  return { HTTP_PROXY: proxy, HTTPS_PROXY: proxy, http_proxy: proxy, https_proxy: proxy, NO_PROXY: '', no_proxy: '', SSL_CERT_FILE: certFile,
+    REQUESTS_CA_BUNDLE: certFile, PIP_DISABLE_PIP_VERSION_CHECK: '1' };
 }
 
 /** Memory and process caps the OS sandbox does not set: checks the process group twice a second and stops it at the cap. */

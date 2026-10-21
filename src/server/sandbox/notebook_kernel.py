@@ -20,7 +20,9 @@ import os
 import platform
 import queue
 import resource
+import shlex
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -52,6 +54,8 @@ MAX_PLAIN = 100_000
 MAX_CSV = 1_000_000
 SETUP_MAGICS = ("%matplotlib", "%config", "%load_ext", "%reload_ext", "%autoreload")
 OUTPUTS = os.environ.get("ROS_NOTEBOOK_OUTPUTS", "")
+# The project's own packages folder, where %pip install puts packages (sandboxed Python only).
+PACKAGES = os.environ.get("ROS_NOTEBOOK_PACKAGES", "")
 
 KERNEL_GLOBALS = globals()
 _send_lock = threading.Lock()
@@ -376,10 +380,19 @@ def prepare(source, filename):
         if text.startswith(SETUP_MAGICS):
             lines[index] = line[:len(line) - len(line.lstrip())] + "pass"
             continue
+        if PACKAGES and text.split()[0] in ("%pip", "!pip", "%pip3", "!pip3"):
+            try:
+                words = shlex.split(text)[1:]
+            except ValueError:
+                words = None
+            if words is not None:
+                lines[index] = line[:len(line) - len(line.lstrip())] + f"__ros_pip__({words!r})"
+                continue
         kind = "a shell command" if text.startswith("!") else "an IPython magic"
         message = f"line {index + 1} is {kind} ({text.split()[0]}). ros.ai notebooks run plain Python, without IPython magics or a shell."
         if any(word in text for word in ("pip", "conda", "install")):
-            message += " Packages can't be installed here: the sandbox has no network. It comes with pandas, NumPy, SciPy and matplotlib."
+            message += (" Install packages with %pip install <name>." if PACKAGES else
+                        " Packages can't be installed here: the sandbox has no network. It comes with pandas, NumPy, SciPy and matplotlib.")
         error = SyntaxError(message)
         error.filename, error.lineno, error.offset, error.text = filename, index + 1, 1, line
         raise error
@@ -417,7 +430,26 @@ def failure_output(failure, filename):
 
 user_main = types.ModuleType("__main__")
 namespace = user_main.__dict__
-namespace.update({"__builtins__": builtins, "display": display})
+def pip(words):
+    """%pip install: packages go to this project's own folder, downloaded through the ros.ai network proxy."""
+    if not words or words[0] not in ("install", "uninstall", "list", "show", "freeze"):
+        raise ValueError("ros.ai supports %pip install, uninstall, list, show and freeze.")
+    command = [sys.executable, "-m", "pip", *words]
+    if words[0] == "install":
+        command += ["--target", PACKAGES, "--upgrade", "--no-input", "--progress-bar", "off"]
+    elif words[0] in ("list", "freeze"):
+        command += ["--path", PACKAGES]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True)
+    for output in process.stdout:
+        sys.stdout.write(output)
+    if process.wait() != 0:
+        raise RuntimeError(f"pip {words[0]} failed (exit code {process.returncode}). A site it needs may have been denied.")
+    importlib.invalidate_caches()
+    if words[0] == "install":
+        print("Installed. Restart Python if a package was already imported.")
+
+
+namespace.update({"__builtins__": builtins, "display": display, "__ros_pip__": pip})
 sys.modules["__main__"] = user_main
 
 
@@ -502,6 +534,8 @@ def main():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     sys.dont_write_bytecode = True
     sys.path.append(os.getcwd())
+    if PACKAGES:
+        sys.path.append(PACKAGES)
     sys.stdout, sys.stderr, sys.stdin = Output("stdout"), Output("stderr"), io.StringIO("")
     builtins.input = no_input
     signal.signal(signal.SIGINT, interrupt)

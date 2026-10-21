@@ -54,6 +54,12 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   const [paths, setPaths] = useState<{ dataDir: string | null; keysFile: string | null } | null>(null);
   const [mode, setMode] = useState<ApprovalMode>(policy?.mode ?? 'ask'), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
+  const [network, setNetwork] = useState<{ mode: 'ask' | 'full'; preset: string[]; sites: string[] } | null>(null);
+  const networkUrl = `/api/python-network${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`;
+  // Only sandboxed Python (macOS) has a network proxy; elsewhere this row stays hidden.
+  useEffect(() => { if (!publicDemo) void api<NonNullable<typeof network>>(networkUrl).then(setNetwork).catch(() => setNetwork(null)); }, [publicDemo, networkUrl]);
+  const saveNetwork = async (mode: 'ask' | 'full') => { const saved = await api<{ mode: 'ask' | 'full' }>('/api/python-network', { method: 'PUT', body: JSON.stringify({ mode }) }); setNetwork(current => current && { ...current, mode: saved.mode }); };
+  const forgetSite = async (host: string) => { if (!projectId) return; const { sites } = await api<{ sites: string[] }>(`/api/python-network/sites/${encodeURIComponent(projectId)}/${encodeURIComponent(host)}`, { method: 'DELETE' }); setNetwork(current => current && { ...current, sites }); };
   const budgetUrl = `/api/settings/budget${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`;
   useEffect(() => { if (!publicDemo) void api<BudgetStatus>(budgetUrl).then(setBudget).catch(() => {}); }, [publicDemo, budgetUrl]);
   const saveBudget = async (scope: 'all' | 'project', monthlyUsd: number | null) => setBudget(await api<BudgetStatus>('/api/settings/budget', { method: 'PUT', body: JSON.stringify({ scope, ...(scope === 'project' ? { projectId } : {}), monthlyUsd }) }));
@@ -77,6 +83,12 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
     {!publicDemo && budget && <section><h2>Monthly budget</h2><div className="settings-card">
       <Row title="All projects" detail={budgetDetail(budget.all)}><AmountField label="Monthly budget for all projects" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
       {budget.project && <Row title={projectTitle ?? 'This project'} detail={budgetDetail(budget.project)}><AmountField label="Monthly budget for this project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
+    </div></section>}
+    {network && <section><h2>Python network</h2><div className="settings-card">
+      <Row title="Sites" detail={network.mode === 'full' ? 'Python in Code and Notebook blocks can reach any website.' : `Python asks before reaching a new website. ${network.preset.join(' and ')} are always allowed for installing packages.`}>
+        <select aria-label="Python network" value={network.mode} onChange={event => void saveNetwork(event.target.value as 'ask' | 'full')}><option value="ask">Ask for each site</option><option value="full">Full network</option></select>
+      </Row>
+      {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
     {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>

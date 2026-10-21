@@ -30,3 +30,8 @@ test('Python is reported as set up on the first run until it is installed', () =
   assert.equal(backend.capabilities().available, true);
   assert.match(backend.capabilities().runtime ?? '', /set up on the first run/u);
 });
+
+test('the Seatbelt profile allows the network proxy port and nothing else', () => {
+  const profile = seatbeltProfile({ read: [], write: [], proxyPort: 51234 }, '/Users/ada');
+  assert.deepEqual(profile.split('\n').filter(line => line.includes('network')), ['(allow network-outbound (remote ip "localhost:51234"))']);
+});

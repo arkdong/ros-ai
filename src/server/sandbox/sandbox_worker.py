@@ -16,6 +16,9 @@ import traceback
 from datetime import date, datetime
 
 INPUT = os.environ.get("ROS_SANDBOX_INPUT", "/input")
+# Packages the project installed from a notebook with %pip install (sandboxed Python only).
+if os.environ.get("ROS_SANDBOX_PACKAGES"):
+    sys.path.append(os.environ["ROS_SANDBOX_PACKAGES"])
 
 import matplotlib
 matplotlib.use("Agg")

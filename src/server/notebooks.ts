@@ -6,7 +6,10 @@ import { Store, StoreError } from './store.js';
 import type { Authority } from './authority.js';
 import { forgetNotebookNames, reviewNotebookCell, type NotebookNames } from './review-code.js';
 import type { Confine, PythonRuntime } from './local-python.js';
-import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage } from './notebook-kernel.js';
+import type { NetworkGate } from './network-gate.js';
+/** Sandboxed Python without Docker, and the proxy that gives it network. */
+export type SandboxedPython = { runtime: PythonRuntime; confine: Confine; gate?: NetworkGate };
+import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage, type LocalKernel } from './notebook-kernel.js';
 import { NOTEBOOK_LIMITS, type NotebookCell, type NotebookContent, type NotebookEvent, type NotebookKernel, type NotebookOutput,
   type NotebookRunResult, type NotebookState, type NotebookSummary } from '../shared/notebooks.js';
 import type { ApprovalMode } from '../shared/research.js';
@@ -35,7 +38,7 @@ type Previous = { content: Stored; reason: string; at: string };
 /** `names` are what the automatic reviewer knows after this cell, if it and every cell before it finish. */
 type Pending = { execution: string; cellId: string; source: string; reviewable: string; names?: NotebookNames; queuedAt: string; approval: { mode: ApprovalMode; outcome: 'allow' | 'approved'; reason: string } };
 type Running = Pending & { count: number; session: string; startedAt: string; outputs: NotebookOutput[] };
-type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; status: NotebookKernel['status']; count: number;
+type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; proxy?: { port: number; close: () => void }; status: NotebookKernel['status']; count: number;
   queue: Pending[]; running?: Running; info?: { python: string; libraries: Record<string, string>; cwd: string }; message?: string; stopMessage?: string;
   settled?: NotebookNames; idle?: NodeJS.Timeout; startup?: NodeJS.Timeout; usedAt: number; folder?: KernelFolder };
 type Execution = { id: string; projectId: string; nodeId: string; cellId: string; session: string; executionCount: number; source: string; sourceHash: string;
@@ -136,9 +139,9 @@ export class NotebookService {
   private closed = false;
 
   /** Without Docker: ros.ai's own Python in the operating system's sandbox. */
-  private readonly python?: { runtime: PythonRuntime; confine: Confine };
+  private readonly python?: SandboxedPython;
 
-  constructor(private readonly store: Store, private readonly authority: Authority, options: { owner?: string; docker?: string; python?: { runtime: PythonRuntime; confine: Confine } } = {}) {
+  constructor(private readonly store: Store, private readonly authority: Authority, options: { owner?: string; docker?: string; python?: SandboxedPython } = {}) {
     this.owner = options.owner ?? 'ros-ai';
     this.docker = options.docker ?? 'docker';
     this.python = options.python;
@@ -249,7 +252,7 @@ export class NotebookService {
     return { notebook, kernel: this.kernelState(live), mode: this.authority.mode(projectId, nodeId), saved,
       queue: [...(live?.running ? [{ cellId: live.running.cellId, state: 'running' as const }] : []), ...(live?.queue ?? []).map(item => ({ cellId: item.cellId, state: 'queued' as const }))],
       file, outputs: file ? `outputs/${file.split('/').at(-1)!.replace(/\.ipynb$/iu, '')}` : null,
-      runtime: 'id' in runtime ? { available: true } : { available: false, reason: runtime.reason },
+      runtime: 'id' in runtime ? { available: true, ...(this.python?.gate ? { network: true } : {}) } : { available: false, reason: runtime.reason },
       ...(previous ? { previous: { reason: previous.reason, at: previous.at } } : {}) };
   }
 
@@ -327,12 +330,19 @@ export class NotebookService {
     live.status = 'starting'; live.message = undefined; live.stopMessage = undefined;
     this.emitKernel(live);
     const fail = (message: string) => { live.status = 'off'; live.message = message; this.cancelQueue(live); this.emitKernel(live); };
-    let local: { python: string; home: string; confine: Confine } | undefined;
+    let local: LocalKernel | undefined;
     if (this.python) {
       // The first run sets Python up; the notebook shows that while it waits.
       if (this.python.runtime.state().status !== 'ready') { live.message = 'Setting up Python for the first run (about a minute, once)…'; this.emitKernel(live); }
-      try { local = { python: await this.python.runtime.ensure(), home: this.python.runtime.home, confine: this.python.confine }; }
+      const runtime = this.python.runtime, title = this.store.getProject(live.projectId).canvas.nodes.find(item => item.id === live.nodeId)?.title;
+      try {
+        const python = await runtime.ensure();
+        const proxy = await this.python.gate?.open(live.projectId, title ? `Notebook “${title}”` : 'A notebook');
+        live.proxy = proxy;
+        local = { python, home: runtime.home, confine: this.python.confine, packages: runtime.packages(live.projectId), ...(proxy ? { proxy: { port: proxy.port, certFile: runtime.certFile } } : {}) };
+      }
       catch (error) { if (live.status === 'starting' && !live.kernel) fail(error instanceof Error ? error.message : String(error)); return; }
+      if (live.status !== 'starting' || live.kernel || this.closed) { live.proxy?.close(); live.proxy = undefined; return; }
       live.message = undefined;
     }
     const image = local ? { id: 'local-python' } : await this.runtimeStatus(true);
@@ -438,6 +448,7 @@ export class NotebookService {
       : exit.detail.startsWith('Python stopped because') ? exit.detail
       : exit.code === 137 || exit.signal === 'SIGKILL' ? `Python stopped because it ran out of memory (a notebook can use 2 GB)${this.python ? '' : ', or Docker stopped it'}. Its variables were cleared; run the cells again.`
       : `Python stopped unexpectedly${exit.code === null ? '' : ` (exit code ${exit.code})`}. Its variables were cleared; run the cells again.${exit.detail && !exit.detail.startsWith('Python') ? ` ${exit.detail.slice(-300)}` : ''}`;
+    live.proxy?.close(); live.proxy = undefined;
     live.kernel = undefined; live.status = 'off'; live.message = reason; live.count = 0; live.info = undefined;
     this.cancelQueue(live);
     if (live.running) this.finish(live, 'error', { ename: 'Stopped', evalue: reason ?? 'Python was restarted before this cell finished.', traceback: [] });
@@ -567,7 +578,7 @@ export class NotebookService {
   }
 }
 
-export function attachNotebookRoutes(app: Express, store: Store, authority: Authority, options: { owner?: string; python?: { runtime: PythonRuntime; confine: Confine } } = {}): NotebookService {
+export function attachNotebookRoutes(app: Express, store: Store, authority: Authority, options: { owner?: string; python?: SandboxedPython } = {}): NotebookService {
   const service = new NotebookService(store, authority, options);
   app.locals.notebooks = service;
   const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), owned = (req: Request) => [id.parse(req.params.id), id.parse(req.params.nodeId)] as const;
