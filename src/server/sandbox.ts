@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 import { confinedEnv, killGroup, proxyEnv, PYTHON_PACKAGES, watchGroup, type Confine, type PythonRuntime } from './local-python.js';
-import type { NetworkGate } from './network-gate.js';
+import type { NetworkGate, NetworkSession } from './network-gate.js';
 
 import type { RemoteExecutionState } from '../shared/experiments.js';
 export type { RemoteExecutionState } from '../shared/experiments.js';
@@ -243,7 +243,7 @@ export class LocalPythonBackend implements ExecutionBackend {
     if (input.csv !== undefined) files.push(['dataset.csv', input.csv]);
     for (const [filename, content] of files) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
     chmodSync(inputs, 0o555);
-    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined, proxy: { port: number; close: () => void } | undefined;
+    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined, proxy: NetworkSession | undefined;
     const done = (async (): Promise<SandboxResult> => {
       const result: SandboxResult = { status: 'failed', outputs: [], stdout: '', stderr: '', exitCode: null, signal: null, runtime: capabilities.runtime, startedAt, endedAt: '', enforcement: [...capabilities.enforcement] };
       const close = () => {
@@ -268,7 +268,14 @@ export class LocalPythonBackend implements ExecutionBackend {
         child = proc;
         const end = (message: string) => { errorMessage ??= message; killGroup(proc.pid); };
         const unwatch = proc.pid ? watchGroup(proc.pid, codeLimits, reason => end(`Isolated experiment ${reason}.`)) : () => undefined;
-        const timer = setTimeout(() => end(`Isolated experiment exceeded its ${timeoutMs} ms wall time.`), timeoutMs);
+        // The wall clock stops while a site waits for the person to allow or deny it.
+        let elapsed = 0, last = Date.now();
+        const timer = setInterval(() => {
+          const now = Date.now();
+          if (!proxy?.waiting()) elapsed += now - last;
+          last = now;
+          if (elapsed >= timeoutMs) end(`Isolated experiment exceeded its ${timeoutMs} ms wall time.`);
+        }, 100);
         proc.stdout!.on('data', (chunk: Buffer) => {
           wireBytes += chunk.length;
           if (wireBytes <= maxOutputBytes) wire += chunk.toString('utf8');
@@ -281,7 +288,7 @@ export class LocalPythonBackend implements ExecutionBackend {
         const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
           if (ended) return;
           ended = true;
-          clearTimeout(timer); unwatch();
+          clearInterval(timer); unwatch();
           killGroup(proc.pid);
           result.exitCode = exitCode; result.signal = signal; result.stderr = stderr;
           try {

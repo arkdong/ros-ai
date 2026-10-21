@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
@@ -21,16 +22,27 @@ const UV_ARCHIVES: Record<string, string> = {
 const SPEC = createHash('sha256').update(JSON.stringify({ python: PYTHON_SERIES, packages: INSTALL, seed: true })).digest('hex');
 
 export type PythonState = { status: 'ready'; python: string; version: string } | { status: 'missing' | 'installing' | 'failed'; message: string };
+/** What the setup notice shows while Python is set up. */
+export type PythonSetupEvent = { status: 'installing'; step: string } | { status: 'ready'; version: string } | { status: 'failed'; message: string };
 type Ready = { spec: string; version: string };
 
 const run = (command: string, args: string[], env: NodeJS.ProcessEnv, timeout = 600_000) => new Promise<string>((resolve, reject) =>
   execFile(command, args, { env, timeout, maxBuffer: 20_000_000 }, (error, stdout, stderr) => error
     ? reject(new Error(`${String(stderr || error.message).trim().split('\n').slice(-4).join(' ').slice(0, 600)}`)) : resolve(String(stdout))));
 
-/** ros.ai's own Python 3.12 with pandas, NumPy, matplotlib and SciPy, kept in `<data>/python`. */
+/** ros.ai's own Python 3.12 with pandas, NumPy, matplotlib and SciPy. One copy per computer (in the app-data folder,
+ * outside any project or code folder), shared by every ros.ai data folder on it. */
 export class PythonRuntime {
   private installing?: Promise<string>;
   private failure?: string;
+  private step = '';
+  private readonly listeners = new Set<(event: PythonSetupEvent) => void>();
+
+  subscribe(listener: (event: PythonSetupEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  /** The setup in progress, for a notice opened after it started. */
+  setup(): PythonSetupEvent | null { return this.installing ? { status: 'installing', step: this.step } : null; }
+  private emit(event: PythonSetupEvent): void { for (const listener of this.listeners) try { listener(event); } catch { /* a closed stream */ } }
+  private progress(step: string): void { this.step = step; this.emit({ status: 'installing', step }); }
 
   constructor(readonly home: string, private readonly options: { uv?: string; fetch?: typeof fetch } = {}) {}
 
@@ -52,8 +64,8 @@ export class PythonRuntime {
   /** The Python to run, installing it first when needed. Several callers share one install. */
   ensure(): Promise<string> {
     if (this.ready()) return Promise.resolve(this.python);
-    this.installing ??= this.install().then(python => { this.failure = undefined; return python; },
-      (error: unknown) => { this.failure = `Python could not be set up: ${error instanceof Error ? error.message : String(error)}`; throw new Error(this.failure); })
+    this.installing ??= this.installOnce().then(python => { this.failure = undefined; this.emit({ status: 'ready', version: this.ready()?.version ?? PYTHON_SERIES }); return python; },
+      (error: unknown) => { this.failure = `Python could not be set up: ${error instanceof Error ? error.message : String(error)}`; this.emit({ status: 'failed', message: this.failure }); throw new Error(this.failure); })
       .finally(() => { this.installing = undefined; });
     return this.installing;
   }
@@ -65,8 +77,30 @@ export class PythonRuntime {
     } catch { return null; }
   }
 
-  private async install(): Promise<string> {
+  /** Another ros.ai on this computer may be setting up the same copy; it holds `installing.lock` until it is done. */
+  private async installOnce(): Promise<string> {
     mkdirSync(this.home, { recursive: true });
+    const lock = join(this.home, 'installing.lock');
+    for (const started = Date.now(); ;) {
+      try { writeFileSync(lock, String(process.pid), { flag: 'wx' }); break; }
+      catch {
+        let owner = 0;
+        try { owner = Number(readFileSync(lock, 'utf8')); } catch { continue; }
+        let alive = false;
+        try { process.kill(owner, 0); alive = owner !== process.pid; } catch { /* gone */ }
+        if (!alive) { rmSync(lock, { force: true }); continue; }
+        this.progress('Another ros.ai window is setting up Python');
+        if (this.ready()) return this.python;
+        if (Date.now() - started > 15 * 60_000) throw new Error('another ros.ai has been setting up Python for 15 minutes.');
+        await sleep(1000);
+      }
+    }
+    try { return this.ready() ? this.python : await this.install(); }
+    finally { rmSync(lock, { force: true }); }
+  }
+
+  private async install(): Promise<string> {
+    this.progress('Getting uv, the installer');
     const uv = await this.uv();
     // uv keeps everything inside ros.ai's folder and ignores the person's own uv settings.
     const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? homedir(), UV_NO_CONFIG: '1',
@@ -76,7 +110,9 @@ export class PythonRuntime {
     const venv = join(this.home, 'env');
     rmSync(join(this.home, 'ready.json'), { force: true });
     rmSync(venv, { recursive: true, force: true });
+    this.progress('Downloading Python 3.12');
     await run(uv, ['venv', '--quiet', '--seed', '--no-project', '--python', PYTHON_SERIES, venv], env);
+    this.progress('Installing pandas, NumPy, matplotlib and SciPy');
     await run(uv, ['pip', 'install', '--quiet', '--python', this.python, ...INSTALL], env);
     const version = (await run(this.python, ['-I', '-c', 'import platform; print(platform.python_version())'], { PATH: '/usr/bin:/bin' }, 60_000)).trim();
     // The downloaded wheels are not needed once installed; this keeps the folder near 400 MB.

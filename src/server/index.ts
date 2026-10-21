@@ -124,7 +124,7 @@ try {
     localRos = new LocalRos(dataDir,inference);
     void localRos.start();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
-    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(join(dataDir, 'python')), confine, gate: new NetworkGate(store) } : undefined;
+    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
@@ -154,7 +154,9 @@ try {
     app.get('/{*path}', (_req, res) => res.sendFile(resolve(root, 'dist/client/index.html')));
   } else {
     const { createServer: createViteServer } = await import('vite');
-    vite = await createViteServer({ root, server: { middlewareMode: true, hmr: { server }, host: '127.0.0.1', allowedHosts: ['localhost', '127.0.0.1'] }, appType: 'spa' });
+    vite = await createViteServer({ root, server: { middlewareMode: true,
+      // Data folders kept beside the code (.ros-ai, try copies) are not source; their files must not reload the page.
+      watch: { ignored: ['**/.ros-ai/**', '**/ros-ai-try/**'] }, hmr: { server }, host: '127.0.0.1', allowedHosts: ['localhost', '127.0.0.1'] }, appType: 'spa' });
     app.use(vite.middlewares);
   }
   app.use(apiErrorHandler);
