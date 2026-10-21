@@ -20,12 +20,14 @@ type Props = {
   onAttach: (artifact?: Artifact, destinationId?: string) => void;
   onOpenArtifact: (artifact: Artifact) => void; onOpenNote: (nodeId: string) => void;
   readOnly?: boolean;
+  /** Why the view is read only. */
+  readOnlyNote?: string;
 };
 
-export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false }: Props) {
+export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.' }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
-  const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description);
+  const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
   const [request, setRequest] = useDraft(`node-request:${node.id}`); const [useSearch, setUseSearch] = useState(false); const [submitting, setSubmitting] = useState(false);
   const [reasoningModel, setReasoningModel] = useState<ModelDisplay | null>(null);
   const [editing, setEditing] = useState(false);
@@ -48,7 +50,7 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
     <div className="note-main">
       {!chatOpen&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
       <label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Untitled node" maxLength={200}/>
-      {readOnly&&<div className="history-inspector-note">Historical canvas · return to the current canvas to make changes.</div>}
+      {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
       {node.notion&&<section className="note-content"><NotionDatabase projectId={detail.project.id} nodeId={node.id} view={node.notion} full/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {editing
         ? <textarea className="note-description-input" aria-label="Node description" value={description} readOnly={readOnly} onChange={event=>setDescription(event.target.value)} placeholder="What would you like to explore here?" rows={6} autoFocus/>

@@ -245,7 +245,7 @@ export function emptyPosition(canvas: Canvas): { x: number; y: number } {
   }
   return { x: 0, y: Math.max(0, ...canvas.nodes.map(n => n.y)) + CARD_MAX_HEIGHT + LAYOUT_GAP };
 }
-function previewCanvas(canvas: Canvas, proposal?: Proposal) {
+export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   const result = structuredClone(canvas); const marks = new Map<string, CardData['preview']>();
   for (const op of proposal?.operations || []) {
     if (op.type === 'addNode') { result.nodes.push(op.node); marks.set(op.node.id, 'added'); }
