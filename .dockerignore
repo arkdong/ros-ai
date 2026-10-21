@@ -5,7 +5,6 @@
 !package.json
 !package-lock.json
 !index.html
-!landing.html
 !vite.config.ts
 !tsconfig.json
 !src/

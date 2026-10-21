@@ -1,6 +1,7 @@
 import { evidenceClaim, type AiUseCall, type ClaimType, type RecordVersion, type ReportAttempt, type ReportDecision, type ReportEvidence, type ReportRecord } from '../shared/reports.js';
 import { outputFreshness } from '../shared/output-provenance.js';
-import type { Artifact, ProjectDetail, Run } from '../shared/types.js';
+import type { Artifact, CanvasNode, ProjectDetail, Run } from '../shared/types.js';
+import { blockOrigin, kindName, textLabel } from '../shared/vocabulary.js';
 import { usageProject } from './budget-report.js';
 import type { Store } from './store.js';
 
@@ -67,12 +68,14 @@ function attempts(detail: ProjectDetail, blocks: Set<string>, cited: Set<string>
   return { attempts: result, notRun: tried.length - result.length };
 }
 
+/** A decision is a Text block labelled decision. Its links name the blocks it rests on; its provenance says
+ * whether the researcher or an agent wrote it. */
 function decisions(detail: ProjectDetail): ReportDecision[] {
-  const byId = new Map(detail.artifacts.map(artifact => [artifact.id, artifact]));
-  return detail.project.canvas.nodes.flatMap(node => (node.decisions ?? []).map(decision => ({
-    id: decision.id, block: withoutPaths(node.title), text: decision.text, reason: decision.reason, at: decision.at, withdrawnAt: decision.withdrawnAt ?? null,
-    basedOn: decision.basedOn.map(basis => { const artifact = byId.get(basis.artifactId); return artifact?.hash === basis.hash ? version(artifact) : { id: basis.artifactId, hash: basis.hash, missing: true as const }; }),
-  }))).sort((a, b) => a.at.localeCompare(b.at));
+  const { nodes, connections } = detail.project.canvas;
+  return nodes.filter(node => kindName(node) === 'Text' && textLabel(node) === 'decision').map(node => {
+    const linked = connections.filter(c => c.source === node.id || c.target === node.id).map(c => nodes.find(n => n.id === (c.source === node.id ? c.target : c.source))).filter((n): n is CanvasNode => Boolean(n) && n!.id !== node.id);
+    return { id: node.id, text: withoutPaths(node.title), reason: withoutPaths(node.description), by: blockOrigin(detail.project.canvas, node.id) ?? null, basedOn: [...new Set(linked.map(n => withoutPaths(n.title)))] };
+  });
 }
 
 /** Rows come from usage records, so a plan run that shares its assistant turn's request counts once.

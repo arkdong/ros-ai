@@ -16,14 +16,6 @@
 .note-view .note-content img { max-width: 100%; }
 .note-view .note-empty { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding: 18px; border: 1px dashed #dcdfdc; border-radius: 8px; color: #6b6b6b; }
 .note-view .note-empty p { margin: 0; font-size: 13px; }
-.note-view .note-more { margin-top: 28px; border-top: 1px solid #e6e8e6; }
-.note-view .note-more > summary { padding: 12px 0 0; color: #6b6b6b; font-size: 13px; cursor: pointer; }
-.note-view .note-more-body { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; }
-.note-view .note-more-body .group-organize, .note-view .note-more-body .node-kind-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; border: 0; }
-.note-view .note-more-body .group-organize label, .note-view .note-more-body .node-kind-row label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b6b6b; white-space: nowrap; }
-.note-view .note-more-body .decision-log { margin: 0; }
-.note-view .note-more-body h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.note-view .note-more-body > .text-button.danger { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
 
 .note-view .note-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #e6e8e6; background: #fcfcfc; }
 .note-view .note-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #ebebeb; font-size: 13px; }
@@ -54,3 +46,13 @@
   .note-view .note-main { overflow: visible; }
   .note-view .note-side { border-left: 0; border-top: 1px solid #e6e8e6; }
 }
+/* The conversation is hidden until opened from the top-right button. */
+.node-modal .inspector.note-view.chat-closed { grid-template-columns: minmax(0, 1fr); }
+.note-view .note-main { position: relative; }
+.note-view .note-chat-toggle { position: absolute; top: 18px; right: 20px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line, #dedede); border-radius: 999px; background: #fff; color: #4a4a4a; font: inherit; font-size: 12px; cursor: pointer; }
+.note-view .note-chat-toggle:hover { border-color: #c9cdca; color: #171717; }
+.note-view .note-chat-toggle span { min-width: 16px; padding: 0 5px; border-radius: 999px; background: #f0f1ef; font-size: 11px; text-align: center; }
+.note-view.chat-closed .note-title { padding-right: 140px; }
+.note-view .note-side-spacer { flex: 1; }
+.note-view .note-side-heading .icon-button { margin: -4px -6px -4px 0; color: #6b6b6b; }
+@media (max-width: 850px) { .node-modal .inspector.note-view.chat-closed { grid-template-rows: auto; } }

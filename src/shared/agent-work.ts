@@ -19,17 +19,24 @@ export function splitSources(text: string): { body: string; sources: number; hos
   return { body: text.slice(0, match.index).trimEnd(), sources: match[1].split('\n').filter(line => line.trim()).length, hosts: [...new Set(hosts)] };
 }
 
-export type AgentDirection = { search: CanvasNode; result?: CanvasNode; sources: number; written: boolean; findings: CanvasNode[] };
-/** An Agent block's searches, read from the canvas: each Search block it points to, the note that search points to,
- * and the findings that note points to; with the pages the agent read in full. */
+/** One search direction of an Agent block: the Result note its searches ran on (and, on canvases from before
+ * 20 October 2026, the Search block that ran them), with the findings the note points to. */
+export type AgentDirection = { result: CanvasNode; legacySearch?: CanvasNode; sources: number; written: boolean; findings: CanvasNode[] };
+/** An Agent block's search directions, read from the canvas, with the pages the agent read in full. */
 export function agentDirections(canvas: Canvas, artifacts: Artifact[], agentId: string): { directions: AgentDirection[]; sources: number; written: number; findings: number; pages: Artifact[] } {
   const node = (id: string) => canvas.nodes.find(item => item.id === id);
   const targets = (id: string) => canvas.connections.filter(edge => edge.source === id).flatMap(edge => { const target = node(edge.target); return target ? [target] : []; });
   const found = (ids: Set<string>) => new Set(artifacts.filter(item => ids.has(item.nodeId) && item.kind === 'source').map(item => item.url ?? item.hash));
-  const directions = targets(agentId).filter(target => target.blockType === 'search').map(search => {
-    const result = targets(search.id).find(target => target.kind !== 'group' && !['agent', 'search', 'finding'].includes(target.blockType ?? ''));
-    return { search, result, sources: found(new Set([search.id])).size, written: Boolean(result && result.description.trim() && result.description !== RESULT_PLACEHOLDER), findings: result ? targets(result.id).filter(target => target.blockType === 'finding') : [] };
+  const written = (result?: CanvasNode) => Boolean(result && result.description.trim() && result.description !== RESULT_PLACEHOLDER);
+  const findings = (result?: CanvasNode) => result ? targets(result.id).filter(target => target.blockType === 'finding') : [];
+  const directions: AgentDirection[] = targets(agentId).flatMap(target => {
+    if (target.blockType === 'search') {
+      const result = targets(target.id).find(item => item.kind !== 'group' && !['agent', 'search', 'finding'].includes(item.blockType ?? ''));
+      return [{ result: result ?? target, legacySearch: target, sources: found(new Set([target.id])).size, written: written(result), findings: findings(result) }];
+    }
+    if (target.kind === 'group' || target.label !== 'result') return [];
+    return [{ result: target, sources: found(new Set([target.id])).size, written: written(target), findings: findings(target) }];
   });
   const pages = artifacts.filter(item => item.nodeId === agentId && item.capture === 'full-content');
-  return { directions, sources: found(new Set(directions.map(item => item.search.id))).size, written: directions.filter(item => item.written).length, findings: directions.reduce((sum, item) => sum + item.findings.length, 0), pages };
+  return { directions, sources: found(new Set(directions.map(item => (item.legacySearch ?? item.result).id))).size, written: directions.filter(item => item.written).length, findings: directions.reduce((sum, item) => sum + item.findings.length, 0), pages };
 }

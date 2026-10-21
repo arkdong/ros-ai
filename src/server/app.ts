@@ -26,6 +26,8 @@ import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credent
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
+import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
+import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
 import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
@@ -78,7 +80,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps)attachAppRoutes(app,tools.apps);if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.setup)attachSetupRoutes(app,tools.setup);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);attachNotionViewRoutes(app,store,new NotionViews(tools.apps,new ProjectCache(store)));}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);

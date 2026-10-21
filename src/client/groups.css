@@ -64,9 +64,6 @@
 .direct-canvas .block-version{margin-left:auto;margin-right:10px}
 .canvas-group-toolbar{position:absolute;left:24px;bottom:88px;z-index:13;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #d7ddd9;background:#fff;border-radius:8px;box-shadow:0 4px 12px #0000000a;font-size:12px;max-width:calc(100% - 48px);flex-wrap:wrap}
 .canvas-group-toolbar input{width:170px;font-size:13px}
-.group-organize{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 0}
-.group-organize label{display:flex;align-items:center;gap:7px;font-size:12px}
-.group-organize select{max-width:210px;font-size:12px}
 .group-highlight-picker{display:flex;flex-direction:column;gap:7px}
 .group-highlight-picker label{display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.5;padding:8px;border:1px solid #e2e6e3;border-radius:6px}
 .group-highlight-picker label>span{flex:1;min-width:0}

@@ -1,8 +1,8 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Square, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
-import type { ProjectDetail } from '../shared/types';
+import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
@@ -18,18 +18,22 @@ import { AssistantStructurePreview, proposalStructurePreview } from './Assistant
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
 import './assistant-compact.css';
 
+/** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
+const devBuild = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
+
 type Props = {
   state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; loadError?:string;
   onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
   onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
   onDecision: (actionId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
+  onProposal: (proposalId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
   onInspectAction: (action: AssistantAction) => void;
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onInspectAction, mode = 'full', onMode }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode }: Props) {
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
@@ -67,6 +71,9 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const modelBlocked = Boolean(state && !state.modelAvailable);
   const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !turns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
   useEffect(() => { saveLocal(`assistant-draft:${detail.project.id}`, message); }, [message, detail.project.id]);
+  const asking = answerTarget?.projectId === detail.project.id;
+  // The composer grows with its text, then scrolls.
+  useEffect(() => { const element = textarea.current; if (!element || asking) return; element.style.height = ''; if (element.scrollHeight > element.clientHeight) element.style.height = `${Math.min(element.scrollHeight, Math.round(window.innerHeight * 0.4))}px`; }, [message, asking, mode]);
   useEffect(() => { if (prefill) { setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
   useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy]);
   useEffect(()=>{const element=scroller.current;if(!element)return;const observer=new ResizeObserver(()=>{if(followConversation.current)element.scrollTop=element.scrollHeight;});observer.observe(element);return()=>observer.disconnect();},[]);
@@ -97,21 +104,21 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     return null;
   };
   return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="Ros" data-testid="assistant-panel">
-    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close Ros" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
-    {answerTarget?.projectId===detail.project.id&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>setAnswerTarget(null)}/>}
+    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close Ros" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
       {state && !turns.length && !messages.length && <div className="assistant-welcome"><div className="assistant-welcome-signal" aria-hidden="true"><ResearchRing/></div><h3>What are you exploring?</h3><p>Start with a question or a half-formed idea. Keep the conversation here while your notes and evidence take shape.</p><div className="assistant-starters"><button onClick={() => usePrompt('Help me frame the question I want to explore: ')}>Shape a research question <ArrowRight size={14}/></button>{detail.project.canvas.nodes.length > 0 && <button onClick={() => usePrompt('What do we know so far, and what is still missing?')}>Make sense of this project <ArrowRight size={14}/></button>}</div></div>}
       {messages.length > 0 && <details className="assistant-previous" open={previousOpen} onToggle={event=>setPreviousOpen(event.currentTarget.open)}><summary><HistoryLabel/> Earlier project conversation <span>{messages.length}</span></summary>{messages.map(item => <article key={item.id} data-message-id={item.id} className={`assistant-message ${item.role}`}><div className="message-meta"><span>{item.role === 'user' ? 'You' : item.role === 'system' ? 'Workspace update' : 'ros.ai'}</span><time>{time(item.createdAt)}</time></div>{item.role === 'assistant' ? <AssistantResponse content={item.content} detail={detail} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(`message:${item.id}`,questions)}/> : <RichText text={item.content}/>}</article>)}</details>}
-      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)}/>)}
-      {pending.map(proposal => {const structure=proposalStructurePreview(proposal,detail.project.canvas.nodes);return <div className="assistant-pending-outline" key={proposal.id}>{structure&&<AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal"/>}<button className="assistant-pending-proposal" onClick={() => onReference({kind:'proposal',id:proposal.id,label:proposal.summary})}><GitBranch size={16}/><span><strong>Review canvas changes</strong>{!structure&&<small>{proposal.summary}</small>}</span><ChevronRight size={15}/></button></div>;})}
+      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)}/>)}
+      {pending.map(proposal => <ProposalReview key={proposal.id} proposal={proposal} title={proposal.summary} detail={detail} onProposal={onProposal} onOpen={() => onReference({kind:'proposal',id:proposal.id,label:proposal.summary})}/>)}
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
     </div>
     {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
-    <form className="assistant-composer ros-composer" onSubmit={event => void submit(event)}>
+    {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
+    <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
       <textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
@@ -145,7 +152,7 @@ function ReferenceLinks({ references, onReference }: { references: AssistantRefe
   return <div className="assistant-references">{references.map((reference, index) => <button key={`${reference.kind}:${reference.id}:${index}`} onClick={() => onReference(reference)} title={`Open ${reference.label}`}>{reference.kind === 'artifact' ? <FileText size={12}/> : reference.kind === 'proposal' ? <GitBranch size={12}/> : <BookOpen size={12}/>}<span>{textPreview(reference.label,48).text}</span><ArrowRight size={11}/></button>)}</div>;
 }
 
-function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer, person, onMemory }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void }) {
+function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectAction, onAnswer, person, onMemory }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void }) {
   const focus = detail.project.canvas.nodes.find(node => node.id === turn.focus.nodeId);
   // The person's own Claude Code or Codex, connected over MCP: there is no message from them here.
   const outside = turn.source === 'outside-agent';
@@ -155,7 +162,7 @@ function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer
   const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable/i.test(reply);
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.
-  const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && operation.node.blockType === 'search'));
+  const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && (operation.node.blockType === 'search' || operation.node.label === 'result')));
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
@@ -167,7 +174,7 @@ function Turn({ turn, detail, onReference, onDecision, onInspectAction, onAnswer
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
-      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onInspectAction={onInspectAction}/>)}
+      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
       {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'Ros'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
     </article>
@@ -207,7 +214,7 @@ function AssistantResponse({ content, question, clarifications, structure, detai
   </>;
 }
 
-function ActionCard({ action, detail, onReference, onDecision, onInspectAction }: { action: AssistantAction; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onInspectAction: Props['onInspectAction'] }) {
+function ActionCard({ action, detail, onReference, onDecision, onProposal, onInspectAction }: { action: AssistantAction; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onInspectAction: Props['onInspectAction'] }) {
   const [busy,setBusy] = useState(false);
   const title = textPreview(action.title, 90);
   const proposal = detail.proposals.find(item => item.id === action.proposalId);
@@ -220,6 +227,20 @@ function ActionCard({ action, detail, onReference, onDecision, onInspectAction }
   const reuseTarget = detail.project.canvas.nodes.find(item=>item.id===(action.targetNodeId||action.nodeId));
   const canOpen = Boolean(action.reportProposalId)||action.type!=='proposal'||status==='pending'||Boolean(relatedNoteId&&detail.project.canvas.nodes.some(node=>node.id===relatedNoteId));
   const open = () => action.reportProposalId ? onInspectAction(action) : action.proposalId ? status==='pending' ? onReference({kind:'proposal',id:action.proposalId,label:action.title,nodeId:action.nodeId}) : relatedNoteId && onReference({kind:'node',id:relatedNoteId,label:action.title}) : onInspectAction(action);
+  if (proposal && status === 'pending' && !action.reportProposalId) return <ProposalReview proposal={proposal} title={action.title} detail={detail} onProposal={onProposal} onOpen={open}/>;
   return <div className={`assistant-action status-${status}`}><div className="assistant-action-title">{action.type === 'proposal' ? <GitBranch size={15}/> : action.type === 'reuse' ? <FileText size={15}/> : <BookOpen size={15}/>}<strong title={action.title}>{title.text}</strong><span>{status === 'pending' ? 'Review' : status}</span></div>{title.truncated&&<details className="assistant-action-description"><summary>Full request</summary><p>{action.title}</p></details>}{action.error && <p>{action.error}</p>}{structure&&<AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal"/>}{action.type === 'reuse' && action.status === 'pending' ? <><p>Use <strong>{reuseArtifact?.title||'the selected artifact'}</strong>{reuseArtifact&&<> · version <code>{reuseArtifact.hash.slice(0,8)}</code></>} as an input to <strong>{reuseTarget?.title||'the suggested note'}</strong>.</p>{reuseArtifact&&<ReferenceLinks references={[{kind:'artifact',id:reuseArtifact.id,label:'Inspect this version',nodeId:reuseArtifact.nodeId}]} onReference={onReference}/>}<div className="assistant-action-buttons"><button className="primary small" disabled={busy} onClick={() => void decide('accept')}><Check size={13}/> Accept reuse</button><button className="text-button" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button></div></> : <button className="assistant-action-open" disabled={!canOpen} onClick={open}>{action.type === 'proposal' ? (status === 'pending' ? action.reportProposalId?'Review report revision':'Review canvas changes' : status==='dismissed'?'Proposal dismissed':'View related note') : action.type === 'experiment' ? 'Inspect experiment' : 'Open saved work'}<ArrowRight size={13}/></button>}</div>;
 }
 
+/** A pending canvas change, reviewed where it was proposed: what changes, then Accept or Dismiss. */
+function ProposalReview({ proposal, title, detail, onProposal, onOpen }: { proposal: Proposal; title: string; detail: ProjectDetail; onProposal: Props['onProposal']; onOpen: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const structure = proposalStructurePreview(proposal, detail.project.canvas.nodes);
+  const stale = proposal.baseRevision !== detail.project.revision;
+  const decide = async (decision: 'accept' | 'dismiss') => { setBusy(true); try { await onProposal(proposal.id, decision); } finally { setBusy(false); } };
+  return <section className="proposal-review" aria-label="Proposed canvas change">
+    <header><GitBranch size={14} aria-hidden="true"/><strong title={title}>{title.split('\n')[0]}</strong></header>
+    {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
+    {stale && <p className="proposal-review-stale">The canvas changed since. Ask Ros to update this.</p>}
+    <div className="proposal-review-actions"><button className="primary small" disabled={busy || stale} onClick={() => void decide('accept')}><Check size={13}/> Accept</button><button className="text-button small" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button><button className="text-button small proposal-review-open" onClick={onOpen}>Show on canvas <ArrowRight size={12}/></button></div>
+  </section>;
+}

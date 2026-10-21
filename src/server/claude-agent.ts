@@ -119,7 +119,8 @@ export class ClaudeAgentService {
       return this.execution.connectionBudgets.reserve({ provider: 'claude', amountUsd: reservedUsd, purpose: 'Claude Code assistant turn', basis: `Claude Code budget for one turn (maxBudgetUsd ${reservedUsd}); settled at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice`, trace: { requestId, model, projectId: request.projectId, nodeId: request.nodeIds[0] ?? null } }, budget.revision);
     });
 
-    const scopeHash = createHash('sha256').update(JSON.stringify({ cwd, nodeIds: request.nodeIds.slice().sort(), artifactIds: toolkit.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })).sort((a, b) => a.id.localeCompare(b.id)) })).digest('hex');
+    // A new selection moves focus, not the conversation: each prompt states the current selection.
+    const scopeHash = createHash('sha256').update(JSON.stringify({ cwd })).digest('hex');
     const prior = this.store.record<Session>('claude-session', request.projectId);
     const resume = prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
     const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
