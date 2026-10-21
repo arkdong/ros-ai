@@ -1,0 +1,11 @@
+.network-prompt {
+  position: fixed; right: 20px; bottom: 20px; z-index: 60; width: min(380px, calc(100vw - 32px));
+  display: grid; gap: 12px; padding: 14px 16px;
+  background: var(--page, #fff); border: 1px solid var(--card-line, #e5e5e5); border-radius: var(--radius-card, 14px); box-shadow: var(--sheet-shadow);
+}
+.network-prompt-text { display: flex; gap: 10px; align-items: flex-start; }
+.network-prompt-text svg { flex: none; margin-top: 2px; }
+.network-prompt-text div { display: grid; gap: 2px; min-width: 0; }
+.network-prompt-text strong { overflow-wrap: anywhere; }
+.network-prompt-text span { font-size: 13px; color: var(--muted, #666); }
+.network-prompt-actions { display: flex; gap: 8px; flex-wrap: wrap; }

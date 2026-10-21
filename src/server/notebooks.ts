@@ -5,7 +5,11 @@ import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import type { Authority } from './authority.js';
 import { forgetNotebookNames, reviewNotebookCell, type NotebookNames } from './review-code.js';
-import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage } from './notebook-kernel.js';
+import type { Confine, PythonRuntime } from './local-python.js';
+import type { NetworkGate } from './network-gate.js';
+/** Sandboxed Python without Docker, and the proxy that gives it network. */
+export type SandboxedPython = { runtime: PythonRuntime; confine: Confine; gate?: NetworkGate };
+import { kernelImage, NotebookKernelProcess, removeLeftoverKernels, type KernelExit, type KernelFolder, type KernelMessage, type LocalKernel } from './notebook-kernel.js';
 import { NOTEBOOK_LIMITS, type NotebookCell, type NotebookContent, type NotebookEvent, type NotebookKernel, type NotebookOutput,
   type NotebookRunResult, type NotebookState, type NotebookSummary } from '../shared/notebooks.js';
 import type { ApprovalMode } from '../shared/research.js';
@@ -34,7 +38,7 @@ type Previous = { content: Stored; reason: string; at: string };
 /** `names` are what the automatic reviewer knows after this cell, if it and every cell before it finish. */
 type Pending = { execution: string; cellId: string; source: string; reviewable: string; names?: NotebookNames; queuedAt: string; approval: { mode: ApprovalMode; outcome: 'allow' | 'approved'; reason: string } };
 type Running = Pending & { count: number; session: string; startedAt: string; outputs: NotebookOutput[] };
-type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; status: NotebookKernel['status']; count: number;
+type Live = { key: string; projectId: string; nodeId: string; kernel?: NotebookKernelProcess; proxy?: { port: number; close: () => void }; status: NotebookKernel['status']; count: number;
   queue: Pending[]; running?: Running; info?: { python: string; libraries: Record<string, string>; cwd: string }; message?: string; stopMessage?: string;
   settled?: NotebookNames; idle?: NodeJS.Timeout; startup?: NodeJS.Timeout; usedAt: number; folder?: KernelFolder };
 type Execution = { id: string; projectId: string; nodeId: string; cellId: string; session: string; executionCount: number; source: string; sourceHash: string;
@@ -121,7 +125,7 @@ function resultFor(output: NotebookOutput): Pick<Artifact, 'kind' | 'content' | 
   throw new StoreError('This output has no form ros.ai can save as a result yet.');
 }
 
-/** Notebook blocks: their cells, and one long-running Python per open notebook in the Docker sandbox. */
+/** Notebook blocks: their cells, and one long-running Python per open notebook, in the OS sandbox or Docker. */
 export class NotebookService {
   private readonly live = new Map<string, Live>();
   /** Cells deleted in this session, by notebook, so undoing a delete brings their outputs back. */
@@ -134,10 +138,14 @@ export class NotebookService {
   private runtime?: { at: number; value: { id: string } | { reason: string } };
   private closed = false;
 
-  constructor(private readonly store: Store, private readonly authority: Authority, options: { owner?: string; docker?: string } = {}) {
+  /** Without Docker: ros.ai's own Python in the operating system's sandbox. */
+  private readonly python?: SandboxedPython;
+
+  constructor(private readonly store: Store, private readonly authority: Authority, options: { owner?: string; docker?: string; python?: SandboxedPython } = {}) {
     this.owner = options.owner ?? 'ros-ai';
     this.docker = options.docker ?? 'docker';
-    removeLeftoverKernels(this.owner, this.docker);
+    this.python = options.python;
+    if (!this.python) removeLeftoverKernels(this.owner, this.docker);
     // A removed or retyped Notebook block stops its Python.
     this.stopListening = store.onCommit(projectId => this.prune(projectId));
   }
@@ -213,6 +221,10 @@ export class NotebookService {
   }
 
   private async runtimeStatus(refresh = false): Promise<{ id: string } | { reason: string }> {
+    if (this.python) {
+      const state = this.python.runtime.state();
+      return state.status === 'failed' ? { reason: state.message } : { id: 'local-python' };
+    }
     if (!refresh && this.runtime && Date.now() - this.runtime.at < 30_000) return this.runtime.value;
     const value = await kernelImage(this.docker);
     this.runtime = { at: Date.now(), value };
@@ -225,7 +237,7 @@ export class NotebookService {
   running(projectId: string): Set<string> {
     return new Set([...this.live.values()].filter(live => live.projectId === projectId && (live.running || live.queue.length)).map(live => live.nodeId));
   }
-  /** `check` asks Docker again, for example after the person started Docker Desktop. */
+  /** `check` asks Docker again (when notebooks use it), for example after the person started Docker Desktop. */
   async state(projectId: string, nodeId: string, check = false): Promise<NotebookState> {
     this.node(projectId, nodeId);
     const live = this.live.get(this.key(projectId, nodeId)), runtime = await this.runtimeStatus(check), previous = this.store.record<Previous>(PREVIOUS, this.key(projectId, nodeId));
@@ -240,7 +252,7 @@ export class NotebookService {
     return { notebook, kernel: this.kernelState(live), mode: this.authority.mode(projectId, nodeId), saved,
       queue: [...(live?.running ? [{ cellId: live.running.cellId, state: 'running' as const }] : []), ...(live?.queue ?? []).map(item => ({ cellId: item.cellId, state: 'queued' as const }))],
       file, outputs: file ? `outputs/${file.split('/').at(-1)!.replace(/\.ipynb$/iu, '')}` : null,
-      runtime: 'id' in runtime ? { available: true } : { available: false, reason: runtime.reason },
+      runtime: 'id' in runtime ? { available: true, ...(this.python?.gate ? { network: true } : {}) } : { available: false, reason: runtime.reason },
       ...(previous ? { previous: { reason: previous.reason, at: previous.at } } : {}) };
   }
 
@@ -318,7 +330,22 @@ export class NotebookService {
     live.status = 'starting'; live.message = undefined; live.stopMessage = undefined;
     this.emitKernel(live);
     const fail = (message: string) => { live.status = 'off'; live.message = message; this.cancelQueue(live); this.emitKernel(live); };
-    const image = await this.runtimeStatus(true);
+    let local: LocalKernel | undefined;
+    if (this.python) {
+      // The first run sets Python up; the notebook shows that while it waits.
+      if (this.python.runtime.state().status !== 'ready') { live.message = 'Setting up Python for the first run (about a minute, once)…'; this.emitKernel(live); }
+      const runtime = this.python.runtime, title = this.store.getProject(live.projectId).canvas.nodes.find(item => item.id === live.nodeId)?.title;
+      try {
+        const python = await runtime.ensure();
+        const proxy = await this.python.gate?.open(live.projectId, title ? `Notebook “${title}”` : 'A notebook');
+        live.proxy = proxy;
+        local = { python, home: runtime.home, confine: this.python.confine, packages: runtime.packages(live.projectId), ...(proxy ? { proxy: { port: proxy.port, certFile: runtime.certFile } } : {}) };
+      }
+      catch (error) { if (live.status === 'starting' && !live.kernel) fail(error instanceof Error ? error.message : String(error)); return; }
+      if (live.status !== 'starting' || live.kernel || this.closed) { live.proxy?.close(); live.proxy = undefined; return; }
+      live.message = undefined;
+    }
+    const image = local ? { id: 'local-python' } : await this.runtimeStatus(true);
     if (this.closed || live.status !== 'starting' || live.kernel) return;
     if ('reason' in image) return fail(image.reason);
     const others = [...this.live.values()].filter(item => item !== live && item.kernel);
@@ -334,11 +361,11 @@ export class NotebookService {
       // A server running as root runs Python as nobody, which must be able to write the outputs folder.
       if (folder && process.getuid?.() === 0) chmodSync(folder.outputsPath, 0o777);
     } catch (error) { return fail(`The project folder could not be prepared: ${error instanceof Error ? error.message : String(error)}`); }
-    const kernel: NotebookKernelProcess = new NotebookKernelProcess({ image: image.id, owner: this.owner, docker: this.docker, folder,
+    const kernel: NotebookKernelProcess = new NotebookKernelProcess({ image: image.id, owner: this.owner, docker: this.docker, folder, ...(local ? { local } : {}),
       onMessage: message => this.message(live, kernel, message), onExit: exit => this.exit(live, kernel, exit) });
     live.kernel = kernel; live.folder = folder; live.count = 0; live.info = undefined;
     kernel.start();
-    live.startup = setTimeout(() => { if (live.kernel === kernel && live.status === 'starting') void kernel.stop('Python did not start within 90 seconds. Check that Docker Desktop is running and has enough memory.'); }, START_MS);
+    live.startup = setTimeout(() => { if (live.kernel === kernel && live.status === 'starting') void kernel.stop(local ? 'Python did not start within 90 seconds.' : 'Python did not start within 90 seconds. Check that Docker Desktop is running and has enough memory.'); }, START_MS);
   }
 
   private message(live: Live, kernel: NotebookKernelProcess, message: KernelMessage): void {
@@ -417,9 +444,11 @@ export class NotebookService {
     if (live.kernel !== kernel) return;
     clearTimeout(live.startup); clearTimeout(live.idle);
     const starting = live.status === 'starting';
-    const reason = exit.stopped ? live.stopMessage : starting ? `Python could not start in Docker${exit.detail ? `: ${exit.detail}` : '.'}`
-      : exit.code === 137 || exit.signal === 'SIGKILL' ? 'Python stopped because it ran out of memory (a notebook can use 2 GB), or Docker stopped it. Its variables were cleared; run the cells again.'
+    const reason = exit.stopped ? live.stopMessage : starting ? `Python could not start${this.python ? '' : ' in Docker'}${exit.detail ? `: ${exit.detail}` : '.'}`
+      : exit.detail.startsWith('Python stopped because') ? exit.detail
+      : exit.code === 137 || exit.signal === 'SIGKILL' ? `Python stopped because it ran out of memory (a notebook can use 2 GB)${this.python ? '' : ', or Docker stopped it'}. Its variables were cleared; run the cells again.`
       : `Python stopped unexpectedly${exit.code === null ? '' : ` (exit code ${exit.code})`}. Its variables were cleared; run the cells again.${exit.detail && !exit.detail.startsWith('Python') ? ` ${exit.detail.slice(-300)}` : ''}`;
+    live.proxy?.close(); live.proxy = undefined;
     live.kernel = undefined; live.status = 'off'; live.message = reason; live.count = 0; live.info = undefined;
     this.cancelQueue(live);
     if (live.running) this.finish(live, 'error', { ename: 'Stopped', evalue: reason ?? 'Python was restarted before this cell finished.', traceback: [] });
@@ -549,7 +578,7 @@ export class NotebookService {
   }
 }
 
-export function attachNotebookRoutes(app: Express, store: Store, authority: Authority, options: { owner?: string } = {}): NotebookService {
+export function attachNotebookRoutes(app: Express, store: Store, authority: Authority, options: { owner?: string; python?: SandboxedPython } = {}): NotebookService {
   const service = new NotebookService(store, authority, options);
   app.locals.notebooks = service;
   const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), owned = (req: Request) => [id.parse(req.params.id), id.parse(req.params.nodeId)] as const;
