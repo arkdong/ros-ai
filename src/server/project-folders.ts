@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
+import { closeSync, constants, createReadStream, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
-import type { Express } from 'express';
+import express, { type Express } from 'express';
 import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
 import { CARD_DEFAULT_HEIGHT, cardWidth } from '../shared/card-size.js';
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
+import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, Project, Run } from '../shared/types.js';
@@ -20,9 +21,9 @@ const RECORD = 'project-folder';
 const MANIFEST = '.ros-ai/project.json';
 const TRASH = '.ros-ai/trash';
 // Largest file read back per kind. Text limits in characters are checked after decoding.
-const PDF_BYTES = 20_000_000;
-const isPdf = (path: string) => path.toLowerCase().endsWith('.pdf');
-const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000 };
+const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000, file: FILE_BYTES };
+/** The most of a PDF's text kept as a File block's saved version. */
+const FILE_TEXT = 2_000_000;
 const TWO_WAY = new Set<FolderFileKind>(['note', 'code', 'report', 'dataset', 'notebook']);
 const CODE_TYPES: [language: string, extension: string][] = [['python', '.py'], ['r', '.R'], ['julia', '.jl'], ['c', '.c'], ['haskell', '.hs'], ['sql', '.sql'], ['bash', '.sh']];
 const NOTE_EXTENSIONS = ['.md', '.markdown', '.txt'];
@@ -78,11 +79,12 @@ export function safeFileBase(title: string): string {
   return name || 'Untitled';
 }
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
-function unplacedKind(path: string): Exclude<UnplacedFile['kind'], 'pdf'> | null {
-  const extension = extensionOf(path).toLowerCase();
+function unplacedKind(path: string): UnplacedFile['kind'] | null {
+  const extension = extensionOf(path).toLowerCase(), media = fileMediaType(path);
   if (NOTE_EXTENSIONS.includes(extension)) return 'note';
   if (extension === '.csv') return 'dataset';
   if (extension === '.ipynb') return 'notebook';
+  if (media) return isPdfType(media) ? 'pdf' : 'image';
   return codeLanguage(extension) ? 'code' : null;
 }
 function fileKind(node: CanvasNode, artifacts: ReadonlyMap<string, Artifact>): FolderFileKind | null {
@@ -91,6 +93,7 @@ function fileKind(node: CanvasNode, artifacts: ReadonlyMap<string, Artifact>): F
   if (type === 'code' || type === 'notebook' || type === 'report') return type;
   if (type === 'dataset') return artifact && ['dataset', 'table'].includes(artifact.kind) ? 'dataset' : null;
   if (type === 'figure') return artifact?.kind === 'plot' ? 'figure' : null;
+  if (type === 'file') return node.file ? 'file' : null;
   return 'note';
 }
 function decodeText(bytes: Buffer): string {
@@ -203,7 +206,7 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
@@ -229,6 +232,9 @@ export class ProjectFolders implements NotebookFolders {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly exportDue = new Set<string>();
   private readonly checked = new Map<string, { available: boolean; reason?: string; unplaced: UnplacedFile[]; problems: FolderProblem[]; checkedAt: string }>();
+  /** File blocks whose PDF text is still to be read, per project; reading runs after the folder pass that found them. */
+  private readonly pendingText = new Map<string, Set<string>>();
+  private readingText = new Set<string>();
   private readonly editing: ArtifactEditingService;
   private readonly reserved: string[];
   private readonly stopListening: () => void;
@@ -295,7 +301,7 @@ export class ProjectFolders implements NotebookFolders {
     const checked = this.checked.get(projectId), live = new Set(project.canvas.nodes.map(node => node.id));
     const entries = Object.entries(record.files).filter(([nodeId, entry]) => !entry.removed && live.has(nodeId));
     return { attached: true, path: record.path, available: checked?.available ?? true, ...(checked?.reason ? { reason: checked.reason } : {}), revision: project.revision,
-      files: entries.map(([nodeId, entry]) => ({ nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}) })),
+      files: entries.map(([nodeId, entry]) => ({ nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}), ...(entry.kind === 'file' && entry.disk ? { bytes: entry.disk.size, version: entry.hash.slice(0, 12) } : {}) })),
       unplaced: checked?.unplaced ?? [],
       problems: [...entries.filter(([, entry]) => entry.problem).map(([, entry]) => ({ path: entry.path, message: entry.problem! })), ...(checked?.problems ?? [])],
       ...(checked ? { checkedAt: checked.checkedAt } : {}) };
@@ -321,7 +327,7 @@ export class ProjectFolders implements NotebookFolders {
   notebookChanged(projectId: string): void { this.schedule(projectId, true); }
 
   suggest(name: string): FolderSuggestion {
-    const home = homedir(), documents = existsSync(join(home, 'Documents')) ? join(home, 'Documents') : home, stem = safeFileBase(name || 'Untitled project');
+    const home = homedir(), documents = existsSync(join(home, 'Documents')) ? join(home, 'Documents') : home, stem = safeFileBase(name || 'Untitled');
     const overlaps = (folder: string) => this.reserved.some(other => folder === other || folder.startsWith(other + sep) || other.startsWith(folder + sep));
     const parent = [join(documents, 'ros.ai'), join(documents, 'ros.ai projects'), join(home, 'ros.ai projects')].find(folder => !overlaps(folder)) ?? join(home, 'ros.ai projects');
     let path = join(parent, stem);
@@ -423,7 +429,7 @@ export class ProjectFolders implements NotebookFolders {
     const groups = manifest.blocks.filter(block => block.kind === 'group').sort((a, b) => depth(a.id) - depth(b.id));
     const parentOf = (block: Manifest['blocks'][number]) => block.parentId && ids.has(block.parentId) && groups.some(group => group.id === block.parentId) ? block.parentId : null;
     if (groups.length) this.store.mutate(projectId, groups.map(group => ({ type: 'addNode', node: { id: group.id, title: group.title, description: '', kind: 'group', parentId: parentOf(group), x: group.x, y: group.y } })), 'Groups from the project folder');
-    const order: Record<string, number> = { figure: 0, dataset: 0, note: 1, code: 1, notebook: 1, report: 2 };
+    const order: Record<string, number> = { figure: 0, dataset: 0, file: 0, note: 1, code: 1, notebook: 1, report: 2 };
     const placed: string[] = [];
     for (const block of manifest.blocks.filter(item => item.kind !== 'group' && item.file).sort((a, b) => (order[kindForFile(a.file!, a.blockType)] ?? 1) - (order[kindForFile(b.file!, b.blockType)] ?? 1))) {
       const kind = kindForFile(block.file!, block.blockType);
@@ -442,41 +448,59 @@ export class ProjectFolders implements NotebookFolders {
   }
 
   /** Adds a file that is already in the folder to the canvas as a block. */
-  add(projectId: string, rel: string): { nodeId: string } {
+  add(projectId: string, rel: string, placement: Partial<Pick<CanvasNode, 'parentId' | 'x' | 'y'>> = {}): { nodeId: string } {
     const { record, files } = this.require(projectId), kind = unplacedKind(rel);
-    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook and PDF files.');
+    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook, PDF, PNG and JPEG files.');
     if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError('This file is already a block on the canvas.', 409);
-    const node = this.blockFromFile(record, files, rel, kind, {});
+    // A PDF or image becomes a File block that shows it; a PDF's text is read into the block's saved version afterwards.
+    const node = this.blockFromFile(record, files, rel, kind === 'pdf' || kind === 'image' ? 'file' : kind, placement);
     return { nodeId: node.id };
   }
+  /** Any file the folder lists as new. */
+  async addFile(projectId: string, rel: string): Promise<{ nodeId: string }> { return this.add(projectId, rel); }
 
-  /** The PDF stays as it is; its text is written beside it as `<name>.pdf.md` and that note becomes the block,
-   * so the text syncs like any note. Scanned PDFs without a text layer have no text to read. */
-  /** Any file the folder lists as new, PDFs included. */
-  async addFile(projectId: string, rel: string): Promise<{ nodeId: string }> { return isPdf(rel) ? this.addPdf(projectId, rel) : this.add(projectId, rel); }
-  private async addPdf(projectId: string, rel: string): Promise<{ nodeId: string }> {
-    const { record, files } = this.require(projectId), note = `${rel}.md`;
-    if (files.exists(note)) throw new StoreError(`${note} is already in the folder; add that note instead.`, 409);
-    const read = files.read(rel, PDF_BYTES);
-    let text: string;
-    try {
-      const { extractText, getDocumentProxy } = await import('unpdf');
-      const document = await getDocumentProxy(new Uint8Array(read.bytes));
-      const result = await extractText(document, { mergePages: false });
-      text = (result.text as string[]).map(page => page.replace(/[ \t]+\n/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim()).filter(Boolean).join('\n\n');
-    } catch { throw new StoreError(`ros.ai could not read ${rel} as a PDF.`); }
-    if (!text.trim()) throw new StoreError(`${rel} has no text layer (it may be a scan), so there is nothing to read.`);
-    const body = `Text of ${posix.basename(rel)}, read by ros.ai. The PDF itself is unchanged.\n\n${text}`;
-    if (body.length > 20_000) throw new StoreError(`The text of ${rel} is longer than 20,000 characters, the most a note holds.`);
-    files.write(note, Buffer.from(body, 'utf8'));
-    const node = this.blockFromFile(record, files, note, 'note', {});
-    return { nodeId: node.id };
+  /** Saves a file the person dropped on the canvas into files/ in the project folder, so a File block can show it. */
+  saveFile(projectId: string, name: string, bytes: Buffer): { path: string } {
+    const { record, files } = this.require(projectId), extension = extensionOf(name);
+    if (!fileMediaType(name)) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.');
+    if (!bytes.length) throw new StoreError(`${name} is empty.`);
+    if (bytes.length > FILE_BYTES) throw new StoreError(`${name} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB, the most a File block shows.`);
+    const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extension.toLowerCase() === '.jpeg' ? '.jpeg' : extension.toLowerCase(), this.mapped(record));
+    files.write(path, bytes);
+    return { path };
+  }
+  /** The file a File block shows, for the server to send to the browser. The block's path is checked against the folder on every read. */
+  fileOf(projectId: string, nodeId: string): { absolute: string; name: string; mediaType: string; size: number; hash?: string } {
+    const { files } = this.require(projectId), node = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
+    if (!node?.file) throw new StoreError('This block shows no file.', 404);
+    const mediaType = fileMediaType(node.file.path);
+    if (!mediaType) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.', 415);
+    const info = files.stat(node.file.path);
+    if (!info) throw new StoreError(`${node.file.path} is missing from the project folder.`, 404);
+    if (!info.isFile()) throw new StoreError(`${node.file.path} is not a normal file.`, 404);
+    if (info.size > FILE_BYTES) throw new StoreError(`${node.file.path} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB, the most a File block shows.`, 413);
+    const entry = this.load(projectId)?.files[nodeId];
+    return { absolute: files.resolve(node.file.path), name: posix.basename(node.file.path), mediaType, size: info.size, ...(entry && !entry.removed && entry.disk?.mtimeMs === info.mtimeMs && entry.disk.size === info.size ? { hash: entry.hash } : {}) };
+  }
+  /** Checks a path an agent wants to show as a File block: a PDF or image in the folder that is not a block yet. */
+  placeable(projectId: string, rel: string): void {
+    const record = this.load(projectId);
+    if (!record) throw new StoreError('This project has no folder, so there is no file to show. Ask the person to choose a project folder first.');
+    const files = new FolderFiles(record.path);
+    if (!fileMediaType(rel)) throw new StoreError(`${rel} is not a PDF, PNG or JPEG. A File block shows only those.`);
+    if (!files.stat(rel)?.isFile()) throw new StoreError(`${rel} is not in the project folder. ros_read_canvas lists the files that can be shown.`, 404);
+    if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError(`${rel} is already a block on the canvas.`, 409);
+  }
+  /** PDFs and images in the folder that are not on the canvas yet, for agents choosing what to show. */
+  placeableFiles(projectId: string): UnplacedFile[] {
+    return (this.checked.get(projectId)?.unplaced ?? []).filter(file => file.kind === 'pdf' || file.kind === 'image');
   }
 
   private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'label' | 'parentId' | 'x' | 'y' | 'width'>>): CanvasNode {
     const projectId = record.projectId, read = files.read(rel, READ_BYTES[kind]);
     if (kind === 'figure') throw new StoreError('Figures are written by ros.ai and cannot be added from the folder yet.');
-    const text = decodeText(read.bytes), id = placement.id ?? randomUUID();
+    if (kind === 'file' && !fileMediaType(rel)) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.');
+    const text = kind === 'file' ? '' : decodeText(read.bytes), id = placement.id ?? randomUUID();
     const base: CanvasNode = { id, title: placement.title ?? titleFromPath(rel), description: '', x: placement.x ?? 0, y: placement.y ?? 0, kind: placement.kind && placement.kind !== 'group' ? placement.kind : 'topic',
       ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}), ...(placement.label ? { label: placement.label } : {}) };
     let node: CanvasNode;
@@ -487,6 +511,7 @@ export class ProjectFolders implements NotebookFolders {
       if (text.length > 100_000) throw new StoreError(`${rel} is longer than 100,000 characters, the most a Code block holds.`);
       node = { ...base, blockType: 'code', code: { language: codeLanguage(extensionOf(rel)) ?? 'python', source: text, parameters: {}, inputArtifactId: null } };
     } else if (kind === 'dataset') { parseCsv(text, true); node = { ...base, blockType: 'dataset' }; }
+    else if (kind === 'file') node = { ...base, blockType: 'file', file: { path: rel } };
     else if (kind === 'notebook') node = { ...base, blockType: 'notebook' };
     else node = { ...base, blockType: 'report' };
     // The file is recorded with the block in one transaction, so the folder pass that follows never writes a second copy.
@@ -496,6 +521,7 @@ export class ProjectFolders implements NotebookFolders {
       this.store.mutate(projectId, [{ type: 'addNode', node }], `Added ${rel} from the project folder`);
       const added = this.store.getProject(projectId).canvas.nodes.find(item => item.id === id)!;
       if (kind === 'dataset') record.files[id].artifactId = this.capture(projectId, added, { kind: 'dataset', title: added.title, content: text, mediaType: 'text/csv', path: rel }).id;
+      if (kind === 'file') this.queueText(projectId, id);
       if (kind === 'notebook') { if (!this.notebooks) throw new StoreError('Notebooks are unavailable.'); this.notebooks.fromFile(projectId, id, rel, text, read.observed.hash); }
       if (kind === 'report') {
         const evidence = new Set<string>(), canonical = reportFromFolder(text, posix.dirname(rel), new Map([...this.exported(record)].map(([artifactId, path]) => [path.toLowerCase(), artifactId])), evidence);
@@ -508,16 +534,16 @@ export class ProjectFolders implements NotebookFolders {
   private ownArtifact(projectId: string, artifactId: string): boolean { try { return this.store.getArtifact(artifactId).projectId === projectId; } catch { return false; } }
 
   /** A file read from the folder becomes a new saved version of the block, with its own record. */
-  private capture(projectId: string, node: CanvasNode, input: { kind: 'dataset'; title: string; content: string; mediaType: string; path: string }): Artifact {
+  private capture(projectId: string, node: CanvasNode, input: { kind: 'dataset' | 'source'; title: string; content: string; mediaType: string; path: string; metadata?: Record<string, unknown>; label?: string }): Artifact {
     return this.store.atomic(() => {
       const project = this.store.getProject(projectId), at = now();
-      const run: Run = { id: randomUUID(), projectId, nodeId: node.id, request: `Read ${input.path} from the project folder`, useSearch: false, status: 'running', createdAt: at, startedAt: at, projectRevision: project.revision,
+      const run: Run = { id: randomUUID(), projectId, nodeId: node.id, request: input.label ?? `Read ${input.path} from the project folder`, useSearch: false, status: 'running', createdAt: at, startedAt: at, projectRevision: project.revision,
         node: structuredClone(node), inputs: [], messages: [], provider: 'local', model: 'project-folder-v1', modelVersion: null, configuration: { kind: 'file-import', origin: 'project-folder', path: input.path },
         tools: [], events: [{ at, type: 'file-import', message: 'Read a file from the project folder. No model or code ran.' }], artifactIds: [] };
       this.store.createRun(run);
-      const artifact = this.store.addArtifact({ projectId, nodeId: node.id, runId: run.id, kind: input.kind, title: input.title, content: input.content, mediaType: input.mediaType, capture: 'full-content', metadata: { origin: 'project-folder', path: input.path } });
+      const artifact = this.store.addArtifact({ projectId, nodeId: node.id, runId: run.id, kind: input.kind, title: input.title, content: input.content, mediaType: input.mediaType, capture: 'full-content', metadata: { origin: 'project-folder', path: input.path, ...input.metadata } });
       this.store.updateRun(run.id, { status: 'completed', endedAt: at, artifactIds: [artifact.id] });
-      this.store.mutate(projectId, [{ type: 'updateNode', id: node.id, patch: { artifactId: artifact.id } }], `Edited outside ros.ai: ${input.path}`);
+      this.store.mutate(projectId, [{ type: 'updateNode', id: node.id, patch: { artifactId: artifact.id } }], input.label ?? `Edited outside ros.ai: ${input.path}`);
       return artifact;
     });
   }
@@ -623,7 +649,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   /** A failed pass is shown with the folder and tried again on the next change. */
   private syncNow(projectId: string, write: boolean): void {
-    try { this.sync(projectId, write); }
+    try { this.sync(projectId, write); void this.readPendingText(projectId); }
     catch (error) {
       if (write) this.exportDue.add(projectId);
       this.checked.set(projectId, { available: true, unplaced: this.checked.get(projectId)?.unplaced ?? [], problems: [{ path: '.', message: `Folder sync stopped: ${message(error)}` }], checkedAt: now() });
@@ -643,20 +669,70 @@ export class ProjectFolders implements NotebookFolders {
     let listing: Listed[] = [];
     try {
       listing = files.list();
+      this.adoptFileBlocks(record, files, project);
       this.readOutsideEdits(record, files, project, listing);
       if (write) { this.writeAll(record, files, problems); listing = files.list(); }
     } finally {
       if (JSON.stringify(record) !== before) this.save(record);
       const mapped = this.mapped(record), board = record.board?.toLowerCase();
       const unplaced = listing.filter(file => !mapped.has(file.path.toLowerCase()) && file.path.toLowerCase() !== board)
-        .flatMap(file => {
-          const kind = unplacedKind(file.path) ?? (isPdf(file.path) ? 'pdf' as const : null);
-          // A PDF whose text note is already there is not new any more.
-          if (kind === 'pdf' && listing.some(other => other.path.toLowerCase() === `${file.path.toLowerCase()}.md`)) return [];
-          return kind ? [{ path: file.path, kind, bytes: file.size }] : [];
-        }).slice(0, 200);
+        .flatMap(file => { const kind = unplacedKind(file.path); return kind ? [{ path: file.path, kind, bytes: file.size }] : []; }).slice(0, 200);
       this.checked.set(projectId, { available: true, unplaced, problems, checkedAt: now() });
     }
+  }
+
+  /** A File block that arrived without the folder (an agent's proposal, a drop, Undo) is recorded with its file, and its text read. */
+  private adoptFileBlocks(record: FolderRecord, files: FolderFiles, project: Project): void {
+    for (const node of project.canvas.nodes) {
+      const entry = record.files[node.id];
+      if (node.kind === 'group' || nodeBlockType(node) !== 'file' || !node.file?.path || (entry && !entry.removed)) continue;
+      let read: ReturnType<FolderFiles['read']> | undefined, problem: string | undefined;
+      try { if (!fileMediaType(node.file.path)) throw new StoreError('is not a PDF, PNG or JPEG, so ros.ai cannot show it.'); if (files.stat(node.file.path)) read = files.read(node.file.path, READ_BYTES.file); }
+      catch (error) { problem = message(error); }
+      record.files[node.id] = { path: node.file.path, kind: 'file', hash: read?.observed.hash ?? '', ...(read ? { disk: read.observed } : { missing: true }), ...(problem ? { problem } : {}) };
+      if (read) this.queueText(record.projectId, node.id);
+    }
+  }
+  private queueText(projectId: string, nodeId: string): void {
+    const pending = this.pendingText.get(projectId) ?? new Set<string>();
+    pending.add(nodeId);
+    this.pendingText.set(projectId, pending);
+  }
+  /** Reads the text of each waiting PDF into its File block as a saved version. Images have no text to read. */
+  private async readPendingText(projectId: string): Promise<void> {
+    if (this.readingText.has(projectId)) return;
+    this.readingText.add(projectId);
+    try {
+      for (let pending = this.pendingText.get(projectId); pending?.size; pending = this.pendingText.get(projectId)) {
+        const [nodeId] = pending;
+        pending.delete(nodeId);
+        try { await this.readFileText(projectId, nodeId); }
+        catch (error) { const entry = this.load(projectId)?.files[nodeId]; if (entry) { entry.problem = message(error); this.save(this.load(projectId)!); } }
+      }
+    } finally { this.readingText.delete(projectId); }
+  }
+  private async readFileText(projectId: string, nodeId: string): Promise<void> {
+    const record = this.load(projectId);
+    const entry = record?.files[nodeId], node = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
+    if (!record || !entry || entry.removed || entry.kind !== 'file' || !node) return;
+    const files = new FolderFiles(record.path), read = files.read(entry.path, READ_BYTES.file);
+    const previous = node.artifactId ? this.store.listArtifacts(projectId).find(artifact => artifact.id === node.artifactId) : undefined;
+    if (previous?.metadata?.fileHash === read.observed.hash) return;
+    if (!isPdfType(fileMediaType(entry.path))) return;
+    let text = '', pages = 0;
+    try {
+      const { extractText, getDocumentProxy } = await import('unpdf');
+      const document = await getDocumentProxy(new Uint8Array(read.bytes));
+      pages = document.numPages;
+      const result = await extractText(document, { mergePages: false });
+      text = (result.text as string[]).map(page => page.replace(/[ \t]+\n/gu, '\n').replace(/\n{3,}/gu, '\n\n').trim()).filter(Boolean).join('\n\n');
+    } catch { throw new StoreError('could not be read as a PDF, so its text is not available to agents.'); }
+    if (this.closed) return;
+    const current = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
+    if (!current || current.file?.path !== entry.path) return;
+    const name = posix.basename(entry.path);
+    const content = text.trim() ? text.slice(0, FILE_TEXT) : `${name} has no text layer (it may be a scan), so there is no text to read.`;
+    this.capture(projectId, current, { kind: 'source', title: `Text of ${name}`, content, mediaType: 'text/plain', path: entry.path, metadata: { fileHash: read.observed.hash, pages, mediaType: 'application/pdf', ...(text.trim() ? {} : { noTextLayer: true }), ...(text.length > FILE_TEXT ? { truncated: true } : {}) }, label: `Read the text of ${name}` });
   }
 
   private observe(files: FolderFiles, entry: FileEntry): { observed: Observed; bytes?: Buffer } | null {
@@ -685,10 +761,13 @@ export class ProjectFolders implements NotebookFolders {
         entry.path = moved.path; entry.disk = moved.observed; entry.missing = false;
         const title = titleFromPath(moved.path);
         if (!new RegExp(`^${escapeRegExp(safeFileBase(node.title))}( \\d+)?$`, 'u').test(title)) operations.push({ type: 'updateNode', id: nodeId, patch: { title } });
+        if (entry.kind === 'file') operations.push({ type: 'updateNode', id: nodeId, patch: { file: { path: moved.path } } });
         continue;
       }
       entry.missing = false;
       if (seen.observed.hash === entry.hash) { delete entry.problem; continue; }
+      // A PDF or image replaced on disk: the card shows the new file, and a PDF's text is read again.
+      if (entry.kind === 'file') { entry.hash = seen.observed.hash; delete entry.problem; this.queueText(record.projectId, nodeId); continue; }
       // A version already seen and refused keeps its problem until the file changes again.
       if (!seen.bytes || !TWO_WAY.has(entry.kind)) continue;
       try {
@@ -714,6 +793,7 @@ export class ProjectFolders implements NotebookFolders {
 
   /** A file renamed or moved in another app is found again by its content. */
   private findMoved(record: FolderRecord, files: FolderFiles, entry: FileEntry, listing: Listed[]): { path: string; observed: Observed } | null {
+    if (!entry.hash) return null;
     const mapped = this.mapped(record), extension = extensionOf(entry.path).toLowerCase();
     for (const file of listing) {
       if (mapped.has(file.path.toLowerCase()) || extensionOf(file.path).toLowerCase() !== extension || (entry.disk && file.size !== entry.disk.size)) continue;
@@ -740,6 +820,7 @@ export class ProjectFolders implements NotebookFolders {
 
   private render(projectId: string, node: CanvasNode, kind: FolderFileKind, artifacts: ReadonlyMap<string, Artifact>, exported: ReadonlyMap<string, string>, folder: string): Rendered | null {
     const artifact = node.artifactId ? artifacts.get(node.artifactId) : undefined;
+    if (kind === 'file') return null; // the person's own PDF or image: shown, never written
     if (kind === 'note') return { bytes: Buffer.from(node.description, 'utf8'), extension: '.md' };
     if (kind === 'code') {
       const code = node.code ?? { language: 'python', source: [...artifacts.values()].find(item => item.id === node.artifactId && item.kind === 'code')?.content ?? '' };
@@ -764,6 +845,8 @@ export class ProjectFolders implements NotebookFolders {
     // A removed block's file moves to .ros-ai/trash; Undo brings it back.
     for (const [nodeId, entry] of Object.entries(record.files)) {
       if (entry.removed || live.has(nodeId)) continue;
+      // A removed File block leaves the person's file where it is; Undo finds it again.
+      if (entry.kind === 'file') { entry.removed = true; delete entry.missing; delete entry.problem; continue; }
       try { const trashed = this.retire(files, entry.path, entry.hash, true); entry.removed = true; delete entry.missing; delete entry.problem; if (trashed) entry.trashPath = trashed; }
       catch (error) { problems.push({ path: entry.path, message: message(error) }); }
     }
@@ -933,7 +1016,8 @@ export class ProjectFolders implements NotebookFolders {
 function kindForFile(path: string, blockType?: string): FolderFileKind {
   if (blockType === 'report') return 'report';
   if (blockType === 'figure') return 'figure';
-  return unplacedKind(path) ?? 'note';
+  const kind = unplacedKind(path);
+  return kind === 'pdf' || kind === 'image' || blockType === 'file' ? 'file' : kind ?? 'note';
 }
 const pick = (info: Stats) => ({ mtimeMs: info.mtimeMs, size: info.size });
 
@@ -951,4 +1035,24 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
   app.get('/api/open-apps', (_req, res) => res.json(folders.apps()));
   app.post('/api/projects/:id/folder/restore', (req, res) => res.json(folders.restore(id.parse(req.params.id), z.object({ nodeId: id }).strict().parse(req.body).nodeId)));
   app.post('/api/projects/:id/folder/add', async (req, res) => res.status(201).json(await folders.addFile(id.parse(req.params.id), z.object({ path: z.string().min(1).max(1000) }).strict().parse(req.body).path)));
+  // A dropped or chosen PDF or image, saved into files/ so a File block can show it. The body is the file itself.
+  app.post('/api/projects/:id/folder/files', express.raw({ type: () => true, limit: FILE_BYTES }), (req, res) => {
+    const name = z.string().trim().min(1).max(255).parse(req.query.name);
+    if (!Buffer.isBuffer(req.body)) throw new StoreError('Send the file as the request body.');
+    res.status(201).json(folders.saveFile(id.parse(req.params.id), name, req.body));
+  });
+  // The file a File block shows, read from the project folder on every request. Browsers cache it by its content hash.
+  app.get('/api/projects/:id/nodes/:nodeId/file', (req, res) => {
+    const file = folders.fileOf(id.parse(req.params.id), id.parse(req.params.nodeId));
+    const tag = file.hash ? `"${file.hash.slice(0, 32)}"` : undefined;
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (tag) { res.setHeader('ETag', tag); if (req.headers['if-none-match'] === tag) { res.status(304).end(); return; } }
+    res.setHeader('Content-Type', file.mediaType);
+    res.setHeader('Content-Length', String(file.size));
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    const stream = createReadStream(file.absolute);
+    stream.on('error', () => { if (!res.headersSent) res.status(404); res.end(); });
+    stream.pipe(res);
+  });
 }

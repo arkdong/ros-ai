@@ -639,3 +639,25 @@
 /* Dragging across the canvas pans it; the empty-state hint and the header labels are not text to select. */
 .direct-canvas .canvas-empty, .direct-canvas .canvas-empty > * { pointer-events: none; user-select: none; -webkit-user-select: none; }
 .direct-canvas .canvas-context { user-select: none; -webkit-user-select: none; }
+/* While a proposal is previewed, the rest of the canvas steps back and the proposed blocks carry a tag. */
+.direct-canvas.previewing-proposal .research-card:not(.preview-added):not(.preview-changed):not(.preview-removed),
+.direct-canvas.previewing-proposal .canvas-artifact {
+  opacity: .35;
+}
+.direct-canvas.previewing-proposal .research-card.preview-added,
+.direct-canvas.previewing-proposal .research-card.preview-changed {
+  border: 1px solid #cfcfcf;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .07);
+}
+.direct-canvas .research-card .card-preview-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e6e6e6;
+  color: #262626;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
