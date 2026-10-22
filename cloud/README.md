@@ -1,6 +1,6 @@
 # ros.ai cloud
 
-Sign-in and the free hosted Ros, as one small service. The local app stays the product: it works without this service, and with it a person can sign in once and use Ros on NVIDIA Nemotron without a key of their own.
+Sign-in and the free hosted Ros, as one small service. This folder is not under the repository's MIT licence; see [LICENSE](LICENSE). The local app stays the product: it works without this service, and with it a person can sign in once and use Ros on NVIDIA Nemotron without a key of their own.
 
 - **Sign-in** is [Better Auth](https://better-auth.com) with its tables in our own Postgres: people, sessions, organisations (everyone gets a personal one) and device codes. The app signs in with a device code that the person approves in the browser (`/device`), then sends the session token as a bearer token.
 - **The gateway** is OpenAI-compatible (`/v1/chat/completions`, `/v1/models`, `/v1/me`), so the app's ordinary model connection and agent loop use it unchanged. The app asks for a model name (`ros`, `ros-deep`); `src/config.ts` maps each to the provider model, price and temperature, and `ROS_CLOUD_MODELS` overrides them without a code change.

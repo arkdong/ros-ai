@@ -1,0 +1,16 @@
+ros.ai cloud
+
+Copyright (c) 2026 Adam Dong. All rights reserved.
+
+The code in this folder (`cloud/`: sign-in, the hosted Ros gateway and the
+usage ledger) is NOT covered by the MIT licence in the repository root. It is
+published so that anyone can read how the hosted service treats their data
+and their requests.
+
+You may read it, run it on your own machine to develop and test the ros.ai
+app against it, and propose changes to it. You may not use it to offer a
+hosted, resold or commercial service, redistribute it, or include it in
+another product, without written permission from the copyright holder.
+
+The ros.ai app in the rest of this repository stays under the MIT licence and
+runs without this service.
