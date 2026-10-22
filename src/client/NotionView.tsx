@@ -7,7 +7,6 @@ import { MarkdownPreview } from './Content';
 import { NotionPageEditor } from './NotionPage';
 import './notion-view.css';
 
-const PREVIEW_PROPERTIES = 4;
 /** When it was read: the time today, with the date on another day (a read kept across restarts). */
 const clock = (at: string) => { const date = new Date(at), time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`; };
 const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
@@ -68,10 +67,11 @@ function TableFooter({ table, onRows, asking, setAsking }: { table: NotionTable 
 
 /** The card: the first filled fields and a few lines of text; the title is the block's title already. */
 function PageBody({ page }: { page: NotionPage }) {
-  const properties = page.properties.filter(property => property.type !== 'title' && property.value).slice(0, PREVIEW_PROPERTIES);
+  // The card scrolls through every filled field and the whole text, as the block view shows them.
+  const properties = page.properties.filter(property => property.type !== 'title' && property.value);
   return <>
     {properties.length > 0 && <dl className="notion-page-properties">{properties.map(property => <div key={property.name}><dt title={property.name}>{property.name}</dt><dd title={property.value}>{property.links?.length ? property.links.map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer" onClick={stop}>{link.text}<ArrowUpRight size={10}/></a>) : property.value}</dd></div>)}</dl>}
-    {page.content ? <div className="notion-page-content"><MarkdownPreview text={page.content} limit={360}/></div> : !properties.length ? <p className="notion-block-empty">An empty page.</p> : null}
+    {page.content ? <div className="notion-page-content"><MarkdownPreview text={page.content}/></div> : !properties.length ? <p className="notion-block-empty">An empty page.</p> : null}
   </>;
 }
 
