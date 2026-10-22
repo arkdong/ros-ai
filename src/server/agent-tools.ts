@@ -12,13 +12,16 @@ import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, cardFootprintHeight, cardWidth
 import { LAYOUT_GAP, arrangeCanvas } from '../shared/layout.js';
 import { RESULT_PLACEHOLDER, formatSources } from '../shared/agent-work.js';
 import type { NotionApi, NotionWrite } from './notion.js';
+import type { NotionViews } from './notion-view.js';
+import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AppId, type RemoteApps } from './remote-apps.js';
 import type { ProjectFolders } from './project-folders.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const canvasReadSchema = z.object({ nodeIds: z.array(id).max(10).default([]) }).strict();
 const readSchema = z.object({ artifactId: id.optional(), offset: z.number().int().min(0).default(0), length: z.number().int().min(1).max(30000).default(12000) }).strict();
-const canvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(proposalMutationSchema).min(1).max(20) }).strict();
+// Up to 120 operations: one block per row of a Notion database, with its link, for 50 rows in one proposal.
+const canvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(proposalMutationSchema).min(1).max(120) }).strict();
 const reuseSchema = z.object({ artifactId: id, targetNodeId: id, reason: z.string().trim().min(1).max(1000) }).strict();
 const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python', 'nebius-sandbox']) }).strict();
 const reportSchema = z.object({ nodeId: id, sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
@@ -100,6 +103,8 @@ function lenient<T extends z.ZodTypeAny>(schema: T, supplied: unknown): z.infer<
 export class AgentWorkspaceTools {
   /** The Notion connection from the Plugins page; its tools are offered only while it has a secret. */
   static notion?: NotionApi;
+  /** Live Notion blocks (pages and databases through the hosted connection), read for the agent as the canvas shows them. */
+  static views?: NotionViews;
   /** Apps connected through their hosted MCP servers (Apps page); their own tools are offered while signed in. */
   static apps?: RemoteApps;
   /** The project folders, which say which PDFs and images a File block can show. */
@@ -169,7 +174,7 @@ export class AgentWorkspaceTools {
   private current() { if (this.store.getProject(this.scope.projectId).revision !== this.expectedRevision) throw new StoreError('The canvas changed after the agent capture. Review a new turn before proposing edits.', 409); }
   async call(name: string, supplied: unknown): Promise<unknown> {
     if (this.experiments.authority.policy(this.scope.projectId).stopped) throw new StoreError('Project work is stopped; no agent tool effect was applied.', 409);
-    if (name === 'ros_read_canvas') return this.readCanvas(lenient(canvasReadSchema, supplied));
+    if (name === 'ros_read_canvas') return await this.readCanvas(lenient(canvasReadSchema, supplied));
     if (name === 'ros_read_selected') {
       const value = lenient(readSchema, supplied);
       if (!value.artifactId) return this.preview();
@@ -260,7 +265,7 @@ export class AgentWorkspaceTools {
     AgentWorkspaceTools.folders.placeable(this.scope.projectId, node.file.path);
   }
   /** The map index, or the full text of named blocks. Read-only; nothing here widens what the agent may change. */
-  private readCanvas(value: z.infer<typeof canvasReadSchema>) {
+  private async readCanvas(value: z.infer<typeof canvasReadSchema>) {
     const detail = this.store.detail(this.scope.projectId), nodes = detail.project.canvas.nodes;
     const artifactsOf = (nodeId: string) => detail.artifacts.filter(a => a.nodeId === nodeId).slice(-12);
     if (!value.nodeIds.length) {
@@ -274,13 +279,28 @@ export class AgentWorkspaceTools {
         ...(nodes.length > listed.length ? { note: `Only the first ${listed.length} of ${nodes.length} blocks are listed.` } : {}),
       };
     }
-    return { blocks: value.nodeIds.map(nodeId => {
+    return { blocks: await Promise.all(value.nodeIds.map(async nodeId => {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return { id: nodeId, missing: true };
       const artifacts = artifactsOf(node.id);
       for (const a of artifacts) if (!this.capture.artifacts.some(c => c.id === a.id)) this.opened.set(a.id, { id: a.id, nodeId: a.nodeId, runId: a.runId, kind: a.kind, title: a.title, hash: a.hash, content: a.content, createdAt: a.createdAt, capture: a.capture, mediaType: a.mediaType });
-      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? { notion: node.notion, note: 'A live Notion database: query its rows with ros_app_call; they are not saved here.' } : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
-    }) };
+      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
+    })) };
+  }
+  /** What a live Notion block shows, as the canvas shows it: a page's properties and text, or a database's rows
+   * (titles and links) so the agent can propose one page block per row. Read-only; a failed read is reported. */
+  private async notionBlock(node: CanvasNode) {
+    const notion = node.notion!;
+    try {
+      const read = await AgentWorkspaceTools.views?.read(notion, false, this.scope.projectId);
+      if (!read) return { notion, note: 'A live Notion block; its content is not saved here. Query it with ros_app_call.' };
+      if (read.kind === 'page') return { notion: { ...notion, kind: 'page' as const }, note: `A live Notion page; its properties and text below are read from Notion, not saved here. ${NOTION_UNTRUSTED}`, page: { title: read.title, link: read.link, parent: read.parent, properties: Object.fromEntries(read.properties.map(property => [property.name, property.links?.length ? property.links.map(link => link.url).join(', ') : property.value])), content: read.content.slice(0, 12_000) } };
+      const rows = read.rows.slice(0, MAX_ROW_BLOCKS).map(row => ({ title: (read.titleColumn ? row[read.titleColumn] : row[read.columns[0]]) || 'Untitled', url: row.url }));
+      const present = new Set(this.store.getProject(this.scope.projectId).canvas.nodes.flatMap(item => item.notion?.url ? [item.notion.url] : []));
+      return { notion: { ...notion, kind: 'database' as const }, note: `A live Notion database (${read.rows.length}${read.truncated ? '+' : ''} rows match; the first ${rows.length} are listed). To make one block per row, propose with ros_propose_canvas an addNode per row ({ blockType: 'notion', notion: { url: <row url>, kind: 'page' }, title: <row title>, description: '' }) and an addConnection from this block to it with label '${ROW_LINK}'; skip rows marked onCanvas. Each new block reads its page live. ${NOTION_UNTRUSTED}`, columns: read.columns, rows: rows.map(row => ({ ...row, ...(present.has(row.url) ? { onCanvas: true } : {}) })) };
+    } catch (error) {
+      return { notion, note: `A live Notion block that could not be read now: ${error instanceof Error ? error.message : String(error)}` };
+    }
   }
   private async notionTool(name: string, supplied: unknown) {
     const notion = AgentWorkspaceTools.notion;
