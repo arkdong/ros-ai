@@ -8,7 +8,7 @@ import type { AgentScope } from '../shared/agent-runtime.js';
 import type { Artifact, Canvas, CanvasNode, Mutation, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import { EXTRACT_PAGES_PER_CREDIT, TAVILY_CREDIT_USD } from './providers.js';
-import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
+import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
 import { LAYOUT_GAP, arrangeCanvas } from '../shared/layout.js';
 import { RESULT_PLACEHOLDER, formatSources } from '../shared/agent-work.js';
 import type { NotionApi, NotionWrite } from './notion.js';
@@ -479,10 +479,10 @@ export class AgentWorkspaceTools {
     const wanted = agent ? snapUp(Math.max(agent.y, ...nodes.filter(n => this.own.has(n.id) && n.id !== agent.id).map(n => n.y + estimatedCardHeight(n) + LAYOUT_GAP)))
       : question ? snap(question.y + CARD_DEFAULT_HEIGHT / 2 - span / 2) : snap(Math.min(0, ...root.map(n => n.y)));
     // Existing cards may show results, so they count at their tallest, as ros.ai's placement does.
-    const free = (from: number) => root.every(n => this.own.has(n.id) || n.x >= right + LAYOUT_GAP || n.x + cardWidth(n) + LAYOUT_GAP <= left || n.y >= bottom(from) + LAYOUT_GAP || n.y + CARD_MAX_HEIGHT + LAYOUT_GAP <= from);
+    const free = (from: number) => root.every(n => this.own.has(n.id) || n.x >= right + LAYOUT_GAP || n.x + cardWidth(n) + LAYOUT_GAP <= left || n.y >= bottom(from) + LAYOUT_GAP || n.y + cardFootprintHeight(n) + LAYOUT_GAP <= from);
     // The nearest clear spot above or below; a later plan only moves down, below the first.
     const offsets = Array.from({ length: 200 }, (_, index) => agent ? index * 24 : (index % 2 ? -1 : 1) * Math.ceil(index / 2) * 24);
-    const from = wanted + (offsets.find(offset => free(wanted + offset)) ?? Math.max(0, ...root.map(n => n.y + CARD_MAX_HEIGHT + LAYOUT_GAP)) - wanted);
+    const from = wanted + (offsets.find(offset => free(wanted + offset)) ?? Math.max(0, ...root.map(n => n.y + cardFootprintHeight(n) + LAYOUT_GAP)) - wanted);
     let at = from;
     rows.forEach((row, index) => { row.y = at; at += heights[index]; });
     return { x, y: agent ? agent.y : agentTop(from) };
@@ -641,7 +641,7 @@ export class AgentWorkspaceTools {
     const others = canvas.nodes.filter(node => !node.parentId && !inTree.has(node.id));
     // Other blocks count at their tallest, as ros.ai's placement does.
     const clear = (down: number) => roots.every(node => others.every(other => other.x >= node.x + dx + sizes[node.id].width + LAYOUT_GAP || other.x + cardWidth(other) + LAYOUT_GAP <= node.x + dx
-      || other.y >= node.y + dy + down + sizes[node.id].height + LAYOUT_GAP || other.y + CARD_MAX_HEIGHT + LAYOUT_GAP <= node.y + dy + down));
+      || other.y >= node.y + dy + down + sizes[node.id].height + LAYOUT_GAP || other.y + cardFootprintHeight(other) + LAYOUT_GAP <= node.y + dy + down));
     const down = Array.from({ length: 400 }, (_, index) => index * 24).find(clear) ?? 0;
     return new Map(laid.map(node => [node.id, node.parentId ? { x: node.x, y: node.y } : { x: node.x + dx, y: node.y + dy + down }]));
   }

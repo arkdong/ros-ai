@@ -1,5 +1,5 @@
 import type { Canvas, CanvasNode } from './types';
-import { CARD_DEFAULT_WIDTH, CARD_DEFAULT_HEIGHT, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, cardWidth } from './card-size';
+import { CARD_DEFAULT_WIDTH, CARD_DEFAULT_HEIGHT, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, cardWidth, setCardHeight } from './card-size';
 import { displayRelationship } from './relationships';
 import { relationshipLabelSize } from './relationship-label';
 import { aggregateTopLevelRelationships, relationshipBadgeText } from './aggregate-relationships';
@@ -178,7 +178,7 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
       const measured = options.nodeSizes?.[node.id];
       sizes[node.id] = expanded.has(node.id)
         ? { width: snap(Math.max(768, contentWidth + GROUP_INSET.x * 2)), height: snap(Math.max(408, contentHeight + GROUP_INSET.y + GROUP_FOOTER)) }
-        : { width: measured?.width ?? cardWidth(node), height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured?.height ?? CARD_SIZE.height)) };
+        : { width: measured?.width ?? cardWidth(node), height: setCardHeight(node) ?? Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured?.height ?? CARD_SIZE.height)) };
     }
     if (!siblings.length) { visiting.delete(parentId); return { width: 0, height: 0 }; }
     // Root alignment stays in the same part of the canvas. Inner groups compact

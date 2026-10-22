@@ -6,7 +6,7 @@ import { basename, delimiter, dirname, isAbsolute, join, posix, resolve, sep } f
 import express, { type Express } from 'express';
 import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
-import { CARD_DEFAULT_HEIGHT, cardWidth } from '../shared/card-size.js';
+import { CARD_DEFAULT_HEIGHT, cardWidth, setCardHeight } from '../shared/card-size.js';
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
 import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
@@ -213,7 +213,7 @@ class FolderFiles {
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
   blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(),
-    parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
+    parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
 type Manifest = z.infer<typeof manifestSchema>;
@@ -441,7 +441,7 @@ export class ProjectFolders implements NotebookFolders {
       const kind = kindForFile(block.file!, block.blockType);
       try {
         if (!files.exists(block.file!)) continue;
-        this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, label: block.label, parentId: parentOf(block), x: block.x, y: block.y, width: block.width });
+        this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, label: block.label, parentId: parentOf(block), x: block.x, y: block.y, width: block.width, height: block.height });
         placed.push(block.id);
       } catch { /* listed as an unplaced file instead */ }
     }
@@ -502,13 +502,13 @@ export class ProjectFolders implements NotebookFolders {
     return (this.checked.get(projectId)?.unplaced ?? []).filter(file => file.kind === 'pdf' || file.kind === 'image');
   }
 
-  private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'label' | 'parentId' | 'x' | 'y' | 'width'>>): CanvasNode {
+  private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'label' | 'parentId' | 'x' | 'y' | 'width' | 'height'>>): CanvasNode {
     const projectId = record.projectId, read = files.read(rel, READ_BYTES[kind]);
     if (kind === 'figure') throw new StoreError('Figures are written by ros.ai and cannot be added from the folder yet.');
     if (kind === 'file' && !fileMediaType(rel)) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.');
     const text = kind === 'file' ? '' : decodeText(read.bytes), id = placement.id ?? randomUUID();
     const base: CanvasNode = { id, title: placement.title ?? titleFromPath(rel), description: '', x: placement.x ?? 0, y: placement.y ?? 0, kind: placement.kind && placement.kind !== 'group' ? placement.kind : 'topic',
-      ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}), ...(placement.label ? { label: placement.label } : {}) };
+      ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}), ...(placement.height ? { height: placement.height } : {}), ...(placement.label ? { label: placement.label } : {}) };
     let node: CanvasNode;
     if (kind === 'note') {
       if (text.length > 20_000) throw new StoreError(`${rel} is longer than 20,000 characters, the most a note holds.`);
@@ -958,7 +958,7 @@ export class ProjectFolders implements NotebookFolders {
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
       blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: node.notion } : {}), ...(node.label ? { label: node.label } : {}),
-        parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(entry && !entry.removed ? { file: entry.path } : {}) }; }),
+        parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
   }
@@ -968,7 +968,7 @@ export class ProjectFolders implements NotebookFolders {
     const size = (node: CanvasNode, seen = new Set<string>()): { width: number; height: number } => {
       const known = sizes.get(node.id);
       if (known) return known;
-      if (node.kind !== 'group' || seen.has(node.id)) return { width: cardWidth(node), height: CARD_DEFAULT_HEIGHT };
+      if (node.kind !== 'group' || seen.has(node.id)) return { width: cardWidth(node), height: setCardHeight(node) ?? CARD_DEFAULT_HEIGHT };
       seen.add(node.id);
       const children = nodes.filter(child => child.parentId === node.id).map(child => ({ child, box: size(child, seen) }));
       const right = Math.max(0, ...children.map(({ child, box }) => child.x + box.width)), bottom = Math.max(0, ...children.map(({ child, box }) => child.y + box.height));

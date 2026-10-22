@@ -51,26 +51,44 @@ function useWidth(box: RefObject<HTMLElement | null>): number {
   return width;
 }
 
-/** One page drawn at a CSS width, sharp on high-density screens. */
-function PdfPage({ doc, number, width, onRendered }: { doc: PdfDocument; number: number; width: number; onRendered?: () => void }) {
+/** A width that has stopped changing for a moment; the first one is taken at once. */
+function useSettled(value: number, wait = 160): number {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (settled === 0 && value > 0) { setSettled(value); return; }
+    const timer = setTimeout(() => setSettled(value), wait);
+    return () => clearTimeout(timer);
+  }, [value, wait]); // eslint-disable-line react-hooks/exhaustive-deps
+  return settled === 0 ? value : settled;
+}
+
+/** One page drawn at a CSS width, sharp on high-density screens. The page is drawn off screen and then shown in one
+ * step, so a redraw never blanks the page. A fluid page fills its box and scales while a new width is drawn. */
+function PdfPage({ doc, number, width, fluid = false, onRendered }: { doc: PdfDocument; number: number; width: number; fluid?: boolean; onRendered?: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const rendered = useRef(onRendered); rendered.current = onRendered;
   useEffect(() => {
     let live = true, task: RenderTask | undefined;
     void doc.getPage(number).then(page => {
-      const element = canvas.current;
-      if (!live || !element) return;
+      if (!live || !canvas.current) return;
       const base = page.getViewport({ scale: 1 }), ratio = window.devicePixelRatio || 1;
       const scale = width / base.width;
       if (!(scale > 0)) return;
-      const viewport = page.getViewport({ scale: scale * ratio });
-      element.width = Math.floor(viewport.width); element.height = Math.floor(viewport.height);
-      element.style.width = `${Math.floor(viewport.width / ratio)}px`; element.style.height = `${Math.floor(viewport.height / ratio)}px`;
-      task = page.render({ canvas: element, viewport });
-      return task.promise.then(() => { if (live) rendered.current?.(); });
-    }).catch((error: unknown) => { if (live) console.error(`Page ${number} could not be drawn`, error); });
+      const viewport = page.getViewport({ scale: scale * ratio }), drawn = document.createElement('canvas');
+      drawn.width = Math.floor(viewport.width); drawn.height = Math.floor(viewport.height);
+      task = page.render({ canvas: drawn, viewport });
+      return task.promise.then(() => {
+        const element = canvas.current;
+        if (!live || !element) return;
+        element.width = drawn.width; element.height = drawn.height;
+        element.getContext('2d')?.drawImage(drawn, 0, 0);
+        if (fluid) { element.style.width = '100%'; element.style.height = 'auto'; }
+        else { element.style.width = `${Math.floor(viewport.width / ratio)}px`; element.style.height = `${Math.floor(viewport.height / ratio)}px`; }
+        rendered.current?.();
+      });
+    }).catch((error: unknown) => { if (live && !(error instanceof Error && error.name === 'RenderingCancelledException')) console.error(`Page ${number} could not be drawn`, error); });
     return () => { live = false; task?.cancel(); };
-  }, [doc, number, width]);
+  }, [doc, number, width, fluid]);
   return <canvas ref={canvas} className="pdf-page" role="img" aria-label={`Page ${number}`}/>;
 }
 
@@ -85,9 +103,10 @@ export function FilePreview({ file, title }: { file: ShownFile; title: string })
   return <PdfPreview file={file}/>;
 }
 function PdfPreview({ file }: { file: ShownFile }) {
-  const box = useRef<HTMLDivElement>(null), width = useWidth(box), { doc, error } = usePdf(file.src);
+  // While the card is resized the drawn page scales with it; it is drawn again once the width settles.
+  const box = useRef<HTMLDivElement>(null), width = useSettled(useWidth(box)), { doc, error } = usePdf(file.src);
   return <>
-    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 ? <PdfPage doc={doc} number={1} width={width}/> : <LoaderCircle size={14} className="spin"/>}</div>
+    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 ? <PdfPage doc={doc} number={1} width={width} fluid/> : <LoaderCircle size={14} className="spin"/>}</div>
     <FileLine parts={['PDF', doc ? `${doc.numPages} page${doc.numPages === 1 ? '' : 's'}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
   </>;
 }
