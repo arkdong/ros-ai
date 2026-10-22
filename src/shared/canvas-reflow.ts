@@ -1,4 +1,4 @@
-import { cardWidth, CARD_DEFAULT_HEIGHT } from './card-size';
+import { cardWidth, setCardHeight, CARD_DEFAULT_HEIGHT } from './card-size';
 import { GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize, type LayoutOptions } from './layout';
 import { displayRelationship } from './relationships';
 import type { Canvas, CanvasNode } from './types';
@@ -39,8 +39,8 @@ export function createCanvasReflowPlan(canvas: Canvas, sizes: Record<string, Can
     }));
     for (let i = 0; i < siblings.length; i++) for (let j = i + 1; j < siblings.length; j++) {
       const a = siblings[i], b = siblings[j];
-      const sa = sizes[a.id] || { width: cardWidth(a), height: CARD_DEFAULT_HEIGHT };
-      const sb = sizes[b.id] || { width: cardWidth(b), height: CARD_DEFAULT_HEIGHT };
+      const sa = sizes[a.id] || { width: cardWidth(a), height: setCardHeight(a) ?? CARD_DEFAULT_HEIGHT };
+      const sb = sizes[b.id] || { width: cardWidth(b), height: setCardHeight(b) ?? CARD_DEFAULT_HEIGHT };
       const pa = anchors[a.id], pb = anchors[b.id];
       const separatedX = pa.x + sa.width <= pb.x || pb.x + sb.width <= pa.x;
       const separatedY = pa.y + sa.height <= pb.y || pb.y + sb.height <= pa.y;
@@ -55,7 +55,7 @@ export function createCanvasReflowPlan(canvas: Canvas, sizes: Record<string, Can
       const before = pa[axis] < pb[axis] || (pa[axis] === pb[axis] && compareId(a.id, b.id) < 0) ? a : b;
       const after = before === a ? b : a;
       const extent = axis === 'x' ? 'width' : 'height';
-      const distance = anchors[after.id][axis] - anchors[before.id][axis] - (sizes[before.id]?.[extent] ?? (axis === 'x' ? cardWidth(before) : CARD_DEFAULT_HEIGHT));
+      const distance = anchors[after.id][axis] - anchors[before.id][axis] - (sizes[before.id]?.[extent] ?? (axis === 'x' ? cardWidth(before) : setCardHeight(before) ?? CARD_DEFAULT_HEIGHT));
       // Retain deliberately placed gaps. Expansion-created displacement is
       // absent from this stable plan, so collapse still pulls neighbours back.
       separations.push({ before: before.id, after: after.id, axis, gap: distance > 0 ? Math.max(32, distance) : LAYOUT_GAP });
@@ -123,7 +123,7 @@ export function reflowCanvas(source: Canvas, plan: CanvasReflowPlan, options: La
       const owner = byId.get(parent); if (!owner) throw new Error('Cannot reflow missing parent groups');
       seen.add(parent); parent = owner.parentId;
     }
-    sizes[node.id] = options.nodeSizes?.[node.id] || { width: cardWidth(node), height: CARD_DEFAULT_HEIGHT };
+    sizes[node.id] = options.nodeSizes?.[node.id] || { width: cardWidth(node), height: setCardHeight(node) ?? CARD_DEFAULT_HEIGHT };
   }
   const settle = (scope: string): CanvasSize => {
     if (visiting.has(scope)) throw new Error('Cannot reflow a cyclic canvas');
@@ -134,7 +134,7 @@ export function reflowCanvas(source: Canvas, plan: CanvasReflowPlan, options: La
       const contentHeight = extra ? Math.max(children.height ? children.height + LAYOUT_GAP : 0, extra.minY || 0) + extra.height : children.height;
       sizes[node.id] = expanded.has(node.id)
         ? { width: snap(Math.max(768, Math.max(children.width, extra?.width || 0) + GROUP_INSET.x * 2)), height: snap(Math.max(408, contentHeight + GROUP_INSET.y + GROUP_FOOTER)) }
-        : options.nodeSizes?.[node.id] || { width: cardWidth(node), height: CARD_DEFAULT_HEIGHT };
+        : options.nodeSizes?.[node.id] || { width: cardWidth(node), height: setCardHeight(node) ?? CARD_DEFAULT_HEIGHT };
     }
     const current = plan[scope];
     if (siblings.length && (!current || siblings.some(node => !current.anchors[node.id]))) throw new Error('Cannot reflow a changed canvas with a stale layout plan');

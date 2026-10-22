@@ -34,7 +34,7 @@ export class SandboxBudget {
     const count=saved?.runIds.length??0, remainingRuns=Math.max(0,config.maxRuns-count), remainingUsd=Math.max(0,config.maxUsd-count*config.maxCostPerRunUsd);
     const shared=this.options.combinedBudget?.status(config.maxCostPerRunUsd);
     const ready=!changed&&remainingRuns>0&&remainingUsd+1e-9>=config.maxCostPerRunUsd&&(!shared||shared.ready);
-    return {ready,reason:changed?'This sandbox authorization was already used with different limits or pricing. Restore its original terms; changing settings cannot replenish it.':shared&&!shared.ready?shared.reason:ready?'Each attempt reserves the configured conservative ceiling; failed, cancelled and uncertain runs retain it.':'The shared sandbox authorization is exhausted. New Actions, retries and restarts do not replenish it.',maxCostPerRunUsd:config.maxCostPerRunUsd,pricingBasis:config.pricingBasis,remainingRuns,remainingUsd:Math.min(remainingUsd,shared?.remainingUsd??remainingUsd)};
+    return {ready,reason:changed?'This sandbox authorization was already used with different limits or pricing. Restore its original terms; changing settings cannot replenish it.':shared&&!shared.ready?shared.reason:ready?'Each attempt reserves the configured conservative ceiling; failed, cancelled and uncertain runs retain it.':'The shared sandbox authorization is exhausted. New runs, retries and restarts do not replenish it.',maxCostPerRunUsd:config.maxCostPerRunUsd,pricingBasis:config.pricingBasis,remainingRuns,remainingUsd:Math.min(remainingUsd,shared?.remainingUsd??remainingUsd)};
   }
   fingerprint():string { return `${this.configured()?.signature??'unconfigured'}:${this.options.combinedBudget?.fingerprint()??'no-combined-grant'}`; }
   reserve(runId:string,projectId:string):number {

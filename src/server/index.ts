@@ -16,6 +16,9 @@ import { ToolLoopAgentService } from './tool-loop-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
+import { LocalPythonBackend } from './sandbox.js';
+import { PythonRuntime, systemConfine } from './local-python.js';
+import { NetworkGate } from './network-gate.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
@@ -25,6 +28,7 @@ import { RemoteApps } from './remote-apps.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
+import { LocalRos } from './local-ros.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
@@ -61,6 +65,7 @@ let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
 let cloud:CloudAccount|undefined;
+let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
 let outside:OutsideAgents|undefined;
@@ -83,6 +88,7 @@ async function shutdown() {
     await claude?.shutdown();
     await loop?.shutdown();
     cloud?.shutdown();
+    localRos?.shutdown();
     await execution?.shutdown();
     await experiments?.shutdown();
     await research?.shutdown();
@@ -114,7 +120,12 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud-production-8a85.up.railway.app';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference);
-    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget})});
+    // Ros on this computer starts with the app once its download is on disk.
+    localRos = new LocalRos(dataDir,inference);
+    void localRos.start();
+    // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
+    const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
+    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
     research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
@@ -128,7 +139,7 @@ try {
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16)},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,setup,memory:personal},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
@@ -143,7 +154,9 @@ try {
     app.get('/{*path}', (_req, res) => res.sendFile(resolve(root, 'dist/client/index.html')));
   } else {
     const { createServer: createViteServer } = await import('vite');
-    vite = await createViteServer({ root, server: { middlewareMode: true, hmr: { server }, host: '127.0.0.1', allowedHosts: ['localhost', '127.0.0.1'] }, appType: 'spa' });
+    vite = await createViteServer({ root, server: { middlewareMode: true,
+      // Data folders kept beside the code (.ros-ai, try copies) are not source; their files must not reload the page.
+      watch: { ignored: ['**/.ros-ai/**', '**/ros-ai-try/**'] }, hmr: { server }, host: '127.0.0.1', allowedHosts: ['localhost', '127.0.0.1'] }, appType: 'spa' });
     app.use(vite.middlewares);
   }
   app.use(apiErrorHandler);

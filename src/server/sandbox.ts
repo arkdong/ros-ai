@@ -6,9 +6,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
+import { confinedEnv, killGroup, proxyEnv, PYTHON_PACKAGES, watchGroup, type Confine, type PythonRuntime } from './local-python.js';
+import type { NetworkGate, NetworkSession } from './network-gate.js';
+
 import type { RemoteExecutionState } from '../shared/experiments.js';
 export type { RemoteExecutionState } from '../shared/experiments.js';
-export type SandboxInput = { code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
+export type SandboxInput = { projectId?: string; code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
 export type SandboxOutput = { kind: 'table' | 'metric' | 'plot' | 'result' | 'dataset'; title: string; content: string; mediaType: string; metadata?: Record<string, unknown> };
 export type SandboxCapabilities = {
   available: boolean; backend: 'docker-python' | 'nebius-sandbox'; policy: string; runtime: string | null;
@@ -184,6 +187,128 @@ export class DockerPythonBackend implements ExecutionBackend {
       });
     });
     return { done, containerName: name, cancel: (reason = 'User stopped this isolated experiment.') => { stopped ??= reason; void removeContainer(); } };
+  }
+}
+
+const codeLimits = { memoryMb: 512, processes: 32 };
+
+/** Code blocks without Docker: ros.ai's own Python, confined by the operating system's sandbox the way Codex and
+ * Claude Code confine commands. Python is set up on the first run; the wall-clock limit starts once Python starts.
+ * The backend id stays `docker-python`, the name saved runs and agent tools already use for local Python.
+ */
+export class LocalPythonBackend implements ExecutionBackend {
+  private readonly worker = readFileSync(join(supportPath, 'sandbox_worker.py'), 'utf8');
+  private readonly timeoutMs: number;
+
+  private readonly gate?: NetworkGate;
+
+  constructor(private readonly runtime: PythonRuntime, private readonly confine: Confine | null, options: { timeoutMs?: number; gate?: NetworkGate } = {}) {
+    this.gate = options.gate;
+    this.timeoutMs = Math.max(100, Math.min(30_000, options.timeoutMs ?? 30_000));
+  }
+
+  capabilities(): SandboxCapabilities {
+    const state = this.runtime.state(), available = this.confine !== null;
+    const libraries = Object.fromEntries(PYTHON_PACKAGES.map(item => item.split('==') as [string, string]));
+    return {
+      available, backend: 'docker-python', policy: 'local-python-seatbelt-v1',
+      runtime: !available ? null : state.status === 'ready' ? `Python ${state.version} in the macOS sandbox` : 'Python 3.12 in the macOS sandbox (set up on the first run)',
+      workerHash: sha(JSON.stringify({ worker: sha(this.worker), spec: this.runtime.specHash, limits: codeLimits })), imageId: `local-python:${this.runtime.specHash.slice(0, 16)}`,
+      libraries, timeoutMs: this.timeoutMs, maxMemoryMb: codeLimits.memoryMb, maxOutputBytes,
+      enforcement: [
+        `macOS sandbox (Seatbelt): ${this.gate ? 'network only through the ros.ai proxy, which asks before each new site (PyPI allowed)' : 'no network'}; the home folder and other drives cannot be read; writes only in a private temporary folder.`,
+        'Only copied, read-only per-run code, parameters and an optional CSV. No original files, project folders, keys or tokens; the environment is emptied.',
+        `${codeLimits.memoryMb} MB memory and ${codeLimits.processes} processes (checked twice a second), CPU 25 s, wall time at most ${this.timeoutMs / 1000} s; stop ends every process it started.`,
+        'Per-file 16 MB, stdout 2 MB, stderr 100 KB, 20 captured outputs of at most 500 KB each.',
+      ],
+      limitations: [
+        ...(!available ? ['Sandboxed Python runs on macOS for now. On this computer, use Docker.'] : state.status === 'failed' ? [state.message] : []),
+        'Runs as the person on their own computer, sharing its kernel, like Codex and Claude Code. Not a virtual machine.',
+        'System folders outside the home folder can be read.',
+      ],
+    };
+  }
+
+  start(input: SandboxInput): SandboxHandle {
+    if (!this.confine) throw new Error('Isolated Python is unavailable. ' + this.capabilities().limitations[0]);
+    if (typeof input.code !== 'string' || !input.code.trim() || Buffer.byteLength(input.code) > 100_000) throw new Error('Sandbox code must be 1-100 KB.');
+    if (input.csv !== undefined && (typeof input.csv !== 'string' || !input.csv.trim() || Buffer.byteLength(input.csv) > 2_000_000)) throw new Error('An explicitly supplied sandbox CSV must be nonempty and at most 2 MB.');
+    const parameters = z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).parse(input.parameters);
+    const timeoutMs = Math.min(this.timeoutMs, Math.max(100, input.timeoutMs ?? this.timeoutMs));
+    const confine = this.confine, startedAt = new Date().toISOString(), capabilities = this.capabilities();
+    const temporary = mkdtempSync(join(tmpdir(), 'ros-ai-sandbox-'));
+    const inputs = join(temporary, 'input'), work = join(temporary, 'work'), tmp = join(temporary, 'tmp');
+    for (const folder of [inputs, work, tmp]) mkdirSync(folder, { mode: 0o700 });
+    const files = [['program.py', input.code], ['parameters.json', JSON.stringify(parameters)]];
+    if (input.csv !== undefined) files.push(['dataset.csv', input.csv]);
+    for (const [filename, content] of files) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
+    chmodSync(inputs, 0o555);
+    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined, proxy: NetworkSession | undefined;
+    const done = (async (): Promise<SandboxResult> => {
+      const result: SandboxResult = { status: 'failed', outputs: [], stdout: '', stderr: '', exitCode: null, signal: null, runtime: capabilities.runtime, startedAt, endedAt: '', enforcement: [...capabilities.enforcement] };
+      const close = () => {
+        proxy?.close();
+        result.endedAt = new Date().toISOString();
+        try { chmodSync(inputs, 0o755); rmSync(temporary, { recursive: true, force: true }); }
+        catch { result.stderr += '\nTemporary input cleanup failed; the folder holds only this run\'s copied inputs.'; }
+        return result;
+      };
+      let python: string;
+      try { python = await this.runtime.ensure(); }
+      catch (error) { result.error = error instanceof Error ? error.message : String(error); return close(); }
+      try { proxy = await this.gate?.open(input.projectId ?? null, 'A Code block'); }
+      catch (error) { result.error = error instanceof Error ? error.message : String(error); return close(); }
+      if (stopped) { result.status = 'cancelled'; result.error = stopped; return close(); }
+      const packages = input.projectId ? this.runtime.packages(input.projectId) : undefined;
+      const wrapped = confine(python, ['-I', '-c', this.worker], { read: [this.runtime.home, temporary], write: [work, tmp], ...(proxy ? { proxyPort: proxy.port } : {}) });
+      return new Promise<SandboxResult>(resolve => {
+        let wire = '', stderr = '', wireBytes = 0, errorMessage: string | undefined, ended = false;
+        const proc = spawn(wrapped.command, wrapped.args, { cwd: work, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+          env: confinedEnv(work, tmp, { ROS_SANDBOX_INPUT: inputs, ...(packages ? { ROS_SANDBOX_PACKAGES: packages } : {}), ...(proxy ? proxyEnv(proxy.port, this.runtime.certFile) : {}) }) });
+        child = proc;
+        const end = (message: string) => { errorMessage ??= message; killGroup(proc.pid); };
+        const unwatch = proc.pid ? watchGroup(proc.pid, codeLimits, reason => end(`Isolated experiment ${reason}.`)) : () => undefined;
+        // The wall clock stops while a site waits for the person to allow or deny it.
+        let elapsed = 0, last = Date.now();
+        const timer = setInterval(() => {
+          const now = Date.now();
+          if (!proxy?.waiting()) elapsed += now - last;
+          last = now;
+          if (elapsed >= timeoutMs) end(`Isolated experiment exceeded its ${timeoutMs} ms wall time.`);
+        }, 100);
+        proc.stdout!.on('data', (chunk: Buffer) => {
+          wireBytes += chunk.length;
+          if (wireBytes <= maxOutputBytes) wire += chunk.toString('utf8');
+          else end('Isolated experiment exceeded its 2 MB output limit.');
+        });
+        proc.stderr!.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString('utf8');
+          if (Buffer.byteLength(stderr) > 100_000) { stderr = stderr.slice(0, 100_000); end('Isolated experiment exceeded its stderr limit.'); }
+        });
+        const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+          if (ended) return;
+          ended = true;
+          clearInterval(timer); unwatch();
+          killGroup(proc.pid);
+          result.exitCode = exitCode; result.signal = signal; result.stderr = stderr;
+          try {
+            let decoded: z.infer<typeof resultSchema> | undefined;
+            try { decoded = resultSchema.parse(JSON.parse(wire)); }
+            catch { /* An interrupted worker may never emit its final bounded capture. */ }
+            if (decoded) { result.outputs = decoded.outputs; result.stdout = decoded.stdout; result.stderr += decoded.stderr; result.runtime = decoded.runtime; }
+            if (stopped) { result.status = 'cancelled'; throw new Error(stopped); }
+            if (errorMessage) throw new Error(errorMessage);
+            if (!decoded) throw new Error(`Python exited ${exitCode ?? signal ?? 'unknown'} without a valid bounded capture. ${stderr.slice(-2000)}`);
+            if (!decoded.ok || exitCode !== 0) throw new Error(decoded.error ?? `Python exited ${exitCode}.`);
+            result.status = 'completed';
+          } catch (error) { result.error = error instanceof Error ? error.message.slice(0, 2000) : 'Isolated experiment failed.'; }
+          resolve(close());
+        };
+        proc.on('error', error => { errorMessage ??= `Python could not start: ${error.message}`; finish(null, null); });
+        proc.on('close', finish);
+      });
+    })();
+    return { done, cancel: (reason = 'User stopped this isolated experiment.') => { stopped ??= reason; killGroup(child?.pid); } };
   }
 }
 
