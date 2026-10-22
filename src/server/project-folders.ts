@@ -327,7 +327,7 @@ export class ProjectFolders implements NotebookFolders {
   notebookChanged(projectId: string): void { this.schedule(projectId, true); }
 
   suggest(name: string): FolderSuggestion {
-    const home = homedir(), documents = existsSync(join(home, 'Documents')) ? join(home, 'Documents') : home, stem = safeFileBase(name || 'Untitled project');
+    const home = homedir(), documents = existsSync(join(home, 'Documents')) ? join(home, 'Documents') : home, stem = safeFileBase(name || 'Untitled');
     const overlaps = (folder: string) => this.reserved.some(other => folder === other || folder.startsWith(other + sep) || other.startsWith(folder + sep));
     const parent = [join(documents, 'ros.ai'), join(documents, 'ros.ai projects'), join(home, 'ros.ai projects')].find(folder => !overlaps(folder)) ?? join(home, 'ros.ai projects');
     let path = join(parent, stem);

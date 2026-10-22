@@ -6,8 +6,9 @@ export function readSaved<T>(key: string, fallback: T): T {
 export function saveLocal(key: string, value: unknown) {
   try { localStorage.setItem(`ros-ai:${key}`, JSON.stringify(value)); } catch { /* Durable project data is still saved by the service. */ }
 }
-export function useDraft(key: string, fallback = '') {
-  const [value, setValue] = useState(() => readSaved(key, fallback));
-  useEffect(() => saveLocal(key, value), [key, value]);
+/** A read-only view passes keep = false, so it neither shows nor leaves a draft. */
+export function useDraft(key: string, fallback = '', keep = true) {
+  const [value, setValue] = useState(() => keep ? readSaved(key, fallback) : fallback);
+  useEffect(() => { if (keep) saveLocal(key, value); }, [key, value, keep]);
   return [value, setValue] as const;
 }

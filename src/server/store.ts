@@ -308,7 +308,8 @@ export class Store {
   }
 
   private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
-    const operations = operationsSchema.parse(supplied) as Mutation[];
+    const parsed = operationsSchema.parse(supplied) as Mutation[];
+    const operations = proposal && !arranged ? batchGrid(parsed, project.canvas.nodes) : parsed;
     const canvas = clone(project.canvas);
     const activeNode = (id: string) => {
       const node = canvas.nodes.find(item => item.id === id);
@@ -677,4 +678,36 @@ export class Store {
   }
 
   listUsage(): UsageRecord[] { return this.all<UsageRecord>('SELECT data FROM usage ORDER BY rowid'); }
+}
+
+/** A proposal that adds several blocks to one scope is laid out by ros.ai as a
+ * compact grid, so the whole batch can be read at once. It starts where the
+ * proposal put its first block and moves down past existing blocks it would cover. */
+export function batchGrid(operations: Mutation[], existing: readonly CanvasNode[], columns = 4): Mutation[] {
+  const scopes = new Map<string | null, number[]>();
+  operations.forEach((op, index) => {
+    if (op.type !== 'addNode' || op.node.kind === 'group') return;
+    const scope = op.node.parentId ?? null;
+    scopes.set(scope, [...(scopes.get(scope) ?? []), index]);
+  });
+  const result = [...operations];
+  for (const [scope, indexes] of scopes) {
+    if (indexes.length < 3) continue;
+    const nodes = indexes.map(index => (result[index] as Extract<Mutation, { type: 'addNode' }>).node);
+    const count = Math.min(columns, nodes.length), stepX = Math.ceil((Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP) / GRID) * GRID;
+    const rows: number[] = [];
+    nodes.forEach((node, index) => { const row = Math.floor(index / count); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
+    const width = (count - 1) * stepX + Math.max(...nodes.map(cardWidth)), height = rows.reduce((sum, row) => sum + row + LAYOUT_GAP, -LAYOUT_GAP);
+    const x = snap(Math.min(...nodes.map(node => node.x))); let y = snap(Math.min(...nodes.map(node => node.y)));
+    // Existing blocks in this scope the grid would cover push it down below them.
+    const covered = existing.filter(other => (other.parentId ?? null) === scope && x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < x + width + LAYOUT_GAP);
+    if (covered.some(other => y < other.y + CARD_HEIGHT + LAYOUT_GAP && other.y < y + height + LAYOUT_GAP)) y = snap(Math.max(...covered.map(other => other.y + CARD_HEIGHT + LAYOUT_GAP)));
+    let top = y;
+    nodes.forEach((node, index) => {
+      const column = index % count, row = Math.floor(index / count);
+      if (column === 0 && row > 0) top += Math.ceil((rows[row - 1] + LAYOUT_GAP) / GRID) * GRID;
+      result[indexes[index]] = { type: 'addNode', node: { ...node, x: x + column * stepX, y: top } };
+    });
+  }
+  return result;
 }
