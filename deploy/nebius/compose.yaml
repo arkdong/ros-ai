@@ -1,6 +1,7 @@
 # ros.ai on one Nebius VM: the cloud gateway and the public demo behind Caddy, which serves HTTPS.
-# Postgres is Nebius Managed PostgreSQL, outside this file. Settings live in /etc/ros-ai/, never in the repository.
-# Guide: docs/nebius-deployment.md
+# The gateway's code is the private repository arkdong/ros-ai-cloud, which the deploy workflow copies to /opt/ros-ai-cloud;
+# the demo is this repository, copied to /opt/ros-ai. Postgres is Nebius Managed PostgreSQL, outside this file.
+# Settings live in /etc/ros-ai/, never in a repository. Guide: docs/nebius-deployment.md
 services:
   caddy:
     image: caddy:2
@@ -12,7 +13,7 @@ services:
     depends_on: [cloud, demo]
 
   cloud:
-    build: ../../cloud
+    build: /opt/ros-ai-cloud
     restart: unless-stopped
     env_file: /etc/ros-ai/cloud.env
     environment:

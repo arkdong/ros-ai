@@ -8,9 +8,10 @@ if ! command -v docker >/dev/null; then
 fi
 sudo usermod -aG docker "$USER"
 
-# Where the deploy workflow copies the repository, and where settings live (outside the copy, so a deploy never touches them).
-sudo mkdir -p /opt/ros-ai /etc/ros-ai
-sudo chown "$USER" /opt/ros-ai
+# Where the deploy workflow copies the app (/opt/ros-ai) and the gateway (/opt/ros-ai-cloud),
+# and where settings live (outside both copies, so a deploy never touches them).
+sudo mkdir -p /opt/ros-ai /opt/ros-ai-cloud /etc/ros-ai
+sudo chown "$USER" /opt/ros-ai /opt/ros-ai-cloud
 sudo chmod 700 /etc/ros-ai
 
 # Only SSH and the web ports are open.
