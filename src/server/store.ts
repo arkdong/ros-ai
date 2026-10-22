@@ -13,7 +13,7 @@ import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion']).optional(), label:z.string().trim().max(40).optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
@@ -308,7 +308,8 @@ export class Store {
   }
 
   private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
-    const operations = operationsSchema.parse(supplied) as Mutation[];
+    const parsed = operationsSchema.parse(supplied) as Mutation[];
+    const operations = proposal && !arranged ? batchGrid(parsed, project.canvas.nodes) : parsed;
     const canvas = clone(project.canvas);
     const activeNode = (id: string) => {
       const node = canvas.nodes.find(item => item.id === id);
@@ -677,4 +678,36 @@ export class Store {
   }
 
   listUsage(): UsageRecord[] { return this.all<UsageRecord>('SELECT data FROM usage ORDER BY rowid'); }
+}
+
+/** A proposal that adds several blocks to one scope is laid out by ros.ai as a
+ * compact grid, so the whole batch can be read at once. It starts where the
+ * proposal put its first block and moves down past existing blocks it would cover. */
+export function batchGrid(operations: Mutation[], existing: readonly CanvasNode[], columns = 4): Mutation[] {
+  const scopes = new Map<string | null, number[]>();
+  operations.forEach((op, index) => {
+    if (op.type !== 'addNode' || op.node.kind === 'group') return;
+    const scope = op.node.parentId ?? null;
+    scopes.set(scope, [...(scopes.get(scope) ?? []), index]);
+  });
+  const result = [...operations];
+  for (const [scope, indexes] of scopes) {
+    if (indexes.length < 3) continue;
+    const nodes = indexes.map(index => (result[index] as Extract<Mutation, { type: 'addNode' }>).node);
+    const count = Math.min(columns, nodes.length), stepX = Math.ceil((Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP) / GRID) * GRID;
+    const rows: number[] = [];
+    nodes.forEach((node, index) => { const row = Math.floor(index / count); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
+    const width = (count - 1) * stepX + Math.max(...nodes.map(cardWidth)), height = rows.reduce((sum, row) => sum + row + LAYOUT_GAP, -LAYOUT_GAP);
+    const x = snap(Math.min(...nodes.map(node => node.x))); let y = snap(Math.min(...nodes.map(node => node.y)));
+    // Existing blocks in this scope the grid would cover push it down below them.
+    const covered = existing.filter(other => (other.parentId ?? null) === scope && x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < x + width + LAYOUT_GAP);
+    if (covered.some(other => y < other.y + CARD_HEIGHT + LAYOUT_GAP && other.y < y + height + LAYOUT_GAP)) y = snap(Math.max(...covered.map(other => other.y + CARD_HEIGHT + LAYOUT_GAP)));
+    let top = y;
+    nodes.forEach((node, index) => {
+      const column = index % count, row = Math.floor(index / count);
+      if (column === 0 && row > 0) top += Math.ceil((rows[row - 1] + LAYOUT_GAP) / GRID) * GRID;
+      result[indexes[index]] = { type: 'addNode', node: { ...node, x: x + column * stepX, y: top } };
+    });
+  }
+  return result;
 }

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
-import { CARD_MAX_HEIGHT, cardWidth } from '../src/shared/card-size.js';
+import { cardWidth, estimatedCardHeight } from '../src/shared/card-size.js';
 import { LAYOUT_GAP } from '../src/shared/layout.js';
 import type { CanvasNode } from '../src/shared/types.js';
 
@@ -68,12 +68,13 @@ test('new and proposed cards respect unequal widths with deterministic snapped p
     const accepted = store.acceptProposal(project.id, proposal.id);
     assert.deepEqual(accepted.canvas.nodes.slice(1), proposal.operations.filter(operation => operation.type === 'addNode').map(operation => operation.node));
     for (const card of accepted.canvas.nodes) {
-      assert.equal(card.x % 24, 0);
-      assert.equal(card.y % 24, 0);
+      assert.equal(Math.abs(card.x % 24), 0);
+      assert.equal(Math.abs(card.y % 24), 0);
       for (const other of accepted.canvas.nodes.filter(candidate => candidate.id !== card.id)) {
         const separated = card.x >= other.x + cardWidth(other) + LAYOUT_GAP
           || other.x >= card.x + cardWidth(card) + LAYOUT_GAP
-          || Math.abs(card.y - other.y) >= CARD_MAX_HEIGHT + LAYOUT_GAP;
+          // A batch is laid out by each row's own card height (estimatedCardHeight), not the tallest possible card.
+          || Math.abs(card.y - other.y) >= estimatedCardHeight(card.y < other.y ? card : other) + LAYOUT_GAP;
         assert.equal(separated, true, `${card.id} and ${other.id} keep their reading gap`);
       }
     }

@@ -55,3 +55,4 @@
 .note-view .note-main { display: flex; flex-direction: column; }
 .note-view .note-main > * { flex-shrink: 0; }
 .note-view .note-main > .markdown-editor { flex: 1 1 0; }
+.note-view .note-description { font-size: 15px; line-height: 1.75; }

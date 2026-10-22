@@ -35,6 +35,7 @@ import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspa
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
+import { AgentWorkspaceTools } from './agent-tools.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
@@ -59,7 +60,10 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Changes arrive only as JSON from ros.ai's own page. A form or a request from another site cannot send that without permission.
     if (!options.publicDemo && req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
-      if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
+      const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+      // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
+      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg'].includes(type);
+      if (type !== 'application/json' && !file) return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -79,7 +83,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(!options.publicDemo&&options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
   if(!options.publicDemo&&options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
-  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
+  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);attachNotionViewRoutes(app,store,new NotionViews(tools.apps,new ProjectCache(store)));}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}

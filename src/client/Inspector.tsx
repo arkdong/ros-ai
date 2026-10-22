@@ -12,6 +12,7 @@ import { NotionDatabase } from './NotionView';
 import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
+import { FileViewer, type ShownFile } from './FileView';
 
 type Props = {
   node: CanvasNode; detail: ProjectDetail;
@@ -23,9 +24,11 @@ type Props = {
   readOnly?: boolean;
   /** Why the view is read only. */
   readOnlyNote?: string;
+  /** The PDF or image a File block shows. */
+  file?: ShownFile;
 };
 
-export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.' }: Props) {
+export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
   const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
@@ -67,11 +70,13 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
       <label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/>
       {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
       {node.notion&&<section className="note-content"><NotionDatabase projectId={detail.project.id} nodeId={node.id} view={node.notion} full/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
-      {(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
-      {primary&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
+      {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
+      {file&&description&&<div className="note-description"><RichText text={description}/></div>}
+      {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}
+      {primary&&!file&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}
       {isGroup(node)&&<GroupHighlights node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>}
-      {readOnly&&!description&&!primary&&!children.length&&!node.notion&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
+      {readOnly&&!description&&!primary&&!children.length&&!node.notion&&!file&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
     </div>
     {chatOpen&&<div className="note-side" id={`note-side-${node.id}`}>
       <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><span className="note-side-spacer"/><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button><button className="icon-button" aria-label="Hide conversation" title="Hide conversation" onClick={()=>setChatOpen(false)}><X size={15}/></button></div>
