@@ -5,13 +5,24 @@ import { GROUP_PREVIEW_MEMBERS, groupPreviewMembers } from './groups.js';
 
 export const CARD_DEFAULT_WIDTH = 408;
 export const CARD_MIN_WIDTH = 320;
-export const CARD_MAX_WIDTH = 720;
+export const CARD_MAX_WIDTH = 1200;
 export const CARD_DEFAULT_HEIGHT = 264;
 export const CARD_MIN_HEIGHT = 224;
 export const CARD_MAX_HEIGHT = 420;
+/** A card the researcher made taller keeps that height; its content fills it instead of being measured. */
+export const CARD_MAX_SET_HEIGHT = 1200;
 
 export function cardWidth(node: { width?: number }) {
   return Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
+}
+
+/** The height the researcher gave a card by resizing it, or undefined while the card follows its content. */
+export function setCardHeight(node: { height?: number | null }) {
+  return node.height ? Math.min(CARD_MAX_SET_HEIGHT, Math.max(CARD_MIN_HEIGHT, node.height)) : undefined;
+}
+/** The most room a card can take below its top, for placing new blocks clear of it. */
+export function cardFootprintHeight(node: { height?: number | null }) {
+  return Math.max(CARD_MAX_HEIGHT, setCardHeight(node) ?? 0);
 }
 
 /** Initial footprint before the browser reports actual wrapped text height. */
@@ -29,7 +40,9 @@ const TEXT_PREVIEW_HEIGHT = 195;
 /** A height guess for a new block's card before the browser measures it. A text card keeps the height its first
  * sentence gives it and cuts the rest; a Finding card shows its whole quote, up to its preview height, and only
  * names the site it quotes. */
-export function estimatedCardHeight(node: { width?: number; title: string; description: string; kind?: string; blockType?: string; artifactId?: string }) {
+export function estimatedCardHeight(node: { width?: number; height?: number | null; title: string; description: string; kind?: string; blockType?: string; artifactId?: string }) {
+  const set = setCardHeight(node);
+  if (set) return set;
   if (node.kind === 'group' || node.artifactId || PREVIEW_BLOCKS.includes(node.blockType ?? '')) return CARD_MAX_HEIGHT;
   if (node.blockType !== 'finding') return initialCardSize(node, purposeText(node)).height;
   const width = cardWidth(node), text = splitSources(node.description).body;
