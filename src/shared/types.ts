@@ -6,10 +6,24 @@ export type NotionView = { url:string; filter?:string; columns?:string[]; kind?:
 /** What a Notion database block shows, read live: the rows are never saved by ros.ai. `titleColumn` names the
  * column that holds each row's title, so one block per row can be made from the rows. */
 export type NotionTable = { kind?:'database'; title:string; url:string; link:string|null; columns:string[]; titleColumn?:string|null; rows:Record<string,string>[]; truncated:boolean; fetchedAt:string; notice?:string };
-/** One property of a Notion page as text; `links` are the pages or addresses the value points to. */
-export type NotionProperty = { name:string; value:string; links?:{ text:string; url:string }[] };
-/** What a Notion page block shows, read live: its properties, its content as Markdown and where it lives. */
-export type NotionPage = { kind:'page'; title:string; url:string; link:string|null; properties:NotionProperty[]; content:string; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string };
+/** The kinds of property a page can carry, from its database's schema. Those a person can set from ros.ai are
+ * `editable`; people, relations, files and values Notion computes are shown only. */
+export type NotionPropertyType = 'title'|'text'|'select'|'multi_select'|'checkbox'|'date'|'number'|'people'|'relation'|'files'|'computed';
+/** One property of a Notion page as text; `links` are the pages or addresses the value points to; `values` the chosen
+ * options of a multi-select; `date` the parts of a date. */
+export type NotionProperty = { name:string; value:string; type:NotionPropertyType; editable:boolean; options?:string[]; values?:string[]; date?:{ start:string; end:string }; links?:{ text:string; url:string }[] };
+/** One block of a page's text, as Markdown; `source` is Notion's own text for it, which an edit replaces (absent
+ * for tables, media and other blocks that stay read only), and `text` the words a person edits (no list marks). */
+export type NotionUnit = { markdown:string; text?:string; source?:string };
+/** What a Notion page block shows, read live: its properties, its content as Markdown (`units` block by block)
+ * and where it lives. `titleProperty` names the database column that holds the title. */
+export type NotionPage = { kind:'page'; title:string; icon?:string; url:string; link:string|null; properties:NotionProperty[]; titleProperty?:string; content:string; units:NotionUnit[]; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string };
+/** A change a person makes to a page from ros.ai, saved straight to Notion. */
+export type NotionEdit =
+  | { kind:'title'; title:string }
+  | { kind:'property'; name:string; value:string|number|boolean|string[]|null; end?:string|null }
+  | { kind:'text'; old:string; new:string }
+  | { kind:'append'; text:string };
 export type NotionRead = NotionTable | NotionPage;
 /** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
 export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};

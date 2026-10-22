@@ -3,7 +3,8 @@ import { ArrowUpRight, LoaderCircle, Rows3, RotateCw } from 'lucide-react';
 import type { NotionPage, NotionRead, NotionTable, NotionView } from '../shared/types';
 import { MAX_ROW_BLOCKS } from '../shared/notion-rows';
 import { api } from './api';
-import { MarkdownPreview, RichText } from './Content';
+import { MarkdownPreview } from './Content';
+import { NotionPageEditor } from './NotionPage';
 import './notion-view.css';
 
 const PREVIEW_PROPERTIES = 4;
@@ -16,7 +17,7 @@ export type RowBlocksOutcome = { added: number; skipped: number; beyond: number 
 
 /** A Notion database or page read live through the person's Notion connection; nothing of it is saved in ros.ai.
  * `onRows` turns a database's rows into page blocks; without it the footer offers no such action. */
-export function NotionBlock({ projectId, nodeId, view, full = false, onRows }: { projectId: string; nodeId: string; view: NotionView; full?: boolean; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null> }) {
+export function NotionBlock({ projectId, nodeId, view, full = false, readOnly = false, onRows, onTitle }: { projectId: string; nodeId: string; view: NotionView; full?: boolean; readOnly?: boolean; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null>; onTitle?: (title: string) => void }) {
   const [read, setRead] = useState<NotionRead | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [asking, setAsking] = useState(false);
   const key = JSON.stringify(view);
   const load = useCallback(async (refresh = false) => {
@@ -32,7 +33,7 @@ export function NotionBlock({ projectId, nodeId, view, full = false, onRows }: {
     {/* One box of fixed height in a card, whatever the state, so the card is measured once at its full size. */}
     <div className="notion-block-scroll nowheel">{error ? <p className="notion-block-error">{error}</p>
       : !read ? <p className="notion-block-loading"><LoaderCircle size={13} className="spin"/> Reading from Notion…</p>
-      : page ? <PageBody page={page} full={full}/> : <TableBody table={table!}/>}</div>
+      : page ? (full ? <NotionPageEditor page={page} projectId={projectId} nodeId={nodeId} readOnly={readOnly} onSaved={setRead} onTitle={onTitle}/> : <PageBody page={page}/>) : <TableBody table={table!}/>}</div>
     {read?.notice && <p className="notion-block-notice">{read.notice}</p>}
     <footer>
       {page ? <PageFooter page={page} full={full}/> : <TableFooter table={table} onRows={onRows} asking={asking} setAsking={setAsking}/>}
@@ -65,17 +66,16 @@ function TableFooter({ table, onRows, asking, setAsking }: { table: NotionTable 
   </>;
 }
 
-function PageBody({ page, full }: { page: NotionPage; full: boolean }) {
-  // The title is the block's title already; the card keeps to the first filled fields, the block view shows every field.
-  const fields = page.properties.filter(property => property.value !== page.title || property.links?.length);
-  const properties = full ? fields : fields.filter(property => property.value).slice(0, PREVIEW_PROPERTIES);
+/** The card: the first filled fields and a few lines of text; the title is the block's title already. */
+function PageBody({ page }: { page: NotionPage }) {
+  const properties = page.properties.filter(property => property.type !== 'title' && property.value).slice(0, PREVIEW_PROPERTIES);
   return <>
-    {properties.length > 0 && <dl className="notion-page-properties">{properties.map(property => <div key={property.name}><dt title={property.name}>{property.name}</dt><dd title={property.value}>{property.links?.length ? property.links.map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer" onClick={stop}>{link.text}<ArrowUpRight size={10}/></a>) : property.value || <span className="notion-page-blank">—</span>}</dd></div>)}</dl>}
-    {page.content ? <div className="notion-page-content">{full ? <RichText text={page.content}/> : <MarkdownPreview text={page.content} limit={360}/>}</div> : !properties.length ? <p className="notion-block-empty">An empty page.</p> : null}
+    {properties.length > 0 && <dl className="notion-page-properties">{properties.map(property => <div key={property.name}><dt title={property.name}>{property.name}</dt><dd title={property.value}>{property.links?.length ? property.links.map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer" onClick={stop}>{link.text}<ArrowUpRight size={10}/></a>) : property.value}</dd></div>)}</dl>}
+    {page.content ? <div className="notion-page-content"><MarkdownPreview text={page.content} limit={360}/></div> : !properties.length ? <p className="notion-block-empty">An empty page.</p> : null}
   </>;
 }
 
 function PageFooter({ page, full }: { page: NotionPage; full: boolean }) {
   const where = page.parent ? (full && page.parent.link ? <a href={page.parent.link} target="_blank" rel="noreferrer" onClick={stop}>{page.parent.title}</a> : page.parent.title) : null;
-  return <span>{where}{where ? ' · ' : ''}read {clock(page.fetchedAt)}</span>;
+  return <span>{where}{where ? ' · ' : ''}{full && page.editedAt ? `edited ${clock(page.editedAt)} · ` : ''}read {clock(page.fetchedAt)}</span>;
 }

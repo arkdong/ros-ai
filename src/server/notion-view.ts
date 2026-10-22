@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import { z } from 'zod';
-import type { NotionPage, NotionRead, NotionTable, NotionView } from '../shared/types.js';
+import type { NotionEdit, NotionPage, NotionRead, NotionTable, NotionView } from '../shared/types.js';
 import type { RemoteApps } from './remote-apps.js';
 import type { ProjectCache } from './project-cache.js';
 import { notionPage, userIds } from './notion-page.js';
@@ -15,6 +15,7 @@ const view = (url: string) => url.startsWith('https://') ? url : null;
 // Database queries are limited on Notion plans below Business, so a read is reused for ten minutes
 // unless the person asks for a fresh one.
 const ROWS = 200, FRESH_MS = 10 * 60_000, SOURCE_MS = 60 * 60_000, NAMES_MS = 24 * 60 * 60_000, MAX_NAME_LOOKUPS = 12;
+const VALUE_MAX = 20_000;
 /** The rows a database block turns into page blocks in one go. */
 export const MAX_ROW_BLOCKS = 50;
 type Json = Record<string, any>;
@@ -134,13 +135,73 @@ export class NotionViews {
     const rows = raw.slice(0, ROWS).map(row => Object.fromEntries([...[...names, ...extra].map(name => [name, cell(row[name])]), ['url', typeof row.url === 'string' ? row.url : '']]));
     return { kind: 'database', title, url: view.url, link, columns: names, titleColumn, rows, truncated: raw.length > ROWS || result.has_more === true, fetchedAt: new Date().toISOString() };
   }
+  /** A person's change to a page, saved straight to Notion, then the page read again so the block shows what Notion holds. */
+  async edit(view: NotionView, edit: NotionEdit, projectId?: string): Promise<NotionPage> {
+    const current = await this.read(view, false, projectId);
+    if (current.kind !== 'page') throw new StoreError('Only a page block can be edited here.', 400);
+    const page = current;
+    let result: Json;
+    if (edit.kind === 'title') {
+      const title = edit.title.trim() || 'Untitled';
+      result = await this.call('notion-update-page', { page_id: view.url, command: 'update_properties', properties: { [page.titleProperty ? key(page.titleProperty) : 'title']: title }, allow_async: false });
+    } else if (edit.kind === 'property') {
+      const property = page.properties.find(item => item.name === edit.name);
+      if (!property?.editable) throw new StoreError('That field is set in Notion itself.', 400);
+      const value = edit.value;
+      const empty = value === null || value === '' || (Array.isArray(value) && !value.length);
+      const properties: Json = property.type === 'date'
+        ? { [`date:${edit.name}:start`]: empty ? null : String(value).slice(0, 10), [`date:${edit.name}:end`]: edit.end ? String(edit.end).slice(0, 10) : null, [`date:${edit.name}:is_datetime`]: 0 }
+        : { [key(edit.name)]: property.type === 'checkbox' ? (value === true || value === 'true' || value === 'Yes' ? '__YES__' : '__NO__')
+          : empty ? null : property.type === 'number' ? Number(value) : property.type === 'multi_select' ? (Array.isArray(value) ? value : [String(value)]).map(String)
+          : Array.isArray(value) ? value.join(', ') : String(value) };
+      if (property.type === 'number' && !empty && !Number.isFinite(Number(value))) throw new StoreError('Give a number.', 400);
+      result = await this.call('notion-update-page', { page_id: view.url, command: 'update_properties', properties, allow_async: false });
+    } else if (edit.kind === 'text') {
+      if (!page.units.some(unit => unit.source === edit.old)) throw new StoreError('That text changed since it was read. Read the page again, then edit it.', 409);
+      result = await this.call('notion-update-page', { page_id: view.url, command: 'update_content', content_updates: [{ old_str: edit.old, new_str: edit.new }], allow_async: false });
+      const warnings = Array.isArray(result.warnings) ? result.warnings.map(String).join(' ') : typeof result.warnings === 'string' ? result.warnings : '';
+      if (/no match|not found|did not match|0 match/iu.test(warnings)) throw new StoreError('Notion could not find that text any more. Read the page again, then edit it.', 409);
+    } else {
+      result = await this.call('notion-update-page', { page_id: view.url, command: 'insert_content', content: edit.text, position: { type: 'end' }, allow_async: false });
+    }
+    if (result.async_task) await this.settle(result.async_task);
+    return (await this.read(view, true, projectId)) as NotionPage;
+  }
+
+  /** Waits for a change Notion queued, so the read that follows shows it. */
+  private async settle(task: Json) {
+    const id = typeof task === 'string' ? task : task?.id ?? task?.task_id;
+    if (!id) return;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const state = await this.call('notion-get-async-task', { task_id: id }).catch(() => null);
+      const status = String(state?.status ?? state?.state ?? '');
+      if (/succeeded|completed|done/iu.test(status)) return;
+      if (/failed|error/iu.test(status)) throw new StoreError(`Notion did not save the change: ${String(state?.error ?? state?.message ?? status).slice(0, 200)}`, 502);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
 }
+
+/** A property name as Notion's update wants it: "id" and "url" need a prefix. */
+const key = (name: string) => /^(id|url)$/iu.test(name) ? `userDefined:${name}` : name;
 
 export function attachNotionViewRoutes(app: Express, store: Store, views: NotionViews) {
   app.get('/api/projects/:id/nodes/:nodeId/notion', async (req, res) => {
     const node = store.getProject(String(req.params.id)).canvas.nodes.find(item => item.id === req.params.nodeId);
     if (!node?.notion) throw new StoreError('This block shows nothing from Notion.', 404);
     res.json(await views.read(node.notion, req.query.refresh === '1', String(req.params.id)));
+  });
+  // A person's edit of a page block: one field, the title, one block of text, or text added at the end.
+  app.post('/api/projects/:id/nodes/:nodeId/notion/edit', async (req, res) => {
+    const node = store.getProject(String(req.params.id)).canvas.nodes.find(item => item.id === req.params.nodeId);
+    if (!node?.notion) throw new StoreError('This block shows nothing from Notion.', 404);
+    const edit = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('title'), title: z.string().max(2000) }).strict(),
+      z.object({ kind: z.literal('property'), name: z.string().min(1).max(200), value: z.union([z.string().max(VALUE_MAX), z.number().finite(), z.boolean(), z.array(z.string().max(200)).max(100), z.null()]), end: z.string().max(40).nullable().optional() }).strict(),
+      z.object({ kind: z.literal('text'), old: z.string().min(1).max(VALUE_MAX), new: z.string().max(VALUE_MAX) }).strict(),
+      z.object({ kind: z.literal('append'), text: z.string().trim().min(1).max(VALUE_MAX) }).strict(),
+    ]).parse(req.body);
+    res.json(await views.edit(node.notion, edit, String(req.params.id)));
   });
   // Checks a link before a person adds it as a block: the same read, without a block yet.
   app.post('/api/notion/views/preview', async (req, res) => {
