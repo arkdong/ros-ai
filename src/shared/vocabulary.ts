@@ -4,7 +4,7 @@ import type { Canvas, CanvasNode } from './types.js';
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
 /** What a block is on screen: seven kinds plus Group. Storage keeps the older blockType and kind words as aliases
- * (note, action, report and finding are all Text; dataset is Data; figure is File; notion is External). */
+ * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion is External). */
 export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Agent' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
   if (node.kind === 'group') return 'Group';
@@ -12,7 +12,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'code': return 'Code';
     case 'notebook': return 'Notebook';
     case 'dataset': return 'Data';
-    case 'figure': return 'File';
+    case 'figure': case 'file': return 'File';
     case 'notion': return 'External';
     case 'agent': return 'Agent';
     case 'search': return 'Search';
