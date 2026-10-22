@@ -179,8 +179,9 @@ The curated public mode is separate from your local workspace and provider crede
 
 ## Licence
 
-ros.ai's code and documentation are released under the [MIT licence](LICENSE). The licence does not cover:
+ros.ai's code and documentation are released under the [MIT licence](LICENSE): the local app is open source and runs on its own. The licence does not cover:
 
+- the hosted service (sign-in, the hosted Ros gateway and the usage ledger), which lives in the separate private repository `arkdong/ros-ai-cloud` and is not open source; ros.ai runs that service and sells the paid tiers on it. The app works without it;
 - the ros.ai name and logo (`public/brand/`);
 - other organisations' logos and marks, in `public/deck/assets/` and in `src/client/brand-logos/` (sources in its `SOURCES.md`) and drawn in `src/client/ModelMakerSymbol.tsx`; they belong to their owners and are shown only to identify their services;
 - third-party data in `examples/`: KNMI weather observations and the datasets derived from them ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), Royal Netherlands Meteorological Institute), CBS statistics in `examples/dutch-ai-adoption/` (CBS's own reuse terms), and NDW counter-site records (ODC PDDL).
