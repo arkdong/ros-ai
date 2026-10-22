@@ -28,3 +28,6 @@
 .markdown-editor .cm-md-task { width: 14px; height: 14px; margin: 0 6px 0 0; vertical-align: -2px; accent-color: #171717; cursor: pointer; }
 .markdown-editor .cm-md-done { color: #8a8a8a; text-decoration: line-through; }
 .markdown-editor .cm-md-rule { display: inline-block; width: 100%; height: 1px; vertical-align: middle; background: #e1e1e1; }
+.markdown-editor .cm-md-math { cursor: pointer; }
+.markdown-editor .cm-md-math-block { padding: 6px 0; text-align: center; }
+.markdown-editor .cm-md-math .katex-error { color: #b42318; }

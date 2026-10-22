@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Annotation, EditorState, type Range } from '@codemirror/state';
+import { Annotation, EditorState, StateEffect, StateField, type Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderText, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
+import { HighlightStyle, ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/language';
+import type { SyntaxNode } from '@lezer/common';
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown';
 import { tags } from '@lezer/highlight';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import './markdown-editor.css';
 
 /** Text the parent passed in, so it is not echoed back through onChange. */
@@ -128,6 +131,49 @@ function livePreview(view: EditorView): DecorationSet {
   return Decoration.set(found, true);
 }
 
+class Formula extends WidgetType {
+  constructor(readonly tex: string, readonly block: boolean) { super(); }
+  eq(other: Formula) { return other.tex === this.tex && other.block === this.block; }
+  toDOM() {
+    const holder = document.createElement(this.block ? 'div' : 'span');
+    holder.className = this.block ? 'cm-md-math cm-md-math-block' : 'cm-md-math';
+    katex.render(this.tex, holder, { displayMode: this.block, throwOnError: false });
+    return holder;
+  }
+  // Let a click through, so it places the caret in the formula and shows its source.
+  ignoreEvent() { return false; }
+}
+
+const focused = StateEffect.define<boolean>();
+const focus = StateField.define<boolean>({ create: () => false, update: (value, tr) => tr.effects.reduce((current, effect) => effect.is(focused) ? effect.value : current, value) });
+const inCode = (state: EditorState, pos: number) => {
+  for (let node: SyntaxNode | null = (ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state)).resolveInner(pos, 1); node; node = node.parent) if (['InlineCode', 'FencedCode', 'CodeBlock', 'CodeText'].includes(node.name)) return true;
+  return false;
+};
+
+/** LaTeX as in Obsidian: $inline$ and $$block$$, rendered unless the caret is inside. A field, because a block can span lines. */
+function formulas(state: EditorState): DecorationSet {
+  const text = state.doc.toString(), found: Range<Decoration>[] = [], taken: [number, number][] = [];
+  const editing = (from: number, to: number) => state.field(focus) && state.selection.ranges.some(range => range.from <= to && range.to >= from);
+  for (const match of text.matchAll(/\$\$([\s\S]+?)\$\$/g)) {
+    const from = match.index!, to = from + match[0].length;
+    if (inCode(state, from)) continue;
+    taken.push([from, to]);
+    if (!editing(from, to)) found.push(Decoration.replace({ widget: new Formula(match[1].trim(), true), block: state.doc.lineAt(from).from === from && state.doc.lineAt(to).to === to }).range(from, to));
+  }
+  for (const match of text.matchAll(/(?<![\\$])\$(?![\s$])([^$\n]+?)(?<!\s)\$(?![$\d])/g)) {
+    const from = match.index!, to = from + match[0].length;
+    if (taken.some(([start, end]) => from < end && to > start) || inCode(state, from)) continue;
+    if (!editing(from, to)) found.push(Decoration.replace({ widget: new Formula(match[1], false) }).range(from, to));
+  }
+  return Decoration.set(found, true);
+}
+const math = StateField.define<DecorationSet>({
+  create: formulas,
+  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some(effect => effect.is(focused)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? formulas(tr.state) : value,
+  provide: field => EditorView.decorations.from(field),
+});
+
 const preview = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) { this.decorations = livePreview(view); }
@@ -142,7 +188,7 @@ export function MarkdownEditor({ value, onChange, onBlur, readOnly = false, plac
     const editor = new EditorView({
       parent: host.current!,
       state: EditorState.create({ doc: value, extensions: [
-        history(), EditorView.lineWrapping, markdown({ base: markdownLanguage }), syntaxHighlighting(style), preview,
+        history(), EditorView.lineWrapping, markdown({ base: markdownLanguage }), syntaxHighlighting(style), preview, focus, math, EditorView.focusChangeEffect.of((_, focusing) => focused.of(focusing)),
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         placeholderText(placeholder), EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly),
         EditorView.contentAttributes.of({ 'aria-label': ariaLabel, spellcheck: 'true' }),
