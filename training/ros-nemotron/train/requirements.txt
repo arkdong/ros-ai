@@ -1,0 +1,12 @@
+# For the Nebius H100 run (CUDA 12.x, Python 3.11). Minimum versions only: this cloud session could
+# not reach PyPI or Hugging Face to check the newest ones, so setup-vm.sh records what it resolved
+# (out/pip-freeze.txt) and the pilot run confirms the set works. mamba-ssm and causal-conv1d give
+# the Mamba-2 layers of Nemotron 3 Nano 4B their fast kernels; without them training is far slower.
+transformers>=4.56
+peft>=0.17
+accelerate>=1.10
+safetensors>=0.6
+sentencepiece
+huggingface_hub>=0.35
+mamba-ssm>=2.2.5
+causal-conv1d>=1.5.2
