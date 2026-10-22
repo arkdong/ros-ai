@@ -1,6 +1,7 @@
 /* File blocks: a PDF's first page or an image on the card; the opened view is a reader. Three neutral greys, no colour. */
-.file-page-preview,.direct-canvas .file-page-preview{display:flex;align-items:center;justify-content:center;overflow:hidden;color:#8a918c}
-.file-page-preview .pdf-page{box-shadow:0 1px 3px rgba(0,0,0,.18);background:#fff}
+.file-page-preview,.direct-canvas .file-page-preview{display:flex;align-items:flex-start;justify-content:center;height:auto;max-height:172px;min-height:64px;overflow:hidden;color:#8a918c}
+.file-page-preview .pdf-page{display:block;background:#fff}
+.file-image-preview,.direct-canvas .file-image-preview{height:auto;max-height:172px;object-fit:cover;object-position:top}
 .file-preview-note{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6b726d;padding:8px;text-align:center}
 .file-line{display:flex;gap:0;font-size:11px;color:#758079;margin:6px 0 0}
 .file-line small+small::before{content:' · ';white-space:pre}

@@ -9,7 +9,7 @@ type PdfDocument = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 type RenderTask = import('pdfjs-dist/legacy/build/pdf.mjs').RenderTask;
 /** The file a block shows: its address (which changes with the file's version), type and size. */
 export type ShownFile = { src: string; mediaType: string; bytes?: number };
-const PREVIEW_HEIGHT = 172, OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
+const OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
 const typeName = (mediaType: string) => isPdfType(mediaType) ? 'PDF' : mediaType === 'image/png' ? 'PNG' : 'JPEG';
 
 let pdfjsLoad: Promise<PdfModule> | null = null;
@@ -51,8 +51,8 @@ function useWidth(box: RefObject<HTMLElement | null>): number {
   return width;
 }
 
-/** One page drawn at a CSS size, sharp on high-density screens. `fit` bounds the page's box; `width` sets it. */
-function PdfPage({ doc, number, width, fit, onRendered }: { doc: PdfDocument; number: number; width?: number; fit?: { width: number; height: number }; onRendered?: () => void }) {
+/** One page drawn at a CSS width, sharp on high-density screens. */
+function PdfPage({ doc, number, width, onRendered }: { doc: PdfDocument; number: number; width: number; onRendered?: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const rendered = useRef(onRendered); rendered.current = onRendered;
   useEffect(() => {
@@ -61,7 +61,7 @@ function PdfPage({ doc, number, width, fit, onRendered }: { doc: PdfDocument; nu
       const element = canvas.current;
       if (!live || !element) return;
       const base = page.getViewport({ scale: 1 }), ratio = window.devicePixelRatio || 1;
-      const scale = fit ? Math.min(fit.width / base.width, fit.height / base.height) : (width ?? base.width) / base.width;
+      const scale = width / base.width;
       if (!(scale > 0)) return;
       const viewport = page.getViewport({ scale: scale * ratio });
       element.width = Math.floor(viewport.width); element.height = Math.floor(viewport.height);
@@ -70,15 +70,16 @@ function PdfPage({ doc, number, width, fit, onRendered }: { doc: PdfDocument; nu
       return task.promise.then(() => { if (live) rendered.current?.(); });
     }).catch((error: unknown) => { if (live) console.error(`Page ${number} could not be drawn`, error); });
     return () => { live = false; task?.cancel(); };
-  }, [doc, number, width, fit?.width, fit?.height]);
+  }, [doc, number, width]);
   return <canvas ref={canvas} className="pdf-page" role="img" aria-label={`Page ${number}`}/>;
 }
 
-/** What a File block shows on its card: the first page of a PDF, or the image, with one quiet line about the file. */
+/** What a File block shows on its card: the first page of a PDF, or the image, as wide as the card and cut at the
+ * card's preview height, with one quiet line about the file. The card's width sets the page's; resizing redraws it. */
 export function FilePreview({ file, title }: { file: ShownFile; title: string }) {
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   if (!isPdfType(file.mediaType)) return <>
-    <img className="block-figure-preview" src={file.src} alt={title} onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}/>
+    <img className="block-figure-preview file-image-preview" src={file.src} alt={title} onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}/>
     <FileLine parts={[typeName(file.mediaType), size ? `${size.width} × ${size.height}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
   </>;
   return <PdfPreview file={file}/>;
@@ -86,7 +87,7 @@ export function FilePreview({ file, title }: { file: ShownFile; title: string })
 function PdfPreview({ file }: { file: ShownFile }) {
   const box = useRef<HTMLDivElement>(null), width = useWidth(box), { doc, error } = usePdf(file.src);
   return <>
-    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 ? <PdfPage doc={doc} number={1} fit={{ width, height: PREVIEW_HEIGHT }}/> : <LoaderCircle size={14} className="spin"/>}</div>
+    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 ? <PdfPage doc={doc} number={1} width={width}/> : <LoaderCircle size={14} className="spin"/>}</div>
     <FileLine parts={['PDF', doc ? `${doc.numPages} page${doc.numPages === 1 ? '' : 's'}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
   </>;
 }
