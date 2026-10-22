@@ -8,7 +8,8 @@ import { date, Evidence, RichText, time } from './Content';
 import { MarkdownEditor } from './MarkdownEditor';
 import { ModelSettings, type ModelDisplay } from './ModelSettings';
 import './detail-polish.css';
-import { NotionDatabase } from './NotionView';
+import { NotionBlock } from './NotionView';
+import { rowBlockOperations } from '../shared/notion-rows';
 import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
@@ -67,9 +68,9 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
   return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}`} aria-label="Node work tools">
     <div className="note-main">
       {!chatOpen&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
-      <label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/>
+      {node.notion?.kind!=='page'&&<><label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/></>}
       {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
-      {node.notion&&<section className="note-content"><NotionDatabase projectId={detail.project.id} nodeId={node.id} view={node.notion} full/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
+      {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
       {file&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, BookOpen, Braces, Check, ChevronDown, ChevronRight, Database, File as FileIcon, FileText, Group, NotebookPen, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin, Play, Plus, Square, Text as TextIcon, Trash2, X } from 'lucide-react';
-import type { Artifact, Change, ConnectionStatus, Mutation, NodeKind, NotionTable, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
+import type { Artifact, Change, ConnectionStatus, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import type { ResearchPolicy, ResearchSession } from '../shared/research';
 import { api, post, upload } from './api';
 import { emptyPosition, KindIcon, previewCanvas, ResearchCanvas, shownFile } from './Canvas';
@@ -167,10 +167,11 @@ export function App(){
   const addNode=async(kind:NodeKind,scope:string|null,title:string,blockType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string)=>{
     if(!detail)return;
     const id=crypto.randomUUID();
-    const display=blockType==='notion'?'Notion database':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
-    // A Notion database is read once first, so a wrong link or filter is caught before the block exists.
-    let read:NotionTable|undefined;
-    if(notion){try{read=await post<NotionTable>('/api/notion/views/preview',notion);}catch(reason){report(reason);return;}}
+    let display=blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
+    // A Notion link is read once first, so a wrong link or filter is caught before the block exists,
+    // and the block learns whether it shows a page or a database.
+    let read:NotionRead|undefined;
+    if(notion){try{read=await post<NotionRead>('/api/notion/views/preview',notion);}catch(reason){report(reason);return;}notion={...notion,kind:read.kind==='page'?'page':'database'};display=read.kind==='page'?'Notion page':'Notion database';}
     const notebookFile=blockType==='notebook'?chosenFile:undefined;
     let file:{path:string}|undefined;
     if(blockType==='file'){if(!chosenFile)return;try{file=await saveFile(chosenFile);}catch(reason){report(reason);return;}}
@@ -329,7 +330,7 @@ const blockChoices: BlockChoice[] = [
   {id:'notebook',kind:'topic',blockType:'notebook',label:'Notebook',description:'Run Python cell by cell, or open a .ipynb',icon:<NotebookPen size={18}/>},
   {id:'dataset',kind:'topic',blockType:'dataset',label:'Data',description:'Import and inspect a CSV',icon:<Database size={18}/>},
   {id:'file',kind:'topic',blockType:'file',label:'File',description:'Show a PDF, PNG or JPEG',icon:<FileIcon size={18}/>},
-  {id:'notion',kind:'topic',blockType:'notion',label:'Notion database',description:'Show a database live from Notion',icon:<BrandLogo id="notion" size={18}/>},
+  {id:'notion',kind:'topic',blockType:'notion',label:'Notion',description:'Show a page or database live from Notion',icon:<BrandLogo id="notion" size={18}/>},
   {id:'group',kind:'group',label:'Group',description:'A frame for blocks that belong together',icon:<Group size={18}/>},
 ];
 
@@ -360,8 +361,8 @@ function NewNodeModal({scope,onClose,onCreate}: {scope?:string;onClose:()=>void;
       <input id="new-node-title" value={title} onChange={event=>setTitle(event.target.value)} maxLength={200} placeholder={(choice.blockType==='notebook'||choice.blockType==='file')&&notebookFile?notebookFile.name.replace(/\.[^.]+$/u,''):text&&label?label[0].toUpperCase()+label.slice(1):choice.label} disabled={busy}/>
       {choice.blockType==='notebook'&&<><label className="field-label" htmlFor="new-notebook-file">Start from a Jupyter notebook <span>(optional .ipynb)</span></label><input id="new-notebook-file" type="file" accept=".ipynb,application/x-ipynb+json" disabled={busy} onChange={event=>setNotebookFile(event.target.files?.[0]??null)}/></>}
       {choice.blockType==='file'&&<><label className="field-label" htmlFor="new-file">File</label><input id="new-file" type="file" required accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event=>setNotebookFile(event.target.files?.[0]??null)}/></>}
-      {choice.blockType==='notion'&&<><label className="field-label" htmlFor="new-notion-url">Notion database link</label><input id="new-notion-url" type="url" required value={notionUrl} onChange={event=>setNotionUrl(event.target.value)} maxLength={500} placeholder="https://www.notion.so/…" disabled={busy}/><label className="field-label" htmlFor="new-notion-filter">Only rows where <span>(optional)</span></label><input id="new-notion-filter" value={notionFilter} onChange={event=>setNotionFilter(event.target.value)} maxLength={1000} placeholder={'"Teams" LIKE \'%Research%\''} disabled={busy}/></>}
-      <p className="subtle node-kind-note">{choice.blockType==='file'?'The file is saved into files/ in the project folder and shown from there. A PDF\'s text is read so agents can use it.':choice.blockType==='notion'?'Rows stay in Notion: the block reads them live through your Notion connection.':choice.blockType==='code'?'Adds it to the canvas and opens the editor so you can start writing.':choice.blockType==='notebook'?notebookFile?'Opens a copy of this notebook in ros.ai. Nothing runs until you run a cell.':'Adds it to the canvas and opens an empty notebook, ready for Python.':text&&label==='report'?'Adds a report you write from exact saved evidence.':'Add it to the canvas now. Open the block when you’re ready to work on it.'}</p>
+      {choice.blockType==='notion'&&<><label className="field-label" htmlFor="new-notion-url">Notion page or database link</label><input id="new-notion-url" type="url" required value={notionUrl} onChange={event=>setNotionUrl(event.target.value)} maxLength={500} placeholder="https://www.notion.so/…" disabled={busy}/><label className="field-label" htmlFor="new-notion-filter">For a database, only rows where <span>(optional)</span></label><input id="new-notion-filter" value={notionFilter} onChange={event=>setNotionFilter(event.target.value)} maxLength={1000} placeholder={'"Teams" LIKE \'%Research%\''} disabled={busy}/></>}
+      <p className="subtle node-kind-note">{choice.blockType==='file'?'The file is saved into files/ in the project folder and shown from there. A PDF\'s text is read so agents can use it.':choice.blockType==='notion'?'The page or rows stay in Notion: the block reads them live through your Notion connection.':choice.blockType==='code'?'Adds it to the canvas and opens the editor so you can start writing.':choice.blockType==='notebook'?notebookFile?'Opens a copy of this notebook in ros.ai. Nothing runs until you run a cell.':'Adds it to the canvas and opens an empty notebook, ready for Python.':text&&label==='report'?'Adds a report you write from exact saved evidence.':'Add it to the canvas now. Open the block when you’re ready to work on it.'}</p>
       <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?choice.blockType==='notion'?'Reading Notion…':choice.blockType==='file'?'Saving…':'Adding…':choice.blockType==='code'?'Add & write code':choice.blockType==='notebook'?'Add & open notebook':text&&label?`Add ${label}`:`Add ${choice.label}`}</button></div>
     </form>
   </Modal>;
