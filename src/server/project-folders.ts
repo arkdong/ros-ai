@@ -77,6 +77,12 @@ export function safeFileBase(title: string): string {
   if (/^(con|prn|aux|nul|com\d|lpt\d)$/iu.test(name)) name = `${name}-`;
   return name || 'Untitled';
 }
+/** Starts an app opener and lets it run on its own. */
+const launch = (command: string, args: string[]) => new Promise<void>((done, fail) => {
+  const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+  child.once('error', error => fail(new StoreError(errorCode(error) === 'ENOENT' ? 'This computer has no app opener ros.ai can use. Open the folder yourself.' : 'The file could not be opened.', 501)));
+  child.once('spawn', () => { child.unref(); done(); });
+});
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
 function unplacedKind(path: string): Exclude<UnplacedFile['kind'], 'pdf'> | null {
   const extension = extensionOf(path).toLowerCase();
@@ -551,15 +557,22 @@ export class ProjectFolders implements NotebookFolders {
     if (how !== 'default' && !reveal && !app) throw new StoreError('That app is not available on this computer.', 404);
     // Terminals open in the file's folder.
     const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
-    // Code opens in a text editor: the default app for .py or .sh files can run them instead.
+    // On a Mac, `open -R` lands on the home folder when Finder uses column view, so Finder is asked to open the file's own folder and select it.
+    if (reveal && entry && process.platform === 'darwin' && existsSync('/usr/bin/osascript')) {
+      const child = spawn('/usr/bin/osascript', ['-e', 'on run argv', '-e', 'tell application "Finder"', '-e', 'make new Finder window to (POSIX file (item 2 of argv) as alias)',
+        '-e', 'select (POSIX file (item 1 of argv) as alias)', '-e', 'activate', '-e', 'end tell', '-e', 'end run', target, dirname(target)], { stdio: 'ignore' });
+      // Without permission to control Finder, open the folder at least.
+      const fallback = () => { void launch('/usr/bin/open', [dirname(target)]).catch(() => undefined); };
+      const timer = setTimeout(() => child.kill(), 2 * 60_000);
+      child.once('error', () => { clearTimeout(timer); fallback(); });
+      child.once('close', code => { clearTimeout(timer); if (code !== 0) fallback(); });
+      return { path: entry.path };
+    }
+    // Code opens in a text editor: the default app for .py or .sh files can run them instead. The project folder itself opens rather than being selected in its parent.
     const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
-      : process.platform === 'darwin' ? ['/usr/bin/open', reveal ? ['-R', target] : entry?.kind === 'code' ? ['-t', target] : [target]]
-      : process.platform === 'win32' ? ['explorer.exe', [reveal ? `/select,${target}` : target]] : ['xdg-open', [reveal && entry ? dirname(target) : target]];
-    await new Promise<void>((done, fail) => {
-      const child = spawn(command, args, { detached: true, stdio: 'ignore' });
-      child.once('error', error => fail(new StoreError(errorCode(error) === 'ENOENT' ? 'This computer has no app opener ros.ai can use. Open the folder yourself.' : 'The file could not be opened.', 501)));
-      child.once('spawn', () => { child.unref(); done(); });
-    });
+      : process.platform === 'darwin' ? ['/usr/bin/open', reveal ? [entry ? dirname(target) : target] : entry?.kind === 'code' ? ['-t', target] : [target]]
+      : process.platform === 'win32' ? ['explorer.exe', [reveal && entry ? `/select,${target}` : target]] : ['xdg-open', [reveal && entry ? dirname(target) : target]];
+    await launch(command, args);
     return { path: entry?.path ?? '.' };
   }
 
