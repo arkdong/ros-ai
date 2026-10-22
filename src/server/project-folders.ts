@@ -557,28 +557,22 @@ export class ProjectFolders implements NotebookFolders {
     if (how !== 'default' && !reveal && !app) throw new StoreError('That app is not available on this computer.', 404);
     // Terminals open in the file's folder.
     const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
-    // On a Mac, `open -R` lands on the home folder when Finder uses column view, so Finder is asked to open the file's own folder and select it.
-    if (reveal && entry && process.platform === 'darwin' && existsSync('/usr/bin/osascript')) {
-      const child = spawn('/usr/bin/osascript', ['-e', 'on run argv', '-e', 'tell application "Finder"', '-e', 'make new Finder window to (POSIX file (item 2 of argv) as alias)',
-        '-e', 'select (POSIX file (item 1 of argv) as alias)', '-e', 'activate', '-e', 'end tell', '-e', 'end run', target, dirname(target)], { stdio: 'ignore' });
-      // Without permission to control Finder, open the folder at least.
-      const fallback = () => { void launch('/usr/bin/open', [dirname(target)]).catch(() => undefined); };
-      const timer = setTimeout(() => child.kill(), 2 * 60_000);
-      child.once('error', () => { clearTimeout(timer); fallback(); });
-      child.once('close', code => { clearTimeout(timer); if (code !== 0) fallback(); });
-      return { path: entry.path };
-    }
     // Code opens in a text editor: the default app for .py or .sh files can run them instead. The project folder itself opens rather than being selected in its parent.
     const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
-      : process.platform === 'darwin' ? ['/usr/bin/open', reveal ? [entry ? dirname(target) : target] : entry?.kind === 'code' ? ['-t', target] : [target]]
+      : process.platform === 'darwin' ? ['/usr/bin/open', reveal && entry ? ['-R', target] : entry?.kind === 'code' ? ['-t', target] : [target]]
       : process.platform === 'win32' ? ['explorer.exe', [reveal && entry ? `/select,${target}` : target]] : ['xdg-open', [reveal && entry ? dirname(target) : target]];
     await launch(command, args);
     return { path: entry?.path ?? '.' };
   }
 
   private picker(): { command: string; args: (start: string, prompt: string) => string[] } | null {
-    if (process.platform === 'darwin' && existsSync('/usr/bin/osascript')) return { command: '/usr/bin/osascript', args: (start, prompt) => ['-e', 'on run argv', '-e', 'activate',
-      '-e', 'return POSIX path of (choose folder with prompt (item 1 of argv) default location (POSIX file (item 2 of argv)))', '-e', 'end run', prompt, start] };
+    // System Events shows the window in front; osascript's own window can open behind the browser and seem slow.
+    // Without permission to control System Events, osascript shows it itself.
+    if (process.platform === 'darwin' && existsSync('/usr/bin/osascript')) return { command: '/usr/bin/osascript', args: (start, prompt) => ['-e', 'on run argv', '-e', 'try',
+      '-e', 'tell application "System Events"', '-e', 'activate',
+      '-e', 'return POSIX path of (choose folder with prompt (item 1 of argv) default location (POSIX file (item 2 of argv)))', '-e', 'end tell',
+      '-e', 'on error errorText number errorNumber', '-e', 'if errorNumber is -128 then error number -128', '-e', 'activate',
+      '-e', 'return POSIX path of (choose folder with prompt (item 1 of argv) default location (POSIX file (item 2 of argv)))', '-e', 'end try', '-e', 'end run', prompt, start] };
     if (process.platform === 'linux' && (process.env.DISPLAY || process.env.WAYLAND_DISPLAY)) {
       const find = (name: string) => (process.env.PATH ?? '').split(delimiter).map(folder => join(folder, name)).find(path => existsSync(path));
       const zenity = find('zenity'), kdialog = find('kdialog');
