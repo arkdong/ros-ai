@@ -51,3 +51,7 @@
 .note-view .note-side-spacer { flex: 1; }
 .note-view .note-side-heading .icon-button { margin: -4px -6px -4px 0; color: #6b6b6b; }
 @media (max-width: 850px) { .node-modal .inspector.note-view.chat-closed { grid-template-rows: auto; } }
+/* The text box fills the space under the title and scrolls inside itself. */
+.note-view .note-main { display: flex; flex-direction: column; }
+.note-view .note-main > * { flex-shrink: 0; }
+.note-view .note-main > .markdown-editor { flex: 1 1 0; }

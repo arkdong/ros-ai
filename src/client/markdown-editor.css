@@ -1,10 +1,20 @@
-/* The Text block's note: typed into directly, read like the rendered page (Obsidian's live preview). */
-.markdown-editor { min-height: 240px; padding-bottom: 80px; cursor: text; }
-.markdown-editor.read-only { min-height: 0; padding-bottom: 0; cursor: default; }
-.markdown-editor .cm-editor { font-size: 15px; background: transparent; }
+/* The Text block's note: typed into directly, read like the rendered page (Obsidian's live preview).
+   A bordered box shows where the file starts and ends; long text scrolls inside it. */
+.markdown-editor { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-height: 320px; border: 1px solid #e6e6e6; border-radius: 10px; background: #fff; overflow: hidden; cursor: text; }
+.markdown-editor-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.markdown-editor:focus-within { border-color: #cfcfcf; }
+.markdown-editor.read-only { flex: 0 0 auto; min-height: 0; max-height: 60vh; cursor: default; }
+.markdown-editor .cm-editor { flex: 1; min-height: 0; font-size: 15px; background: transparent; }
 .markdown-editor .cm-editor.cm-focused { outline: none; }
-.markdown-editor .cm-scroller { font-family: inherit; line-height: 1.75; overflow: visible; }
-.markdown-editor .cm-content { padding: 0; caret-color: #171717; color: #171717; }
+.markdown-editor .cm-scroller { font-family: inherit; line-height: 1.75; overflow: auto; scrollbar-width: none; }
+.markdown-editor .cm-scroller::-webkit-scrollbar { display: none; }
+/* Our own scrollbar, so it shows on every system (macOS hides native ones until you scroll). */
+.markdown-editor-scrollbar { position: absolute; top: 6px; right: 3px; bottom: 6px; width: 10px; cursor: default; }
+.markdown-editor-thumb { position: absolute; left: 3px; right: 3px; border-radius: 999px; background: #dadada; transition: left .12s, right .12s, background .12s; }
+.markdown-editor-scrollbar:hover .markdown-editor-thumb, .markdown-editor-dragging .markdown-editor-thumb { left: 2px; right: 2px; background: #b3b3b3; }
+.markdown-editor-dragging { user-select: none; }
+.markdown-editor .cm-content { padding: 18px 22px 80px; caret-color: #171717; color: #171717; }
+.markdown-editor.read-only .cm-content { padding-bottom: 18px; }
 .markdown-editor .cm-line { padding: 0; }
 .markdown-editor .cm-placeholder { color: #a3a3a3; }
 .markdown-editor .cm-selectionBackground, .markdown-editor .cm-focused .cm-selectionBackground { background: #e4e4e4 !important; }

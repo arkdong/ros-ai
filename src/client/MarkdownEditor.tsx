@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Annotation, EditorState, type Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderText, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -161,10 +161,40 @@ export function MarkdownEditor({ value, onChange, onBlur, readOnly = false, plac
     const current = editor.state.doc.toString();
     if (current !== value) editor.dispatch({ changes: difference(current, value), annotations: external.of(true) });
   }, [value]);
-  return <div ref={host} className={`markdown-editor${readOnly ? ' read-only' : ''}`} onMouseDown={event => {
-    // Clicking the empty space under the text puts the caret at the end, like a page.
-    const editor = view.current;
-    if (!editor || readOnly || event.target !== host.current) return;
-    event.preventDefault(); editor.focus(); editor.dispatch({ selection: { anchor: editor.state.doc.length } });
-  }}/>;
+  const [bar, setBar] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    const scroller = view.current?.scrollDOM; if (!scroller) return;
+    const measure = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scroller;
+      if (scrollHeight <= clientHeight + 1) { setBar(null); return; }
+      const height = Math.max(32, clientHeight * clientHeight / scrollHeight);
+      setBar({ height, top: (clientHeight - height) * scrollTop / (scrollHeight - clientHeight) });
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(scroller); resize.observe(view.current!.contentDOM);
+    scroller.addEventListener('scroll', measure, { passive: true }); measure();
+    return () => { resize.disconnect(); scroller.removeEventListener('scroll', measure); };
+  }, [readOnly]);
+  /** Drag the thumb, or press the track to jump there. */
+  const drag = (event: React.PointerEvent<HTMLDivElement>, onThumb: boolean) => {
+    const scroller = view.current?.scrollDOM; if (!scroller || !bar) return;
+    event.preventDefault(); event.stopPropagation();
+    const track = event.currentTarget.closest('.markdown-editor-scrollbar')!.getBoundingClientRect();
+    const range = scroller.scrollHeight - scroller.clientHeight, travel = track.height - bar.height;
+    const grab = onThumb ? event.clientY - track.top - bar.top : bar.height / 2;
+    const to = (y: number) => { scroller.scrollTop = Math.min(1, Math.max(0, (y - track.top - grab) / travel)) * range; };
+    if (!onThumb) to(event.clientY);
+    const move = (moved: PointerEvent) => to(moved.clientY);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.classList.remove('markdown-editor-dragging'); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); document.body.classList.add('markdown-editor-dragging');
+  };
+  return <div className={`markdown-editor${readOnly ? ' read-only' : ''}`}>
+    <div ref={host} className="markdown-editor-body" onMouseDown={event => {
+      // Clicking the empty space under the text puts the caret at the end, like a page.
+      const editor = view.current;
+      if (!editor || readOnly || event.target !== host.current) return;
+      event.preventDefault(); editor.focus(); editor.dispatch({ selection: { anchor: editor.state.doc.length } });
+    }}/>
+    {bar && <div className="markdown-editor-scrollbar" aria-hidden="true" onPointerDown={event => drag(event, false)}><div className="markdown-editor-thumb" style={{ top: bar.top, height: bar.height }} onPointerDown={event => drag(event, true)}/></div>}
+  </div>;
 }
