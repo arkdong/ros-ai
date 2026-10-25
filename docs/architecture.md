@@ -1,8 +1,8 @@
 # ros.ai architecture
 
-The October 1 [inference design](inference-design-2026-10-01.md) proposes separate Research model and Workspace guide roles, a connection registry and explicit private-context routing. The user confirmed ordinary laptops/Mac and an optional model download, with structure/selected metadata as the guide default. That proposal is not an implementation claim; the runtime record below remains dated evidence.
+The October 1 inference design proposes separate Research model and Workspace guide roles, a connection registry and explicit private-context routing. The user confirmed ordinary laptops/Mac and an optional model download, with structure/selected metadata as the guide default. That proposal is not an implementation claim; the runtime record below remains dated evidence.
 
-October 1, 2026 implementation record for the September 30–October 1 local workspace iteration. The concrete stack remains TypeScript/Express, React/React Flow/Vite, Node SQLite, content-addressed artifact files, and a dedicated local Docker Python runtime. See [RESULT.md](../RESULT.md) for evidence and outstanding live checks. Earlier dated sections retain the history of prior demonstrations and publication work.
+October 1, 2026 implementation record for the September 30–October 1 local workspace iteration. The concrete stack remains TypeScript/Express, React/React Flow/Vite, Node SQLite, content-addressed artifact files, and a dedicated local Docker Python runtime. See RESULT.md for evidence and outstanding live checks. Earlier dated sections retain the history of prior demonstrations and publication work.
 
 ## Groups, evidence editors and agent seam · September 30–October 1
 
@@ -20,7 +20,7 @@ A decision is a Text block labelled decision, linked to the blocks it rests on, 
 
 `AgentRuntime` is separate from inference providers and Python execution backends. `CodexAgentService` connects through native app-server JSON-RPC, captures selected blocks/artifact versions and exposes only validated ros.ai read/proposal tools. Canvas effects use existing authority/store validation; deleting a selected Group requires every affected descendant to be selected. Report proposals remain pending until specific acceptance creates a derived report with model-claim provenance. Scope-bound sessions, observable tool/output/usage records, interruption and uncertain outcomes are implemented; host/external approvals are denied and unknown outcomes are not retried. A persistent fresh grant reserves full turn/time/tool allowances across its projects without replenishment. Admission policy, protocol support and effective runtime settings are reported separately.
 
-Actual read-only initialize/account/config probes passed against Codex CLI 0.141.0 with ChatGPT sign-in; effective host-tool overrides and disabled inherited MCP servers were checked. No inference turn was authorized or sent. This installed schema lacks restricted read-root enforcement, so a read-only sandbox does not establish the required boundary. Execution fails closed both for that missing capability and for the absent fresh bounded grant. Streaming, cancellation and live dynamic-tool behavior remain unverified against inference. Native login is not copied into ros.ai provider credentials or treated as a spending grant. [Detailed adapter record](codex-local-agent-2026-09-30.md).
+Actual read-only initialize/account/config probes passed against Codex CLI 0.141.0 with ChatGPT sign-in; effective host-tool overrides and disabled inherited MCP servers were checked. No inference turn was authorized or sent. This installed schema lacks restricted read-root enforcement, so a read-only sandbox does not establish the required boundary. Execution fails closed both for that missing capability and for the absent fresh bounded grant. Streaming, cancellation and live dynamic-tool behavior remain unverified against inference. Native login is not copied into ros.ai provider credentials or treated as a spending grant. Detailed adapter record.
 
 ## Tutorial and public-service composition · September 23 record
 
@@ -170,7 +170,7 @@ Preserved inputs, artifact hashes and provider/runtime configuration explain obs
 
 ## Nebius remote execution — September 22
 
-The explicitly selected remote backend sends a fixed trusted Python worker and the approved code/CSV/parameter capture to a pinned public image UUID. It requests a disposable VM, disabled networking, non-root execution, 30 seconds maximum execution, 64 MiB writable layer and bounded stdout/stderr. It does not import images, install packages or upload persistent file objects. Standard-library helpers emit tables, metrics, simple SVG, CSV and text. Provider CPU/RAM quotas are undocumented; worker process limits are a separate mechanism, not a provider VM cap. [Exact API findings](history/nebius-sandbox-api-research-2026-09-22.md).
+The explicitly selected remote backend sends a fixed trusted Python worker and the approved code/CSV/parameter capture to a pinned public image UUID. It requests a disposable VM, disabled networking, non-root execution, 30 seconds maximum execution, 64 MiB writable layer and bounded stdout/stderr. It does not import images, install packages or upload persistent file objects. Standard-library helpers emit tables, metrics, simple SVG, CSV and text. Provider CPU/RAM quotas are undocumented; worker process limits are a separate mechanism, not a provider VM cap. Exact API findings.
 
 Every remote attempt needs exact Ask approval even under project automatic modes. A separate server-side sandbox authorization records an operator-attested conservative per-attempt USD ceiling and source. It is fail-closed when absent; a balance or the provider's undocumented raw cost cannot become a price. Sandbox allowance, project counters and approval commit atomically. Failed/cancelled/uncertain outcomes retain reservations; changing terms under an already used ID does not replenish it. This is application admission, not a provider billing cap.
 
@@ -206,7 +206,7 @@ Earlier on September 23, `nested-routing.ts` projected individual child endpoint
 
 `assistant-presentation.ts` projects bounded readable reply/question and complete note drafts from visible response text without granting action authority. Recovery handles malformed wrapping/serialized text, while executable actions still require `parseWholeJsonObject` plus the complete consumer schema. Partial response fragments may expose completed reply/question strings but never reconstructed notes/actions. New invalid turns retain display structure separately from tools/memory; historical client views project saved text without mutating records. `AssistantStructurePreview` renders containment as indentation and relationships as a separate disclosure; only stored validated pending proposal operations supply the normal review action.
 
-The continuous notes contract now includes explicit Groups, resolves same-batch fresh refs to assigned IDs, validates prospective parent kinds and honors explicit existing-block parent moves. Store checks the final canvas for parent existence/cycles and continues to govern proposal history/approval. Recovery does not repair invalid ownership or invoke pending model tools. [Presentation result](../RESULT.md) records the exact extra-brace reproduction and no-inference verification.
+The continuous notes contract now includes explicit Groups, resolves same-batch fresh refs to assigned IDs, validates prospective parent kinds and honors explicit existing-block parent moves. Store checks the final canvas for parent existence/cycles and continues to govern proposal history/approval. Recovery does not repair invalid ownership or invoke pending model tools. Presentation result records the exact extra-brace reproduction and no-inference verification.
 
 ## Separate clarification answers and canvas controls · October 2
 
@@ -224,7 +224,7 @@ Notebook blocks first connected to a user-managed Jupyter server and captured it
 
 Result handoff checks artifact ownership/hash and expected canvas revision. It saves an exact selected-input receipt; a CSV into Code also updates the ordinary single-input document. All other formats remain selected evidence. Execution is separate. `output-provenance.ts` compares saved source/configuration without rewriting outputs or receiver choices. Reports retain exact artifact references. The optional guide starts with only the deliberately selected textual artifact and structural destination; ordinary assistant context excludes raw notebook sources and unrelated notebook captures.
 
-Source: [Stage One setup](stage-one-setup.md), [delivery and verification](../RESULT.md).
+Source: [Stage One setup](stage-one-setup.md), delivery and verification.
 
 ## Project folders · October 6, 2026
 

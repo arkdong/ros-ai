@@ -14,7 +14,6 @@
     "try": "node scripts/try.mjs",
     "app": "node desktop/run.mjs",
     "app:build": "node desktop/run.mjs --build",
-    "eval:aiso": "tsx scripts/aiso-eval.ts",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/*.test.ts",
     "lint": "tsc --noEmit"

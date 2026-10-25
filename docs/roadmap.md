@@ -17,16 +17,16 @@ DNS rebinding and cross-site requests that carry an Origin header are already re
 | 1 | Requests without an Origin pass, a GET starts `codex`/`claude` setup, and there is no CSP | `app.ts:42`; `codex-agent.ts:277` | **Partly done October 6:** non-GET `/api` calls need `application/json`, `Sec-Fetch-Site: cross-site` is refused and setup is a POST. Still open: a CSP that allows CodeMirror's injected styles (`EditorView.cspNonce`) | S |
 | 2 | No licence | | **Done October 3:** Adam chose MIT. `LICENSE` and the README's Licence section exclude the name, logo, other organisations' marks and third-party data | S |
 | 3 | Going public ⚑ | Absolute home-directory paths in eight tracked files (e.g. `examples/demo-amsterdam/native-project.json`, `scripts/create-dutch-ai-demo.ts`); the AISO logo's embedded metadata names a person and Canva IDs; CBS reuse terms are not recorded | Decide what a public tree contains, then publish from a clean copy rather than this history | S–M |
-| 4 | Every install serves the pitch deck at `/deck` | `public/deck/**` | Serve the deck only in demo mode (the OpenAI icon no longer loads from it) | S |
+| 4 | Every install serves the pitch deck at `/deck` | `public/deck/**` | **Done October 25:** the deck left the repository | S |
 | 5 | It can't be installed as a command | No `bin`; `npm start` needs devDependencies (`tsx`, `vite`) | Add `bin/ros-ai.mjs`, move `tsx` to dependencies, build `dist/client` in `prepack`, add `files`. Ship `npx github:arkdong/ros-ai` first; npm publishing is a later choice | M |
 | 6 | Data lives in the checkout, so reinstalling could lose it (inferred) ⚑ | `index.ts:26-27` | **Done October 6** with project folders: the OS app-data folder is the default, an existing repo-local `.ros-ai` keeps being used, and `ROS_DATA_DIR` still wins | S–M |
 | 7 | The sandbox image is built by hand, and the runtime check blocks startup for up to 15 s and never reruns | `sandbox.ts:64-69` | `ros-ai doctor` / `setup` to build the image, an async check, and a Recheck button in Code | M |
 | 8 | No URL printed, no flags, and the UI goes stale after `git pull` | `index.ts:105`, `index.ts:89` | Print the URL; add `--open`, `--port`, `--data-dir`, `--version`; rebuild when the version changes; check Node 24+ | S |
 | 9 | Demo and pitch material appears in the local app | Demo picker on first launch (`App.tsx:49`); ABN AMRO tutorial (`tutorial-content.ts:49-50`) | Off by default locally, with one neutral Examples entry | S |
 | 10 | Each project stopped running code after about 100 local runs | | **Done October 6:** Adam removed research scope and shared project limits. Runs are tallied, never blocked; each connection's allowance still caps paid calls | S |
-| 11 | Code was a plain textarea | | **Done October 3:** CodeMirror editor with Python highlighting, completion and error marks (see [RESULT.md](../RESULT.md)) | M |
+| 11 | Code was a plain textarea | | **Done October 3:** CodeMirror editor with Python highlighting, completion and error marks (see [RESULT.md](guide.md)) | M |
 | 12 | The key-free AI path (a local model server) was never checked against a real server, and model IDs are typed by hand | No `/v1/models` call; `inference-connections.ts:153,161` | Ollama preset, Test connection, model list, and one live Ollama check (no cost) | S |
-| 13 | Docs are written for the maintainer | `README.md`, `.env.example` | Install, quickstart and troubleshooting first; short demo section; `SECURITY.md`, `CONTRIBUTING.md` | S |
+| 13 | Docs are written for the maintainer | `README.md`, `.env.example` | **Partly done October 25:** the README opens with install and first run, the walkthrough is `docs/guide.md`, build logs and strategy left the repository. Still open: `SECURITY.md`, `CONTRIBUTING.md`, a user-facing `.env.example` | S |
 
 Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 
@@ -56,4 +56,4 @@ Suggested order: 1–4, then 5–6, then 7–10, then 12–13.
 - A web search adapter besides Tavily.
 - Check whether current Codex CLI supports restricted read roots (`codex-agent.ts:67`).
 - C and Haskell: real runtimes, or remove them from the language list.
-- A prebuilt sandbox image on GHCR ⚑, Homebrew, a desktop app, a headless CLI mode.
+- A prebuilt sandbox image on GHCR ⚑, Homebrew, a headless CLI mode. **Done October 25:** a Mac app (`desktop/`, `npm run app`).

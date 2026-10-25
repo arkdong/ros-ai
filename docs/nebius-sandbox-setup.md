@@ -38,7 +38,7 @@ Configure an authorized amount only in the ignored server-side file. New inferen
 
 The combined grant is saved once for this build and retains conservative reservations across projects, outcomes and restarts. An admitted inference call or remote attempt reduces the same remaining ceiling. Failed, cancelled and uncertain attempts keep their reservations; smaller returned usage does not refund a conservative reservation. Changing a used combined identifier or ceiling is rejected rather than creating another allowance. Preserve the data directory, prior provider grants and historical usage.
 
-Tavily remains separate from Nebius. Its existing cumulative US$10 ceiling includes historical charges; configuring a new Nebius authorization does not reset it or add a new Tavily budget. Current live usage belongs in [RESULT.md](../RESULT.md), not in this setup example.
+Tavily remains separate from Nebius. Its existing cumulative US$10 ceiling includes historical charges; configuring a new Nebius authorization does not reset it or add a new Tavily budget. Current live usage belongs in RESULT.md, not in this setup example.
 
 ## Sandbox pricing and execution sublimit
 
@@ -56,7 +56,7 @@ All five sandbox fields remain blank/commented in the example configuration. Uns
 
 Each admitted attempt retains its maximum reservation in both the sandbox sublimit and the combined grant after success, failure, cancellation or an uncertain outcome. Retries are new attempts. Neither restarting, switching approval mode, nor changing a grant identifier should be used to replenish an existing allowance. The UI shows the server's admission reason and remaining run/USD allowance; the server checks sandbox limits and the shared remaining ceiling again when executing. Reservation is local admission accounting, not a Nebius invoice or provider-enforced billing cap.
 
-As of September 22, 2026, the inspected official documentation and signed-in console did not establish a sandbox price, billing unit, or free-beta commitment. The console's Prices filter returned no sandbox price rows; absence of a price is not evidence of free execution. The operation field `resources.cost` has unspecified units and must not be labelled USD without further evidence. Available account credit and historical inference authorization do not establish sandbox spending permission. See the [dated API and pricing investigation](history/nebius-sandbox-api-research-2026-09-22.md).
+As of September 22, 2026, the inspected official documentation and signed-in console did not establish a sandbox price, billing unit, or free-beta commitment. The console's Prices filter returned no sandbox price rows; absence of a price is not evidence of free execution. The operation field `resources.cost` has unspecified units and must not be labelled USD without further evidence. Available account credit and historical inference authorization do not establish sandbox spending permission. See the dated API and pricing investigation.
 
 ## Preview and run
 
@@ -95,4 +95,4 @@ The adapter requests a disposable remote environment, disabled guest networking,
 
 Stop requests provider cancellation. Accepted cancellation is not proof of termination, and lost connectivity can leave the outcome uncertain. The local server records known operation IDs for status reconciliation. It never blindly repeats a create request after an uncertain response. Preserve the original run and inspect its status before an explicit retry.
 
-This setup document describes the integration contract. Check [RESULT.md](../RESULT.md) for the separately recorded live-verification status and any outstanding cost or provider constraints.
+This setup document describes the integration contract. Check RESULT.md for the separately recorded live-verification status and any outstanding cost or provider constraints.

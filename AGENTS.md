@@ -2,7 +2,7 @@
 
 ## Read first
 
-Read `README.md`, `RESULT.md`, `docs/product-brief.md` and `docs/architecture.md` before implementation. `docs/context-and-decisions.md` explains historical conflicts; dated build records and superseded milestones live in `docs/history/`. Current user instructions take precedence.
+Read `README.md`, `docs/guide.md`, `docs/product-brief.md` and `docs/architecture.md` before implementation. Current user instructions take precedence.
 
 ## Product boundaries
 
@@ -31,8 +31,7 @@ Read `README.md`, `RESULT.md`, `docs/product-brief.md` and `docs/architecture.md
 - Earlier verification allowances are historical, not authorization for new calls. Paid verification requires fresh explicit budget authorization. Use configured credentials only; do not purchase or redeem credits.
 - Verify pricing/credit units, record usage and uncertainty, and stop live calls when the applicable remaining budget cannot be enforced conservatively. Continue unaffected local work. Consumed one-off exceptions (such as the September 23 beta smoke) do not relax general gates or authorize retries.
 - No unrestricted shell, package installation, filesystem, or network tool may be exposed by the bounded experiment runtime. Approval policy and actual enforcement must be reported separately.
-- Do not claim hackathon eligibility or invent approved models. Preserve a dated record of pre-event work.
 
 ## Durable context
 
-Project status and detailed implementation truth belong here. Update the compact vault packet at `/Users/adamdong/vault/13 Agent Memory/Projects/ros-ai/README.md` when routing, scope, or major status changes. Do not use the obsolete `vault/projects/` path. Keep event preparation in the existing Inbox checklist; do not duplicate its checklist here.
+Project status and implementation truth belong in this repository: the README, `docs/guide.md`, `docs/architecture.md` and `docs/roadmap.md`. Strategy, pitch and dated build records are kept outside the repository.
