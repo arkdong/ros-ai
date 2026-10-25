@@ -1,0 +1,181 @@
+/**
+ * The window side of the ros.ai Mac app. Everything else is the ordinary ros.ai server (dist/server/index.mjs),
+ * started here as a child process on Electron's own Node, so a person needs nothing installed:
+ *   pick a free port from 4310 → start the server → wait for /api/health → open one window on it.
+ * Outside links open in the default browser; closing the window stops the server. Logs live in the data folder.
+ */
+import { app, BrowserWindow, dialog, Menu, nativeImage, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+// dist/desktop/main.cjs → the repository root (a checkout) or the app folder inside ros.ai.app.
+const root = resolve(__dirname, '..', '..');
+const version = (() => { try { return String(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version); } catch { return '0.0.0'; } })();
+const mac = process.platform === 'darwin', windows = process.platform === 'win32';
+// The same data folder src/server/index.ts picks, so the app and `npm start` share projects on a plain install.
+const appData = mac ? join(homedir(), 'Library', 'Application Support', 'ros.ai')
+  : windows ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'ros.ai')
+  : join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'ros.ai');
+const dataDir = resolve(process.env.ROS_DATA_DIR || (existsSync(join(root, '.ros-ai')) ? join(root, '.ros-ai') : appData));
+// Electron's own files (cache, window state) stay out of ros.ai's records.
+const desktopDir = join(appData, 'desktop');
+app.setPath('userData', desktopDir);
+app.setName('ros.ai');
+
+let window: BrowserWindow | undefined;
+let server: ChildProcess | undefined;
+let serverExited = false;
+let url = '';
+const logDir = join(desktopDir, 'logs'), logFile = join(logDir, 'server.log');
+
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
+
+/** A Finder-launched app sees a short PATH; the login shell's PATH is where docker, uv, claude and codex are. */
+function shellPath(): string | undefined {
+  if (windows) return undefined;
+  const shell = process.env.SHELL || '/bin/zsh';
+  try {
+    const result = spawnSync(shell, ['-ilc', 'printf "__ROS_PATH__%s__END__" "$PATH"'], { encoding: 'utf8', timeout: 6000, env: { ...process.env, DISABLE_AUTO_UPDATE: 'true' } });
+    const found = /__ROS_PATH__(.*?)__END__/su.exec(`${result.stdout ?? ''}`)?.[1]?.trim();
+    if (!found) return undefined;
+    const merged = new Set([...found.split(':'), ...(process.env.PATH ?? '').split(':')].filter(Boolean));
+    return [...merged].join(':');
+  } catch { return undefined; }
+}
+
+const free = (port: number) => new Promise<boolean>(done => {
+  const probe = createServer();
+  probe.once('error', () => done(false));
+  probe.listen(port, '127.0.0.1', () => probe.close(() => done(true)));
+});
+async function freePort(): Promise<number> {
+  const first = Number(process.env.ROS_PORT) || 4310;
+  for (let port = first; port <= first + 20; port++) if (await free(port)) return port;
+  throw new Error(`No free port between ${first} and ${first + 20}.`);
+}
+
+/** A tiny launcher that runs this app's Node, so agents can reach ros.ai over MCP without a separate Node install. */
+function nodeLauncher(): string {
+  mkdirSync(desktopDir, { recursive: true });
+  const file = join(desktopDir, windows ? 'ros-ai-node.cmd' : 'ros-ai-node');
+  const body = windows
+    ? `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" %*\r\n`
+    : `#!/bin/sh\n# Runs the Node inside the ros.ai app. Written by ros.ai at each start.\nexport ELECTRON_RUN_AS_NODE=1\nexec "${process.execPath}" "$@"\n`;
+  writeFileSync(file, body);
+  if (!windows) chmodSync(file, 0o755);
+  return file;
+}
+
+function tail(file: string, lines = 12): string {
+  try { return readFileSync(file, 'utf8').trim().split('\n').slice(-lines).join('\n'); } catch { return ''; }
+}
+
+async function startServer(): Promise<string> {
+  const entry = join(root, 'dist', 'server', 'index.mjs');
+  if (!existsSync(entry)) throw new Error(`The server bundle is missing (${entry}). Run \`npm run app\` from the checkout to build it.`);
+  const port = await freePort();
+  mkdirSync(logDir, { recursive: true });
+  if (existsSync(logFile)) renameSync(logFile, join(logDir, 'server.previous.log'));
+  const log = openSync(logFile, 'a');
+  const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1', ROS_PORT: String(port), ROS_DESKTOP: '1', ROS_NODE_COMMAND: nodeLauncher() };
+  if (process.env.ROS_DATA_DIR === undefined && dataDir !== appData) env.ROS_DATA_DIR = dataDir;
+  const path = shellPath();
+  if (path) env.PATH = path;
+  server = spawn(process.execPath, [entry], { cwd: root, env, stdio: ['ignore', log, log] });
+  server.on('exit', () => { serverExited = true; });
+  const health = `http://127.0.0.1:${port}/api/health`;
+  for (const deadline = Date.now() + 120_000; ; await new Promise(done => setTimeout(done, 250))) {
+    if (serverExited) throw new Error(`ros.ai stopped before it was ready.\n\n${tail(logFile)}`);
+    if (Date.now() > deadline) throw new Error(`ros.ai did not start within two minutes.\n\n${tail(logFile)}`);
+    try { if ((await fetch(health)).ok) break; } catch { /* not yet */ }
+  }
+  return `http://127.0.0.1:${port}/`;
+}
+
+function stopServer(): Promise<void> {
+  return new Promise(done => {
+    if (!server || serverExited) return done();
+    const timer = setTimeout(() => { server?.kill('SIGKILL'); done(); }, 5000);
+    server.once('exit', () => { clearTimeout(timer); done(); });
+    server.kill('SIGTERM');
+  });
+}
+
+const local = (target: string) => { try { const { hostname } = new URL(target); return hostname === '127.0.0.1' || hostname === 'localhost'; } catch { return false; } };
+const stateFile = join(desktopDir, 'window.json');
+function savedBounds(): Electron.Rectangle | undefined {
+  try {
+    const bounds = JSON.parse(readFileSync(stateFile, 'utf8')) as Electron.Rectangle;
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const visible = bounds.x < area.x + area.width && bounds.x + bounds.width > area.x && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y;
+    return visible && bounds.width >= 600 && bounds.height >= 400 ? bounds : undefined;
+  } catch { return undefined; }
+}
+
+function openWindow() {
+  const bounds = savedBounds();
+  window = new BrowserWindow({
+    width: 1440, height: 900, minWidth: 880, minHeight: 560, ...bounds, title: 'ros.ai', show: false, backgroundColor: '#ffffff',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true },
+  });
+  window.webContents.setUserAgent(`${window.webContents.getUserAgent()} ros.ai/${version}`);
+  window.once('ready-to-show', () => window?.show());
+  // The window shows ros.ai only; every other address opens in the default browser.
+  window.webContents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; void shell.openExternal(target); return { action: 'deny' }; });
+  window.webContents.on('will-navigate', (event, target) => { if (!local(target)) { event.preventDefault(); void shell.openExternal(target); } });
+  window.on('close', () => { try { if (window && !window.isMinimized() && !window.isFullScreen()) writeFileSync(stateFile, JSON.stringify(window.getBounds())); } catch { /* a saved size is a convenience */ } });
+  window.on('closed', () => { window = undefined; });
+  // A headless check (ROS_DESKTOP_SMOKE=<file.png>): save a picture of the loaded page, then quit.
+  const smoke = process.env.ROS_DESKTOP_SMOKE;
+  if (smoke) window.webContents.once('did-finish-load', () => setTimeout(() => void window?.webContents.capturePage().then(image => { writeFileSync(smoke, image.toPNG()); console.log(`ros.ai window loaded ${url}; picture saved to ${smoke}`); app.quit(); }), 2500));
+  void window.loadURL(url);
+}
+
+function menu() {
+  const help: MenuItemConstructorOptions[] = [
+    { label: 'Open in browser', click: () => void shell.openExternal(url) },
+    { label: 'Show data folder', click: () => void shell.openPath(dataDir) },
+    { label: 'Show logs', click: () => shell.showItemInFolder(logFile) },
+    { type: 'separator' },
+    { label: 'ros-ai.io', click: () => void shell.openExternal('https://ros-ai.io') },
+    { label: 'Source on GitHub', click: () => void shell.openExternal('https://github.com/arkdong/ros-ai') },
+  ];
+  const template: MenuItemConstructorOptions[] = [
+    ...(mac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { role: 'windowMenu' },
+    { role: 'help', submenu: help },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+app.setAboutPanelOptions({ applicationName: 'ros.ai', applicationVersion: version, website: 'https://ros-ai.io', copyright: 'MIT licence. The ros.ai name and logo are excluded.' });
+app.whenReady().then(async () => {
+  if (mac && !app.isPackaged) { const icon = nativeImage.createFromPath(join(root, 'desktop', 'build', 'icon.png')); if (!icon.isEmpty()) app.dock?.setIcon(icon); }
+  menu();
+  try { url = await startServer(); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const choice = dialog.showMessageBoxSync({ type: 'error', title: 'ros.ai could not start', message: 'ros.ai could not start', detail: message, buttons: ['Show logs', 'Quit'], defaultId: 1, cancelId: 1 });
+    if (choice === 0) shell.showItemInFolder(logFile);
+    app.exit(1);
+    return;
+  }
+  openWindow();
+  app.on('activate', () => { if (!window && url) openWindow(); });
+});
+// The app is the workspace: closing its window stops the server, on every platform.
+app.on('window-all-closed', () => app.quit());
+let stopping = false;
+app.on('will-quit', event => {
+  if (stopping || !server || serverExited) return;
+  stopping = true;
+  event.preventDefault();
+  void stopServer().then(() => app.quit());
+});

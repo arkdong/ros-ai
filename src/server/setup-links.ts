@@ -11,22 +11,26 @@ import type { AgentId, LinkRecord, LinkResult } from '../shared/setup.js';
  * one-time backup. Each link is recorded here so Undo removes exactly that entry. */
 
 const quoted = (value: string) => `"${value}"`;
-/** The process an agent starts for ros.ai. GUI apps see a short PATH, so Cursor gets this node by path. */
+const word = (value: string) => /\s/u.test(value) ? quoted(value) : value;
+/** The node an agent runs the bridge with. Inside the ros.ai app there may be no Node on this computer, so the app
+ * hands over a small launcher (ROS_NODE_COMMAND) that runs its own Node; GUI apps see a short PATH, so Cursor gets a path. */
+const nodeCommand = (id?: AgentId) => process.env.ROS_NODE_COMMAND || (id === 'cursor' ? process.execPath : 'node');
+/** The process an agent starts for ros.ai. */
 export function entryFor(id: AgentId, bridge: string) {
-  return { command: id === 'cursor' ? process.execPath : 'node', args: [bridge] };
+  return { command: nodeCommand(id), args: [bridge] };
 }
 /** The command a person would paste, or the settings entry they would add. */
 export function linkCommand(id: AgentId, bridge: string) {
   const { command, args } = entryFor(id, bridge);
   switch (id) {
-    case 'claude-code': return `claude mcp add --scope user ros-ai -- node ${quoted(bridge)}`;
-    case 'codex': return `codex mcp add ros-ai -- node ${quoted(bridge)}`;
+    case 'claude-code': return `claude mcp add --scope user ros-ai -- ${word(command)} ${quoted(bridge)}`;
+    case 'codex': return `codex mcp add ros-ai -- ${word(command)} ${quoted(bridge)}`;
     default: return `"ros-ai": { "command": ${JSON.stringify(command)}, "args": [${args.map(item => JSON.stringify(item)).join(', ')}] }`;
   }
 }
 const cli = (id: 'claude-code' | 'codex', bridge: string) => id === 'claude-code'
-  ? { add: ['mcp', 'add', '--scope', 'user', 'ros-ai', '--', 'node', bridge], remove: ['mcp', 'remove', '--scope', 'user', 'ros-ai'], removeCommand: 'claude mcp remove --scope user ros-ai' }
-  : { add: ['mcp', 'add', 'ros-ai', '--', 'node', bridge], remove: ['mcp', 'remove', 'ros-ai'], removeCommand: 'codex mcp remove ros-ai' };
+  ? { add: ['mcp', 'add', '--scope', 'user', 'ros-ai', '--', nodeCommand(id), bridge], remove: ['mcp', 'remove', '--scope', 'user', 'ros-ai'], removeCommand: 'claude mcp remove --scope user ros-ai' }
+  : { add: ['mcp', 'add', 'ros-ai', '--', nodeCommand(id), bridge], remove: ['mcp', 'remove', 'ros-ai'], removeCommand: 'codex mcp remove ros-ai' };
 
 function run(binary: string, args: string[]): Promise<{ code: number | null; output: string }> {
   return new Promise(settle => {
