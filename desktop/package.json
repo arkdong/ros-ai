@@ -1,0 +1,19 @@
+{
+  "name": "ros-ai-desktop",
+  "private": true,
+  "type": "module",
+  "description": "Build tooling for the ros.ai Mac app. The app itself is the repository root; see desktop/README.md.",
+  "scripts": {
+    "lint": "tsc --noEmit -p .",
+    "bundle": "node build.mjs",
+    "start": "node run.mjs",
+    "dist": "node run.mjs --build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "electron": "45.0.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.2"
+  }
+}

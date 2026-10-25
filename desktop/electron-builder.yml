@@ -1,0 +1,50 @@
+# ros.ai Mac app packaging. Run through `npm run app:build` at the repository root (desktop/run.mjs), which
+# bundles the server and the window code into dist/ first. The app directory is the repository root, so the
+# runtime dependencies of package.json ship with it; everything in devDependencies stays out.
+appId: io.ros-ai.app
+productName: ros.ai
+executableName: ros-ai
+copyright: MIT licence · ros.ai name and logo excluded
+directories:
+  app: ..
+  output: dist
+  buildResources: build
+# Real files on disk: the server spawns the sandbox watchdog, Python helpers and the MCP bridge by path.
+asar: false
+files:
+  - package.json
+  - dist/client/**
+  - dist/server/**
+  - dist/desktop/**
+  - scripts/ros-ai-mcp.mjs
+  - examples/**
+  - "!**/*.map"
+  - "!**/*.ts"
+  - "!**/__pycache__/**"
+  # The browser side is already built into dist/client; these packages only serve Vite.
+  - "!node_modules/{react,react-dom,scheduler,katex,lucide-react,pdfjs-dist,zustand,use-sync-external-store,style-mod,w3c-keyname,crelt,classcat}/**"
+  - "!node_modules/{@codemirror,@lezer,@xyflow,@marijn}/**"
+  - "!node_modules/{d3-*,@types}/**"
+  # Linux-musl builds of native packages never run on a Mac.
+  - "!node_modules/**/*-musl/**"
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  artifactName: ros.ai-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSHumanReadableCopyright: MIT licence
+    LSMinimumSystemVersion: "12.0"
+dmg:
+  title: ros.ai ${version}
+  contents:
+    - { x: 140, y: 180 }
+    - { x: 420, y: 180, type: link, path: /Applications }

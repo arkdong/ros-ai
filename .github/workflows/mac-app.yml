@@ -1,0 +1,61 @@
+# Builds ros.ai.app for Apple silicon and Intel Macs, each on a Mac of that architecture so the native
+# packages (the Claude Code binary inside the Agent SDK, PDF rendering) match. Start it by hand
+# (Actions → Mac app → Run workflow) or push a v* tag, which also attaches the DMGs to that release.
+# With the five Apple secrets below the app is signed and notarized; without them it is unsigned and
+# macOS asks for "Open Anyway" once.
+name: Mac app
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix desktop ci
+      - name: Build the app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "No signing certificate: building an unsigned app."
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            node desktop/run.mjs --build --${{ matrix.arch }}
+          elif [ -n "$APPLE_ID" ]; then
+            node desktop/run.mjs --build --${{ matrix.arch }} -c.mac.notarize=true
+          else
+            node desktop/run.mjs --build --${{ matrix.arch }}
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ros.ai-mac-${{ matrix.arch }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+          if-no-files-found: error
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
