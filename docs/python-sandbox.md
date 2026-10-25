@@ -62,4 +62,4 @@ Nebius now documents the Sandboxes beta, including asynchronous operations with 
 
 The official read-only image-list API requires an IAM bearer token and a separate `Project` header. The existing local configuration contains an inference key but no Nebius/Contree project setting or sandbox configuration, so account access was not verified. No instance was spawned, remote image imported, SDK installed or account changed. A future integration needs confirmed project access, pricing and separately authorized remote resource limits. [Official image-list API](https://docs.tokenfactory.nebius.com/api-reference/sandboxes/images/list-publicly-available-images).
 
-September 22 update: the earlier documentation check above is historical. Authenticated catalog access now succeeds and the remote adapter is implemented. Pricing remains unknown, so no remote instance has been submitted. See [current verification](../RESULT.md).
+September 22 update: the earlier documentation check above is historical. Authenticated catalog access now succeeds and the remote adapter is implemented. Pricing remains unknown, so no remote instance has been submitted. See current verification.

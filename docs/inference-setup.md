@@ -1,6 +1,6 @@
 # Personal inference connections and Workspace guide
 
-Delivered local implementation · October 2, 2026. This setup extends the [October 1 design](inference-design-2026-10-01.md); its optional ros.ai Nemotron package remains future work. Built-in Nebius and OpenAI selections keep their existing identities and settings. The new registry adds user-configured compatible HTTP endpoints to the private local workspace.
+Delivered local implementation · October 2, 2026. This setup extends the October 1 design; its optional ros.ai Nemotron package remains future work. Built-in Nebius and OpenAI selections keep their existing identities and settings. The new registry adds user-configured compatible HTTP endpoints to the private local workspace.
 
 ## Add your model connection
 
@@ -64,4 +64,4 @@ Canvas suggestions use the existing validated proposal, approval and history pat
 
 This iteration provides the server-owned registry, compatible text HTTP adapter, registered model picker integration and explicitly scoped guide reviews. It does not ship or install an optional Nemotron weights/runtime bundle, establish verified local processing, train or fine-tune a checkpoint, or add further CLI protocols. Those parts of the October 1 design remain future work.
 
-Existing Codex authentication, bounded grants and restricted read-isolation requirements remain enforced; a new HTTP connection cannot bypass them or expose arbitrary shell execution. See [Codex integration limits](codex-local-agent-2026-09-30.md). No hosted deployment, model purchase or new external verification allowance follows from this setup documentation.
+Existing Codex authentication, bounded grants and restricted read-isolation requirements remain enforced; a new HTTP connection cannot bypass them or expose arbitrary shell execution. See Codex integration limits. No hosted deployment, model purchase or new external verification allowance follows from this setup documentation.
