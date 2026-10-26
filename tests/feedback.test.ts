@@ -58,10 +58,16 @@ test('the local feedback route reads only this computer, then passes a note on t
     assert.equal((await send({ kind: 'idea', message: 'Hi', email: 'not an address' })).status, 400);
     assert.equal(received.length, 1, 'refused notes are not passed on');
 
-    answer = { status: 429, body: { error: { message: 'Too many notes from this address in the last hour.' } } };
+    answer = { status: 429, body: { error: { message: 'Too many notes in the last hour. Try again later.' } } };
     const limited = await send({ kind: 'problem', message: 'Again' });
     assert.equal(limited.status, 429);
-    assert.equal((await limited.json()).error, 'Too many notes from this address in the last hour.');
+    assert.equal((await limited.json()).error, 'Too many notes in the last hour. Try again later.');
+
+    // A cloud from before /v1/feedback existed: the card keeps the note and offers GitHub.
+    answer = { status: 404, body: {} };
+    const older = await send({ kind: 'problem', message: 'Again' });
+    assert.equal(older.status, 502);
+    assert.equal((await older.json()).error, 'ros.ai cloud does not take notes yet.');
   } finally {
     await local.close(); await cloudServer.close();
     rmSync(dir, { recursive: true, force: true });
