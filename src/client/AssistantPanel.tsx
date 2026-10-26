@@ -17,6 +17,7 @@ import type { PersonalMemoryState } from '../shared/personal-memory';
 import { AssistantStructurePreview, proposalStructurePreview } from './AssistantStructurePreview';
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
 import { useSmoothText } from './live-reply';
+import { useSkillMenu } from './SkillMenu';
 import './assistant-compact.css';
 
 /** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
@@ -32,10 +33,13 @@ type Props = {
   onInspectAction: (action: AssistantAction) => void;
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
+  /** Opens the Skills page from the / menu. */
+  onSkills?: () => void;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills }: Props) {
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
+  const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
   const [preparedNotice, setPreparedNotice] = useState('');
@@ -124,7 +128,8 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
-      <textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } else if (event.key === 'Escape' && active) { event.preventDefault(); stop(); } }}/>
+      {skills.menu}
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } else if (event.key === 'Escape' && active) { event.preventDefault(); stop(); } }}/>
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>

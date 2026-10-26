@@ -16,6 +16,7 @@ import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.j
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
+import { attachSkillRoutes, type SkillLibrary } from './skills.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
 import { projectBudgetReport, usageAnalytics } from './budget-report.js';
@@ -42,7 +43,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;setup?:Setup},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -75,6 +76,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
   // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
   if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
+  // A skill archive (.zip, up to 12 MB) arrives as base64 inside JSON.
+  if (!options.publicDemo) app.use('/api/skills/preview', express.json({ limit: '17mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
@@ -186,6 +189,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (assistant) attachAssistantRoutes(app,assistant);
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
+  if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;
