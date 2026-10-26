@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Express } from 'express';
 import { z } from 'zod';
@@ -6,20 +7,22 @@ import type { CloudAccountStatus } from '../shared/cloud-account.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { StoreError } from './store.js';
 
-const CLIENT_ID = 'ros-ai-app';
+const SIGN_IN_TTL_MS = 10 * 60_000;
+const escape = (value: string) => value.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
-/** Signs this computer in to ros.ai cloud with a device code the person approves in their
- * browser, then registers the cloud as an ordinary model connection so Ros, the assistant and
+/** Signs this computer in to ros.ai cloud in the person's browser, then registers the cloud as an ordinary model connection so Ros, the assistant and
  * the agent loop use it like any other model. The session token stays on the local server in an
  * owner-only file, like the other keys; the browser page never sees it. */
 export class CloudAccount {
   private readonly file: string;
-  private pending?: { userCode: string; verificationUrl: string; expiresAt: number; stop: AbortController };
+  private pending?: { state: string; verifier: string; verificationUrl: string; expiresAt: number };
   private lastError = '';
-  constructor(private readonly url: string | undefined, dataDir: string, private readonly connections: InferenceConnections) {
+  private readonly callbackUrl: string;
+  constructor(private readonly url: string | undefined, dataDir: string, private readonly connections: InferenceConnections, port: number) {
     this.file = join(dataDir, 'cloud-account.json');
+    this.callbackUrl = `http://127.0.0.1:${port}/api/cloud/callback`;
   }
   private account() {
     if (!existsSync(this.file)) return undefined;
@@ -38,7 +41,7 @@ export class CloudAccount {
   async status(): Promise<CloudAccountStatus> {
     if (!this.url) return { available: false, state: 'signed-out' };
     const account = this.account();
-    if (this.pending && Date.now() < this.pending.expiresAt) return { available: true, state: 'waiting', userCode: this.pending.userCode, verificationUrl: this.pending.verificationUrl };
+    if (this.pending && Date.now() < this.pending.expiresAt) return { available: true, state: 'waiting', verificationUrl: this.pending.verificationUrl };
     if (!account) return { available: true, state: 'signed-out', ...(this.lastError ? { error: this.lastError } : {}) };
     try {
       const me = await this.call('/v1/me', { headers: { Authorization: `Bearer ${account.token}` } });
@@ -48,32 +51,30 @@ export class CloudAccount {
     } catch { return { available: true, state: 'signed-in', email: account.email, connectionId: account.connectionId, error: 'ros.ai cloud could not be reached just now.' }; }
   }
 
-  /** Asks for a device code and waits in the background for the person to approve it. */
+  /** Opens one browser page: the person signs in at ros.ai cloud (GitHub, Google or email) and the
+   * page sends them straight back to /api/cloud/callback here with a one-time code, which only this
+   * server can swap for a token, because only it knows the PKCE verifier (RFC 8252, like CLI sign-ins). */
   async signIn(): Promise<CloudAccountStatus> {
     if (!this.url) throw new StoreError('ros.ai cloud is not set up in this copy of ros.ai.', 404);
-    this.pending?.stop.abort();
-    const code = await this.call('/api/auth/device/code', { method: 'POST', body: JSON.stringify({ client_id: CLIENT_ID }) });
-    if (code.status !== 200 || typeof code.body.device_code !== 'string') throw new StoreError('ros.ai cloud did not start a sign-in. Try again in a moment.', 502);
-    const stop = new AbortController(), expiresAt = Date.now() + Number(code.body.expires_in ?? 600) * 1000;
-    this.pending = { userCode: code.body.user_code, verificationUrl: code.body.verification_uri_complete, expiresAt, stop };
+    const state = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const page = new URL(`${this.url}/app/sign-in`);
+    for (const [key, value] of Object.entries({ redirect_uri: this.callbackUrl, state, code_challenge: challenge, code_challenge_method: 'S256' })) page.searchParams.set(key, value);
+    this.pending = { state, verifier, verificationUrl: page.href, expiresAt: Date.now() + SIGN_IN_TTL_MS };
     this.lastError = '';
-    void this.poll(code.body.device_code, Math.max(5, Number(code.body.interval ?? 5)), expiresAt, stop.signal);
     return this.status();
   }
-  private async poll(deviceCode: string, interval: number, expiresAt: number, signal: AbortSignal) {
-    while (!signal.aborted && Date.now() < expiresAt) {
-      await new Promise(resolve => setTimeout(resolve, interval * 1000));
-      if (signal.aborted) return;
-      try {
-        const result = await this.call('/api/auth/device/token', { method: 'POST', body: JSON.stringify({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: deviceCode, client_id: CLIENT_ID }) });
-        if (result.body.error === 'authorization_pending') continue;
-        if (result.body.error === 'slow_down') { interval += 5; continue; }
-        if (typeof result.body.access_token !== 'string') { this.lastError = result.body.error === 'access_denied' ? 'Sign-in was refused in the browser.' : 'The sign-in code expired. Start again.'; break; }
-        await this.connect(result.body.access_token);
-        break;
-      } catch (error) { this.lastError = error instanceof Error ? error.message : 'Sign-in failed.'; break; }
-    }
-    if (this.pending?.stop.signal === signal) this.pending = undefined;
+  /** The browser lands here after signing in; returns the page to show in that tab. */
+  async callback(query: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+    const pending = this.pending;
+    if (!pending || Date.now() > pending.expiresAt || typeof query.state !== 'string' || query.state !== pending.state) return { ok: false, message: 'This sign-in has expired. Start again from ros.ai.' };
+    this.pending = undefined;
+    try {
+      const result = await this.call('/app/token', { method: 'POST', body: JSON.stringify({ code: query.code, code_verifier: pending.verifier, redirect_uri: this.callbackUrl }) });
+      if (typeof result.body.access_token !== 'string') throw new Error(result.body.error_description || 'ros.ai cloud did not finish the sign-in.');
+      await this.connect(result.body.access_token);
+      return { ok: true, message: 'You are signed in. You can close this tab and go back to ros.ai.' };
+    } catch (error) { this.lastError = error instanceof Error ? error.message : 'Sign-in failed.'; return { ok: false, message: this.lastError }; }
   }
   /** Registers (or refreshes) the cloud as a model connection with the token as its key. */
   private async connect(token: string) {
@@ -96,7 +97,7 @@ export class CloudAccount {
   }
 
   async signOut(): Promise<CloudAccountStatus> {
-    this.pending?.stop.abort(); this.pending = undefined;
+    this.pending = undefined;
     const account = this.account();
     if (account) {
       await this.call('/api/auth/sign-out', { method: 'POST', headers: { Authorization: `Bearer ${account.token}` }, body: '{}' }).catch(() => undefined);
@@ -105,11 +106,17 @@ export class CloudAccount {
     }
     return this.status();
   }
-  shutdown() { this.pending?.stop.abort(); }
+  shutdown() { this.pending = undefined; }
 }
 
 export function attachCloudAccountRoutes(app: Express, cloud: CloudAccount) {
   app.get('/api/cloud', async (_req, res) => { res.json(await cloud.status()); });
   app.post('/api/cloud/sign-in', async (_req, res) => { res.json(await cloud.signIn()); });
+  // The browser tab the sign-in opened lands here; it closes itself when it can.
+  app.get('/api/cloud/callback', async (req, res) => {
+    const result = await cloud.callback(req.query);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(result.ok ? 200 : 400).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ros.ai</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,-apple-system,sans-serif;color:#171717;background:#fafafa}p{max-width:360px;text-align:center}</style></head><body><p>${escape(result.message)}</p>${result.ok ? '<script>setTimeout(()=>window.close(),600)</script>' : ''}</body></html>`);
+  });
   app.post('/api/cloud/sign-out', async (_req, res) => { res.json(await cloud.signOut()); });
 }

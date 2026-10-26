@@ -26,7 +26,7 @@ export function ProfileButton({ onUsage, onSettings, onChanged }: { onUsage: () 
     if (!waiting) return;
     const timer = setInterval(async () => {
       const next = await api<CloudAccountStatus>('/api/cloud').catch(() => undefined);
-      if (next && next.state !== 'waiting') { setStatus(next); cloudAccountChanged(); await changed.current().catch(() => undefined); }
+      if (next && next.state !== 'waiting') { setStatus(next); if (next.state === 'signed-in') setOpen(false); cloudAccountChanged(); await changed.current().catch(() => undefined); }
     }, 3000);
     return () => clearInterval(timer);
   }, [waiting]);
@@ -71,9 +71,8 @@ export function ProfileButton({ onUsage, onSettings, onChanged }: { onUsage: () 
         <div className="profile-divider"/>
         <button className="profile-item" disabled={busy} onClick={() => void signOut()}>{busy ? <LoaderCircle size={15} className="spin"/> : <LogOut size={15}/>} Sign out</button>
       </> : waiting ? <div className="profile-sign-in">
-        <strong>Approve in your browser</strong>
-        <p>Check that the page shows this code.</p>
-        <div className="profile-code">{status.userCode}</div>
+        <strong>Finish in your browser</strong>
+        <p>Sign in on the ros.ai page that opened. ros.ai picks it up by itself.</p>
         <div className="profile-links"><a href={status.verificationUrl} target="_blank" rel="noreferrer">Open the page again</a><button className="text-button" disabled={busy} onClick={() => void signIn()}>Start again</button></div>
       </div> : <div className="profile-sign-in">
         <strong>Sign in to ros.ai</strong>

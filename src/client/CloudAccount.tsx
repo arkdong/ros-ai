@@ -28,7 +28,7 @@ export function CloudAccount({ onChanged }: { onChanged: () => Promise<unknown> 
   const subtitle = signedIn ? `${status.email}${status.leftTodayUsd !== undefined ? ` · US$${status.leftTodayUsd.toFixed(2)} left today` : ''}` : 'Free with a ros.ai account';
   return <ConnectionCard label="Ros, hosted by ros.ai" icon={<RosMark/>} subtitle={subtitle} connected={signedIn} forceOpen={waiting} status={signedIn ? 'Signed in' : waiting ? 'Waiting for you' : status.state === 'expired' ? 'Signed out' : 'Not connected'}>
     <p>Ros runs on NVIDIA Nemotron at ros.ai cloud, free while ros.ai is new. Your projects stay on this computer; only what Ros is asked to read is sent.</p>
-    {waiting && <div className="connection-setup cloud-waiting"><p>Approve this computer in your browser. The page shows this code:</p><p className="cloud-code"><strong>{status.userCode}</strong></p><a className="secondary small" href={status.verificationUrl} target="_blank" rel="noreferrer">Open the sign-in page <ExternalLink size={11}/></a></div>}
+    {waiting && <div className="connection-setup cloud-waiting"><p>Finish signing in in your browser; ros.ai picks it up by itself.</p><a className="secondary small" href={status.verificationUrl} target="_blank" rel="noreferrer">Open the sign-in page <ExternalLink size={11}/></a></div>}
     {(error || status.error) && <p className="inline-error" role="alert">{error || status.error}</p>}
     <div className="connection-actions">
       {signedIn ? <button className="text-button" disabled={busy} onClick={() => void run('/api/cloud/sign-out')}>Sign out</button>

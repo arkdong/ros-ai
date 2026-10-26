@@ -3,7 +3,6 @@ export type CloudAccountStatus = {
   available: boolean;
   state: 'signed-out' | 'waiting' | 'signed-in' | 'expired';
   email?: string;
-  userCode?: string;
   verificationUrl?: string;
   connectionId?: string;
   leftTodayUsd?: number;
