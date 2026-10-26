@@ -129,7 +129,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged }: Props) {
           <div className="setup-body">
             <div className="setup-name">{choice.label}</div>
             {choice.kind === 'ros' && waiting && cloud ? <>
-              <div className="setup-why">Approve {status.computer} in your browser. The page shows this code: <strong>{cloud.userCode}</strong></div>
+              <div className="setup-why">Finish signing in in your browser; ros.ai picks it up by itself.</div>
               <div className="setup-actions"><a className="secondary small" href={cloud.verificationUrl} target="_blank" rel="noreferrer">Open the sign-in page <ExternalLink size={11}/></a></div>
             </> : result?.message && <div className="setup-why">{result.message}</div>}
             {result?.command && <CommandBox command={result.command} label={choice.label}/>}
