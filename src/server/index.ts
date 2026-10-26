@@ -26,6 +26,7 @@ import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
 import { RemoteApps } from './remote-apps.js';
+import { SlackApp } from './slack.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
@@ -145,7 +146,8 @@ try {
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
-    const apps = new RemoteApps(dataDir);
+    // Apps reached with a Plugins token (GitHub, Slack) read it from there each time they connect.
+    const apps = new RemoteApps(dataDir, { token: id => plugins.token(id), builtIn: { slack: new SlackApp(() => plugins.token('slack')) } });
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
     app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);

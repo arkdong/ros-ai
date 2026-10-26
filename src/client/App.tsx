@@ -34,7 +34,7 @@ import { PluginsPage, PluginsSidebar, type PluginsSection } from './PluginsPage'
 import { SkillsPage } from './SkillsPage';
 import type { SkillSummary } from '../shared/skills';
 import { AgentsSidebar, type AgentId } from './ModelPage';
-import type { PluginId } from '../shared/plugins';
+import { PLUGINS, type PluginId } from '../shared/plugins';
 import { MemoryPage } from './MemoryPage';
 import { AppRail, RailPageFrame, type RailPage } from './AppRail';
 import { Modal } from './Modal';
@@ -70,6 +70,8 @@ export function App(){
   const [assistant,setAssistant]=useState<AssistantState|null>(null),[rosMode,updateRosMode]=useState<RosMode>(()=>{const saved=readSaved<string>('ros-mode','bar');return saved==='half'||saved==='full'?saved:'bar';}),[page,setPage]=useState<RailPage>('canvas'),[chatBusy,setChatBusy]=useState(false),[assistantLoadError,setAssistantLoadError]=useState(''),[chatPrefill,setChatPrefill]=useState('');
   /** The / menu of the Ros bar opens the Skills page. */
   const openSkills=useCallback(()=>{setPage('plugins');setPluginsSection('skills');setSkillName(null);},[]);
+  // Back from an app's or Google's sign-in page: show that plugin, and take the marker out of the address.
+  useEffect(()=>{const params=new URLSearchParams(window.location.search),id=params.get('app')??(params.has('googleDrive')?'google-drive':null);if(!id)return;window.history.replaceState(null,'',window.location.pathname);if(!PLUGINS.some(item=>item.id===id))return;setPage('plugins');setPluginsSection('plugins');setPluginId(id as PluginId);},[]);
   // Agent blocks show their turn's live state; the timeline itself stays with the assistant turn.
   const agentTurns=useMemo(()=>Object.fromEntries((assistant?.turns??[]).filter(turn=>turn.source==='claude-agent'||turn.source==='codex-agent'||turn.source==='model-agent'||turn.source==='acp-agent').map(turn=>[turn.id,{status:turn.status,runtime:turn.source==='claude-agent'?'Claude Code':turn.source==='model-agent'||turn.source==='acp-agent'?turn.model??'Agent':'Codex',thought:[...turn.events].reverse().find(event=>event.kind==='thought')?.message,pending:turn.actions.filter(item=>item.status==='pending'&&(!item.proposalId||detail?.proposals.find(proposal=>proposal.id===item.proposalId)?.status==='pending')).length}])),[assistant?.turns,detail?.proposals]);
   const [assistantFocus,setAssistantFocus]=useState<AssistantFocus>({nodeId:null}),[deleteCandidate,setDeleteCandidate]=useState<Project|null>(null),[projectMenu,setProjectMenu]=useState<string|null>(null);

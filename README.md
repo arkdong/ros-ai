@@ -51,7 +51,7 @@ codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 
 Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`, so no separate Node is needed. The agent can read the canvas, artifacts and your saved preferences and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's approval mode, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project.
 
-**Apps with their own hosted connection (Notion).** On the Apps page, Connect signs in to the app's hosted MCP server the way Claude and Claude Code do. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it.
+**Apps every agent can use.** On the Plugins page, Notion, Linear and Sentry connect by signing in to their hosted MCP servers the way Claude and Claude Code do. GitHub uses its hosted MCP server with the token you save there, Figma uses the MCP server of Figma's desktop app, and Slack uses the bot token of your own Slack app. Every agent you run in ros.ai gets the same app tools at once. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it.
 
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 

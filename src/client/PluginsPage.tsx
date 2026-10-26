@@ -45,9 +45,12 @@ export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}
 }
 const groups: { title: string; ids: PluginId[] }[] = [
   { title: 'Sources', ids: ['google-drive', 'google-docs', 'zotero', 'tavily', 'exa', 'brave'] },
-  { title: 'Team', ids: ['notion', 'slack', 'github'] },
+  { title: 'Team', ids: ['notion', 'slack', 'linear'] },
+  { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
+/** Apps whose own tools come from their sign-in (Notion also has a token) or desktop server, not from a token. */
+const viaApp = (plugin: PluginDefinition) => plugin.signIn || plugin.connect === 'sign-in' || plugin.connect === 'desktop';
 
 /** Where each web search service hands out keys, and what its card says. */
 const searchKeys: Record<SearchProviderId, { link: string; description: string }> = {
@@ -88,7 +91,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.id==='google-drive')return google?.connected?{label:'Connected',connected:true}:{label:'Not connected',connected:false};
     if(plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
     if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
-    const token=plugins.find(item=>item.id===plugin.id),app=apps.find(item=>item.id===plugin.id);
+    const token=plugins.find(item=>item.id===plugin.id),app=viaApp(plugin)?apps.find(item=>item.id===plugin.id):undefined;
     if(app?.connected)return {label:'Connected',connected:true};
     if(token?.configured)return token.verified===false?{label:'Check failed',connected:false}:{label:'Token saved',connected:true};
     return {label:'Not connected',connected:false};
@@ -108,6 +111,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
       </KeyConnection>;
     }
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
+    if(plugin.connect==='sign-in'||plugin.connect==='desktop')return <AppPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} app={apps.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
   };
   const current=selected?PLUGINS.find(plugin=>plugin.id===selected):undefined;
@@ -124,8 +128,23 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
     {groups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>row(PLUGINS.find(plugin=>plugin.id===id)!))}</div></section>)}
-    <p className="plugins-footnote">Each plugin connects with a sign-in, key or token you already have and stays on this computer. Agents read through it and change things only after you accept.</p>
+    <p className="plugins-footnote">Each plugin connects with a sign-in, key, token or desktop app you already have, and stays on this computer. Every agent you run here, from any vendor, uses the same connections; agents read through them and change things only after you accept.</p>
   </div>;
+}
+
+/** An app connected through its own MCP server: Connect opens its sign-in page (sign-in), or checks that its desktop app serves it (desktop). */
+function AppPlugin({plugin,app,open:forceOpen,onChanged}:{plugin:PluginDefinition;app?:AppConnectionStatus;open?:boolean;onChanged:()=>Promise<void>}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const run=async(work:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await work();await onChanged();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
+  const connected=app?.connected??false,desktop=plugin.connect==='desktop';
+  const connect=()=>void run(async()=>{const started=await post<{authorizationUrl?:string}>(`/api/apps/${plugin.id}/connect`,{});if(started.authorizationUrl)window.location.assign(started.authorizationUrl);});
+  return <ConnectionCard label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} forceOpen={forceOpen} connected={connected} status={!app?'Checking…':connected?'Connected':'Not connected'}>
+    {connected?<p className="connection-check" role="status">{desktop?`Connected to ${plugin.name}’s desktop app. Agents read the designs you link or select there while the app is open.`:`Signed in to ${plugin.name}${app?.account?` as ${app.account}`:''}. Agents use ${plugin.name}’s own tools and ask you before changing anything there.`}</p>
+      :<p>{desktop?plugin.start:`Connect opens ${plugin.name}’s sign-in. Approve ros.ai there and you come back here; there is nothing to create or paste.`}</p>}
+    {desktop&&!connected&&plugin.requirement&&<p className="subtle">{plugin.requirement}</p>}
+    <div className="connection-actions">{connected?<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>api(`/api/apps/${plugin.id}`,{method:'DELETE'}))}>Disconnect</button>:<button className="primary small" disabled={busy||!app} onClick={connect}>{busy?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} {busy&&desktop?'Checking…':'Connect'}</button>}</div>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </ConnectionCard>;
 }
 
 function TokenPlugin({plugin,status,app,open:forceOpen,onChanged}:{plugin:PluginDefinition;status?:PluginStatus;app?:AppConnectionStatus;open?:boolean;onChanged:()=>Promise<void>}) {

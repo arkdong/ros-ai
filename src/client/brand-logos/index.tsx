@@ -2,11 +2,13 @@ import brave from './brave.svg';
 import claude from './claude.svg';
 import codex from './codex.svg';
 import exa from './exa.svg';
+import figma from './figma.svg';
 import geminiCli from './gemini-cli.svg';
 import github from './github.svg';
 import googleDocs from './google-docs.svg';
 import googleDrive from './google-drive.svg';
 import goose from './goose.svg';
+import linear from './linear.svg';
 import lmStudio from './lm-studio.svg';
 import moonshot from './moonshot.svg';
 import nebius from './nebius.svg';
@@ -15,12 +17,13 @@ import ollama from './ollama.svg';
 import openai from './openai.svg';
 import opencode from './opencode.svg';
 import overleaf from './overleaf.svg';
+import sentry from './sentry.svg';
 import slack from './slack.svg';
 import tavily from './tavily.svg';
 import zotero from './zotero.svg';
 
 /** Official company marks, copied unchanged from their sources (see SOURCES.md); each belongs to its owner. */
-const logos = { brave, claude, codex, exa, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, goose, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, opencode, overleaf, slack, tavily, zotero };
+const logos = { brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, goose, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, opencode, overleaf, sentry, slack, tavily, zotero };
 export type BrandId = keyof typeof logos;
 export const hasBrandLogo = (id: string): id is BrandId => id in logos;
 

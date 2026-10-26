@@ -5,6 +5,7 @@ import type { Express } from 'express';
 import { z } from 'zod';
 import { StoreError } from './store.js';
 import { notionBase } from './notion.js';
+import { slackApi } from './slack.js';
 import type { PluginStatus, TokenPluginId } from '../shared/plugins.js';
 
 const ids = ['zotero', 'slack', 'notion', 'github'] as const satisfies readonly TokenPluginId[];
@@ -75,7 +76,7 @@ export class PluginTokens {
         verified = response.ok;
         checkMessage = response.ok ? `Zotero accepted the key${label(body?.username) ? ` for ${label(body?.username)}` : ''}.` : response.status === 403 || response.status === 404 ? 'Zotero rejected this key.' : `Zotero returned HTTP ${response.status}.`;
       } else if (id === 'slack') {
-        const response = await request('https://slack.com/api/auth.test', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        const response = await request(`${slackApi()}/auth.test`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
         const body = response.ok ? await response.json() as { ok?: boolean; team?: unknown } : null;
         verified = body?.ok === true;
         checkMessage = verified ? `Slack accepted the token${label(body?.team) ? ` for ${label(body?.team)}` : ''}.` : response.ok ? 'Slack rejected this token.' : `Slack returned HTTP ${response.status}.`;

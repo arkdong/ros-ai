@@ -108,7 +108,7 @@ export class AgentWorkspaceTools {
   static notion?: NotionApi;
   /** Live Notion blocks (pages and databases through the hosted connection), read for the agent as the canvas shows them. */
   static views?: NotionViews;
-  /** Apps connected through their hosted MCP servers (Apps page); their own tools are offered while signed in. */
+  /** Apps connected on the Plugins page (hosted MCP servers, desktop servers, or ros.ai's own tools for an app); their tools are offered while connected. */
   static apps?: RemoteApps;
   /** The project folders, which say which PDFs and images a File block can show. */
   static folders?: ProjectFolders;
