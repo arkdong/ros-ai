@@ -4,6 +4,7 @@ import type { CloudAccountStatus } from '../shared/cloud-account';
 import { ConnectionCard } from './ModelPage';
 import { RosMark } from './RosDock';
 import { api, post } from './api';
+import { cloudAccountChanged } from './ProfileButton';
 
 /** Free hosted Ros: sign in once in the browser, and ros.ai cloud appears as a model. */
 export function CloudAccount({ onChanged }: { onChanged: () => Promise<unknown> }) {
@@ -14,12 +15,12 @@ export function CloudAccount({ onChanged }: { onChanged: () => Promise<unknown> 
   // While the browser approval is open, check every few seconds; the local server does the polling.
   useEffect(() => {
     if (!waiting) return;
-    const timer = setInterval(async () => { const next = await api<CloudAccountStatus>('/api/cloud').catch(() => undefined); if (next && next.state !== 'waiting') { setStatus(next); await onChanged(); } }, 3000);
+    const timer = setInterval(async () => { const next = await api<CloudAccountStatus>('/api/cloud').catch(() => undefined); if (next && next.state !== 'waiting') { setStatus(next); cloudAccountChanged(); await onChanged(); } }, 3000);
     return () => clearInterval(timer);
   }, [waiting, onChanged]);
   const run = async (path: string) => {
     setBusy(true); setError('');
-    try { const next = await post<CloudAccountStatus>(path); setStatus(next); if (next.verificationUrl) window.open(next.verificationUrl, '_blank', 'noopener'); await onChanged(); }
+    try { const next = await post<CloudAccountStatus>(path); setStatus(next); if (next.verificationUrl) window.open(next.verificationUrl, '_blank', 'noopener'); cloudAccountChanged(); await onChanged(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
   };
   if (!status?.available) return null;
