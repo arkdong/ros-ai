@@ -39,6 +39,7 @@ import { AgentWorkspaceTools } from './agent-tools.js';
 import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
 import { PersonalMemory } from './personal-memory.js';
 import { SkillLibrary } from './skills.js';
+import { Updates } from './updates.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -72,6 +73,7 @@ let guide:WorkspaceGuideService|undefined;
 let outside:OutsideAgents|undefined;
 let notebooks:NotebookService|undefined;
 let projectFolders:ProjectFolders|undefined;
+let updates:Updates|undefined;
 let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
@@ -82,6 +84,7 @@ async function shutdown() {
   // Release the data lock even if one service fails to stop cleanly.
   try {
     projectFolders?.shutdown();
+    updates?.shutdown();
     await notebooks?.shutdown();
     await guide?.shutdown();
     await assistant?.shutdown();
@@ -143,7 +146,9 @@ try {
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
+    // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
+    updates = new Updates(store,root,shutdown);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
@@ -168,6 +173,7 @@ try {
   server.on('error', async (error) => { console.error(`ros.ai could not start: ${error.message}`); await shutdown(); process.exitCode = 1; });
   server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
     outside?.publish(port);
+    updates?.start();
     console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().catch(error => { console.error(`ros.ai stopped with an error: ${error instanceof Error ? error.message : error}`); process.exitCode = 1; }).finally(() => process.exit()); });
