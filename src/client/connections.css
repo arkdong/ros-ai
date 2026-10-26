@@ -80,7 +80,6 @@
 .claude-model-choice .subtle { margin:0; font-size:12px; }
 .outside-command { display:flex; align-items:center; gap:6px; margin:10px 0; padding:7px 7px 7px 10px; border:1px solid #e3e3e3; border-radius:6px; background:#f7f8f6; }
 .outside-command code { flex:1; min-width:0; font-size:11px; line-height:1.5; overflow-wrap:anywhere; user-select:all; }
-.cloud-code strong{display:inline-block;font:600 20px/1.2 ui-monospace,monospace;letter-spacing:3px;padding:8px 14px;border:1px dashed var(--line,#dfe2de);border-radius:10px}
 .cloud-waiting{display:grid;gap:10px;justify-items:start}.cloud-waiting p{margin:0}
 
 /* Ros on this computer: download progress */
