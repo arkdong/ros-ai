@@ -30,6 +30,7 @@ import { SlackApp } from './slack.js';
 import { GoogleDriveConnection } from './google-drive.js';
 import { GoogleDriveApp, GoogleWorkspace } from './google-workspace.js';
 import { Papers, PapersApp } from './papers.js';
+import { BrowserService } from './browser.js';
 import { ProjectCache } from './project-cache.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
@@ -71,6 +72,7 @@ let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
 let acp:AcpAgentService|undefined;
+let browser:BrowserService|undefined;
 let cloud:CloudAccount|undefined;
 let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
@@ -95,6 +97,7 @@ async function shutdown() {
     await claude?.shutdown();
     await loop?.shutdown();
     await acp?.shutdown();
+    await browser?.shutdown();
     cloud?.shutdown();
     localRos?.shutdown();
     await execution?.shutdown();
@@ -158,8 +161,11 @@ try {
     // Apps reached with a Plugins token (GitHub, Slack) read it from there each time they connect.
     const apps = new RemoteApps(dataDir, { token: id => plugins.token(id), builtIn: { slack: new SlackApp(() => plugins.token('slack')), 'google-drive': new GoogleDriveApp(google), papers: new PapersApp(papers) } });
     AgentWorkspaceTools.apps = apps;
+    // The browser agents use while it is on in Plugins: the Chrome or Edge on this computer, public websites only.
+    browser = new BrowserService(store, dataDir);
+    AgentWorkspaceTools.browser = browser;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

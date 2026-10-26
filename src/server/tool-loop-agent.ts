@@ -156,7 +156,7 @@ export class ToolLoopAgentService {
       const text = error instanceof StoreError ? error.message : `The agent stopped: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its model requests stay recorded; nothing was repeated.`;
       attempt = { ...attempt, status: controller.signal.aborted && !timedOut ? 'interrupted' : 'failed', error: text }; save();
       throw new StoreError(text, error instanceof StoreError ? error.status : 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); void toolkit.close(); }
   }
   /** One tool call, checked like Claude Code's: an error goes back to the model as text it can fix. */
   private async run(call: ToolCall, names: Set<string>, toolkit: AgentWorkspaceTools, count: number, event: (value: AgentEvent) => void): Promise<{ text: string; failed: boolean }> {

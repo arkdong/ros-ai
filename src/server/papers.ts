@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { FILE_BYTES } from '../shared/files.js';
 import { DOI, PAPER_ID, PAPER_SOURCES, paperSourceName, type PaperSearch, type PaperSummary, type PapersStatus } from '../shared/papers.js';
 import type { CanvasNode, PaperRef, PaperSource } from '../shared/types.js';
+import { privateAddress } from './private-address.js';
 import type { ProjectFolders } from './project-folders.js';
 import type { AppTool, BuiltInApp } from './remote-apps.js';
 import { StoreError, type Store } from './store.js';
@@ -134,19 +135,6 @@ async function readLimited(response: Response, maximum: number): Promise<Buffer>
   }
 }
 class TooLarge extends Error { constructor() { super('larger than ros.ai reads'); } }
-
-/** An address on this computer or its network: PDF links come from records anyone can edit upstream, so ros.ai fetches
- * them only from the public internet. */
-function privateAddress(address: string): boolean {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/iu.exec(address);
-  if (mapped) return privateAddress(mapped[1]);
-  if (isIP(address) === 4) {
-    const [a, b] = address.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0)) || (a === 198 && (b === 18 || b === 19));
-  }
-  const lower = address.toLowerCase();
-  return lower === '::' || lower === '::1' || /^(?:f[cd]|fe[89ab]|ff)/u.test(lower);
-}
 
 export class Papers {
   private readonly fetcher: typeof fetch;

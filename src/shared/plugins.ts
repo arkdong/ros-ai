@@ -2,7 +2,7 @@
  * Connecting only saves and checks access; using a plugin from the canvas or assistant comes later.
  */
 export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex';
-export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma';
+export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -11,8 +11,9 @@ export type PluginDefinition = {
   /** token: a pasted key or token kept on this computer; google: the Google Drive sign-in; key: an existing ros.ai key connection;
    * sign-in: the app's hosted MCP server, signed in from the browser; desktop: the MCP server of the app's desktop program
    * on this computer; public: a free public service the person always reaches, which a switch offers to every agent
-   * (OpenAlex also takes an optional key); unavailable: shown, not connectable yet. */
-  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'public' | 'unavailable';
+   * (OpenAlex also takes an optional key); browser: the agents' browser, run by the Chrome or Edge on this computer;
+   * unavailable: shown, not connectable yet. */
+  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'public' | 'browser' | 'unavailable';
   tokenLabel?: string;
   tokenHint?: string;
   tokenLink?: string;
@@ -42,6 +43,7 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'tavily', uses: ['Web search for research you start', 'Each search counts against the allowance you set in Budget'], name: 'Tavily web search', summary: 'Web search for research you start.', connect: 'key' },
   { id: 'exa', uses: ['Web search that finds pages by what they mean, not only their words', 'Returns the passages of each page that answer the search, and reads whole pages', 'About US$0.007 a search and US$0.001 a page read'], name: 'Exa web search', summary: 'Web search that finds pages by meaning.', connect: 'key' },
   { id: 'brave', uses: ['Web search from Brave’s own index of the web', 'Returns the passages of each page that answer the search; it cannot read whole pages', 'About US$0.005 a search, with US$5 free each month'], name: 'Brave Search', summary: 'Web search from its own independent index.', connect: 'key' },
+  { id: 'browser', uses: ['Agents open websites, click through them and fill in forms', 'Screenshots land on the canvas as File blocks, and every step is listed there', 'A fresh browser each time: no cookies or logins, public websites only'], name: 'Browser', summary: 'Agents browse websites and take screenshots.', connect: 'browser' },
   { id: 'overleaf', uses: ['Write papers in LaTeX with your coauthors'], name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
 ];
 

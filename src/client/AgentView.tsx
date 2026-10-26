@@ -1,4 +1,4 @@
-import { BookOpen, BookOpenText, BookText, Bot, ExternalLink, FileText, FolderClosed, GitBranch, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
+import { BookOpen, BookOpenText, BookText, Bot, ExternalLink, FileImage, FileText, FolderClosed, GitBranch, Globe, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AssistantTurn } from '../shared/assistant';
 import type { AgentStep } from '../shared/agent-runtime';
@@ -12,7 +12,7 @@ import './agent-view.css';
 const status = { running: 'Working', completed: 'Finished', failed: 'Stopped with an error', cancelled: 'Stopped', interrupted: 'Interrupted' } as const;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const host = (url: string) => { try { return new URL(url).hostname.replace(/^www\./u, ''); } catch { return url; } };
-type Step = { at: string; tool: string; outcome: AgentStep['outcome']; target?: string; size?: number; items?: string[]; proposalId?: string; skipped?: number; thought?: string; error?: string };
+type Step = { at: string; tool: string; outcome: AgentStep['outcome']; target?: string; size?: number; items?: string[]; proposalId?: string; skipped?: number; detail?: string; thought?: string; error?: string };
 
 /** Pairs each tool call with the sentence the agent wrote before it and with what came of it. */
 export function agentSteps(turn: AssistantTurn): Step[] {
@@ -25,8 +25,8 @@ export function agentSteps(turn: AssistantTurn): Step[] {
       const known = byCall.get(event.step.call);
       if (known) {
         // A result says how many things the call covered, what it made and the proposal it left.
-        const { outcome, size, items, proposalId, skipped } = event.step;
-        Object.assign(known, { outcome }, size === undefined ? {} : { size }, items ? { items } : {}, proposalId ? { proposalId } : {}, skipped ? { skipped } : {});
+        const { outcome, size, items, proposalId, skipped, detail } = event.step;
+        Object.assign(known, { outcome }, size === undefined ? {} : { size }, items ? { items } : {}, proposalId ? { proposalId } : {}, skipped ? { skipped } : {}, detail ? { detail } : {});
         if (outcome === 'failed') known.error = event.message;
         continue;
       }
@@ -57,11 +57,21 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
     if (file) return step.outcome === 'failed' ? `Could not read ${file} from ${skill}` : step.outcome === 'requested' ? `Reading ${file} from ${skill}` : `Read ${file} from ${skill}`;
     return step.outcome === 'failed' ? `Could not read ${skill}` : step.outcome === 'requested' ? `Reading ${skill}` : `Follows ${skill}`;
   }
+  if (step.tool === 'ros_browser') {
+    // The browser says each step in words, with pages as Markdown links; the label keeps their titles.
+    const doing: Record<string, string> = { open: 'Opening a page', click: 'Clicking', fill: 'Filling in a form', press: 'Pressing a key', scroll: 'Scrolling', back: 'Going back', wait: 'Waiting for the page', read: 'Reading the page', screenshot: 'Taking a screenshot', close: 'Closing the browser' };
+    const action = doing[step.target ?? ''] ?? 'Using the browser';
+    if (step.outcome === 'waiting') return 'Asked to open a browser · waiting for your approval';
+    if (step.outcome === 'declined') return 'Browser declined';
+    if (step.outcome === 'failed') return `${action} failed`;
+    if (step.outcome === 'requested') return action;
+    return step.detail ? step.detail.replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1') : step.target === 'read' ? 'Read the page' : action;
+  }
   if (step.tool === 'ros_propose_canvas') return step.outcome === 'waiting' ? 'Proposed canvas changes · waiting for your review' : step.outcome === 'declined' ? 'Canvas changes declined' : step.outcome === 'failed' ? 'Canvas changes failed' : step.outcome === 'requested' ? 'Proposing canvas changes' : 'Changed the canvas';
   const labels: Record<string, string> = { ros_read_selected: 'Read the selected blocks', ros_propose_analysis: 'Proposed analysis code', ros_propose_report: 'Proposed a report', ros_propose_reuse: 'Proposed reusing a result' };
   return labels[step.tool] ?? title(step.target) ?? step.tool;
 }
-const icons: Record<string, ReactNode> = { ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/> };
+const icons: Record<string, ReactNode> = { ros_browser: <Globe size={13}/>, ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/> };
 
 type Props = { node: CanvasNode; turn?: AssistantTurn; detail: ProjectDetail; onOpenNode: (id: string) => void; onReveal: (id: string) => void; onOpenArtifact: (artifact: Artifact) => void; onReview: (proposalId: string) => void };
 /** One agent's turn: what it set out to do, each step with the agent's reason and what came of it, and its answer. */
@@ -100,6 +110,10 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
   // What a step made: the pages it read, the findings it saved, or the groups it proposed.
   const made = (step: Step) => {
     if (step.tool === 'ros_read_pages') return pageList((step.items ?? []).flatMap(id => detail.artifacts.filter(item => item.id === id)));
+    if (step.tool === 'ros_browser') {
+      const shots = (step.items ?? []).flatMap(id => canvas.nodes.filter(item => item.id === id));
+      return shots.length > 0 && <ul className="agent-items">{shots.map(shot => <li key={shot.id}><button onClick={() => onOpenNode(shot.id)}><FileImage size={13}/><span>{shot.title}</span></button></li>)}</ul>;
+    }
     if (step.tool === 'ros_write_findings') {
       const findings = (step.items ?? []).flatMap(id => canvas.nodes.filter(item => item.id === id));
       return findings.length > 0 && <ul className="agent-items">{findings.map(finding => <li key={finding.id}><button onClick={() => onOpenNode(finding.id)}><Quote size={13}/><span>{finding.title}</span></button></li>)}</ul>;

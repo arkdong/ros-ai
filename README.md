@@ -57,6 +57,8 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 **Papers on the canvas.** Add block › Paper searches OpenAlex and arXiv, and your Zotero library once its key is saved on the Plugins page. A paper's open PDF is saved into the project folder as a File block whose text agents read; without one, a Text block holds the reference and abstract. Turn OpenAlex or arXiv on for agents on the Plugins page (Zotero is on once connected) and every agent can search them and add papers to the canvas under the project's approval mode. A free OpenAlex key, saved there or as `OPENALEX_API_KEY` in the keys file, raises its daily allowance.
 
+**A browser for agents.** Turn on Plugins › Browser and agents can open public websites, click through them, fill in forms and take screenshots. It runs the Google Chrome or Microsoft Edge on this computer without a window (or Chromium, downloaded once into the data folder, about 100 MB), in an empty profile for each turn, so it never sees your cookies, logins or saved passwords. A proxy keeps it on public websites, never this computer or your network, and it keeps no downloads. An agent's first page in a turn follows the project's approval mode; a Browser block on the canvas then lists every step, and screenshots land beside it as File blocks in the project folder. `ROS_BROWSER_PATH` names another Chromium-based browser.
+
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 
 ## Three approval modes

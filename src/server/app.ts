@@ -30,6 +30,7 @@ import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credent
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
 import { attachGoogleRoutes, type GoogleWorkspace } from './google-workspace.js';
 import { attachPaperRoutes, type Papers } from './papers.js';
+import { attachBrowserRoutes, type BrowserService } from './browser.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
@@ -47,7 +48,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -95,7 +96,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.

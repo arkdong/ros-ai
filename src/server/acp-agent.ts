@@ -601,7 +601,7 @@ export class AcpAgentService {
       throw new StoreError(detail, error instanceof StoreError ? error.status : 503);
     } finally {
       clearTimeout(deadline); clearTimeout(cancelTimer); request.signal.removeEventListener('abort', stop);
-      this.turns.delete(token); opened?.connection.close(); this.active.delete(request.projectId); finish();
+      this.turns.delete(token); opened?.connection.close(); this.active.delete(request.projectId); finish(); void toolkit.close();
     }
   }
 
