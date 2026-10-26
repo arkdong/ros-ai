@@ -12,4 +12,4 @@ export function checkTally(check: SourceCheck): Record<ClaimVerdict, number> {
 }
 
 /** What the Check sources button asks Ros, with the block in focus. */
-export const checkSourcesRequest = (title: string) => `Check the sources of "${title}": pick its factual claims that matter most, check them on the web with ros_check_claims, read the pages that settle them, and mark every claim with ros_write_verdicts.`;
+export const checkSourcesRequest = (title: string) => `Check the sources of "${title}": list every checkable factual claim in it, including any that look doubtful, check them on the web with ros_check_claims, read the pages that settle them, and mark every claim with ros_write_verdicts.`;
