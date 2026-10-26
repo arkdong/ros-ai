@@ -112,6 +112,13 @@ export class CloudAccount {
 export function attachCloudAccountRoutes(app: Express, cloud: CloudAccount) {
   app.get('/api/cloud', async (_req, res) => { res.json(await cloud.status()); });
   app.post('/api/cloud/sign-in', async (_req, res) => { res.json(await cloud.signIn()); });
+  // The sign-in button opens this in a new tab, which then goes on to ros.ai cloud. Opening a
+  // local address straight from the click keeps browsers from blocking or blanking the tab.
+  app.get('/api/cloud/start', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try { const status = await cloud.signIn(); res.redirect(302, status.verificationUrl!); }
+    catch (error) { res.status(502).type('html').send(`<!doctype html><meta charset="utf-8"><title>ros.ai</title><p style="font:15px system-ui;margin:40px">${escape(error instanceof Error ? error.message : 'Sign-in could not start.')}</p>`); }
+  });
   // The browser tab the sign-in opened lands here; it closes itself when it can.
   app.get('/api/cloud/callback', async (req, res) => {
     const result = await cloud.callback(req.query);

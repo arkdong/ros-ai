@@ -20,7 +20,7 @@ export function CloudAccount({ onChanged }: { onChanged: () => Promise<unknown> 
   }, [waiting, onChanged]);
   const run = async (path: string) => {
     setBusy(true); setError('');
-    try { const next = await post<CloudAccountStatus>(path); setStatus(next); if (next.verificationUrl) window.open(next.verificationUrl, '_blank', 'noopener'); cloudAccountChanged(); await onChanged(); }
+    try { const next = await post<CloudAccountStatus>(path); setStatus(next); cloudAccountChanged(); await onChanged(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
   };
   if (!status?.available) return null;
@@ -32,7 +32,7 @@ export function CloudAccount({ onChanged }: { onChanged: () => Promise<unknown> 
     {(error || status.error) && <p className="inline-error" role="alert">{error || status.error}</p>}
     <div className="connection-actions">
       {signedIn ? <button className="text-button" disabled={busy} onClick={() => void run('/api/cloud/sign-out')}>Sign out</button>
-        : <button className="primary small" disabled={busy} onClick={() => void run('/api/cloud/sign-in')}>{busy && <LoaderCircle size={13} className="spin"/>}{waiting ? 'Start again' : status.state === 'expired' ? 'Sign in again' : 'Sign in'}</button>}
+        : <button className="primary small" disabled={busy} onClick={() => { window.open('/api/cloud/start', '_blank', 'noopener'); setTimeout(() => void refresh(), 800); }}>{busy && <LoaderCircle size={13} className="spin"/>}{waiting ? 'Start again' : status.state === 'expired' ? 'Sign in again' : 'Sign in'}</button>}
     </div>
     {signedIn && <p className="subtle">Choose Ros in the assistant's model settings to use it.</p>}
   </ConnectionCard>;

@@ -38,14 +38,11 @@ export function ProfileButton({ onUsage, onSettings, onChanged }: { onUsage: () 
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key); };
   }, [open]);
 
-  const signIn = async () => {
-    // Open the tab inside the click so the browser allows it, then point it at the sign-in page.
-    const tab = window.open('', '_blank');
-    setBusy(true); setError('');
-    try {
-      const next = await post<CloudAccountStatus>('/api/cloud/sign-in'); setStatus(next);
-      if (tab && next.verificationUrl) { tab.opener = null; tab.location.href = next.verificationUrl; } else tab?.close();
-    } catch (cause) { tab?.close(); setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
+  const signIn = () => {
+    // The local server starts the sign-in and sends this tab on to ros.ai cloud.
+    setError('');
+    window.open('/api/cloud/start', '_blank', 'noopener');
+    setTimeout(() => void refresh(), 800);
   };
   const signOut = async () => {
     setBusy(true); setError('');
