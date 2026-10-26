@@ -8,6 +8,7 @@ import type { ResearchPolicy } from '../shared/research';
 import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
+import { useSkillMenu } from './SkillMenu';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -21,8 +22,9 @@ const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
-export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
+export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void }) {
   const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
+  const skills = useSkillMenu(draft, setDraft, onSkills);
   const input = useRef<HTMLInputElement>(null);
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -67,7 +69,8 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
         </button>
         <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
       </div>}
-      <input ref={input} aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key !== 'Escape') return; if (active) { event.preventDefault(); stop(); } else (event.target as HTMLInputElement).blur(); }}/>
+      {skills.menu}
+      <input ref={input} aria-label="Ask Ros" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (active) { event.preventDefault(); stop(); } else (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>

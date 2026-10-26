@@ -17,8 +17,10 @@ export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'ap
 /** Shared by both agent transports, so Claude Code and Codex timelines read the same. */
 export function agentStep(call: number, tool: string, input: unknown, result?: { value?: unknown; failed?: boolean }): AgentStep {
   if (!result) {
-    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown };
-    const target = [args.resultNodeId, args.nodeId, args.targetNodeId].find(value => typeof value === 'string') as string | undefined;
+    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown; name?: unknown; file?: unknown };
+    // A skill read names the skill, and the file when it reads one of the skill's files: "name/path".
+    const skill = tool === 'ros_use_skill' && typeof args.name === 'string' && args.name ? `${args.name.replace(/^[/$]/u, '')}${typeof args.file === 'string' && args.file ? `/${args.file}` : ''}` : undefined;
+    const target = skill ?? [args.resultNodeId, args.nodeId, args.targetNodeId].find(value => typeof value === 'string') as string | undefined;
     const list = [args.directions, args.pages, args.findings, args.themes].find(Array.isArray);
     return { call, tool, outcome: 'requested', ...(target ? { target } : {}), ...(list ? { size: list.length } : {}) };
   }
@@ -29,7 +31,8 @@ export function agentStep(call: number, tool: string, input: unknown, result?: {
 }
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };
-/** preferences: the person's kept memory lines as one paragraph, labelled as their own notes; left out when there are none. */
+/** preferences: the person's kept memory lines as one paragraph, labelled as their own notes, then the skills
+ * they keep (names and descriptions, and in full any they called with /name); left out when there are none. */
 export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; preferences?: string; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
 export interface AgentRuntime {
   status(projectId: string): Promise<AgentConnectionStatus>;
