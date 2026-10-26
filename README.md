@@ -4,7 +4,7 @@
 
 ros.ai is an open workspace where AI agents from any vendor and your own tools work on the same project. They collaborate through one shared context, a canvas of blocks, where you can inspect, evaluate and direct their work instead of each agent keeping its own. It runs on your computer: projects, keys and the Python sandbox stay there, and model requests go only to the providers you connect.
 
-A project is a canvas of Text, Code, Notebook, Data, File, External and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
+A project is a canvas of Text, Code, Notebook, Data, File, External, Web and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
 
 ## Install
 

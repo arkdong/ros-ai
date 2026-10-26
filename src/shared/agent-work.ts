@@ -83,7 +83,7 @@ export type WebState = { sources: WebSource[]; searches: number; done: number; f
  * as sources before they are read. */
 export function webState(node: CanvasNode, canvas: Pick<Canvas, 'nodes' | 'connections'>, runs: Run[], artifacts: Artifact[]): WebState {
   const sweeps = runs.filter(run => run.nodeId === node.id && run.configuration.purpose === 'web-sweep');
-  const read = new Set(artifacts.filter(item => item.capture === 'full-content' && item.url).map(item => pageKey(item.url!)));
+  const read = new Map(artifacts.filter(item => item.capture === 'full-content' && item.url).map(item => [pageKey(item.url!), item] as const));
   const quoted = new Set(canvas.connections.filter(edge => edge.source === node.id).flatMap(edge => {
     const target = canvas.nodes.find(item => item.id === edge.target);
     return target?.blockType === 'finding' ? splitSources(target.description).urls.map(pageKey) : [];
@@ -92,7 +92,8 @@ export function webState(node: CanvasNode, canvas: Pick<Canvas, 'nodes' | 'conne
   const add = (url: string, title: string, direction: string, score: number, artifact?: Artifact) => {
     const key = pageKey(url), favicon = typeof artifact?.metadata?.favicon === 'string' ? artifact.metadata.favicon : undefined;
     let source = byKey.get(key);
-    if (!source) byKey.set(key, source = { key, url, title, site: siteOf(url), score, order: byKey.size, directions: [], artifacts: [], read: read.has(key), quoted: quoted.has(key) });
+    // A page read in full opens on its full text.
+    if (!source) byKey.set(key, source = { key, url, title, site: siteOf(url), score, order: byKey.size, directions: [], artifacts: read.has(key) ? [read.get(key)!] : [], read: read.has(key), quoted: quoted.has(key) });
     source.score = Math.max(source.score, score);
     if (!source.directions.includes(direction)) source.directions.push(direction);
     if (artifact) { source.artifacts.push(artifact); if (source.title === source.site) source.title = artifact.title; }
