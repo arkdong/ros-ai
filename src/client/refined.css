@@ -21,6 +21,13 @@
 .single-canvas-shell .app-rail-button { width: 40px; height: 40px; border-radius: 10px; }
 .single-canvas-shell .app-rail-button.active { background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .07), 0 0 0 1px #e4e4e4; }
 .single-canvas-shell .sidebar { width: 248px; min-width: 248px; padding: 0 14px; background: var(--sidebar-bg); border-right: 1px solid #e6e6e6; }
+/* The sidebar slides out past its own edge instead of vanishing: the map widens with it, in one motion.
+   Closing is a little quicker than opening; once closed it is hidden, so Tab skips it. */
+.single-canvas-shell .sidebar { transition: margin-left .26s cubic-bezier(.2, .8, .2, 1), visibility 0s; }
+.single-canvas-shell.sidebar-hidden .sidebar { display: flex; margin-left: -248px; visibility: hidden; transition: margin-left .2s cubic-bezier(.4, 0, .2, 1), visibility 0s linear .2s; }
+.single-canvas-shell .sidebar-backdrop { animation: sidebar-backdrop .2s ease-out both; }
+@keyframes sidebar-backdrop { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .single-canvas-shell .sidebar, .single-canvas-shell.sidebar-hidden .sidebar { transition: none; } .single-canvas-shell .sidebar-backdrop { animation: none; } }
 .single-canvas-shell .sidebar .new-project-button,
 .single-canvas-shell .sidebar .demo-entry-button { border-radius: var(--radius-button); }
 .single-canvas-shell .project-item.active,
