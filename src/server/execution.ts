@@ -14,7 +14,7 @@ import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObject } from './response-normalization.js';
-import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, CHECK_SEARCH_SCHEMA, SEARCH_CREDITS, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth } from './providers.js';
+import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, CHECK_SEARCH_SCHEMA, SEARCH_CREDITS, SWEEP_SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth } from './providers.js';
 
 const now = () => new Date().toISOString();
 function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
@@ -26,6 +26,19 @@ function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
   });
 }
 const requestText = z.string().trim().min(1).max(12000);
+/** A Web block's sweep runs six searches at a time, and at most 90 start in any minute, shared by every sweep:
+ * a Tavily development key allows 100 a minute. */
+export const SWEEP_WORKERS = 6, SWEEP_PER_MINUTE = 90, SWEEP_MAX_SEARCHES = 40;
+const sweepStarts:number[] = [];
+async function sweepSlot(signal:AbortSignal) {
+  for (;;) {
+    if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.');
+    const at = Date.now();
+    while (sweepStarts.length && at - sweepStarts[0] >= 60_000) sweepStarts.shift();
+    if (sweepStarts.length < SWEEP_PER_MINUTE) { sweepStarts.push(at); return; }
+    await new Promise(resolve => setTimeout(resolve, Math.min(1000, 60_000 - (at - sweepStarts[0]))));
+  }
+}
 const id = z.string().min(1).max(120);
 const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','notebook','report','file']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
 const operation = z.discriminatedUnion('type',[
@@ -396,6 +409,61 @@ export class ExecutionService {
     }).finally(()=>this.active.delete(run.id));
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
+  }
+  /** A Web block's searches as one run on the block: six at a time, each saved as soon as it returns, so the sources
+   * gather on the canvas while the rest still run. A failed search leaves the others; stopping the run stops them all. */
+  webSweep(projectId:string,nodeId:string,searches:{direction:string;query:string}[],signal:AbortSignal,turnId:string):Promise<Run>{
+    this.admitWork(false);
+    this.checkSignal(signal);
+    if(!this.search.configured||!this.search.sweep||!this.cloudAllowed('tavily'))throw new Error('Tavily search has no configured remaining authorization.');
+    const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
+    if(!node?.web)throw new Error('The Web block was removed from the canvas.');
+    const list=z.array(z.object({direction:z.string().min(1).max(128),query:z.string().trim().min(1).max(400)}).strict()).min(1).max(SWEEP_MAX_SEARCHES).parse(searches);
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:list.map(item=>item.query).join('\n'),useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'web-sweep',modelVersion:null,configuration:{purpose:'web-sweep',assistantTurnId:turnId,search:SWEEP_SEARCH_SCHEMA.configuration,searches:list},tools:[SWEEP_SEARCH_SCHEMA],events:[],artifactIds:[]});
+    const controller=new AbortController(),active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
+    // Each search keeps the usual deadline; the whole sweep may take a few of them.
+    const combined=AbortSignal.any([signal,controller.signal,AbortSignal.timeout(this.timeoutMs*3)]);
+    const task=Promise.resolve().then(()=>this.sweep(run,list,combined)).finally(()=>this.active.delete(run.id));
+    active.done=task.then(()=>undefined,()=>undefined);
+    return task;
+  }
+  private async sweep(run:Run,searches:{direction:string;query:string}[],signal:AbortSignal):Promise<Run>{
+    const {projectId,nodeId}=run,turnId=run.configuration.assistantTurnId,saved:string[]=[];
+    const open=()=>['queued','running'].includes(this.store.getRun(run.id).status);
+    let next=0,reserved=0,found=0,credits:number|null=0,refused:string|null=null;
+    const one=async(index:number)=>{
+      const {direction,query}=searches[index];
+      let reservation:UsageRecord|undefined;
+      try{
+        await sweepSlot(signal);
+        reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:`${run.id}:${index}`,spendUsd:TAVILY_CREDIT_USD});return this.reserveSearch('Web block sweep','Continued cumulative Tavily allowance: one basic search, 1 credit at $0.008 PAYG upper bound.',run.id,{query,direction,assistantTurnId:turnId});});
+        reserved++;
+        const response=await abortable(this.search.sweep!(query,AbortSignal.any([signal,AbortSignal.timeout(this.timeoutMs)])),signal);this.checkSignal(signal);
+        this.store.updateUsage(reservation.id,{status:response.credits===null?'uncertain':'settled',estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,credits:response.credits,requestId:response.requestId,assistantTurnId:turnId}});
+        credits=credits===null||response.credits===null?null:credits+response.credits;
+        const artifacts=response.results.map(({score,favicon,...source},rank)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`S${saved.length+rank+1}`,capture:'search-snippet',...source,metadata:{direction,query,search:index+1,rank:rank+1,...(score===null?{}:{score}),...(favicon?{favicon}:{})}}));
+        saved.push(...artifacts.map(item=>item.id));found++;
+        this.store.updateRun(run.id,{artifactIds:[...saved],events:[...this.store.getRun(run.id).events,{at:now(),type:'search-captured',message:`Searched “${query}”: ${artifacts.length} source${artifacts.length===1?'':'s'}.`,data:{search:index+1,direction,sources:artifacts.length}}]});
+      }catch(error){
+        if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
+        // A stopped sweep keeps what it saved; its terminal state is already recorded.
+        if(signal.aborted||!open())return;
+        // An allowance or a project that refuses one search refuses the rest too.
+        if(!reservation)refused??=this.safeError(error);
+        this.event(run.id,'search-failed',`Could not search “${query}”: ${this.safeError(error)}`,{search:index+1,direction});
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(SWEEP_WORKERS,searches.length)},async()=>{
+      for(let index=next++;index<searches.length&&!refused&&!signal.aborted;index=next++)await one(index);
+    }));
+    if(!open())return this.store.getRun(run.id);
+    const cost={reservedUsd:reserved*TAVILY_CREDIT_USD,estimatedUsd:credits===null?null:credits*TAVILY_CREDIT_USD},usage={searches:searches.length,found,credits};
+    if(signal.aborted){
+      const timedOut=signal.reason instanceof Error&&signal.reason.name==='TimeoutError';
+      return this.store.updateRun(run.id,{status:timedOut?'failed':'cancelled',endedAt:now(),error:timedOut?'The sweep ran out of time. The sources it found are saved.':'Stopped. The sources found so far are saved.',cost,usage});
+    }
+    if(!found)return this.store.updateRun(run.id,{status:'failed',endedAt:now(),error:refused??'No search of the sweep returned sources.',cost,usage});
+    return this.store.updateRun(run.id,{status:'completed',endedAt:now(),events:[...this.store.getRun(run.id).events,{at:now(),type:'sweep-captured',message:`Saved ${saved.length} source excerpts from ${found} of ${searches.length} searches. Snippets are evidence, not independent verification.`}],cost,usage});
   }
   private async performAssistantSearch(run:Run,signal:AbortSignal):Promise<Run>{
     const {projectId,nodeId,request:query}=run,turnId=run.configuration.assistantTurnId;

@@ -6,7 +6,7 @@ export const blockRegistry: Record<BlockType, { label: string; preview: 'text'|'
   note: { label: 'Note', preview: 'text' }, action: { label: 'Action', preview: 'text' },
   dataset: { label: 'Dataset', preview: 'table' }, figure: { label: 'Figure', preview: 'figure' },
   code: { label: 'Code', preview: 'code' }, notebook: { label: 'Notebook', preview: 'code' }, report: { label: 'Report', preview: 'text' },
-  agent: { label: 'Agent', preview: 'text' }, search: { label: 'Search', preview: 'text' }, finding: { label: 'Finding', preview: 'text' }, notion: { label: 'Notion', preview: 'table' }, file: { label: 'File', preview: 'figure' },
+  agent: { label: 'Agent', preview: 'text' }, search: { label: 'Search', preview: 'text' }, finding: { label: 'Finding', preview: 'text' }, notion: { label: 'Notion', preview: 'table' }, file: { label: 'File', preview: 'figure' }, web: { label: 'Web', preview: 'text' },
 };
 export function artifactBlockType(artifact: Artifact): BlockType {
   return artifact.kind === 'plot' ? 'figure' : ['table','dataset'].includes(artifact.kind) ? 'dataset' : artifact.kind === 'code' ? 'code' : artifact.kind === 'notebook' ? 'notebook' : artifact.mediaType === 'text/markdown' ? 'report' : 'note';
