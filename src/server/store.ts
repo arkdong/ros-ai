@@ -22,9 +22,14 @@ const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
   z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
 ]);
-export const mutationSchema = mutations({ ...nodeFields, decisions: z.array(decisionSchema).max(100).optional() });
+/** A Google Sheet or Doc shown live (see GoogleView). Kept apart from nodeFields, so the canvas tool agents see reads as
+ * the training snapshot has it while Google Drive is not connected. */
+const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional() };
+export const mutationSchema = mutations({ ...liveNodeFields, decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
-export const proposalMutationSchema = mutations(nodeFields);
+export const proposalMutationSchema = mutations(liveNodeFields);
+/** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
+export const snapshotProposalMutationSchema = mutations(nodeFields);
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);

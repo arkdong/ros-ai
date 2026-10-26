@@ -53,6 +53,8 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 **Apps every agent can use.** On the Plugins page, Notion, Linear and Sentry connect by signing in to their hosted MCP servers the way Claude and Claude Code do. GitHub uses its hosted MCP server with the token you save there, Figma uses the MCP server of Figma's desktop app, and Slack uses the bot token of your own Slack app. Every agent you run in ros.ai gets the same app tools at once. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it.
 
+**Google Sheets and Docs on the canvas.** With Google Drive connected (read-only), Add block › Google Drive takes a sheet or doc link and shows it live: a sheet's tab or a doc's text, read again when it changes, with nothing copied into ros.ai. A sheet's tab can be copied into a Data block for SQL. Every agent can search your Drive and read Sheets and Docs. Turn on the Google Sheets API next to the Drive API in your Google Cloud project to choose tabs; without it a sheet shows its first tab.
+
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 
 ## Three approval modes

@@ -28,6 +28,8 @@ import { PluginTokens } from './plugins.js';
 import { RemoteApps } from './remote-apps.js';
 import { SlackApp } from './slack.js';
 import { GoogleDriveConnection } from './google-drive.js';
+import { GoogleDriveApp, GoogleWorkspace } from './google-workspace.js';
+import { ProjectCache } from './project-cache.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
 import { LocalRos } from './local-ros.js';
@@ -146,11 +148,14 @@ try {
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
+    // Google Sheets and Docs blocks, and Google Drive's tools for agents, read through the Google Drive sign-in.
+    const google = new GoogleWorkspace(googleDrive, new ProjectCache(store));
+    AgentWorkspaceTools.google = google;
     // Apps reached with a Plugins token (GitHub, Slack) read it from there each time they connect.
-    const apps = new RemoteApps(dataDir, { token: id => plugins.token(id), builtIn: { slack: new SlackApp(() => plugins.token('slack')) } });
+    const apps = new RemoteApps(dataDir, { token: id => plugins.token(id), builtIn: { slack: new SlackApp(() => plugins.token('slack')), 'google-drive': new GoogleDriveApp(google) } });
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

@@ -2,7 +2,7 @@
  * Connecting only saves and checks access; using a plugin from the canvas or assistant comes later.
  */
 export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github';
-export type PluginId = TokenPluginId | 'google-drive' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma';
+export type PluginId = TokenPluginId | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -26,8 +26,9 @@ export type PluginDefinition = {
 };
 
 export const PLUGINS: PluginDefinition[] = [
-  { id: 'google-drive', uses: ['Browse the CSV files in your Drive and copy one into a project', 'Read your Google Docs as sources', 'Read-only: nothing in your Drive is changed'], name: 'Google Drive', summary: 'Browse CSV files and copy them into a project.', connect: 'google' },
-  { id: 'google-docs', uses: ['Read your Google Docs as sources', 'Uses the Google Drive sign-in, nothing extra to connect'], name: 'Google Docs', summary: 'Read your Google Docs as sources.', connect: 'google' },
+  { id: 'google-drive', uses: ['Show a Google Sheet or Doc live on the canvas, and copy CSV files into a project', 'Every agent can find and read your Sheets and Docs', 'Read-only: nothing in your Drive is changed'], name: 'Google Drive', summary: 'Your Sheets, Docs and CSV files, read-only.', connect: 'google' },
+  { id: 'google-sheets', uses: ['Show a tab live on the canvas, and copy it into a Data block for SQL', 'Agents read your sheets a tab or a range at a time', 'Uses the Google Drive sign-in, nothing extra to connect'], name: 'Google Sheets', summary: 'Your sheets on the canvas and for agents.', connect: 'google' },
+  { id: 'google-docs', uses: ['Show a doc live on the canvas', 'Agents find and read your Docs as sources', 'Uses the Google Drive sign-in, nothing extra to connect'], name: 'Google Docs', summary: 'Your docs on the canvas and for agents.', connect: 'google' },
   { id: 'zotero', uses: ['Pull references and citations from your library', 'Cite sources in reports with the right details'], name: 'Zotero', summary: 'Your reference library and citations.', connect: 'token', tokenLabel: 'Zotero API key', tokenHint: 'Create a read-only key under Settings > Security > Applications in your Zotero account.', tokenLink: 'https://www.zotero.org/settings/security#applications' },
   { id: 'slack', uses: ['Agents read the channels your Slack app is in, and share findings there', 'Posts only after you accept the message', 'Uses the bot token of your own Slack app'], name: 'Slack', summary: 'Read your team’s channels and share findings there.', connect: 'token', tokenLabel: 'Slack bot token', tokenHint: 'Create a Slack app for your workspace with the bot scopes channels:read, channels:history, groups:read, groups:history, users:read and chat:write. Install it, copy its Bot User OAuth Token (xoxb-…), and invite the app to the channels agents may read.', tokenLink: 'https://api.slack.com/apps' },
   { id: 'notion', uses: ['Find answers in your pages and databases, from any block or from Ros', 'Bring a page or database onto the map', 'Save findings and reports back as pages, after you accept'], name: 'Notion', summary: 'Your pages and databases, through Notion’s own connection.', connect: 'token', signIn: true, tokenLabel: 'Notion integration secret', tokenHint: 'Create an internal integration, copy its secret, then share the pages you want with it.', tokenLink: 'https://www.notion.so/profile/integrations' },

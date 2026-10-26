@@ -51,6 +51,7 @@ export class SlackApp implements BuiltInApp {
   /** What ros.ai learned about the workspace of the token it last used; a new token starts afresh. */
   private known?: { token: string; url?: string; names?: { at: number; byName: Map<string, { id: string; name: string }> }; users: Map<string, string>; usersReadable: boolean };
   constructor(private readonly token: () => string | undefined, private readonly fetcher: typeof fetch = fetch) {}
+  connected() { return Boolean(this.token()); }
   tools() { return tools; }
   private get cache() {
     const token = this.token() ?? '';

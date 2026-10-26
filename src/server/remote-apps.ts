@@ -15,11 +15,11 @@ import type { AppConnectionStatus, TokenPluginId } from '../shared/plugins.js';
  *   with the app's sign-in (dynamic registration and PKCE, as Claude and Claude Code do); nothing to create or paste.
  * token: its hosted MCP server, with the token saved for the app on the Plugins page.
  * desktop: the MCP server the app's own desktop program runs on this computer; `start` says how to turn it on.
- * built-in: ros.ai's own tools for the app's web API, with the token saved on the Plugins page, for apps whose
- *   hosted server admits only apps it lists.
+ * built-in: ros.ai's own tools for the app's web API, for apps whose hosted server admits only apps it lists (with
+ *   the token saved on the Plugins page) or that ros.ai already reaches (Google Drive, through its sign-in).
  * `reads` names tools that only read, for servers that do not mark them; any other tool waits for the person's
  * approval before it runs. */
-type AppEntry = { name: string; reads: readonly string[] } & ({ auth: 'sign-in'; url: string } | { auth: 'token'; url: string; token: TokenPluginId } | { auth: 'desktop'; url: string; start: string } | { auth: 'built-in'; token: TokenPluginId });
+type AppEntry = { name: string; reads: readonly string[] } & ({ auth: 'sign-in'; url: string } | { auth: 'token'; url: string; token: TokenPluginId } | { auth: 'desktop'; url: string; start: string } | { auth: 'built-in'; token?: TokenPluginId });
 export const appCatalogue = {
   notion: { name: 'Notion', auth: 'sign-in', url: 'https://mcp.notion.com/mcp', reads: ['notion-search', 'notion-fetch', 'notion-query-data-sources', 'notion-query-database-view', 'notion-get-comments', 'notion-get-users', 'notion-get-self', 'notion-get-teams', 'notion-get-file-download-urls', 'notion-list-page-backlinks'] },
   linear: { name: 'Linear', auth: 'sign-in', url: 'https://mcp.linear.app/mcp', reads: ['list_comments', 'list_cycles', 'get_document', 'list_documents', 'get_issue', 'get_issue_git_branch_name', 'list_issues', 'list_my_issues', 'list_issue_statuses', 'get_issue_status', 'list_issue_labels', 'list_projects', 'get_project', 'list_project_labels', 'list_teams', 'get_team', 'list_users', 'get_user', 'search_documentation'] },
@@ -30,6 +30,8 @@ export const appCatalogue = {
   figma: { name: 'Figma', auth: 'desktop', url: 'http://127.0.0.1:3845/mcp', start: 'Open the Figma desktop app, open a design file, switch to Dev Mode and turn on the desktop MCP server in the inspect panel.', reads: ['get_design_context', 'get_variable_defs', 'get_code_connect_map', 'get_screenshot', 'get_metadata', 'get_figjam', 'create_design_system_rules', 'get_code', 'get_image', 'whoami'] },
   // Slack's hosted server admits only apps Slack approves, so ros.ai reads and posts with the bot token from Slack's Plugins card (slack.ts).
   slack: { name: 'Slack', auth: 'built-in', token: 'slack', reads: ['list_channels', 'read_channel', 'read_thread'] },
+  // Google Sheets and Docs through the Google Drive sign-in, which only reads (google-workspace.ts).
+  'google-drive': { name: 'Google Drive', auth: 'built-in', reads: ['search_files', 'read_doc', 'read_sheet'] },
 } as const satisfies Record<string, AppEntry>;
 export type AppId = keyof typeof appCatalogue;
 const appIds = Object.keys(appCatalogue) as AppId[];
@@ -56,8 +58,9 @@ type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redir
 type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number };
 export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean };
 export type AppStatus = AppConnectionStatus & { id: AppId };
-/** An app whose tools ros.ai provides itself (Slack), shaped like an MCP server's. */
-export type BuiltInApp = { tools(): AppTool[]; call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> };
+/** An app whose tools ros.ai provides itself (Slack, Google Drive), shaped like an MCP server's; connected once its
+ * token is saved or its sign-in is done. */
+export type BuiltInApp = { connected(): boolean; tools(): AppTool[]; call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> };
 type Options = { token?: (id: TokenPluginId) => string | undefined; builtIn?: Partial<Record<AppId, BuiltInApp>> };
 
 /** Sign-ins for hosted app servers and the desktop apps turned on, in one owner-only file in the data folder.
@@ -119,10 +122,10 @@ export class RemoteApps {
       },
     };
   }
-  private token(id: AppId) { const app = entry(id); return app.auth === 'token' || app.auth === 'built-in' ? this.options.token?.(app.token) || undefined : undefined; }
+  private token(id: AppId) { const app = entry(id); return (app.auth === 'token' || app.auth === 'built-in') && app.token ? this.options.token?.(app.token) || undefined : undefined; }
   status(id: AppId): AppStatus {
     const app = entry(id), saved = this.saved[id];
-    const connected = app.auth === 'sign-in' ? Boolean(saved?.tokens?.access_token) : app.auth === 'desktop' ? Boolean(saved?.connectedAt) : Boolean(this.token(id));
+    const connected = app.auth === 'sign-in' ? Boolean(saved?.tokens?.access_token) : app.auth === 'desktop' ? Boolean(saved?.connectedAt) : app.auth === 'built-in' ? this.options.builtIn?.[id]?.connected() === true : Boolean(this.token(id));
     return { id, name: app.name, connected, connectedAt: app.auth === 'sign-in' || app.auth === 'desktop' ? saved?.connectedAt ?? null : null, account: saved?.account ?? null };
   }
   statuses() { return appIds.map(id => this.status(id)); }
@@ -172,7 +175,8 @@ export class RemoteApps {
   }
   disconnect(id: AppId) {
     const app = entry(id);
-    if (app.auth === 'token' || app.auth === 'built-in') throw new StoreError(`${app.name} uses the token on its Plugins card. Remove the token there to disconnect it.`);
+    if (app.auth === 'token' || (app.auth === 'built-in' && app.token)) throw new StoreError(`${app.name} uses the token on its Plugins card. Remove the token there to disconnect it.`);
+    if (app.auth === 'built-in') throw new StoreError(`${app.name} is connected on its Plugins card. Disconnect it there.`);
     this.drop(id);
     this.save(id, undefined);
     return this.status(id);
@@ -213,7 +217,7 @@ export class RemoteApps {
     if (app.auth !== 'built-in') return undefined;
     const provided = this.options.builtIn?.[id];
     if (!provided) throw new StoreError(`${app.name} is not available here.`, 503);
-    if (!this.status(id).connected) throw new StoreError(`${app.name} is not connected. Save its token on the Plugins page.`, 409);
+    if (!this.status(id).connected) throw new StoreError(`${app.name} is not connected. ${app.token ? 'Save its token on the Plugins page.' : 'Connect it on the Plugins page.'}`, 409);
     return provided;
   }
   async tools(id: AppId): Promise<AppTool[]> {

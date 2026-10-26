@@ -44,7 +44,7 @@ export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}
   </>;
 }
 const groups: { title: string; ids: PluginId[] }[] = [
-  { title: 'Sources', ids: ['google-drive', 'google-docs', 'zotero', 'tavily', 'exa', 'brave'] },
+  { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'tavily', 'exa', 'brave'] },
   { title: 'Team', ids: ['notion', 'slack', 'linear'] },
   { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
   { title: 'Not available yet', ids: ['overleaf'] },
@@ -89,7 +89,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
   const stateOf=(plugin:PluginDefinition):PluginState=>{
     if(plugin.connect==='unavailable')return {label:'Not yet',connected:false};
     if(plugin.id==='google-drive')return google?.connected?{label:'Connected',connected:true}:{label:'Not connected',connected:false};
-    if(plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
+    if(plugin.id==='google-sheets'||plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
     if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
     const token=plugins.find(item=>item.id===plugin.id),app=viaApp(plugin)?apps.find(item=>item.id===plugin.id):undefined;
     if(app?.connected)return {label:'Connected',connected:true};
@@ -102,7 +102,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect your tools. Launch the local workspace to connect them.</p>;
   const card=(plugin:PluginDefinition)=>{
     if(plugin.id==='google-drive')return <GoogleDriveConnectionCard key={plugin.id} projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>;
-    if(plugin.id==='google-docs')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={google?.connected} status={!google?'Checking…':google.connected?'Connected':'Needs Google Drive'}><p>Google Docs live in your Drive, so they use the same read-only Google sign-in. {google?.connected?'Your Docs are readable through it.':'Connect Google Drive above to reach your Docs.'} ros.ai cannot edit or share them.</p></ConnectionCard>;
+    if(plugin.id==='google-sheets'||plugin.id==='google-docs'){const files=plugin.id==='google-sheets'?'Sheets':'Docs';return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={google?.connected} status={!google?'Checking…':google.connected?'Connected':'Needs Google Drive'}><p>{plugin.name} live in your Drive, so they use the same read-only Google sign-in. {google?.connected?`Add one with Add block › Google Drive and its link; agents read your ${files} through it.`:`Connect Google Drive to reach your ${files}.`} ros.ai cannot edit or share them.</p></ConnectionCard>;}
     if(isSearchProvider(plugin.id)){
       const id=plugin.id,credential=credentials.find(item=>item.provider===id),label=search?.services.find(item=>item.id===id)?.label??plugin.name;
       return <KeyConnection key={id} provider={id as CredentialProvider} label={plugin.name} icon={<PluginMark id={id}/>} credential={credential} budget={budgets.find(item=>item.provider===id)} description={searchKeys[id].description} keyLink={searchKeys[id].link} loadError={errors.keys} onSave={async(_provider,key)=>{await api(`/api/connections/credentials/${id}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice(`${label} key saved on this computer.`);await changed();}} onDisconnect={async()=>{await api(`/api/connections/credentials/${id}`,{method:'DELETE'});await changed();}}

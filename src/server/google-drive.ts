@@ -10,9 +10,27 @@ import { Store, StoreError } from './store.js';
 
 export const GOOGLE_DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 const TOKEN_URL='https://oauth2.googleapis.com/token', AUTH_URL='https://accounts.google.com/o/oauth2/v2/auth';
-const API_ROOT='https://www.googleapis.com/drive/v3/', COOKIE='ros-ai-drive-oauth', CALLBACK='/api/connections/google-drive/callback';
+const API_ROOT='https://www.googleapis.com/drive/v3/', SHEETS_ROOT='https://sheets.googleapis.com/v4/', COOKIE='ros-ai-drive-oauth', CALLBACK='/api/connections/google-drive/callback';
 const MAX_CSV_BYTES=500000, AUTH_TTL=10*60*1000;
 const fileIdSchema=z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/u);
+/** What live Sheet and Doc blocks and the agents' Drive tools may read: a file listing, one file's details or export,
+ * and a spreadsheet's tabs and values. */
+const READ_PATHS={drive:/^files(\/[a-zA-Z0-9_-]{1,200}(\/export)?)?$/u,sheets:/^spreadsheets\/[a-zA-Z0-9_-]{1,200}(\/values:batchGet|\/values\/[^/?#]{1,600})?$/u};
+/** A refusal from Google's API, with Google's reason (SERVICE_DISABLED, cannotExportFile…) for callers that fall back. */
+export class GoogleApiError extends StoreError {constructor(message:string,status:number,readonly reason:string){super(message,status);this.name='GoogleApiError';}}
+const disabledReasons=new Set(['SERVICE_DISABLED','accessNotConfigured']);
+export const googleApiDisabled=(error:unknown)=>error instanceof GoogleApiError&&disabledReasons.has(error.reason);
+function googleMessage(api:'drive'|'sheets',status:number,reason:string,message:string){
+  if(disabledReasons.has(reason))return `The Google ${api==='sheets'?'Sheets':'Drive'} API is off in the Google Cloud project behind ros.ai’s Google sign-in. Turn it on under APIs & Services › Library there.`;
+  if(status===429||/rate.?limit/iu.test(reason))return 'Google is limiting requests. Try again in a minute.';
+  if(status===404)return 'Google Drive has no such file, or the connected account cannot open it.';
+  if(reason==='exportSizeLimitExceeded')return 'This file is too large for Google to export (more than 10 MB).';
+  if(reason==='cannotExportFile'||reason==='cannotDownloadFile')return 'The file’s owner turned off downloading and copying, so Google does not hand out its content.';
+  if(reason==='ACCESS_TOKEN_SCOPE_INSUFFICIENT'||reason==='insufficientPermissions')return 'The Google sign-in lacks read access to Drive. Reconnect Google Drive.';
+  if(status===403)return 'The connected Google account cannot open this file.';
+  if(status===400)return `Google could not read that: ${message.replace(/[\x00-\x1f\x7f]/gu,' ').slice(0,200)||'bad request'}.`;
+  return `Google returned HTTP ${status}.`;
+}
 const credentialsSchema=z.object({clientId:z.string(),accessToken:z.string().min(1).max(10000),refreshToken:z.string().min(1).max(10000).optional(),expiresAt:z.number().finite(),scope:z.string().max(4000),connectedAt:z.string()}).strict();
 const clientSchema=z.object({clientId:z.string().trim().min(1).max(1000).regex(/^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$/u),clientSecret:z.string().trim().min(1).max(4000)}).strict();
 type Credentials=z.infer<typeof credentialsSchema>;
@@ -79,8 +97,8 @@ export class GoogleDriveConnection {
     const configured=!missing.length,connected=configured&&Boolean(this.credentials)&&!this.reconnect;
     const callbackUri=`${this.origin(origin)}${CALLBACK}`;
     return {provider:'google-drive',configured,connected,available:connected,state:!configured?'needs-setup':this.reconnect?'reconnect-required':connected?'connected':'disconnected',
-      detail:!configured?'Google Drive needs an OAuth application configuration before login.':this.reconnect?'Reconnect Google Drive. The saved grant is unavailable or expired.':connected?'Connected locally. Browse CSV metadata and explicitly capture a selected file; Drive files stay unchanged.':'Ready for you to sign in with Google and approve read-only Drive access.',scope:GOOGLE_DRIVE_SCOPE,scopeDescription:'Google consent grants read-only access to Drive files. ros.ai exposes CSV listing and explicit CSV captures only; it cannot upload, edit, share or delete Google files.',callbackUri,configurationSource:this.configSource,...(this.credentials?{connectedAt:this.credentials.connectedAt}:{}),...(this.lastError?{lastError:this.lastError}:{}),
-      setup:{missing,steps:['In your Google Cloud project, enable the Google Drive API and configure the OAuth consent screen. Add your own Google account as a test user if the app is in Testing.','Create an OAuth client of type Web application for this local installation.',`Register this exact authorized redirect URI: ${callbackUri}`,'Save its client ID and secret in this connection’s local app settings. They stay in an owner-only private file on this computer. Alternatively, set ROS_GOOGLE_CLIENT_ID and ROS_GOOGLE_CLIENT_SECRET in ignored .env.local and restart.','Select Connect Google Drive here, complete Google login and review its read-only permission. No login is performed automatically.'],documentation:[{title:'Google OAuth web-server flow',url:'https://developers.google.com/identity/protocols/oauth2/web-server'},{title:'Choose Drive scopes',url:'https://developers.google.com/workspace/drive/api/guides/api-specific-auth'},{title:'OAuth PKCE and loopback redirects',url:'https://developers.google.com/identity/protocols/oauth2/native-app'}]}};
+      detail:!configured?'Google Drive needs an OAuth application configuration before login.':this.reconnect?'Reconnect Google Drive. The saved grant is unavailable or expired.':connected?'Connected locally. Google Sheets and Docs show live on the canvas, agents read Drive, and CSV files copy into projects; Drive files stay unchanged.':'Ready for you to sign in with Google and approve read-only Drive access.',scope:GOOGLE_DRIVE_SCOPE,scopeDescription:'Google consent grants read-only access to Drive files. ros.ai lists files, reads Google Sheets and Docs for live blocks and agents, and copies the CSV files you choose; it cannot upload, edit, share or delete Google files.',callbackUri,configurationSource:this.configSource,...(this.credentials?{connectedAt:this.credentials.connectedAt}:{}),...(this.lastError?{lastError:this.lastError}:{}),
+      setup:{missing,steps:['In your Google Cloud project, enable the Google Drive API and the Google Sheets API, and configure the OAuth consent screen. Add your own Google account as a test user if the app is in Testing.','Create an OAuth client of type Web application for this local installation.',`Register this exact authorized redirect URI: ${callbackUri}`,'Save its client ID and secret in this connection’s local app settings. They stay in an owner-only private file on this computer. Alternatively, set ROS_GOOGLE_CLIENT_ID and ROS_GOOGLE_CLIENT_SECRET in ignored .env.local and restart.','Select Connect Google Drive here, complete Google login and review its read-only permission. No login is performed automatically.'],documentation:[{title:'Google OAuth web-server flow',url:'https://developers.google.com/identity/protocols/oauth2/web-server'},{title:'Choose Drive scopes',url:'https://developers.google.com/workspace/drive/api/guides/api-specific-auth'},{title:'OAuth PKCE and loopback redirects',url:'https://developers.google.com/identity/protocols/oauth2/native-app'}]}};
   }
   configure(supplied:unknown,origin?:string){
     const client=clientSchema.safeParse(supplied);if(!client.success)throw new StoreError('Enter a Google OAuth client ID ending in .apps.googleusercontent.com and its client secret.');
@@ -154,6 +172,23 @@ export class GoogleDriveConnection {
     let response:globalThis.Response;try{response=await this.fetcher(url.href,{method:'GET',headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw new StoreError('Google Drive could not be reached. No file was imported.',503);}
     if(!response.ok){await response.body?.cancel();if(response.status===401){this.reconnect=true;this.lastError='Google Drive rejected the saved authorization. Reconnect.';}throw new StoreError(response.status===401?this.lastError:response.status===403?'Google Drive does not permit reading this file. Check its permission and download restrictions.':response.status===404?'This Google Drive file is unavailable to the connected account.':'Google Drive request failed. Try browsing again; no file was imported.',response.status===404?404:503);}
     return response;
+  }
+  /** A read of Google's Drive or Sheets API for live Sheet and Doc blocks and the agents' Drive tools: fixed hosts,
+   * GET only, the read-only Drive scope. Google's refusals come back as GoogleApiError with Google's reason. */
+  async read(api:'drive'|'sheets',path:string,query:URLSearchParams,maximum=4_000_000,signal?:AbortSignal):Promise<Uint8Array>{
+    if(!READ_PATHS[api].test(path))throw new StoreError('Unsupported Google operation.');
+    const token=await this.token(),url=new URL(path,api==='drive'?API_ROOT:SHEETS_ROOT);url.search=query.toString();
+    const timeout=AbortSignal.timeout(30000);
+    let response:globalThis.Response;
+    try{response=await this.fetcher(url.href,{method:'GET',headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:signal?AbortSignal.any([signal,timeout]):timeout});}
+    catch(cause){if(signal?.aborted)throw cause;throw new StoreError('Google could not be reached. Check this computer’s connection.',503);}
+    if(!response.ok){
+      const body=await jsonBody(response,40000).catch(()=>null) as {error?:{message?:unknown;status?:unknown;errors?:{reason?:unknown}[];details?:{reason?:unknown}[]}}|null;
+      const reason=String(body?.error?.details?.find(item=>item?.reason)?.reason??body?.error?.errors?.find(item=>item?.reason)?.reason??body?.error?.status??'').slice(0,80);
+      if(response.status===401){this.reconnect=true;this.lastError='Google rejected the saved authorization. Reconnect Google Drive.';throw new GoogleApiError(this.lastError,503,'unauthorized');}
+      throw new GoogleApiError(googleMessage(api,response.status,reason,String(body?.error?.message??'')),[400,403,404,429].includes(response.status)?response.status:502,reason);
+    }
+    return boundedBody(response,maximum);
   }
   private file(value:unknown):GoogleDriveFile{
     const body=z.object({id:fileIdSchema,name:z.string().min(1).max(1000),mimeType:z.string().max(500),size:z.string().regex(/^\d+$/u).optional(),modifiedTime:z.string().max(200).optional(),version:z.string().max(200).optional(),md5Checksum:z.string().max(200).optional(),capabilities:z.object({canDownload:z.boolean().optional()}).optional()}).passthrough().parse(value);
