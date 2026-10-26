@@ -662,7 +662,7 @@ export class Store {
 
   addUsage(record: UsageRecord): UsageRecord {
     identifier.parse(record.id);
-    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
+    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude', 'exa', 'brave']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
     z.number().finite().nonnegative().parse(record.reservedUsd);
     if (record.estimatedUsd !== null) z.number().finite().nonnegative().parse(record.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(record.status);

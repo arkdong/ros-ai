@@ -4,6 +4,7 @@ import type { SandboxCostGate, RemoteExecutionState } from '../shared/experiment
 import { Authority } from './authority.js';
 import { CombinedNebiusBudget, type CombinedNebiusBudgetStatus } from './combined-budget.js';
 import type { Store } from './store.js';
+import { isSearchProvider, searchLabels } from '../shared/search.js';
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const amount = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -42,8 +43,8 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
     return {
       id: row.id, provider: row.provider, purpose: row.purpose, at: row.createdAt, status: row.status,
       reservedUsd: amount(row.reservedUsd), estimatedUsd: amount(row.estimatedUsd),
-      inputTokens: row.provider !== 'tavily' ? amount(usage.inputTokens) : null,
-      outputTokens: row.provider !== 'tavily' ? amount(usage.outputTokens) : null,
+      inputTokens: !isSearchProvider(row.provider) ? amount(usage.inputTokens) : null,
+      outputTokens: !isSearchProvider(row.provider) ? amount(usage.outputTokens) : null,
       credits: row.provider === 'tavily' ? amount(response.credits ?? trace.credits) : null,
       rawCost: null, nodeTitle: nodeTitle(row.runId ? projectRuns.get(row.runId) : undefined),
     };
@@ -76,7 +77,7 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
   };
 }
 
-const providerNames: Record<string, string> = { nebius: 'Nebius', openai: 'OpenAI', tavily: 'Tavily', claude: 'Claude Code', 'nebius-sandbox': 'Nebius Sandbox' };
+const providerNames: Record<string, string> = { nebius: 'Nebius', openai: 'OpenAI', ...searchLabels, claude: 'Claude Code', 'nebius-sandbox': 'Nebius Sandbox' };
 // The work a request did, named the way the app names it.
 const tasks: [RegExp, string][] = [
   [/^Continuous project assistant/, 'Ros'], [/^Project discussion/, 'Project chat'], [/^Claude Code/, 'Claude Code'], [/^Codex/, 'Codex'],
@@ -98,14 +99,15 @@ export function usageAnalytics(store: Store, connectionNames: Record<string, str
     let run: Run | undefined;
     if (row.runId) { try { run = runs.get(row.runId) ?? store.getRun(row.runId); runs.set(row.runId, run); } catch { run = undefined; } }
     const nodeId = run?.nodeId ?? (typeof trace.nodeId === 'string' ? trace.nodeId : null);
-    const rawModel = typeof trace.model === 'string' ? trace.model : row.provider === 'tavily' ? null : run?.model ?? null;
-    const model = rawModel ? row.provider === 'claude' ? claudeModels[rawModel] ?? rawModel : modelName(rawModel) : row.provider === 'tavily' ? 'Tavily search' : null;
+    const search = isSearchProvider(row.provider);
+    const rawModel = typeof trace.model === 'string' ? trace.model : search ? null : run?.model ?? null;
+    const model = rawModel ? row.provider === 'claude' ? claudeModels[rawModel] ?? rawModel : modelName(rawModel) : search ? `${searchLabels[row.provider as keyof typeof searchLabels]} search` : null;
     return {
       id: row.id, at: row.createdAt, provider: row.provider, providerName: connectionNames[row.provider] ?? providerNames[row.provider] ?? row.provider,
       model, task: taskName(row.purpose), projectId, projectTitle: project?.title ?? null,
       nodeTitle: nodeId ? project?.canvas.nodes.find(node => node.id === nodeId)?.title ?? run?.node.title ?? null : null,
       costUsd: amount(row.estimatedUsd),
-      inputTokens: row.provider !== 'tavily' ? amount(usage.inputTokens) : null, outputTokens: row.provider !== 'tavily' ? amount(usage.outputTokens) : null,
+      inputTokens: !search ? amount(usage.inputTokens) : null, outputTokens: !search ? amount(usage.outputTokens) : null,
     };
   });
   return { generatedAt: now.toISOString(), events: events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) };

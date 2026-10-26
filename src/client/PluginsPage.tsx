@@ -6,6 +6,7 @@ import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
 import type { SkillSummary } from '../shared/skills';
+import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
 import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
 import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
@@ -43,10 +44,17 @@ export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}
   </>;
 }
 const groups: { title: string; ids: PluginId[] }[] = [
-  { title: 'Sources', ids: ['google-drive', 'google-docs', 'zotero', 'tavily'] },
+  { title: 'Sources', ids: ['google-drive', 'google-docs', 'zotero', 'tavily', 'exa', 'brave'] },
   { title: 'Team', ids: ['notion', 'slack', 'github'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
+
+/** Where each web search service hands out keys, and what its card says. */
+const searchKeys: Record<SearchProviderId, { link: string; description: string }> = {
+  tavily: { link: 'https://app.tavily.com/', description: 'Web search for research you start. Each search spends Tavily credits; spend shows in Settings › Usage.' },
+  exa: { link: 'https://dashboard.exa.ai/api-keys', description: 'Web search for research you start. Exa charges for each search and each page an agent reads; spend shows in Settings › Usage.' },
+  brave: { link: 'https://api-dashboard.search.brave.com/app/keys', description: 'Web search for research you start, from Brave’s own index of the web. Each search is charged on your Brave Search plan; spend shows in Settings › Usage.' },
+};
 
 export type PluginsSection = 'plugins' | 'skills';
 const sections = [{ id: 'plugins', label: 'Plugins' }, { id: 'skills', label: 'Skills' }];
@@ -58,18 +66,19 @@ export function PluginsSidebar({section,onSection,installed,selected,onSelect,sk
 }
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
-  const [plugins,setPlugins]=useState<PluginStatus[]>([]),[apps,setApps]=useState<AppConnectionStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[credentials,setCredentials]=useState<CredentialStatus[]>([]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]);
+  const [plugins,setPlugins]=useState<PluginStatus[]>([]),[apps,setApps]=useState<AppConnectionStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[credentials,setCredentials]=useState<CredentialStatus[]>([]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[search,setSearch]=useState<SearchServiceStatus|null>(null);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const [tokens,drive,keys,limits,signIns]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps')]);
+    const [tokens,drive,keys,limits,signIns,searching]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search')]);
     const failures:Record<string,string>={};
     if(tokens.status==='fulfilled')setPlugins(tokens.value.plugins);else failures.plugins=message(tokens.reason);
     if(drive.status==='fulfilled')setGoogle(drive.value);else failures.google=message(drive.reason);
     if(keys.status==='fulfilled')setCredentials(keys.value.credentials);else failures.keys=message(keys.reason);
     if(limits.status==='fulfilled')setBudgets(limits.value.budgets);
     if(signIns.status==='fulfilled')setApps(signIns.value.apps);
+    if(searching.status==='fulfilled')setSearch(searching.value);
     setErrors(failures);setLoading(false);
   },[publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -78,7 +87,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.connect==='unavailable')return {label:'Not yet',connected:false};
     if(plugin.id==='google-drive')return google?.connected?{label:'Connected',connected:true}:{label:'Not connected',connected:false};
     if(plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
-    if(plugin.id==='tavily'){const key=credentials.find(item=>item.provider==='tavily');return key?.configured?{label:'Key saved',connected:true}:{label:'Not connected',connected:false};}
+    if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
     const token=plugins.find(item=>item.id===plugin.id),app=apps.find(item=>item.id===plugin.id);
     if(app?.connected)return {label:'Connected',connected:true};
     if(token?.configured)return token.verified===false?{label:'Check failed',connected:false}:{label:'Token saved',connected:true};
@@ -91,7 +100,13 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
   const card=(plugin:PluginDefinition)=>{
     if(plugin.id==='google-drive')return <GoogleDriveConnectionCard key={plugin.id} projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>;
     if(plugin.id==='google-docs')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={google?.connected} status={!google?'Checking…':google.connected?'Connected':'Needs Google Drive'}><p>Google Docs live in your Drive, so they use the same read-only Google sign-in. {google?.connected?'Your Docs are readable through it.':'Connect Google Drive above to reach your Docs.'} ros.ai cannot edit or share them.</p></ConnectionCard>;
-    if(plugin.id==='tavily')return <KeyConnection key={plugin.id} provider={'tavily' as CredentialProvider} label={plugin.name} icon={<PluginMark id={plugin.id}/>} credential={credentials.find(item=>item.provider==='tavily')} budget={budgets.find(item=>item.provider==='tavily')} description="Web search for research you start. Each search spends Tavily credits; spend shows in Settings › Usage." keyLink="https://app.tavily.com/" loadError={errors.keys} onSave={async(_provider,key)=>{await api('/api/connections/credentials/tavily',{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Tavily key saved on this computer.');await changed();}} onDisconnect={async()=>{await api('/api/connections/credentials/tavily',{method:'DELETE'});await changed();}}/>;
+    if(isSearchProvider(plugin.id)){
+      const id=plugin.id,credential=credentials.find(item=>item.provider===id),label=search?.services.find(item=>item.id===id)?.label??plugin.name;
+      return <KeyConnection key={id} provider={id as CredentialProvider} label={plugin.name} icon={<PluginMark id={id}/>} credential={credential} budget={budgets.find(item=>item.provider===id)} description={searchKeys[id].description} keyLink={searchKeys[id].link} loadError={errors.keys} onSave={async(_provider,key)=>{await api(`/api/connections/credentials/${id}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice(`${label} key saved on this computer.`);await changed();}} onDisconnect={async()=>{await api(`/api/connections/credentials/${id}`,{method:'DELETE'});await changed();}}
+        primary={credential?.configured&&search&&search.active!==id?{label:`Search with ${label}`,onClick:async()=>{setSearch(await api<SearchServiceStatus>('/api/connections/search',{method:'PUT',body:JSON.stringify({provider:id})}));setNotice(`Ros and your agents now search the web with ${label}.`);await onChanged();}}:undefined}>
+        {credential?.configured&&search?.active===id&&<p>Ros and your agents search the web with {label}.</p>}
+      </KeyConnection>;
+    }
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
     return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
   };

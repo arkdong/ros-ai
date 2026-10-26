@@ -6,4 +6,4 @@ Each file is a company's own mark, shown only to identify its service. The marks
 | --- | --- |
 | google-drive, slack, notion, github, openai, codex, claude | [gilbarbara/logos](https://github.com/gilbarbara/logos) via `@iconify-json/logos` 1.2.15 (CC0 collection of official logos) |
 | google-docs, zotero, overleaf, ollama, lm-studio, moonshot | [Simple Icons](https://simpleicons.org) 16.34.0 (CC0), filled with each brand's official colour |
-| nebius, tavily | [LobeHub icons](https://github.com/lobehub/lobe-icons) `@lobehub/icons-static-svg` 1.95.1 (MIT) |
+| nebius, tavily, exa, brave | [LobeHub icons](https://github.com/lobehub/lobe-icons) `@lobehub/icons-static-svg` 1.95.1 (MIT) |

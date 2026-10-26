@@ -18,7 +18,7 @@ const AGENTS = ['claude-code', 'codex', 'cursor', 'gemini-cli'] as const;
 const MODELS = ['ollama', 'lm-studio'] as const;
 /** The context Ollama gives a model below 24 GB of graphics memory, and LM Studio's usual load: assumed while unknown. */
 const LOCAL_DEFAULT_CONTEXT = 4096;
-const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Anthropic key', openai: 'OpenAI key', tavily: 'Tavily key' };
+const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Anthropic key', openai: 'OpenAI key', tavily: 'Tavily key', exa: 'Exa key', brave: 'Brave Search key' };
 const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor and Gemini CLI (names only)', 'model servers on 127.0.0.1'];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
 

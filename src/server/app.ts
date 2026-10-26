@@ -42,7 +42,7 @@ const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
 export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
@@ -92,6 +92,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
+  // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.
+  if(execution.searchStatus&&execution.chooseSearch&&!options.publicDemo){
+    app.get('/api/connections/search',(_req,res)=>res.json(execution.searchStatus!()));
+    app.put('/api/connections/search',(req,res)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON search choice.',415);res.json(execution.chooseSearch!(req.body));});
+  }
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {

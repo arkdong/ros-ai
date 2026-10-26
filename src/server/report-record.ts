@@ -4,6 +4,7 @@ import type { Artifact, CanvasNode, ProjectDetail, Run } from '../shared/types.j
 import { blockOrigin, kindName, textLabel } from '../shared/vocabulary.js';
 import { usageProject } from './budget-report.js';
 import type { Store } from './store.js';
+import { isSearchProvider, searchLabels } from '../shared/search.js';
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const bytes = (value: unknown) => Buffer.byteLength(typeof value === 'string' ? value : JSON.stringify(value), 'utf8');
@@ -85,13 +86,13 @@ function aiCalls(store: Store, detail: ProjectDetail, includeRequests: boolean):
   const block = (runId?: string) => { const run = runId ? runs.get(runId) : undefined; return run ? withoutPaths(detail.project.canvas.nodes.find(node => node.id === run.nodeId)?.title ?? run.node.title) : null; };
   const rows = store.listUsage().map(row => ({ row, owner: usageProject(store, row) }));
   const calls: AiUseCall[] = rows.filter(({ owner }) => owner === projectId).map(({ row }) => {
-    const trace = object(row.reportedUsage), search = row.provider === 'tavily', messages = object(trace.request).messages, query = typeof trace.query === 'string' ? trace.query : null;
-    // A page reading sends Tavily only the addresses it reads.
+    const trace = object(row.reportedUsage), search = isSearchProvider(row.provider), messages = object(trace.request).messages, query = typeof trace.query === 'string' ? trace.query : null;
+    // A page reading sends the search service only the addresses it reads.
     const urls = Array.isArray(trace.urls) ? trace.urls.filter((url): url is string => typeof url === 'string') : [];
     const request = Array.isArray(messages) ? messages.map(message => ({ role: String(object(message).role), content: withoutPaths(String(object(message).content)) })) : query ? [{ role: 'search query', content: withoutPaths(query) }] : urls.length ? [{ role: 'pages read', content: urls.join('\n') }] : [];
     return {
       id: row.id, at: row.createdAt, kind: search ? 'search' as const : 'model' as const,
-      service: search ? 'Tavily' : typeof trace.processingDestination === 'string' ? trace.processingDestination : row.provider === 'openai' ? 'OpenAI' : row.provider === 'nebius' ? 'Nebius' : row.provider,
+      service: search ? searchLabels[row.provider as keyof typeof searchLabels] : typeof trace.processingDestination === 'string' ? trace.processingDestination : row.provider === 'openai' ? 'OpenAI' : row.provider === 'nebius' ? 'Nebius' : row.provider,
       model: !search && typeof trace.model === 'string' ? trace.model : null, purpose: row.purpose,
       location: trace.processingLocation === 'local-unverified' ? 'local-unverified' as const : 'external' as const,
       outcome: row.status === 'settled' ? (trace.failure ? 'failed' : 'completed') : row.status === 'uncertain' ? 'outcome uncertain' : 'not settled',

@@ -2,7 +2,7 @@
  * Connecting only saves and checks access; using a plugin from the canvas or assistant comes later.
  */
 export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github';
-export type PluginId = TokenPluginId | 'google-drive' | 'google-docs' | 'tavily' | 'overleaf';
+export type PluginId = TokenPluginId | 'google-drive' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -28,6 +28,8 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'notion', uses: ['Find answers in your pages and databases, from any block or from Ros', 'Bring a page or database onto the map', 'Save findings and reports back as pages, after you accept'], name: 'Notion', summary: 'Your pages and databases, through Notion’s own connection.', connect: 'token', signIn: true, tokenLabel: 'Notion integration secret', tokenHint: 'Create an internal integration, copy its secret, then share the pages you want with it.', tokenLink: 'https://www.notion.so/profile/integrations' },
   { id: 'github', uses: ['Read repositories with your code and data', 'Point an agent at a repository as a source'], name: 'GitHub', summary: 'Repositories with your code and data.', connect: 'token', tokenLabel: 'GitHub personal access token', tokenHint: 'Create a fine-grained token with read access to the repositories you choose.', tokenLink: 'https://github.com/settings/personal-access-tokens' },
   { id: 'tavily', uses: ['Web search for research you start', 'Each search counts against the allowance you set in Budget'], name: 'Tavily web search', summary: 'Web search for research you start.', connect: 'key' },
+  { id: 'exa', uses: ['Web search that finds pages by what they mean, not only their words', 'Returns the passages of each page that answer the search, and reads whole pages', 'About US$0.007 a search and US$0.001 a page read'], name: 'Exa web search', summary: 'Web search that finds pages by meaning.', connect: 'key' },
+  { id: 'brave', uses: ['Web search from Brave’s own index of the web', 'Returns the passages of each page that answer the search; it cannot read whole pages', 'About US$0.005 a search, with US$5 free each month'], name: 'Brave Search', summary: 'Web search from its own independent index.', connect: 'key' },
   { id: 'overleaf', uses: ['Write papers in LaTeX with your coauthors'], name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
 ];
 

@@ -1,5 +1,7 @@
+import brave from './brave.svg';
 import claude from './claude.svg';
 import codex from './codex.svg';
+import exa from './exa.svg';
 import github from './github.svg';
 import googleDocs from './google-docs.svg';
 import googleDrive from './google-drive.svg';
@@ -15,7 +17,7 @@ import tavily from './tavily.svg';
 import zotero from './zotero.svg';
 
 /** Official company marks, copied unchanged from their sources (see SOURCES.md); each belongs to its owner. */
-const logos = { claude, codex, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, overleaf, slack, tavily, zotero };
+const logos = { brave, claude, codex, exa, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, overleaf, slack, tavily, zotero };
 export type BrandId = keyof typeof logos;
 export const hasBrandLogo = (id: string): id is BrandId => id in logos;
 
