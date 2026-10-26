@@ -7,7 +7,7 @@ import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-se
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudeModel } from '../shared/claude-agent';
-import { InferenceConnections } from './InferenceConnections';
+import { LocalModels } from './LocalModels';
 import { CloudAccount } from './CloudAccount';
 import { LocalRos } from './LocalRos';
 import type { AgentId as SetupAgentId, LinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup';
@@ -58,7 +58,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const key=(provider:CredentialProvider)=>{const item=credentials.find(entry=>entry.provider===provider);return item?.configured?(item.verified===false?{label:'Check failed',connected:false}:{label:'Key saved',connected:true}):{label:'Not connected',connected:false};};
   const own=(id:SetupAgentId)=>{const agent=setup?.agents.find(item=>item.id===id);return !setup?{label:'',connected:false}:agent?.link||agent?.entry?{label:'Linked',connected:true}:agent?.seenAt?{label:'Used before',connected:true}:agent?.found?{label:'Not linked',connected:false}:{label:'Not found',connected:false};};
   const showAgain=async()=>{try{await api('/api/setup/seen',{method:'DELETE'});window.dispatchEvent(new Event('ros-setup-reset'));}catch(cause){setErrors(current=>({...current,setup:message(cause)}));}};
-  const stateOf=(id:AgentId)=>id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):{label:'',connected:false};
+  const stateOf=(id:AgentId)=>id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
   const installedKey=agentItems.filter(item=>stateOf(item.id).connected).map(item=>item.id).join(',');
   useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as AgentId[]:[]);},[installedKey,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
@@ -72,11 +72,11 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     'own-codex':()=><OutsideAgents only="codex" onChanged={changed}/>,
     'own-cursor':()=><OutsideAgents only="cursor" onChanged={changed}/>,
     'own-gemini':()=><OutsideAgents only="gemini-cli" onChanged={changed}/>,
-    local:()=><InferenceConnections onChanged={changed}/>,
+    local:()=><LocalModels hide={[local?.connectionId]} onChanged={changed}/>,
   };
   const current=selected?agentItems.find(item=>item.id===selected):undefined;
   if(current)return <div className="plugins-page plugin-detail">
-    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={current.summary} state={current.id==='local'?undefined:stateOf(current.id)} uses={current.uses}/>
+    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={current.summary} state={current.id==='local'&&!stateOf('local').label?undefined:stateOf(current.id)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
     <h2 className="plugin-section">Connection</h2>
@@ -87,7 +87,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
-    {agentGroups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={id==='local'?undefined:stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
+    {agentGroups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
     <p className="plugins-footnote">What every agent and model spends shows in Settings › Usage. <button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
   </div>;
 }

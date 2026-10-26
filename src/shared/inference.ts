@@ -8,6 +8,8 @@ export type RegisteredInferenceModel = {
   inputUsdPerMillion?: number;
   outputUsdPerMillion?: number;
   maker?: ModelMaker;
+  /** false when the model's own server says it cannot call tools (Ollama, LM Studio), so ros.ai's agent cannot use it. */
+  tools?: boolean;
 };
 export type InferenceCaps = {
   maxInputBytes: number;

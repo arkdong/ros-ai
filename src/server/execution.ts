@@ -17,6 +17,8 @@ import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObjec
 import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
 
 const now = () => new Date().toISOString();
+/** A loopback request's allowance for its chat template, and the shortest answer worth sending it for. */
+const LOCAL_TEMPLATE_TOKENS = 256, LOCAL_MIN_OUTPUT_TOKENS = 1024;
 function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
   return new Promise((resolve,reject)=>{
     const abort = ()=>reject(new Error('Request stopped or timed out. Provider billing outcome may be unknown.'));
@@ -252,10 +254,18 @@ export class ExecutionService {
     request={...request,maxOutputTokens:Math.min(request.maxOutputTokens,before.caps.maxOutputTokens)};
     const boundedSignal=AbortSignal.any([signal,AbortSignal.timeout(before.caps.timeoutMs)]);
     const info=await abortable(model.prepare(boundedSignal),boundedSignal);this.checkSignal(boundedSignal);
-    const wireRequest=model.describeRequest!(request),wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));
-    if(wireBytes>64000)throw new Error('The complete inference request exceeds ros.ai\'s 64 KB context cap. Select less context.');
-    if(wireBytes+4096+request.maxOutputTokens>info.contextTokens)throw new Error('Selected context exceeds the conservative application byte/context guard. Select less context or configure the model capacity; its tokenizer remains unverified.');
     const local=before.destination==='local-unverified';
+    let wireRequest=model.describeRequest!(request),wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));
+    if(wireBytes>64000)throw new Error('The complete inference request exceeds ros.ai\'s 64 KB context cap. Select less context.');
+    if(local){
+      // Nothing is billed on a loopback server, so this guard only keeps the request inside the model's context:
+      // about three bytes of request JSON per token for current tokenizers, room for the chat template, and the
+      // output shortened to what is left.
+      const inputTokens=Math.ceil(wireBytes/3)+LOCAL_TEMPLATE_TOKENS,room=info.contextTokens-inputTokens;
+      if(room<LOCAL_MIN_OUTPUT_TOKENS)throw new Error(`This request needs about ${(inputTokens+LOCAL_MIN_OUTPUT_TOKENS).toLocaleString('en-US')} tokens, but ${selection.model} has a ${info.contextTokens.toLocaleString('en-US')}-token context on ${before.name}. Raise the model's context length there (32k is enough for ros.ai's agent), then press Refresh under Agents › Local models.`);
+      if(room<request.maxOutputTokens){request={...request,maxOutputTokens:room};wireRequest=model.describeRequest!(request);wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));}
+    }
+    else if(wireBytes+4096+request.maxOutputTokens>info.contextTokens)throw new Error('Selected context exceeds the conservative application byte/context guard. Select less context or configure the model capacity; its tokenizer remains unverified.');
     const reserveUsd=local?0:Math.max(0.000001,2*info.contextTokens*(info.inputUsdPerToken+info.outputUsdPerToken));
     const basis=local?'Loopback inference: no provider USD debit; processing location/runtime are unverified. Request count, bytes, declared completion cap and deadline remain bounded.':`2 × full declared ${info.contextTokens} context × (input $${info.inputUsdPerToken}/token + output $${info.outputUsdPerToken}/token). Full output context reserved because total billable/reasoning cap is unverified. User-declared upper rates/context, not verified account pricing; reservation retained, no automatic retry.`;
     const trace={scope:purpose==='Explicit workspace guide review'?'workspace-guide':runId?'node':'project',projectId,request:structuredClone(request),wireRequest,provider:selection.provider,model:selection.model,catalog:info.metadata,processingDestination:before.endpointOrigin,processingLocation:local?'local-unverified':'external'};
