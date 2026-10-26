@@ -1,4 +1,5 @@
 import type { Canvas, CanvasNode } from './types.js';
+import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
@@ -36,7 +37,7 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
-  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : 'Agent';
+  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
 }
 
 /** The caption of the link from a decision block to the block it rests on. */

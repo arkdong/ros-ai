@@ -5,6 +5,7 @@ import type { AgentStep } from '../shared/agent-runtime';
 import type { Artifact, CanvasNode, ProjectDetail } from '../shared/types';
 import { agentDirections, type AgentDirection } from '../shared/agent-work';
 import { skillTitle } from '../shared/skills';
+import { agentName } from '../shared/vocabulary';
 import { RichText, time } from './Content';
 import './agent-view.css';
 
@@ -67,7 +68,7 @@ type Props = { node: CanvasNode; turn?: AssistantTurn; detail: ProjectDetail; on
 export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArtifact, onReview }: Props) {
   const canvas = detail.project.canvas, title = (id?: string) => canvas.nodes.find(item => item.id === id)?.title;
   const work = agentDirections(canvas, detail.artifacts, node.id);
-  const runtime = turn?.model ?? (node.agent?.runtime === 'claude' ? 'Claude Code' : node.agent?.runtime === 'model' ? 'Agent' : 'Codex');
+  const runtime = turn?.model ?? (node.agent?.runtime === 'model' ? 'Agent' : agentName(node.agent?.runtime ?? 'codex'));
   const running = turn?.status === 'running';
   // A proposal the agent left behind is decided after its turn ends, so its step shows the decision.
   // A search plan approved too late searched nothing, so its step keeps what the agent saw.

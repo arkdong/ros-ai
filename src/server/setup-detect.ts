@@ -28,7 +28,7 @@ function nvmBins() { const root = join(home, '.nvm', 'versions', 'node'); try { 
 /** PATH plus the folders installers use, because an app opened from the Finder or a shortcut sees a short PATH. */
 function searchDirs() {
   const extra = win ? [join(appData, 'npm'), join(localAppData, 'Programs', 'cursor', 'resources', 'app', 'bin')]
-    : ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local', 'bin'), join(home, '.npm-global', 'bin'), join(home, '.bun', 'bin'), join(home, '.volta', 'bin'), join(home, '.codex', 'bin'), join(home, '.claude', 'local'), join(home, '.cargo', 'bin'), ...nvmBins()];
+    : ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local', 'bin'), join(home, '.npm-global', 'bin'), join(home, '.bun', 'bin'), join(home, '.volta', 'bin'), join(home, '.codex', 'bin'), join(home, '.claude', 'local'), join(home, '.opencode', 'bin'), join(home, '.cargo', 'bin'), ...nvmBins()];
   return [...new Set([...(process.env.PATH ?? '').split(delimiter).filter(Boolean), ...extra])];
 }
 /** The first runnable file of this name on the search path, or an explicit path when it exists. */

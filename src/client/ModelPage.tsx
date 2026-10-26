@@ -18,14 +18,19 @@ import { RosMark } from './RosDock';
 import { CatalogueHero, CatalogueRow, CatalogueSidebar } from './PluginsPage';
 import type { CloudAccountStatus } from '../shared/cloud-account';
 import type { LocalRosStatus } from '../shared/local-ros';
+import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
+import { AcpAgentCard, acpLogo, acpState } from './AcpAgents';
 import './connections.css';
 
-export type AgentId = 'ros' | 'claude' | 'codex' | 'own-claude' | 'own-codex' | 'own-cursor' | 'own-gemini' | 'nebius' | 'openai' | 'local';
+export type AgentId = 'ros' | 'claude' | 'codex' | 'gemini' | 'goose' | 'opencode' | 'own-claude' | 'own-codex' | 'own-cursor' | 'own-gemini' | 'nebius' | 'openai' | 'local';
 type AgentItem = { id: AgentId; name: string; summary: string; mark: ReactNode; uses: string[] };
 const agentItems: AgentItem[] = [
   { id: 'ros', name: 'Ros', summary: 'ros.ai’s own assistant, hosted for free or on this computer', mark: <RosMark/>, uses: ['Plans and runs research on the map with ros.ai’s tools', 'Hosted: free with a ros.ai account; nothing to install', 'On this computer: one 3 GB download, works offline', 'Switch between them from the model name in the Ros bar'] },
   { id: 'claude', name: 'Claude Code', summary: 'Reads the project folder · your Anthropic key', mark: <BrandLogo id="claude"/>, uses: ['Works as Ros with your Anthropic API key', 'Reads the project folder and proposes changes', 'Code runs in ros.ai’s sandbox under your approval mode'] },
   { id: 'codex', name: 'Codex', summary: 'This computer’s Codex sign-in', mark: <BrandLogo id="codex"/>, uses: ['Works as Ros through the Codex CLI on this computer', 'Uses Codex’s own sign-in; ros.ai never sees it', 'Spend shows in Settings › Usage'] },
+  { id: 'gemini', name: 'Gemini CLI', summary: ACP_AGENTS.gemini.summary, mark: <BrandLogo id="gemini-cli"/>, uses: ['Works as Ros through Gemini CLI on this computer', 'Reads the project folder; its other tools are off in ros.ai', 'Uses its own Google sign-in or key; ros.ai never sees it'] },
+  { id: 'goose', name: 'Goose', summary: ACP_AGENTS.goose.summary, mark: <BrandLogo id="goose"/>, uses: ['Works as Ros through Goose on this computer', 'Only ros.ai’s tools run; ros.ai refuses every tool of its own', 'Uses the model Goose is set up with; ros.ai never sees its key'] },
+  { id: 'opencode', name: 'OpenCode', summary: ACP_AGENTS.opencode.summary, mark: <BrandLogo id="opencode"/>, uses: ['Works as Ros through OpenCode on this computer', 'Reads the project folder; its other tools are off in ros.ai', 'Uses OpenCode’s own providers and keys; ros.ai never sees them'] },
   { id: 'own-claude', name: 'Your own Claude Code', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="claude"/>, uses: ['Keep working in Claude Code the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'own-codex', name: 'Your own Codex', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="codex"/>, uses: ['Keep working in Codex the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'own-cursor', name: 'Your own Cursor', summary: 'In Cursor, on your plan, working on the map', mark: <AgentIcon id="cursor"/>, uses: ['Keep working in Cursor the way you already do', 'Its agent reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
@@ -34,21 +39,21 @@ const agentItems: AgentItem[] = [
   { id: 'openai', name: 'OpenAI API', summary: 'Direct model access, separate from Codex', mark: <BrandLogo id="openai"/>, uses: ['GPT models for Ros through your API key', 'Separate from the Codex sign-in'] },
   { id: 'local', name: 'Local models', summary: 'Ollama, LM Studio or any OpenAI-compatible server', mark: <BrandLogo id="ollama"/>, uses: ['Models running on this computer or your own server', 'Nothing leaves the machine'] },
 ];
-const agentGroups: { title: string; ids: AgentId[] }[] = [{ title: 'Agents', ids: ['ros', 'claude', 'codex', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] }, { title: 'Models', ids: ['nebius', 'openai', 'local'] }];
+const agentGroups: { title: string; ids: AgentId[] }[] = [{ title: 'Agents', ids: ['ros', 'claude', 'codex', 'gemini', 'goose', 'opencode', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] }, { title: 'Models', ids: ['nebius', 'openai', 'local'] }];
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
 export function ModelPage({projectId,connections,publicDemo,selected,onSelect,onInstalled,onChanged}:Props) {
   const [credentials,setCredentials]=useState<CredentialStatus[]>([]),[codex,setCodex]=useState<LocalAgentSetup>(),[claude,setClaude]=useState<ClaudeAgentSettings>();
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
-  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[cloud,setCloud]=useState<CloudAccountStatus>(),[setup,setSetup]=useState<SetupStatus>(),[local,setLocal]=useState<LocalRosStatus>();
+  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[cloud,setCloud]=useState<CloudAccountStatus>(),[setup,setSetup]=useState<SetupStatus>(),[local,setLocal]=useState<LocalRosStatus>(),[acp,setAcp]=useState<AcpAgentStatus[]>([]);
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const paths=['/api/connections/credentials',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets','/api/cloud','/api/setup','/api/local-ros'];
+    const paths=['/api/connections/credentials',projectId?`/api/projects/${projectId}/agents/setup/codex`:null,'/api/agents/claude','/api/connections/budgets','/api/cloud','/api/setup','/api/local-ros','/api/agents/acp'];
     const values=await Promise.allSettled(paths.map(path=>!path?Promise.resolve(null):path.includes('/agents/setup/')?post<unknown>(path):api<unknown>(path)));
     const failures:Record<string,string>={};
-    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets','cloud','setup','local'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);if(index===4)setCloud(result.value as CloudAccountStatus);if(index===5)setSetup(result.value as SetupStatus);if(index===6)setLocal(result.value as LocalRosStatus);});
+    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets','cloud','setup','local','acp'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);if(index===4)setCloud(result.value as CloudAccountStatus);if(index===5)setSetup(result.value as SetupStatus);if(index===6)setLocal(result.value as LocalRosStatus);if(index===7)setAcp((result.value as {agents:AcpAgentStatus[]}).agents);});
     setErrors(failures);setLoading(false);
   },[projectId,publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -58,7 +63,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const key=(provider:CredentialProvider)=>{const item=credentials.find(entry=>entry.provider===provider);return item?.configured?(item.verified===false?{label:'Check failed',connected:false}:{label:'Key saved',connected:true}):{label:'Not connected',connected:false};};
   const own=(id:SetupAgentId)=>{const agent=setup?.agents.find(item=>item.id===id);return !setup?{label:'',connected:false}:agent?.link||agent?.entry?{label:'Linked',connected:true}:agent?.seenAt?{label:'Used before',connected:true}:agent?.found?{label:'Not linked',connected:false}:{label:'Not found',connected:false};};
   const showAgain=async()=>{try{await api('/api/setup/seen',{method:'DELETE'});window.dispatchEvent(new Event('ros-setup-reset'));}catch(cause){setErrors(current=>({...current,setup:message(cause)}));}};
-  const stateOf=(id:AgentId)=>id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
+  const stateOf=(id:AgentId)=>isAcpAgent(id)?acpState(acp.find(item=>item.id===id)):id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?key('claude'):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
   const installedKey=agentItems.filter(item=>stateOf(item.id).connected).map(item=>item.id).join(',');
   useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as AgentId[]:[]);},[installedKey,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
@@ -68,6 +73,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     claude:()=><KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
     codex:()=><CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>,
     openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
+    ...Object.fromEntries((['gemini','goose','opencode'] as const).map(id=>[id,()=><AcpAgentCard status={acp.find(item=>item.id===id)} onChanged={value=>setAcp(list=>list.map(item=>item.id===value.id?value:item))}/>])) as Record<'gemini'|'goose'|'opencode',()=>ReactNode>,
     'own-claude':()=><OutsideAgents only="claude-code" onChanged={changed}/>,
     'own-codex':()=><OutsideAgents only="codex" onChanged={changed}/>,
     'own-cursor':()=><OutsideAgents only="cursor" onChanged={changed}/>,
@@ -81,7 +87,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
     <h2 className="plugin-section">Connection</h2>
     {cards[current.id]()}
-    <p className="plugins-footnote">Keys stay on the local server. What each spends shows in Settings › Usage.</p>
+    <p className="plugins-footnote">{isAcpAgent(current.id)?'It keeps its own sign-in and model; ros.ai never sees either.':'Keys stay on the local server. What each spends shows in Settings › Usage.'}</p>
   </div>;
   return <div className="plugins-page">
     <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
@@ -94,7 +100,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
 
 /** The left column on the Agents page: its sections and what is connected. */
 export function AgentsSidebar({installed,selected,onSelect}:{installed:AgentId[];selected:AgentId|null;onSelect:(id:AgentId|null)=>void}) {
-  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:id==='own-cursor'?<AgentIcon id="cursor" size={16}/>:id==='own-gemini'?<AgentIcon id="gemini-cli" size={16}/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
+  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:isAcpAgent(id)?<BrandLogo id={acpLogo[id]} size={16}/>:id==='own-cursor'?<AgentIcon id="cursor" size={16}/>:id==='own-gemini'?<AgentIcon id="gemini-cli" size={16}/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
 }
 
 function ClaudeModelChoice({settings,onChanged}:{settings:ClaudeAgentSettings;onChanged:(value:ClaudeAgentSettings)=>void}) {

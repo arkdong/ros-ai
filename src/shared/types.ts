@@ -1,3 +1,4 @@
+import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
 export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
@@ -27,8 +28,8 @@ export type NotionEdit =
   | { kind:'text'; old:string; new:string }
   | { kind:'append'; text:string };
 export type NotionRead = NotionTable | NotionPage;
-/** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
-export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};
+/** An Agent block stands for one assistant turn run by Claude Code, Codex, a model or an ACP agent; its timeline lives with that turn. */
+export type AgentLink = {runtime:'claude'|'codex'|'model'|AcpAgentId; turnId:string};
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 export type NotebookDocument = {sessionId?:string; path:string};
 export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };

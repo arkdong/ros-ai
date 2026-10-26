@@ -2,6 +2,7 @@ import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Square, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
+import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal } from './persistence';
@@ -148,6 +149,8 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
 function HistoryLabel() { return <BookOpen size={13}/>; }
 
 function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'|'steps'} {
+  // An agent on this computer says itself what is missing (installed, signed in, locked down) and where to fix it.
+  if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
   if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
   // A local model that cannot work step by step: the reason names the model and what to change.
   if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};

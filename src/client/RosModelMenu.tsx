@@ -4,6 +4,8 @@ import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { AssistantBackend, AssistantState } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
+import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
+import { acpLogo } from './AcpAgents';
 import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
 import { api, post } from './api';
@@ -39,11 +41,19 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   state: AssistantState | null; detail: ProjectDetail; running: boolean; onRefresh: () => unknown;
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
-  const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false);
+  const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const backend = state?.backend;
-  const agentLabel = backend === 'claude' ? 'Claude Code' : backend === 'codex' ? 'Codex' : null;
+  const agentLabel = backend === 'claude' ? 'Claude Code' : backend === 'codex' ? 'Codex' : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
+  // Gemini CLI, Goose and OpenCode are offered once they are installed on this computer.
+  useEffect(() => {
+    if (!menu) return;
+    let active = true;
+    void api<{ agents: AcpAgentStatus[] }>('/api/agents/acp').then(value => { if (active) setAcp(value.agents); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [menu]);
+  const acpShown = acp.filter(item => item.installed || item.id === backend);
   const label = agentLabel || models.current?.label || models.fallback || 'Choose a model';
   useEffect(() => {
     if (!menu) return;
@@ -69,7 +79,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const link = (action: () => void) => () => { setMenu(false); action(); };
   return <div className="ros-model">
     <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
-      {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
+      {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : isAcpAgent(backend) ? <BrandLogo id={acpLogo[backend]} size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
       <span>{label}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
@@ -82,6 +92,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
         <p>Agents</p>
         <button type="button" role="menuitemradio" aria-checked={backend === 'claude'} onClick={() => void switchTo(() => setBackend('claude'))}><BrandLogo id="claude" size={16}/><span className="ros-menu-label">Claude Code<small>Reads the project folder</small></span>{backend === 'claude' && <Check size={14}/>}</button>
         <button type="button" role="menuitemradio" aria-checked={backend === 'codex'} onClick={() => void switchTo(() => setBackend('codex'))}><BrandLogo id="codex" size={16}/><span className="ros-menu-label">Codex<small>This computer’s sign-in</small></span>{backend === 'codex' && <Check size={14}/>}</button>
+        {acpShown.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void switchTo(() => setBackend(item.id))}><BrandLogo id={acpLogo[item.id]} size={16}/><span className="ros-menu-label">{item.label}<small>{item.blocker ? 'Cannot start · see Agents' : item.checked && !item.checked.ok ? 'Check failed · see Agents' : ACP_AGENTS[item.id].caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
       </div>
       <hr/>
       <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Model &amp; budget</span></button>

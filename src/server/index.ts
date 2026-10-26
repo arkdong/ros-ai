@@ -13,6 +13,7 @@ import { ResearchService } from './research.js';
 import { CodexAgentService } from './codex-agent.js';
 import { ClaudeAgentService } from './claude-agent.js';
 import { ToolLoopAgentService } from './tool-loop-agent.js';
+import { AcpAgentService } from './acp-agent.js';
 import { AssistantService } from './assistant.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { SandboxBudget } from './sandbox-budget.js';
@@ -65,6 +66,7 @@ let assistant:AssistantService|undefined;
 let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
+let acp:AcpAgentService|undefined;
 let cloud:CloudAccount|undefined;
 let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
@@ -88,6 +90,7 @@ async function shutdown() {
     await agent?.shutdown();
     await claude?.shutdown();
     await loop?.shutdown();
+    await acp?.shutdown();
     cloud?.shutdown();
     localRos?.shutdown();
     await execution?.shutdown();
@@ -131,19 +134,21 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
+    // Gemini CLI, Goose and OpenCode on this computer, started for a turn over ACP with only ros.ai's tools.
+    acp=new AcpAgentService(store,execution,experiments,{dataDir,root});
     const plugins = new PluginTokens(dataDir);
     const personal=new PersonalMemory(store,dataDir);
     // One skill library every agent reads; looking skills up on GitHub uses the GitHub plugin's token when there is one.
     const skills=new SkillLibrary(store,dataDir,{githubToken:()=>plugins.token('github')});
     AgentWorkspaceTools.skills=skills;
-    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills);
+    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills,acp);
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
@@ -168,6 +173,7 @@ try {
   server.on('error', async (error) => { console.error(`ros.ai could not start: ${error.message}`); await shutdown(); process.exitCode = 1; });
   server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
     outside?.publish(port);
+    acp?.listen(port);
     console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().catch(error => { console.error(`ros.ai stopped with an error: ${error instanceof Error ? error.message : error}`); process.exitCode = 1; }).finally(() => process.exit()); });

@@ -10,7 +10,7 @@ import './setup.css';
 /** First launch: what ros.ai found on this computer, as rows to connect in one go. Every link is one
  * entry in that tool's own settings; the person can undo each one from Agents. */
 
-const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex' };
+const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
 export function AgentIcon({ id, size = 20 }: { id: AgentId; size?: number }) {
   const brand = brands[id];
