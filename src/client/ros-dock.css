@@ -47,7 +47,8 @@
 @keyframes ros-dock-rise { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translateX(-50%); } }
 .assistant-panel.ros-panel.ros-half { animation: ros-sheet .34s cubic-bezier(.2, .8, .2, 1) both; }
 .assistant-panel.ros-panel.ros-full { animation: ros-panel .3s cubic-bezier(.2, .8, .2, 1) both; }
-.ros-send, .ros-chip-button, .ros-bar-footer .icon-button { transition: background-color .15s ease, color .15s ease, transform .15s ease; }
+/* Hover tints are instant (a fade reads as lag); only the press shrink of Send is animated. */
+.ros-send { transition: transform .12s ease-out; }
 .ros-send:not(:disabled):active { transform: scale(.92); }
 @media (prefers-reduced-motion: reduce) { .ros-progress, .ros-dock, .assistant-panel.ros-panel.ros-half, .assistant-panel.ros-panel.ros-full { animation: none; } }
 .ros-progress-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
