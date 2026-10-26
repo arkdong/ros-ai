@@ -62,16 +62,31 @@
 .ros-bar-footer .ros-mark { margin-right: 4px; }
 .ros-bar-footer .icon-button { width: 28px; height: 28px; color: var(--muted); }
 .ros-footer-spacer { flex: 1; }
-.ros-model { position: relative; min-width: 0; }
+/* When the line is short the labels shrink to an ellipsis, never into each other: the focus chip gives way first, then the model and approval chips;
+   on a narrower bar the approval chip drops to its icon, and on a phone-width bar the controls and Send move to a second line. The ring, the controls and Send keep their size. */
+.ros-bar { container-type: inline-size; }
+.ros-bar-footer > .ros-mark, .ros-bar-footer > .ros-waiting, .ros-bar-footer > .icon-button, .ros-bar-footer > .ros-send { flex-shrink: 0; }
+.ros-model { position: relative; display: flex; flex: 0 1 auto; min-width: 56px; }
 .ros-chip-button {
-  display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 220px; padding: 0 8px; border: 0; border-radius: var(--radius-control);
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; min-width: 0; max-width: 220px; padding: 0 8px; border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--body); font: inherit; font-size: var(--text-xs); cursor: pointer;
 }
-.ros-chip-button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-bar-footer .ros-chip-button { max-width: min(220px, 100%); }
+.ros-chip-button > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-chip-button > :not(span), .ros-context > :not(span) { flex-shrink: 0; }
 .ros-chip-button:hover:not(:disabled), .ros-chip-button[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
 .ros-chip-button:disabled, .single-canvas-shell .ros-chip-button:disabled { cursor: default; color: var(--body); opacity: 1; }
-.ros-context { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--muted); }
+.ros-context { display: inline-flex; flex: 0 1000 auto; align-items: center; gap: 6px; min-width: 28px; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--muted); }
 .ros-context > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ros-context.focused { min-width: 56px; }
+@container (min-width: 548px) { .ros-context, .ros-context.focused { min-width: 96px; } }
+@container (max-width: 547px) { .ros-bar-footer .ros-approval .ros-chip-button > span { display: none; } }
+@container (max-width: 439px) {
+  .ros-bar .ros-bar-footer { flex-wrap: wrap; height: auto; row-gap: 4px; }
+  .ros-bar .ros-context { flex: 1 1 0; max-width: none; }
+  .ros-bar .ros-footer-spacer { flex-basis: 100%; height: 0; }
+  .ros-bar .ros-footer-spacer + * { margin-left: auto; }
+}
 .ros-context.focused { background: var(--canvas); color: var(--body); padding-right: 3px; }
 .ros-context button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
 .ros-context button:hover { color: var(--ink); background: var(--line-soft); }
