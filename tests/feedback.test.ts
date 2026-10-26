@@ -52,7 +52,7 @@ test('the local feedback route reads only this computer, then passes a note on t
     const response = await send({ kind: 'idea', message: '  Drop a PDF on Ros  ', details: 'ros.ai 0.1.0 · Chrome 141' });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { email: 'me@example.com' });
-    assert.deepEqual(received.at(-1), { authorization: 'Bearer session-token-0123456789', body: { kind: 'idea', message: 'Drop a PDF on Ros', details: 'ros.ai 0.1.0 · Chrome 141' } });
+    assert.deepEqual(received.at(-1), { authorization: 'Bearer session-token-0123456789', body: { kind: 'idea', message: 'Drop a PDF on Ros', details: 'ros.ai 0.1.0 · Chrome 141', email: 'me@example.com' } });
 
     assert.equal((await send({ kind: 'bug', message: 'Hi' })).status, 400);
     assert.equal((await send({ kind: 'idea', message: 'Hi', email: 'not an address' })).status, 400);
