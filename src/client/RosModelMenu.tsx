@@ -7,6 +7,7 @@ import type { ProjectDetail } from '../shared/types';
 import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
 import { api, post } from './api';
+import { openOnPress } from './press';
 
 const settingsChanged = 'ros-ai-model-settings';
 
@@ -67,7 +68,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   }, []);
   const link = (action: () => void) => () => { setMenu(false); action(); };
   return <div className="ros-model">
-    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} onClick={() => setMenu(!menu)}>
+    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
       {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
       <span>{label}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
@@ -124,7 +125,7 @@ export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError
   };
   const Icon = current.icon;
   return <div className="ros-model ros-approval">
-    <button ref={trigger} type="button" className={`ros-chip-button mode-${policy.mode}`} aria-haspopup="menu" aria-expanded={menu} disabled={saving} title={running ? 'Applies to the next step' : 'How Ros’s actions are approved'} onClick={() => setMenu(!menu)}>
+    <button ref={trigger} type="button" className={`ros-chip-button mode-${policy.mode}`} aria-haspopup="menu" aria-expanded={menu} disabled={saving} title={running ? 'Applies to the next step' : 'How Ros’s actions are approved'} {...openOnPress(() => setMenu(value => !value))}>
       <Icon size={13}/><span>{current.label}</span>{saving ? <LoaderCircle size={11} className="spin"/> : <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="How Ros’s actions are approved">

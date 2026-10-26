@@ -8,7 +8,7 @@ type RailItem = { id: string; pages: RailPage[]; label: string; subtitle: string
 const items: RailItem[] = [
   { id: 'canvas', pages: ['canvas'], label: 'Canvas', subtitle: '', icon: LayoutDashboard },
   { id: 'agents', pages: ['model'], label: 'Agents', subtitle: 'Every agent that can work in your projects, connected the same way', icon: Bot },
-  { id: 'plugins', pages: ['plugins'], label: 'Plugins', subtitle: 'Connect plugins so your agents work across your tools', icon: Plug },
+  { id: 'plugins', pages: ['plugins'], label: 'Plugins and skills', subtitle: 'Connect plugins so your agents work across your tools, and keep the skills they follow', icon: Plug },
   { id: 'settings', pages: ['usage', 'balances', 'general', 'resources', 'memory'], label: 'Settings', subtitle: '', icon: Settings2 },
 ];
 

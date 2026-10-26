@@ -1,0 +1,78 @@
+/* Skills: the list, browsing public sources, one skill's page, the Add dialog and the / menu of Ros's composers.
+   Rows, sections and the sidebar come from plugins.css. */
+.skills-intro { font-size: var(--text-sm); color: var(--muted); line-height: 1.5; margin: -2px 0 8px; }
+.skills-intro a { display: inline-flex; align-items: center; gap: 3px; color: var(--body); }
+.skills-empty { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--muted); padding: 8px 8px 4px; }
+
+/* Browse: source tabs and a search on one line. */
+.skill-browse-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.skill-sources, .skill-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--line-soft); }
+.skill-sources button, .skill-tabs button { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; }
+.skill-sources button:hover, .skill-tabs button:hover { color: var(--ink); }
+.skill-sources button.active, .skill-tabs button.active { background: var(--paper); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.skill-search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--muted); }
+.skill-search input, .single-canvas-shell .skill-search input { flex: 1; min-width: 0; height: 30px; margin: 0; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; font: inherit; font-size: var(--text-sm); color: var(--ink); }
+.skill-browse-foot { display: flex; gap: 16px; margin-top: 8px; padding: 0 8px; }
+.skill-browse-foot .text-button { font-size: var(--text-sm); padding: 0; }
+
+/* One skill's page. */
+.plugin-hero > .skill-hero-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.skill-toggle { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); font: inherit; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+.skill-toggle:hover { background: var(--canvas); }
+.skill-more { position: relative; }
+.skill-menu-more { min-width: 200px; }
+.skill-menu-more button { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; color: var(--ink); }
+.skill-menu-more button:hover { background: var(--canvas); }
+.skill-menu-more button.danger { color: var(--fail); }
+.plugin-hero .skill-description, .single-canvas-shell .plugin-hero .skill-description { display: block; width: 100%; box-sizing: border-box; min-height: 0; margin: 2px 0 0 -6px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; outline: 0; box-shadow: none; resize: none; background: transparent; font: inherit; font-size: 14px; line-height: 1.5; color: var(--muted); field-sizing: content; }
+.plugin-hero .skill-description:hover { border-color: var(--line-soft); }
+.plugin-hero .skill-description:focus { border-color: var(--line); background: var(--paper); color: var(--ink); }
+.skill-call { font-size: var(--text-sm); color: var(--muted); margin: 0 0 4px; }
+.skill-call code, .skill-review code { font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--line-soft); color: var(--ink); }
+.skill-instructions { min-height: 120px; padding: 4px 0; font-size: 14px; color: var(--ink); }
+.skill-files { list-style: none; margin: 0; padding: 0; }
+.skill-files button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+.skill-files button:hover { background: #ececec; }
+.skill-files button > svg { flex-shrink: 0; color: var(--muted); }
+.skill-files span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+.skill-files small { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted); }
+.skill-source { font-size: 14px; line-height: 1.6; color: var(--body); overflow-wrap: anywhere; }
+.skill-source .text-button { padding: 0; font-size: 14px; }
+.skill-warning { display: flex; align-items: flex-start; gap: 7px; margin: 8px 0 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
+.skill-warning svg { flex-shrink: 0; margin-top: 3px; color: var(--wait); }
+
+/* The Add dialog. */
+.modal.skill-modal { width: 640px; }
+.skill-modal .skill-tabs { margin-bottom: 4px; }
+.skill-modal input:not([type="checkbox"]):not([type="file"]), .skill-modal textarea { width: 100%; box-sizing: border-box; }
+.skill-modal textarea { resize: vertical; line-height: 1.5; }
+.skill-modal .skill-code, .skill-source-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.skill-modal .skill-call { margin-top: 6px; }
+.skill-drop { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; min-height: 120px; border: 1px dashed #cfcfcf; border-radius: 12px; background: var(--canvas); font-size: 14px; color: var(--body); cursor: pointer; }
+.skill-drop:hover { border-color: #b5b5b5; color: var(--ink); }
+.skill-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.skill-choices { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow-y: auto; }
+.skill-review { padding: 14px 0; border-top: 1px solid var(--line-soft); }
+.skill-review:first-of-type { border-top: 0; padding-top: 0; }
+.skill-review header { display: flex; align-items: center; gap: 12px; }
+.skill-review header input[type="checkbox"] { width: 15px; height: 15px; flex: none; margin: 0; padding: 0; accent-color: var(--ink); cursor: pointer; }
+.skill-review header .plugin-row-mark { width: 36px; height: 36px; }
+.skill-review header div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.skill-review header strong { font-size: 15px; font-weight: 600; color: var(--ink); }
+.skill-review header code { align-self: flex-start; }
+.skill-review > p { font-size: 14px; line-height: 1.55; color: var(--body); margin: 10px 0 0; }
+.skill-review dl { display: grid; grid-template-columns: 70px 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: var(--text-sm); }
+.skill-review dt { color: var(--muted); }
+.skill-review dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.skill-review .skill-note { font-size: var(--text-sm); color: var(--ink); margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--canvas); }
+.skill-review details { margin-top: 12px; }
+.skill-review summary { font-size: var(--text-sm); color: var(--muted); cursor: pointer; }
+.skill-source-text { max-height: 280px; overflow: auto; margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--canvas); color: var(--ink); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-source-text.tall { max-height: 60vh; }
+
+/* The / menu above Ros's composer: the skills that are on, filtered as you type. */
+.ros-bar, .assistant-panel.ros-panel .assistant-composer.ros-composer { position: relative; }
+.ros-model-menu.skill-menu { left: 0; right: 0; width: auto; max-height: 320px; bottom: calc(100% + 8px); }
+.ros-model-menu.skill-menu button.active { background: var(--canvas); }
+.ros-model-menu.skill-menu .ros-menu-label { white-space: nowrap; }
+.ros-model-menu.skill-menu .ros-menu-label small { overflow: hidden; text-overflow: ellipsis; }

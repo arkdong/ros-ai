@@ -1,9 +1,10 @@
-import { BookOpen, BookOpenText, Bot, ExternalLink, FileText, FolderClosed, GitBranch, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
+import { BookOpen, BookOpenText, BookText, Bot, ExternalLink, FileText, FolderClosed, GitBranch, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AssistantTurn } from '../shared/assistant';
 import type { AgentStep } from '../shared/agent-runtime';
 import type { Artifact, CanvasNode, ProjectDetail } from '../shared/types';
 import { agentDirections, type AgentDirection } from '../shared/agent-work';
+import { skillTitle } from '../shared/skills';
 import { RichText, time } from './Content';
 import './agent-view.css';
 
@@ -50,11 +51,18 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
   if (step.tool === 'ros_propose_groups') return step.outcome === 'requested' ? 'Grouping the findings by theme' : step.outcome === 'waiting' ? `Proposed ${step.size ? plural(step.size, 'theme') : 'a grouping'} · waiting for your review` : step.outcome === 'declined' ? 'Grouping declined' : step.outcome === 'failed' ? 'Grouping failed' : step.size ? `Grouped the findings into ${plural(step.size, 'theme')}` : 'Set weak results aside';
   if (step.tool === 'ros_check_claims') return step.outcome === 'requested' ? `Planning a check of ${count('claim')}` : step.outcome === 'waiting' ? `Planned a check of ${count('claim')} · waiting for your approval` : step.outcome === 'declined' ? 'Source check declined' : step.outcome === 'failed' ? 'Source check failed' : `Searched the web for ${count('claim')}`;
   if (step.tool === 'ros_write_verdicts') return step.outcome === 'failed' ? 'Could not mark the claims' : step.outcome === 'requested' ? `Marking ${count('claim')}` : `Marked ${count('claim')}`;
+  if (step.tool === 'ros_use_skill') {
+    // The target is the skill's name, or "name/path" when the agent read one of the skill's files.
+    const [name, ...path] = (step.target ?? '').split('/'), skill = name ? `the ${skillTitle(name)} skill` : '', file = path.join('/');
+    if (!skill) return step.outcome === 'failed' ? 'Could not list your skills' : step.outcome === 'requested' ? 'Listing your skills' : 'Listed your skills';
+    if (file) return step.outcome === 'failed' ? `Could not read ${file} from ${skill}` : step.outcome === 'requested' ? `Reading ${file} from ${skill}` : `Read ${file} from ${skill}`;
+    return step.outcome === 'failed' ? `Could not read ${skill}` : step.outcome === 'requested' ? `Reading ${skill}` : `Follows ${skill}`;
+  }
   if (step.tool === 'ros_propose_canvas') return step.outcome === 'waiting' ? 'Proposed canvas changes · waiting for your review' : step.outcome === 'declined' ? 'Canvas changes declined' : step.outcome === 'failed' ? 'Canvas changes failed' : step.outcome === 'requested' ? 'Proposing canvas changes' : 'Changed the canvas';
   const labels: Record<string, string> = { ros_read_selected: 'Read the selected blocks', ros_propose_analysis: 'Proposed analysis code', ros_propose_report: 'Proposed a report', ros_propose_reuse: 'Proposed reusing a result' };
   return labels[step.tool] ?? title(step.target) ?? step.tool;
 }
-const icons: Record<string, ReactNode> = { ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_check_claims: <SearchIcon size={13}/>, ros_write_verdicts: <Quote size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/> };
+const icons: Record<string, ReactNode> = { ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_check_claims: <SearchIcon size={13}/>, ros_write_verdicts: <Quote size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/> };
 
 type Props = { node: CanvasNode; turn?: AssistantTurn; detail: ProjectDetail; onOpenNode: (id: string) => void; onReveal: (id: string) => void; onOpenArtifact: (artifact: Artifact) => void; onReview: (proposalId: string) => void };
 /** One agent's turn: what it set out to do, each step with the agent's reason and what came of it, and its answer. */
