@@ -359,6 +359,7 @@ test('Every assistant turn carries the skills: agents get the list and /name cal
     assistant.start(project.id, { message: '/tidy-notes these ones' });
     await finished();
     assert.match(agentRequests[1]!.preferences!, /<skill_content name="tidy-notes">\nMerge duplicates, then sort by date\./u);
+    assert.ok(assistant.state(project.id).turns.at(-1)!.events.some(event => event.message === 'Follows the Tidy notes skill.'));
 
     assistant.setBackend(project.id, { backend: 'provider' });
     assistant.start(project.id, { message: 'No skill here' });
@@ -369,6 +370,7 @@ test('Every assistant turn carries the skills: agents get the list and /name cal
     const system = String(requests.at(-1)!.messages[0]!.content);
     assert.match(system, /<skill_content name="tidy-notes">\nMerge duplicates, then sort by date\.\n<\/skill_content>/u);
     assert.doesNotMatch(system, /available_skills/u);
+    assert.ok(assistant.state(project.id).turns.at(-1)!.events.some(event => event.message === 'Follows the Tidy notes skill.'));
   } finally { await assistant.shutdown(); await execution.shutdown(); await experiments.shutdown(); f.close(); }
 });
 

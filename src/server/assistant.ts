@@ -246,6 +246,11 @@ export class AssistantService {
     const parts=[this.personal?.prompt(),this.skills?.prompt(message,small?{catalogue:3000,called:8000}:undefined)].filter((part):part is string=>Boolean(part));
     return parts.length?parts.join('\n\n'):undefined;
   }
+  /** A request that starts with /name says in its steps which skills it follows. */
+  private followSkills(projectId:string,turnId:string,message:string){
+    const titles=this.skills?.calledTitles(message)??[];
+    if(titles.length)this.event(projectId,turnId,`Follows ${titles.length===1?`the ${titles[0]} skill`:`the ${titles.slice(0,-1).join(', ')} and ${titles.at(-1)} skills`}.`);
+  }
   private async drive(projectId:string,turnId:string,signal:AbortSignal){
     try{
       let turn=this.getTurn(projectId,turnId);
@@ -257,6 +262,7 @@ export class AssistantService {
         const detail=this.store.detail(projectId),nodeIds=turn.focus.nodeId?[turn.focus.nodeId]:[];
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
         this.event(projectId,turnId,claude?'Starting Claude Code with the API key from the Model page.':loop?`Starting the agent on ${this.loop!.label(selection)}.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
+        this.followSkills(projectId,turnId,turn.userMessage);
         const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.store.addMessage(projectId,null,'assistant',result.reply);
@@ -265,6 +271,7 @@ export class AssistantService {
       if(turn.source==='local-records'){
         const local=this.groundedLocal(turn);this.store.addMessage(projectId,null,'assistant',local.reply);this.save({...turn,...local,status:'completed'});return;
       }
+      this.followSkills(projectId,turnId,turn.userMessage);
       // A second step may inspect freshly captured searches. No unbounded loop.
       for(let step=0;step<2;step++){
         if(signal.aborted)throw new Error('Assistant stopped.');

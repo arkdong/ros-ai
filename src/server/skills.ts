@@ -504,6 +504,8 @@ export class SkillLibrary {
   private usable() { const records = this.records(); return this.entries().filter(entry => entry.parsed && (records[entry.name]?.enabled ?? true)) as (Entry & { parsed: ParsedSkill })[]; }
   /** Whether any skill is on, so the skill tool is offered only when it can do something. */
   any(): boolean { return this.usable().length > 0; }
+  /** Titles of the skills that are on among those the person called with /name, for the turn's steps. */
+  calledTitles(message: string): string[] { const usable = new Set(this.usable().map(entry => entry.name)); return calledSkills(message).filter(name => usable.has(name)).map(skillTitle); }
   /** Names for the / menu of the Ros bar. */
   menu(): { name: string; title: string; description: string }[] { return this.usable().filter(entry => entry.parsed.menu).map(entry => ({ name: entry.name, title: skillTitle(entry.name), description: entry.parsed.description })); }
 
