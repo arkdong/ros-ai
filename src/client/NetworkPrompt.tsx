@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Check, Globe, LoaderCircle, ShieldCheck, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, Globe, LoaderCircle, ShieldCheck, X } from 'lucide-react';
 import { post } from './api';
+import { openOnPress } from './press';
 import './network-prompt.css';
 
 type NetworkRequest = { id: string; host: string; projectId: string | null; source: string; at: string };
@@ -28,6 +29,14 @@ export function NetworkPrompt({ publicDemo }: { publicDemo: boolean }) {
   // "Ready" says so briefly, then goes.
   useEffect(() => { if (setup?.status !== 'ready') return; const timer = window.setTimeout(() => setSetup(null), 6000); return () => window.clearTimeout(timer); }, [setup]);
   const request = requests[0];
+  const allow = useRef<HTMLButtonElement>(null), [more, setMore] = useState(false);
+  // A new request takes the keyboard, so Enter allows it once and Esc denies it, unless you are typing somewhere.
+  useEffect(() => {
+    setMore(false);
+    if (!request) return;
+    const typing = document.activeElement instanceof HTMLElement && (document.activeElement.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName));
+    if (!typing) allow.current?.focus();
+  }, [request?.id]);
   if (!request && !setup) return null;
   const answer = async (choice: 'once' | 'always' | 'deny') => {
     if (!request) return;
@@ -55,12 +64,15 @@ export function NetworkPrompt({ publicDemo }: { publicDemo: boolean }) {
         </ul>}
       </>}
     </section>}
-    {request && <section className="python-notice" role="alertdialog" aria-label={`Allow ${request.host}?`}>
+    {request && <section className="python-notice" role="alertdialog" aria-label={`Allow ${request.host}?`} onKeyDown={event => { if (event.key === 'Escape' && !busy) { event.preventDefault(); event.stopPropagation(); if (more) setMore(false); else void answer('deny'); } }}>
       <div className="python-notice-text"><Globe size={16}/><div><strong>Allow {request.host}?</strong><span>{request.source} wants to reach this site.{requests.length > 1 ? ` ${requests.length - 1} more waiting.` : ''}</span></div></div>
       <div className="python-notice-actions">
-        <button className="small primary" disabled={busy} onClick={() => void answer('once')}>Allow once</button>
-        {request.projectId && <button className="small secondary" disabled={busy} onClick={() => void answer('always')}>Always for this project</button>}
-        <button className="small text-button" disabled={busy} onClick={() => void answer('deny')}>Deny</button>
+        <button className="small text-button" disabled={busy} onClick={() => void answer('deny')}>Deny <kbd>Esc</kbd></button>
+        <span className="python-notice-allow">
+          <button ref={allow} className="small primary" disabled={busy} onClick={() => void answer('once')}>Allow once <kbd>⏎</kbd></button>
+          {request.projectId && <button className="small primary python-notice-more" aria-label="More ways to allow" aria-haspopup="menu" aria-expanded={more} disabled={busy} {...openOnPress(() => setMore(value => !value))}><ChevronDown size={13}/></button>}
+          {more && request.projectId && <span className="python-notice-menu" role="menu"><button role="menuitem" className="small" disabled={busy} onClick={() => { setMore(false); void answer('always'); }}>Always for this project</button></span>}
+        </span>
       </div>
     </section>}
   </div>;

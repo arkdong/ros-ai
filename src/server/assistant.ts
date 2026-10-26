@@ -10,7 +10,7 @@ import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
 import type {ModelMessage,Mutation,Run} from '../shared/types.js';
-import type {AssistantBackend,AssistantAction,AssistantFocus,AssistantMemoryEntry,AssistantReference,AssistantState,AssistantTurn,OutlineEntry,ResearchMemory} from '../shared/assistant.js';
+import type {AssistantBackend,AssistantAction,AssistantFocus,AssistantLive,AssistantMemoryEntry,AssistantReference,AssistantState,AssistantTurn,OutlineEntry,ResearchMemory} from '../shared/assistant.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
 import {memoryLineSchema,type PersonalMemory} from './personal-memory.js';
 import type {ModelSelection} from '../shared/model-settings.js';
@@ -54,7 +54,17 @@ export class AssistantService {
   }
   private turns(projectId:string){return this.store.records<SavedTurn>('assistant-turn',projectId);}
   private getTurn(projectId:string,turnId:string){const turn=this.store.record<SavedTurn>('assistant-turn',turnId);if(!turn||turn.projectId!==projectId)throw new StoreError('Assistant turn not found.',404);this.store.getProject(projectId);return turn;}
-  private save(turn:SavedTurn){return this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});}
+  private readonly listeners=new Map<string,Set<(live:AssistantLive)=>void>>();
+  private readonly pending=new Map<string,ReturnType<typeof setTimeout>>();
+  private save(turn:SavedTurn){const saved=this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});this.publish(turn);return saved;}
+  /** Running turns are sent at most every 40 ms (the newest text wins); a turn that ends is sent at once. */
+  private publish(turn:SavedTurn){
+    if(!this.listeners.get(turn.projectId)?.size)return;
+    const send=()=>{this.pending.delete(turn.id);const current=this.store.record<SavedTurn>('assistant-turn',turn.id);if(!current)return;const live:AssistantLive={turnId:current.id,reply:current.reply,status:current.status,step:current.events.at(-1)?.message};for(const listener of this.listeners.get(current.projectId)??[])listener(live);};
+    if(turn.status!=='running'){clearTimeout(this.pending.get(turn.id));send();return;}
+    if(!this.pending.has(turn.id))this.pending.set(turn.id,setTimeout(send,40));
+  }
+  subscribe(projectId:string,listener:(live:AssistantLive)=>void){const set=this.listeners.get(projectId)??new Set();set.add(listener);this.listeners.set(projectId,set);return()=>{set.delete(listener);if(!set.size)this.listeners.delete(projectId);};}
   private event(projectId:string,turnId:string,message:string,kind?:'thought'|'tool',step?:AgentStep){const turn=this.getTurn(projectId,turnId);turn.events.push({at:now(),message,...(kind?{kind}:{}),...(step?{step}:{})});this.save(turn);}
   private memory(projectId:string):ResearchMemory {
     const saved=this.store.record<ResearchMemory>('research-memory',projectId);if(saved)return saved;
@@ -401,6 +411,14 @@ export class AssistantService {
 
 export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.get('/api/projects/:id/assistant',(req,res)=>res.json(service.state(String(req.params.id))));
+  app.get('/api/projects/:id/assistant/events',(req,res)=>{
+    const id=String(req.params.id);service.state(id);
+    res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store',Connection:'keep-alive','X-Accel-Buffering':'no'});
+    res.write('retry: 2000\n\n');
+    const unsubscribe=service.subscribe(id,live=>res.write(`data: ${JSON.stringify(live)}\n\n`));
+    const keepAlive=setInterval(()=>res.write(': keep-alive\n\n'),25_000);
+    req.on('close',()=>{clearInterval(keepAlive);unsubscribe();});
+  });
   app.post('/api/projects/:id/assistant/backend',(req,res)=>res.json(service.setBackend(String(req.params.id),req.body)));
   app.post('/api/projects/:id/assistant/focus',(req,res)=>res.json(service.setFocus(String(req.params.id),focusSchema.parse(req.body))));
   app.post('/api/projects/:id/assistant/messages',(req,res)=>res.status(202).json(service.start(String(req.params.id),req.body)));
