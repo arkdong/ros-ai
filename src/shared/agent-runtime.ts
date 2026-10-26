@@ -17,9 +17,9 @@ export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'ap
 /** Shared by both agent transports, so Claude Code and Codex timelines read the same. */
 export function agentStep(call: number, tool: string, input: unknown, result?: { value?: unknown; failed?: boolean }): AgentStep {
   if (!result) {
-    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown };
+    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown; claims?: unknown; verdicts?: unknown };
     const target = [args.resultNodeId, args.nodeId, args.targetNodeId].find(value => typeof value === 'string') as string | undefined;
-    const list = [args.directions, args.pages, args.findings, args.themes].find(Array.isArray);
+    const list = [args.directions, args.pages, args.findings, args.themes, args.claims, args.verdicts].find(Array.isArray);
     return { call, tool, outcome: 'requested', ...(target ? { target } : {}), ...(list ? { size: list.length } : {}) };
   }
   const value = (result.value && typeof result.value === 'object' ? result.value : {}) as { status?: unknown; count?: unknown; items?: unknown; rejected?: unknown; action?: { status?: unknown; proposalId?: unknown } };

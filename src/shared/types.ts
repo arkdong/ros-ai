@@ -29,6 +29,11 @@ export type NotionEdit =
 export type NotionRead = NotionTable | NotionPage;
 /** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
 export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};
+/** What an agent found when it checked a block's claims on the web: backed or contradicted by a quoted page,
+ * no source found, or not judged yet. `textHash` is the block text it checked, so a later edit shows. */
+export type ClaimVerdict = 'backed'|'contradicted'|'unsupported'|'open';
+export type CheckedClaim = { text:string; verdict:ClaimVerdict; note?:string; quote?:string; source?:{ title:string; url?:string } };
+export type SourceCheck = { checkedAt:string; agentNodeId:string; textHash:string; claims:CheckedClaim[] };
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 export type NotebookDocument = {sessionId?:string; path:string};
 export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };
@@ -37,7 +42,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; notion?:NotionView; file?:FileView; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; check?:SourceCheck; notion?:NotionView; file?:FileView; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };

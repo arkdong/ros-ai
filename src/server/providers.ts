@@ -23,9 +23,11 @@ export interface ModelAdapter {
 export type SearchResult = { title:string; url:string; content:string; locator:string };
 export type SearchResponse = { results:SearchResult[]; credits:number|null; requestId:string|null };
 export type ExtractResponse = { pages:{url:string;content:string;locator:string}[]; failed:string[]; credits:number|null; requestId:string|null };
+/** Basic search costs 1 credit and returns each page's summary; advanced costs 2 and returns the passages that best match the query. */
+export type SearchDepth = 'basic'|'advanced';
 export interface SearchAdapter {
   readonly configured:boolean;
-  search(query:string,signal:AbortSignal):Promise<SearchResponse>;
+  search(query:string,signal:AbortSignal,depth?:SearchDepth):Promise<SearchResponse>;
   /** The full text of pages a search found. */
   extract?(urls:string[],signal:AbortSignal):Promise<ExtractResponse>;
 }
@@ -173,6 +175,9 @@ export class NebiusAdapter implements ModelAdapter {
 
 export const TAVILY_CREDIT_USD = 0.008;
 export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
+// Checking a claim needs the page's own words: advanced search returns up to three verbatim passages per page.
+export const CHECK_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One user-approved advanced web search for checking a claim. Captured passages of each page, not full documents.',configuration:{...SEARCH_SCHEMA.configuration,search_depth:'advanced',chunks_per_source:3}};
+export const SEARCH_CREDITS:Record<SearchDepth,number> = {basic:1,advanced:2};
 // Basic extract costs 1 credit for every 5 pages read. A page keeps at most PAGE_CHARACTERS.
 export const EXTRACT_PAGES_PER_CREDIT = 5, PAGE_CHARACTERS = 50_000;
 export const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
@@ -197,9 +202,9 @@ export class TavilyAdapter implements SearchAdapter {
     if (!this.configured) throw new Error('Set TAVILY_API_KEY in the server-side .env.local, then restart; model-only work is available without search.');
     return this.key ?? process.env.TAVILY_API_KEY ?? '';
   }
-  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
-    const key = this.credential();
-    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...SEARCH_SCHEMA.configuration}),signal});
+  async search(query:string,signal:AbortSignal,depth:SearchDepth='basic'):Promise<SearchResponse> {
+    const key = this.credential(), configuration = depth === 'advanced' ? CHECK_SEARCH_SCHEMA.configuration : SEARCH_SCHEMA.configuration;
+    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
     return {results:result.results.slice(0,3).map((source:any,index:number)=>{
       if (typeof source.content !== 'string' || typeof source.url !== 'string') throw new Error('Search provider returned a malformed source.');

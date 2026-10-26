@@ -14,7 +14,7 @@ import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObject } from './response-normalization.js';
-import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
+import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, CHECK_SEARCH_SCHEMA, SEARCH_CREDITS, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth } from './providers.js';
 
 const now = () => new Date().toISOString();
 function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
@@ -336,11 +336,12 @@ export class ExecutionService {
     return this.searchRun(projectId,nodeId,query,signal,turnId,true);
   }
   /** One Tavily search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
-   * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes. */
-  agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
-    return this.searchRun(projectId,nodeId,query,signal,turnId,false);
+   * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes.
+   * A claim check searches in depth, for passages it can quote. */
+  agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,depth:SearchDepth='basic'):Promise<Run>{
+    return this.searchRun(projectId,nodeId,query,signal,turnId,false,depth);
   }
-  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean):Promise<Run>{
+  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean,depth:SearchDepth='basic'):Promise<Run>{
     this.admitWork(false);
     this.checkSignal(signal);
     if(!this.search.configured||!this.cloudAllowed('tavily'))throw new Error('Tavily search has no configured remaining authorization.');
@@ -348,7 +349,7 @@ export class ExecutionService {
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
     if(lock&&this.chats.has(projectId))throw new Error('The project assistant is already responding.');
-    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-search',modelVersion:null,configuration:{purpose:lock?'assistant-search':'agent-search',assistantTurnId:turnId,search:SEARCH_SCHEMA.configuration},tools:[SEARCH_SCHEMA],events:[],artifactIds:[]});
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:`${depth}-search`,modelVersion:null,configuration:{purpose:lock?'assistant-search':depth==='advanced'?'agent-claim-check':'agent-search',assistantTurnId:turnId,search:(depth==='advanced'?CHECK_SEARCH_SCHEMA:SEARCH_SCHEMA).configuration},tools:[depth==='advanced'?CHECK_SEARCH_SCHEMA:SEARCH_SCHEMA],events:[],artifactIds:[]});
     const controller=new AbortController();if(lock)this.chats.set(projectId,controller);
     const active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combinedSignal=AbortSignal.any([signal,this.signal(controller)]);
@@ -398,14 +399,15 @@ export class ExecutionService {
   }
   private async performAssistantSearch(run:Run,signal:AbortSignal):Promise<Run>{
     const {projectId,nodeId,request:query}=run,turnId=run.configuration.assistantTurnId;
+    const depth:SearchDepth=run.model==='advanced-search'?'advanced':'basic',credits=SEARCH_CREDITS[depth],amountUsd=credits*TAVILY_CREDIT_USD;
     let reservation:UsageRecord|undefined;
     try{
       this.checkSignal(signal);
-      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:TAVILY_CREDIT_USD});return this.reserveSearch('Assistant source discovery','Continued cumulative Tavily allowance: one basic search, 1 credit at $0.008 PAYG upper bound.',run.id,{query,assistantTurnId:turnId});});
-      const response=await abortable(this.search.search(query,signal),signal);this.checkSignal(signal);
+      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:amountUsd});return this.reserveSearch(depth==='advanced'?'Agent claim check':'Assistant source discovery',`Continued cumulative Tavily allowance: one ${depth} search, ${credits} credit${credits===1?'':'s'} at $0.008 PAYG upper bound.`,run.id,{query,assistantTurnId:turnId},amountUsd);});
+      const response=await abortable(this.search.search(query,signal,depth),signal);this.checkSignal(signal);
       this.store.updateUsage(reservation.id,{status:response.credits===null?'uncertain':'settled',estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,response,assistantTurnId:turnId}});
       const artifacts=response.results.map((source,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`S${index+1}`,capture:'search-snippet',...source}));
-      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD},usage:response});
+      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:amountUsd,estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD},usage:response});
     }catch(error){
       if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
       // cancelRun/shutdown have already saved their terminal state and event.
