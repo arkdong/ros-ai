@@ -16,6 +16,8 @@ import { RememberCard } from './MemoryPage';
 import type { PersonalMemoryState } from '../shared/personal-memory';
 import { AssistantStructurePreview, proposalStructurePreview } from './AssistantStructurePreview';
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
+import { useSmoothText } from './live-reply';
+import { useSkillMenu } from './SkillMenu';
 import './assistant-compact.css';
 
 /** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
@@ -31,10 +33,13 @@ type Props = {
   onInspectAction: (action: AssistantAction) => void;
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
+  /** Opens the Skills page from the / menu. */
+  onSkills?: () => void;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills }: Props) {
   const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
+  const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
   const [preparedNotice, setPreparedNotice] = useState('');
@@ -85,7 +90,10 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     const attempt:Submission={message:message.trim(),at:new Date().toISOString(),status:'pending'};rememberSubmission(attempt);
     try{if(await onSend(attempt.message)){setMessage('');rememberSubmission(null);}else rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}
     catch(cause){const error=cause instanceof Error?cause.message:String(cause);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
+    textarea.current?.focus();
   };
+  // Stop, by button or Esc, leaves the cursor in the box for the next question.
+  const stop = () => { if (active) void onCancel(active.id); textarea.current?.focus(); };
   const usePrompt = (value: string) => { setMessage(value); textarea.current?.focus(); };
   const openAnswers = (turnId: string, questions: AssistantClarificationQuestion[]) => {
     if (!questions.length || busy || submission?.status === 'pending') return;
@@ -120,7 +128,8 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
-      <textarea id="assistant-message" ref={textarea} data-testid="project-message" value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
+      {skills.menu}
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } else if (event.key === 'Escape' && active) { event.preventDefault(); stop(); } }}/>
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
@@ -129,7 +138,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
-        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
+        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop (Esc)" onClick={stop}><Square size={10} fill="currentColor"/></button>
           : <button className="ros-send" data-testid="send-project-message" aria-label="Send to Ros" title={blocker?.summary||'Send to Ros'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
@@ -158,7 +167,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectActi
   const outside = turn.source === 'outside-agent';
   // Admission failures retain one persistent alert. The stored reply/error
   // remain intact; an identical failure should not appear as two responses.
-  const reply = turn.reply.trim() === turn.error?.trim() ? '' : turn.reply;
+  const reply = useSmoothText(turn.reply.trim() === turn.error?.trim() ? '' : turn.reply, turn.status === 'running');
   const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable/i.test(reply);
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.

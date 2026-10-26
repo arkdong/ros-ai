@@ -4,6 +4,7 @@ import type { ProjectDetail } from '../shared/types';
 import { modelMaker, resolveModelSetting, type ModelSelection, type ModelSettingsResponse } from '../shared/model-settings';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
 import { api } from './api';
+import { openOnPress } from './press';
 import './ModelPicker.css';
 
 const settingsChanged = 'ros-ai-model-settings';
@@ -78,7 +79,7 @@ export function ModelSettings({ detail, nodeId, readOnly = false, compact = fals
   };
   const maker = model?.maker ?? modelMaker(selection?.model ?? '',selection?.provider);
   return <section ref={root} className={`model-settings model-picker${compact ? ' compact' : ''}`} aria-label={nodeId ? 'Block reasoning model' : 'Project reasoning model'} onBlurCapture={event=>{if(event.relatedTarget&&!event.currentTarget.contains(event.relatedTarget as globalThis.Node))setOpen(false);}}>
-    <button ref={trigger} type="button" className="model-picker-trigger" role="combobox" aria-label={selection&&provider?`Choose model: ${maker.label} ${model?.label||selection.model} via ${via(provider.label,provider.id)}`:'Choose reasoning model'} aria-haspopup="listbox" aria-expanded={open} aria-controls={menuId} disabled={!settings||busy} onClick={()=>open?close():show()} onKeyDown={event=>{if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();show(event.key==='Home'?0:event.key==='End'?count-1:selectedIndex);}else if(event.key==='Escape'&&open){event.preventDefault();close();}}}>
+    <button ref={trigger} type="button" className="model-picker-trigger" role="combobox" aria-label={selection&&provider?`Choose model: ${maker.label} ${model?.label||selection.model} via ${via(provider.label,provider.id)}`:'Choose reasoning model'} aria-haspopup="listbox" aria-expanded={open} aria-controls={menuId} disabled={!settings||busy} {...openOnPress(()=>open?close():show())} onKeyDown={event=>{if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();show(event.key==='Home'?0:event.key==='End'?count-1:selectedIndex);}else if(event.key==='Escape'&&open){event.preventDefault();close();}}}>
       {selection?<><ModelMakerSymbol maker={maker}/><span className="model-picker-current"><strong>{model?.label||selection.model}</strong><small>{provider?provider.destination==='local-unverified'?'Local endpoint · unverified':`via ${via(provider.label,provider.id)}`:'Connection unavailable'}{nodeId&&!override?' · Inherited':''}</small></span></>:<span className="model-picker-current"><strong>Loading models…</strong></span>}
       {busy?<LoaderCircle size={15} className="spin" aria-label="Saving model"/>:<ChevronDown size={16} aria-hidden="true"/>}
     </button>

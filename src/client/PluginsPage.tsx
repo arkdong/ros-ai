@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, ChevronRight, ExternalLink, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
+import { BookText, Check, ChevronRight, ExternalLink, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
+import type { SkillSummary } from '../shared/skills';
 import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
 import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
@@ -14,27 +15,30 @@ function PluginMark({id,size}:{id:string;size?:number}) {
   return hasBrandLogo(id)?<BrandLogo id={id} size={size}/>:<Plug size={size||18}/>;
 }
 
-/** Tools outside ros.ai, each connected with something the person already has. Using them from the canvas comes later. */
-type PluginState = { label: string; connected: boolean };
+/** Tools outside ros.ai, each connected with something the person already has. Using them from the canvas comes later.
+ * A row's state shows while connected; shown says it even when off (a skill that is off), with a grey dot. */
+type PluginState = { label: string; connected: boolean; shown?: boolean };
 
-/** One row of a catalogue: logo, name, one line, a status when connected, and + or ··· . Shared by Plugins and Agents. */
-export function CatalogueRow({mark,name,summary,state,unavailable,onClick}:{mark:ReactNode;name:string;summary:string;state?:PluginState;unavailable?:boolean;onClick:()=>void}) {
-  return <button type="button" className="plugin-row" onClick={onClick}><span className="plugin-row-mark">{mark}</span><span className="plugin-row-text"><strong>{name}</strong><small>{summary}</small></span>{state?.connected&&<span className="plugin-row-state"><i/>{state.label}</span>}<span className="plugin-row-action">{unavailable?<small>Not yet</small>:state?.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>}</span></button>;
+/** One row of a catalogue: logo, name, one line, a status when connected, and + or ··· (or its own action). Shared by Plugins, Skills and Agents. */
+export function CatalogueRow({mark,name,summary,state,unavailable,action,onClick}:{mark:ReactNode;name:string;summary:string;state?:PluginState;unavailable?:boolean;action?:ReactNode;onClick:()=>void}) {
+  return <button type="button" className="plugin-row" onClick={onClick}><span className="plugin-row-mark">{mark}</span><span className="plugin-row-text"><strong>{name}</strong><small>{summary}</small></span>{(state?.connected||state?.shown)&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}<span className="plugin-row-action">{action??(unavailable?<small>Not yet</small>:state?.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>)}</span></button>;
 }
-/** The page's sections and installed list in the sidebar, like Codex's left column. */
-export function CatalogueSidebar({sections,installed,selected,onSelect,note}:{sections:{id:string;label:string;later?:boolean}[];installed:{id:string;name:string;mark:ReactNode}[];selected:string|null;onSelect:(id:string|null)=>void;note:string}) {
+type SidebarItem = { id: string; name: string; mark: ReactNode; off?: boolean };
+/** The page's sections and its list (what is installed, or the person's skills) in the sidebar, like Codex's left column.
+ * section: which section is open when there are several. */
+export function CatalogueSidebar({sections,section,onSection,label='Installed',empty='Nothing connected yet',installed,selected,onSelect,note}:{sections:{id:string;label:string;later?:boolean}[];section?:string;onSection?:(id:string)=>void;label?:string;empty?:string;installed:SidebarItem[];selected:string|null;onSelect:(id:string|null)=>void;note:string}) {
   return <div className="plugins-sidebar">
-    {sections.map(section=>section.later?<button key={section.id} type="button" className="plugins-nav" disabled title={`${section.label} come in a later round`}>{section.label}<span className="plugins-later">later</span></button>:<button key={section.id} type="button" className={`plugins-nav ${selected?'':'active'}`} onClick={()=>onSelect(null)}>{section.label}</button>)}
-    <div className="sidebar-label plugins-installed-label">Installed</div>
-    {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span className="plugins-name">{item.name}</span><i className="plugins-dot" aria-hidden="true"/></button>):<p className="sidebar-empty">Nothing connected yet</p>}
+    {sections.map(item=>item.later?<button key={item.id} type="button" className="plugins-nav" disabled title={`${item.label} come in a later round`}>{item.label}<span className="plugins-later">later</span></button>:<button key={item.id} type="button" className={`plugins-nav ${!selected&&(section??item.id)===item.id?'active':''}`} onClick={()=>onSection?onSection(item.id):onSelect(null)}>{item.label}</button>)}
+    <div className="sidebar-label plugins-installed-label">{label}</div>
+    {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span className="plugins-name">{item.name}</span>{!item.off&&<i className="plugins-dot" aria-hidden="true"/>}</button>):<p className="sidebar-empty">{empty}</p>}
     <p className="plugins-sidebar-note">{note}</p>
   </div>;
 }
-/** Breadcrumb and hero of one item's page. */
-export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses}:{crumb:string;onBack:()=>void;mark:ReactNode;name:string;summary:string;state?:PluginState;uses?:string[]}) {
+/** Breadcrumb and hero of one item's page. action sits at the right of the hero, after the state. */
+export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}:{crumb:string;onBack:()=>void;mark:ReactNode;name:string;summary:ReactNode;state?:PluginState;uses?:string[];action?:ReactNode}) {
   return <>
     <nav className="plugin-crumbs" aria-label="Breadcrumb"><button type="button" className="text-button" onClick={onBack}>{crumb}</button><ChevronRight size={13}/><span>{name}</span></nav>
-    <header className="plugin-hero"><span className="plugin-hero-mark">{mark}</span><div><h1>{name}</h1><p>{summary}</p></div>{state&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}</header>
+    <header className="plugin-hero"><span className="plugin-hero-mark">{mark}</span><div><h1>{name}</h1><p>{summary}</p></div>{state&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}{action}</header>
     {uses&&<ul className="plugin-uses">{uses.map(use=><li key={use}>{use}</li>)}</ul>}
   </>;
 }
@@ -44,8 +48,13 @@ const groups: { title: string; ids: PluginId[] }[] = [
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
 
-export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void}) {
-  return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'},{id:'skills',label:'Skills',later:true}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
+export type PluginsSection = 'plugins' | 'skills';
+const sections = [{ id: 'plugins', label: 'Plugins' }, { id: 'skills', label: 'Skills' }];
+/** Plugins and Skills share the page: the sidebar lists what is connected, or the person's skills. */
+export function PluginsSidebar({section,onSection,installed,selected,onSelect,skills,skill,onSkill}:{section:PluginsSection;onSection:(section:PluginsSection)=>void;installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void;skills:SkillSummary[];skill:string|null;onSkill:(name:string|null)=>void}) {
+  const open=(id:string)=>onSection(id as PluginsSection);
+  if(section==='skills')return <CatalogueSidebar sections={sections} section={section} onSection={open} label="Your skills" empty="No skills yet" installed={skills.map(item=>({id:item.name,name:item.title,mark:<BookText size={16}/>,off:!item.enabled}))} selected={skill} onSelect={onSkill} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
+  return <CatalogueSidebar sections={sections} section={section} onSection={open} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
 }
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
@@ -94,8 +103,6 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
     <h2 className="plugin-section">Connection</h2>
     {card(current)}
-    <h2 className="plugin-section">Skills <small>later</small></h2>
-    <p className="plugin-later">Ways of working with {current.name} that agents follow, switchable one by one. They come with the Skills page.</p>
   </div>;}
   return <div className="plugins-page">
     <header className="plugins-head"><div><h1>Plugins</h1><p>Connect plugins so your agents work across your tools</p></div><button className="icon-button" disabled={loading} aria-label="Refresh plugin status" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></header>

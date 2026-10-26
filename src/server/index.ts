@@ -38,6 +38,7 @@ import { NotionApi } from './notion.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
 import { PersonalMemory } from './personal-memory.js';
+import { SkillLibrary } from './skills.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -130,16 +131,19 @@ try {
     agent=new CodexAgentService(store,execution,experiments);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
-    const personal=new PersonalMemory(store,dataDir);
-    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal);
-    guide=new WorkspaceGuideService(store,execution);
-    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal);
     const plugins = new PluginTokens(dataDir);
+    const personal=new PersonalMemory(store,dataDir);
+    // One skill library every agent reads; looking skills up on GitHub uses the GitHub plugin's token when there is one.
+    const skills=new SkillLibrary(store,dataDir,{githubToken:()=>plugins.token('github')});
+    AgentWorkspaceTools.skills=skills;
+    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills);
+    guide=new WorkspaceGuideService(store,execution);
+    outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
     const apps = new RemoteApps(dataDir);
     AgentWorkspaceTools.apps = apps;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,claude,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

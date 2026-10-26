@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, Square, X } from 'lucide-react';
 import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
@@ -8,6 +8,7 @@ import type { ResearchPolicy } from '../shared/research';
 import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal } from './persistence';
 import { textPreview } from '../shared/presentation';
+import { useSkillMenu } from './SkillMenu';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -21,8 +22,10 @@ const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
-export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void }) {
+export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void }) {
   const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
+  const skills = useSkillMenu(draft, setDraft, onSkills);
+  const input = useRef<HTMLInputElement>(null);
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const active = turns.find(turn => turn.id === state?.activeTurnId) || turns.findLast(turn => turn.status === 'running');
@@ -46,7 +49,10 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
     if (state && !state.modelAvailable) { onOpen('half'); return; }
     setDraft('');
     if (!await onSend(message)) setDraft(message);
+    input.current?.focus();
   };
+  // Stopping leaves the cursor in the box, ready for the next question.
+  const stop = () => { if (active) void onCancel(active.id); input.current?.focus(); };
   return <div className="ros-dock" data-testid="ros-bar">
     <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
       {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
@@ -63,7 +69,8 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
         </button>
         <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
       </div>}
-      <input aria-label="Ask Ros" placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') (event.target as HTMLInputElement).blur(); }}/>
+      {skills.menu}
+      <input ref={input} aria-label="Ask Ros" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (active) { event.preventDefault(); stop(); } else (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
@@ -75,7 +82,7 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
         <button type="button" className="icon-button" aria-label={rosSizeLabel.half} title="Half sheet" onClick={() => onOpen('half')}><RosSizeIcon size="half" px={15}/></button>
         <button type="button" className="icon-button" aria-label={rosSizeLabel.full} title="Side panel" onClick={() => onOpen('full')}><RosSizeIcon size="full" px={15}/></button>
-        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop" onClick={() => void onCancel(active.id)}><Square size={10} fill="currentColor"/></button>
+        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop (Esc)" onClick={stop}><Square size={10} fill="currentColor"/></button>
           : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
