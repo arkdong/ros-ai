@@ -9,6 +9,10 @@ import { StoreError } from './store.js';
 
 const SIGN_IN_TTL_MS = 10 * 60_000;
 const escape = (value: string) => value.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
+/** The sign-in tab's last page, in the look of the ros.ai cloud sign-in pages. */
+const signInTab = (title: string, message: string, script = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · ros.ai</title><link rel="icon" type="image/png" href="/brand/ros-ai-ring.png">
+<style>body{margin:0;min-height:100vh;display:flex;background:#fff;color:#0b0d10;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}main{width:100%;max-width:408px;margin:auto;padding:48px 16px}img{display:block;width:40px;height:40px;margin-bottom:28px}h1{margin:0 0 12px;font-size:26px;line-height:1.25;letter-spacing:-.4px}p{margin:0;color:#4a5059}</style></head>
+<body><main><img src="/brand/ros-ai-ring.png" alt="ros.ai"><h1>${escape(title)}</h1><p>${escape(message)}</p></main>${script}</body></html>`;
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
@@ -73,7 +77,7 @@ export class CloudAccount {
       const result = await this.call('/app/token', { method: 'POST', body: JSON.stringify({ code: query.code, code_verifier: pending.verifier, redirect_uri: this.callbackUrl }) });
       if (typeof result.body.access_token !== 'string') throw new Error(result.body.error_description || 'ros.ai cloud did not finish the sign-in.');
       await this.connect(result.body.access_token);
-      return { ok: true, message: 'You are signed in. You can close this tab and go back to ros.ai.' };
+      return { ok: true, message: 'You can close this tab and go back to ros.ai.' };
     } catch (error) { this.lastError = error instanceof Error ? error.message : 'Sign-in failed.'; return { ok: false, message: this.lastError }; }
   }
   /** Registers (or refreshes) the cloud as a model connection with the token as its key. */
@@ -117,13 +121,13 @@ export function attachCloudAccountRoutes(app: Express, cloud: CloudAccount) {
   app.get('/api/cloud/start', async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try { const status = await cloud.signIn(); res.redirect(302, status.verificationUrl!); }
-    catch (error) { res.status(502).type('html').send(`<!doctype html><meta charset="utf-8"><title>ros.ai</title><p style="font:15px system-ui;margin:40px">${escape(error instanceof Error ? error.message : 'Sign-in could not start.')}</p>`); }
+    catch (error) { res.status(502).type('html').send(signInTab('Sign-in could not start', error instanceof Error ? error.message : 'Try again in a moment.')); }
   });
   // The browser tab the sign-in opened lands here; it closes itself when it can.
   app.get('/api/cloud/callback', async (req, res) => {
     const result = await cloud.callback(req.query);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(result.ok ? 200 : 400).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ros.ai</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,-apple-system,sans-serif;color:#171717;background:#fafafa}p{max-width:360px;text-align:center}</style></head><body><p>${escape(result.message)}</p>${result.ok ? '<script>setTimeout(()=>window.close(),600)</script>' : ''}</body></html>`);
+    res.status(result.ok ? 200 : 400).type('html').send(result.ok ? signInTab("You're signed in", result.message, '<script>setTimeout(()=>window.close(),600)</script>') : signInTab('Sign-in did not finish', result.message));
   });
   app.post('/api/cloud/sign-out', async (_req, res) => { res.json(await cloud.signOut()); });
 }
