@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Express } from 'express';
 import { z } from 'zod';
 import type { CloudAccountStatus } from '../shared/cloud-account.js';
+import type { FeedbackNote } from '../shared/feedback.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { StoreError } from './store.js';
 
@@ -98,6 +99,24 @@ export class CloudAccount {
     const status = this.connections.status(connection.id);
     this.connections.saveAllowance(connection.id, { requestCeiling: Math.max(10000, status.usedRequests), usdCeiling: loopback ? status.usdCeiling : Math.max(100, status.accountedUsd), enabled: true, acknowledged: true });
     this.save({ token, email: String(me.body?.user?.email ?? ''), connectionId: connection.id });
+  }
+
+  /** Whether this copy of ros.ai has a ros.ai cloud at all (ROS_CLOUD_URL is not off). */
+  get available() { return Boolean(this.url); }
+  /** The signed-in email, read from this computer without asking ros.ai cloud. */
+  signedInEmail() { return this.url ? this.account()?.email || undefined : undefined; }
+  /** Passes one feedback note on to ros.ai cloud, as the signed-in person when there is one, so a
+   * reply can go to their account email; the saved email goes along in case the session has ended.
+   * Answers with the address the reply will go to, if any. */
+  async sendFeedback(note: FeedbackNote): Promise<{ email?: string }> {
+    if (!this.url) throw new StoreError('ros.ai cloud is off in this copy of ros.ai.', 404);
+    const account = this.account();
+    const body = account?.email && !note.email ? { ...note, email: account.email } : note;
+    const result = await this.call('/v1/feedback', { method: 'POST', headers: account ? { Authorization: `Bearer ${account.token}` } : {}, body: JSON.stringify(body) })
+      .catch(() => { throw new StoreError('ros.ai cloud could not be reached.', 502); });
+    if (result.status === 404) throw new StoreError('ros.ai cloud does not take notes yet.', 502);
+    if (result.status >= 300) throw new StoreError(typeof result.body?.error?.message === 'string' ? result.body.error.message : `ros.ai cloud did not take the note (${result.status}).`, result.status === 429 ? 429 : 502);
+    return typeof result.body?.email === 'string' ? { email: result.body.email } : {};
   }
 
   async signOut(): Promise<CloudAccountStatus> {

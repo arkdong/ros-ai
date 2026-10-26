@@ -4,6 +4,7 @@ import { StoreError, type Store } from './store.js';
 import type { ExecutionService } from './execution.js';
 import { attachResultHandoffRoutes } from './result-handoff.js';
 import { attachCloudAccountRoutes, type CloudAccount } from './cloud-account.js';
+import { attachFeedbackRoutes } from './feedback.js';
 import { attachLocalRosRoutes, type LocalRos } from './local-ros.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
@@ -96,7 +97,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.

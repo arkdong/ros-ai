@@ -1,0 +1,19 @@
+# The feedback button in ros.ai fills these fields in through the link (?template=problem.yml&message=…&details=…), so keep their ids.
+name: Problem
+description: Something in ros.ai does not work the way you expected.
+title: "Problem: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: message
+    attributes:
+      label: What happened, and what did you expect?
+      description: Steps that show it help. This page is public, so leave out anything private.
+    validations:
+      required: true
+  - type: input
+    id: details
+    attributes:
+      label: App details
+      description: The ros.ai version, operating system and browser. The feedback button in ros.ai fills this in.
+      placeholder: ros.ai 0.1.0 · macOS 15.1 arm64 · Node 24.11.0 · Chrome 141
