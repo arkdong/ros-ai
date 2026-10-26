@@ -1,8 +1,8 @@
 /** Tools outside ros.ai that a person can connect with something they already have (a token or key).
  * Connecting only saves and checks access; using a plugin from the canvas or assistant comes later.
  */
-export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github';
-export type PluginId = TokenPluginId | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma';
+export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex';
+export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -10,8 +10,9 @@ export type PluginDefinition = {
   summary: string;
   /** token: a pasted key or token kept on this computer; google: the Google Drive sign-in; key: an existing ros.ai key connection;
    * sign-in: the app's hosted MCP server, signed in from the browser; desktop: the MCP server of the app's desktop program
-   * on this computer; unavailable: shown, not connectable yet. */
-  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'unavailable';
+   * on this computer; public: a free public service the person always reaches, which a switch offers to every agent
+   * (OpenAlex also takes an optional key); unavailable: shown, not connectable yet. */
+  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'public' | 'unavailable';
   tokenLabel?: string;
   tokenHint?: string;
   tokenLink?: string;
@@ -29,7 +30,9 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'google-drive', uses: ['Show a Google Sheet or Doc live on the canvas, and copy CSV files into a project', 'Every agent can find and read your Sheets and Docs', 'Read-only: nothing in your Drive is changed'], name: 'Google Drive', summary: 'Your Sheets, Docs and CSV files, read-only.', connect: 'google' },
   { id: 'google-sheets', uses: ['Show a tab live on the canvas, and copy it into a Data block for SQL', 'Agents read your sheets a tab or a range at a time', 'Uses the Google Drive sign-in, nothing extra to connect'], name: 'Google Sheets', summary: 'Your sheets on the canvas and for agents.', connect: 'google' },
   { id: 'google-docs', uses: ['Show a doc live on the canvas', 'Agents find and read your Docs as sources', 'Uses the Google Drive sign-in, nothing extra to connect'], name: 'Google Docs', summary: 'Your docs on the canvas and for agents.', connect: 'google' },
-  { id: 'zotero', uses: ['Pull references and citations from your library', 'Cite sources in reports with the right details'], name: 'Zotero', summary: 'Your reference library and citations.', connect: 'token', tokenLabel: 'Zotero API key', tokenHint: 'Create a read-only key under Settings > Security > Applications in your Zotero account.', tokenLink: 'https://www.zotero.org/settings/security#applications' },
+  { id: 'zotero', uses: ['Add a paper from your library with Add block › Paper, with the PDF Zotero stores', 'Every agent can search your library and cite from it', 'Read-only: nothing in your library changes'], name: 'Zotero', summary: 'Your reference library and its PDFs.', connect: 'token', tokenLabel: 'Zotero API key', tokenHint: 'Create a key under Settings > Security > Applications in your Zotero account, with “Allow library access” on and write access off. PDFs come along when Zotero stores them (not through WebDAV).', tokenLink: 'https://www.zotero.org/settings/security#applications' },
+  { id: 'openalex', uses: ['Add any paper with Add block › Paper; its open PDF becomes a File block agents read', 'Turn it on and every agent searches published research, with citation counts', 'Free; a free key raises the daily searches from about 100 to 1,000'], name: 'OpenAlex', summary: 'Published research, with open PDFs and citations.', connect: 'public', tokenLabel: 'OpenAlex API key', tokenHint: 'Optional. Without a key OpenAlex allows about 100 searches a day; a free key from your OpenAlex account allows about 1,000.', tokenLink: 'https://openalex.org/settings/api' },
+  { id: 'arxiv', uses: ['Add a preprint with Add block › Paper; its PDF becomes a File block agents read', 'Turn it on and every agent searches arXiv', 'ros.ai waits three seconds between requests, as arXiv asks'], name: 'arXiv', summary: 'Preprints in physics, maths, computer science and more.', connect: 'public' },
   { id: 'slack', uses: ['Agents read the channels your Slack app is in, and share findings there', 'Posts only after you accept the message', 'Uses the bot token of your own Slack app'], name: 'Slack', summary: 'Read your team’s channels and share findings there.', connect: 'token', tokenLabel: 'Slack bot token', tokenHint: 'Create a Slack app for your workspace with the bot scopes channels:read, channels:history, groups:read, groups:history, users:read and chat:write. Install it, copy its Bot User OAuth Token (xoxb-…), and invite the app to the channels agents may read.', tokenLink: 'https://api.slack.com/apps' },
   { id: 'notion', uses: ['Find answers in your pages and databases, from any block or from Ros', 'Bring a page or database onto the map', 'Save findings and reports back as pages, after you accept'], name: 'Notion', summary: 'Your pages and databases, through Notion’s own connection.', connect: 'token', signIn: true, tokenLabel: 'Notion integration secret', tokenHint: 'Create an internal integration, copy its secret, then share the pages you want with it.', tokenLink: 'https://www.notion.so/profile/integrations' },
   { id: 'github', uses: ['Agents read repositories, issues and pull requests through GitHub’s own tools', 'Opening an issue or a pull request waits for you to accept', 'Uses the token you save here'], name: 'GitHub', summary: 'Repositories, issues and pull requests.', connect: 'token', tokenLabel: 'GitHub personal access token', tokenHint: 'Create a fine-grained token with read access to the repositories you choose. Give it write access to issues or pull requests only if agents may open them, after you accept.', tokenLink: 'https://github.com/settings/personal-access-tokens' },

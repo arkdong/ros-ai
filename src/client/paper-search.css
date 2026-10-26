@@ -1,0 +1,18 @@
+/* Add block › Paper: a search field, the source as tabs, and the papers found as one list to pick from. */
+.paper-search-field { display: flex; gap: 8px; align-items: stretch; }
+.paper-search-field input { flex: 1; }
+.paper-search-field button { flex: none; }
+.paper-sources { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 8px; }
+.paper-sources button { padding: 5px 9px; border: 1px solid transparent; font-size: var(--text-sm); color: var(--body); gap: 6px; }
+.paper-sources button:hover:not(:disabled) { background: var(--sidebar); color: var(--ink); }
+.paper-sources button[aria-pressed="true"] { background: #efefef; color: var(--ink); }
+.paper-results { display: grid; gap: 2px; max-height: 300px; overflow: auto; overscroll-behavior: contain; }
+.paper-results:empty { display: none; }
+.paper-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; justify-items: start; text-align: left; white-space: normal; padding: 8px 10px; font-weight: 400; color: var(--ink); }
+.paper-result:hover:not(:disabled) { background: var(--sidebar); }
+.paper-result[aria-pressed="true"] { background: #efefef; }
+.paper-result > strong { grid-column: 1; font-size: var(--text-md); font-weight: 600; line-height: 1.35; }
+.paper-result > small { grid-column: 1; font-size: var(--text-xs); color: var(--muted); line-height: 1.4; }
+.paper-abstract { grid-column: 1; margin-top: 4px; font-size: var(--text-sm); line-height: 1.5; color: var(--body); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.paper-pdf { grid-column: 2; grid-row: 1; align-self: start; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--body); }
+.paper-results-note { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: var(--text-sm); color: var(--muted); }

@@ -32,6 +32,8 @@ export const appCatalogue = {
   slack: { name: 'Slack', auth: 'built-in', token: 'slack', reads: ['list_channels', 'read_channel', 'read_thread'] },
   // Google Sheets and Docs through the Google Drive sign-in, which only reads (google-workspace.ts).
   'google-drive': { name: 'Google Drive', auth: 'built-in', reads: ['search_files', 'read_doc', 'read_sheet'] },
+  // Papers from OpenAlex and arXiv, as turned on in Plugins, and the Zotero library whose key is saved there (papers.ts).
+  papers: { name: 'Papers', auth: 'built-in', reads: ['search_papers', 'read_paper'] },
 } as const satisfies Record<string, AppEntry>;
 export type AppId = keyof typeof appCatalogue;
 const appIds = Object.keys(appCatalogue) as AppId[];
@@ -56,10 +58,12 @@ export function appUrl(id: AppId) {
 
 type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redirectUri?: string; connectedAt?: string; account?: string };
 type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number };
-export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean };
+/** proposes: the tool adds blocks to the canvas, which ros.ai proposes under the project's approval mode, instead of a
+ * change in the app that always waits for the person (Papers' add_paper). */
+export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean; proposes?: boolean };
 export type AppStatus = AppConnectionStatus & { id: AppId };
-/** An app whose tools ros.ai provides itself (Slack, Google Drive), shaped like an MCP server's; connected once its
- * token is saved or its sign-in is done. */
+/** An app whose tools ros.ai provides itself (Slack, Google Drive, Papers), shaped like an MCP server's; connected once
+ * its token is saved, its sign-in is done or, for Papers, a source is on. */
 export type BuiltInApp = { connected(): boolean; tools(): AppTool[]; call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> };
 type Options = { token?: (id: TokenPluginId) => string | undefined; builtIn?: Partial<Record<AppId, BuiltInApp>> };
 

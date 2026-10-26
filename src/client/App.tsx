@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, BookOpen, Braces, Check, ChevronDown, ChevronRight, Database, File as FileIcon, FileText, Group, NotebookPen, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin, Play, Plus, Square, Text as TextIcon, Trash2, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Braces, Check, ChevronDown, ChevronRight, Database, File as FileIcon, FileText, GraduationCap, Group, NotebookPen, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin, Play, Plus, Square, Text as TextIcon, Trash2, X } from 'lucide-react';
 import type { Artifact, Change, ConnectionStatus, GoogleRead, GoogleView, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import type { ResearchPolicy, ResearchSession } from '../shared/research';
 import { api, post, upload } from './api';
@@ -38,6 +38,8 @@ import { PLUGINS, type PluginId } from '../shared/plugins';
 import { MemoryPage } from './MemoryPage';
 import { AppRail, RailPageFrame, type RailPage } from './AppRail';
 import { Modal } from './Modal';
+import { PaperSearch } from './PaperSearch';
+import type { PaperSummary } from '../shared/papers';
 import { ProfileButton } from './ProfileButton';
 import { Wordmark } from './Brand';
 import { SetupScreen } from './Setup';
@@ -209,6 +211,20 @@ export function App(){
       setPreviewId(null);
     }
   };
+  /** Add block › Paper: ros.ai saves the paper's open PDF into the project folder and adds its block in one change.
+   * A paper already on the canvas is shown instead of added twice. */
+  const addPaper=async(scope:string|null,paper:string)=>{
+    if(!detail)return;
+    const canvas={...detail.project.canvas,nodes:detail.project.canvas.nodes.filter(n=>(n.parentId||null)===scope)};
+    let added:{nodeId:string;existing?:boolean}|undefined;
+    if(!await action(async()=>{added=await post<{nodeId:string;existing?:boolean}>(`/api/projects/${detail.project.id}/papers`,{paper,parentId:scope,...emptyPosition(canvas)});})||!added)return;
+    setAddScope(undefined);
+    setPreviewId(null);
+    if(added.existing){revealNode(added.nodeId);return;}
+    selectFocus(added.nodeId);
+    if(scope)setExpandedIds(current=>[...new Set([...current,scope])]);
+    setFocusId(added.nodeId);
+  };
   // A Google Sheet's tab copied into a Data block beside it, with where and when it came from; the block view opens the copy.
   const copyGoogle=async(nodeId:string,open:boolean)=>{
     if(!detail)return false;
@@ -286,7 +302,7 @@ export function App(){
     {detail&&researchNodeId&&<Modal title="Research with ros.ai" className="settings-modal" onClose={()=>setResearchNodeId(null)}><ResearchPanel detail={detail} nodeId={researchNodeId} sessions={sessions} policy={policy} onRefresh={()=>refresh()} onInspect={id=>{saveLocal(`node-tab:${id}`,'experiment');setResearchNodeId(null);setInspectorId(id);}} onProposal={id=>{setResearchNodeId(null);setPreviewId(id);}}/></Modal>}
     {detail&&artifact&&<Modal title={artifact.value.title} className="artifact-modal" nonBlocking={tourOpen||demoOpen} onClose={()=>setArtifact(null)}>{artifact.value.metadata?.tutorialOrigin?<div className="artifact-dialog-meta">{artifact.value.metadata.tutorialOrigin==='saved'&&<span className="tag">Saved demonstration result</span>}{artifact.value.metadata.tutorialOrigin==='prepared'&&<span className="tag">Prepared tutorial content</span>}{artifact.value.metadata.tutorialOrigin==='recorded'&&<span className="tag">Recorded for this demo</span>}</div>:null}<ArtifactViewer key={artifact.value.id} artifact={artifact.value} detail={detail} sql={!publicDemo} onChanged={()=>refresh()} onOpenArtifact={value=>openArtifact(value,value.nodeId)} onOpenAttempt={runId=>{const run=detail.runs.find(item=>item.id===runId);if(run){setArtifact(null);setCodeAttempt({nodeId:run.nodeId,runId:run.id});saveLocal(`node-tab:${run.nodeId}`,run.configuration.kind==='local-experiment'?'experiment':'runs');revealNode(run.nodeId,true);}}} onReviseFigure={value=>void prepareFigureRefinement(value)} more={<><div className="row gap wrap"><button className="secondary" onClick={()=>setReportEditor({artifact:artifact.value})}>{artifact.value.metadata?.report?'Edit report':'Use in a report'}</button><button className="secondary" onClick={()=>{const id=crypto.randomUUID();const blockType=artifact.value.kind==='plot'?'figure':artifact.value.kind==='dataset'||artifact.value.kind==='table'?'dataset':artifact.value.kind==='code'?'code':'note';void mutate([{type:'addNode',node:{id,kind:'topic',blockType,artifactId:artifact.value.id,title:artifact.value.title,description:'',...emptyPosition(detail.project.canvas)}}],`Place saved ${blockType} on canvas`);}}>Place on canvas</button>{['article','paper'].includes(String(artifact.value.metadata?.demoRole))&&<button className="secondary" onClick={()=>{const nodeId=artifact.nodeId;setArtifact(null);revealNode(nodeId,true);}}>Open editable draft</button>}<button className="secondary" onClick={()=>void pin(artifact.value,artifact.nodeId)}><Pin size={14}/>{detail.highlights?.some(h=>h.artifactId===artifact.value.id&&h.nodeId===artifact.nodeId)?'Unpin highlight':'Pin highlight'}</button></div><ResultActions inspect={false} artifact={artifact.value} detail={detail} onChanged={()=>refresh()} onOpen={value=>openArtifact(value,value.nodeId)} onInterpret={(value,destinationId)=>{setArtifact(null);setOutputGuide({artifact:value,destinationId});}}/></>}/></Modal>}
     {detail&&outputGuide&&<WorkspaceGuide key={outputGuide.artifact.id} detail={detail} initialSelection={outputGuide} onClose={()=>setOutputGuide(null)} onConnections={()=>{setOutputGuide(null);setPage('model');}} onChanged={()=>refresh()} onReference={navigateReference}/> }
-    {addScope!==undefined&&<NewNodeModal scope={addScope?detail?.project.canvas.nodes.find(n=>n.id===addScope)?.title:undefined} onClose={()=>setAddScope(undefined)} onCreate={(kind,title,blockType,file,notion,label,google)=>addNode(kind,addScope,title,blockType,file,notion,label,google)}/>}
+    {addScope!==undefined&&<NewNodeModal scope={addScope?detail?.project.canvas.nodes.find(n=>n.id===addScope)?.title:undefined} onClose={()=>setAddScope(undefined)} folder={Boolean(folderStatus?.attached)} onCreate={(kind,title,blockType,file,notion,label,google)=>addNode(kind,addScope,title,blockType,file,notion,label,google)} onPaper={paper=>addPaper(addScope,paper)}/>}
     {deleteCandidate&&<Modal title="Remove this project?" onClose={()=>setDeleteCandidate(null)}><p className="modal-description"><strong>{deleteCandidate.title}</strong> will leave your project list. Its folder on your computer is not touched.</p><div className="modal-actions"><button className="secondary" onClick={()=>setDeleteCandidate(null)}>Keep project</button><button className="primary danger-primary" disabled={saving>0} onClick={()=>void trashProject(deleteCandidate)}><Trash2 size={15}/> Remove project</button></div></Modal>}
     {detail&&agentReportId&&<Modal title="Review agent report revision" className="artifact-modal" onClose={()=>setAgentReportId(null)}><AgentReportReview id={agentReportId} detail={detail} onChanged={()=>refresh()} onOpenArtifact={value=>openArtifact(value,value.nodeId)} onClose={()=>setAgentReportId(null)}/></Modal>}
     {detail&&reportEditor&&<Modal title={reportEditor.artifact?.metadata?.report?'Edit report':'Write a report'} className="artifact-modal" onClose={()=>setReportEditor(null)}><ReportEditor key={reportEditor.artifact?.id||'new'} detail={detail} seed={reportEditor.artifact?.metadata?.report?undefined:reportEditor.artifact} artifact={reportEditor.artifact?.metadata?.report?reportEditor.artifact:undefined} onSaved={(value,nodeId)=>{setReportEditor(null);openArtifact(value,nodeId);}} onChanged={()=>refresh()} onOpenArtifact={value=>openArtifact(value,value.nodeId)} onCancel={()=>setReportEditor(null)}/></Modal>}
@@ -341,7 +357,7 @@ function AttachModal({ detail, initial, onClose, onAttach }: { detail: ProjectDe
   return <Modal title="Attach a selected input" onClose={onClose}><p className="modal-description">Choose a saved version to share. Future results will not replace this selection or run the destination node.</p><form onSubmit={async event => { event.preventDefault(); if (!artifactId || !nodeId || busy || !validExcerpt) return; setBusy(true); await onAttach(artifactId, nodeId, excerpt); setBusy(false); }}><label className="field-label" htmlFor="attach-artifact">Saved result or source</label><select id="attach-artifact" value={artifactId} onChange={event => { setArtifactId(event.target.value); setExcerpt(''); }}><option value="">Choose an artifact…</option>{available.map(a => <option key={a.id} value={a.id}>{a.kind === 'source' ? 'Source' : 'Result'} · {a.title} · {date(a.createdAt)}</option>)}</select>{!available.length && <p className="subtle">Run research in another node to create a saved result.</p>}<label className="field-label" htmlFor="attach-node">Use in this node</label><select id="attach-node" value={nodeId} onChange={event => setNodeId(event.target.value)}><option value="">Choose a node…</option>{detail.project.canvas.nodes.filter(n => n.id !== artifact?.nodeId).map(n => <option key={n.id} value={n.id}>{n.title}</option>)}</select>{artifact && <><details className="attach-content"><summary>Inspect captured content</summary><pre>{artifact.content}</pre><span className="subtle">Source run {artifact.runId.slice(0, 8)} · version {artifact.hash.slice(0, 12)}</span></details><label className="field-label" htmlFor="attach-excerpt">Selected excerpt <span>optional</span></label><textarea id="attach-excerpt" value={excerpt} onChange={event => setExcerpt(event.target.value)} placeholder="Paste an exact passage, or leave empty to attach the whole artifact." rows={3} />{!validExcerpt && <p className="inline-error">The excerpt must match an exact passage in this saved artifact.</p>}</>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={!artifactId || !nodeId || busy || !validExcerpt}><ArrowRight size={14} /> Attach input</button></div></form></Modal>;
 }
 
-type BlockChoice = {id:'text'|'code'|'notebook'|'dataset'|'file'|'notion'|'google'|'group';kind:NodeKind;blockType?:NewBlockType;label:string;description:string;icon:ReactNode};
+type BlockChoice = {id:'text'|'code'|'notebook'|'dataset'|'file'|'paper'|'notion'|'google'|'group';kind:NodeKind;blockType?:NewBlockType;label:string;description:string;icon:ReactNode};
 /** One flat list. Text is the default; what a Text block means is its label, not a separate kind. */
 const blockChoices: BlockChoice[] = [
   {id:'text',kind:'topic',label:'Text',description:'Write it, or let an agent fill it',icon:<TextIcon size={18}/>},
@@ -349,27 +365,30 @@ const blockChoices: BlockChoice[] = [
   {id:'notebook',kind:'topic',blockType:'notebook',label:'Notebook',description:'Run Python cell by cell, or open a .ipynb',icon:<NotebookPen size={18}/>},
   {id:'dataset',kind:'topic',blockType:'dataset',label:'Data',description:'Import and inspect a CSV',icon:<Database size={18}/>},
   {id:'file',kind:'topic',blockType:'file',label:'File',description:'Show a PDF, PNG or JPEG',icon:<FileIcon size={18}/>},
+  {id:'paper',kind:'topic',label:'Paper',description:'Search OpenAlex, arXiv or Zotero',icon:<GraduationCap size={18}/>},
   {id:'notion',kind:'topic',blockType:'notion',label:'Notion',description:'Show a page or database live from Notion',icon:<BrandLogo id="notion" size={18}/>},
   {id:'google',kind:'topic',blockType:'google',label:'Google Drive',description:'Show a Google Sheet or Doc live',icon:<BrandLogo id="google-drive" size={18}/>},
   {id:'group',kind:'group',label:'Group',description:'A frame for blocks that belong together',icon:<Group size={18}/>},
 ];
 
-function NewNodeModal({scope,onClose,onCreate}: {scope?:string;onClose:()=>void;onCreate:(kind:NodeKind,title:string,blockType?:NewBlockType,notebookFile?:File,notion?:NotionView,label?:string,googleLink?:string)=>Promise<void>}) {
+function NewNodeModal({scope,folder,onClose,onCreate,onPaper}: {scope?:string;folder:boolean;onClose:()=>void;onCreate:(kind:NodeKind,title:string,blockType?:NewBlockType,notebookFile?:File,notion?:NotionView,label?:string,googleLink?:string)=>Promise<void>;onPaper:(paper:string)=>Promise<void>}) {
   const [choiceId,setChoiceId]=useState<BlockChoice['id']>('text');
+  const [paper,setPaper]=useState<PaperSummary|null>(null);
   const [label,setLabel]=useState('');
   const [notionUrl,setNotionUrl]=useState(''),[notionFilter,setNotionFilter]=useState(''),[googleUrl,setGoogleUrl]=useState('');
   const [notebookFile,setNotebookFile]=useState<File|null>(null);
   const [title,setTitle]=useState('');
   const [busy,setBusy]=useState(false);
   const choice=blockChoices.find(value=>value.id===choiceId)!;
-  const text=choice.id==='text';
+  const text=choice.id==='text',papers=choice.id==='paper';
   return <Modal title={scope?`Add inside ${scope}`:'Add to project canvas'} onClose={onClose}>
     <form onSubmit={async event=>{
       event.preventDefault();
-      if(busy)return;
+      if(busy||(papers&&!paper))return;
       setBusy(true);
-      // A report keeps its own editor, so that label becomes the report block type underneath.
-      try{await onCreate(choice.kind,title.trim(),text?(label==='report'?'report':undefined):choice.blockType,choice.blockType==='notebook'||choice.blockType==='file'?notebookFile??undefined:undefined,choice.blockType==='notion'?{url:notionUrl.trim(),...(notionFilter.trim()?{filter:notionFilter.trim()}:{})}:undefined,text&&label?label:undefined,choice.blockType==='google'?googleUrl.trim():undefined);}finally{setBusy(false);}
+      // A paper is added by ros.ai itself, which saves its PDF first. A report keeps its own editor, so that label
+      // becomes the report block type underneath.
+      try{if(papers)await onPaper(paper!.id);else await onCreate(choice.kind,title.trim(),text?(label==='report'?'report':undefined):choice.blockType,choice.blockType==='notebook'||choice.blockType==='file'?notebookFile??undefined:undefined,choice.blockType==='notion'?{url:notionUrl.trim(),...(notionFilter.trim()?{filter:notionFilter.trim()}:{})}:undefined,text&&label?label:undefined,choice.blockType==='google'?googleUrl.trim():undefined);}finally{setBusy(false);}
     }}>
       <div className="kind-choices" role="group" aria-label="Block kind">
         {blockChoices.map(({id,label:name,description,icon})=><button key={id} type="button" className={choiceId===id?'selected':''} aria-pressed={choiceId===id} disabled={busy} onClick={()=>setChoiceId(id)}>
@@ -377,14 +396,14 @@ function NewNodeModal({scope,onClose,onCreate}: {scope?:string;onClose:()=>void;
         </button>)}
       </div>
       {text&&<><label className="field-label" htmlFor="new-node-label">Label <span>(optional)</span></label><select id="new-node-label" value={label} onChange={event=>setLabel(event.target.value)} disabled={busy}><option value="">None</option>{TEXT_LABELS.map(word=><option key={word} value={word}>{word}</option>)}</select></>}
-      <label className="field-label" htmlFor="new-node-title">Name <span>(optional)</span></label>
-      <input id="new-node-title" value={title} onChange={event=>setTitle(event.target.value)} maxLength={200} placeholder={(choice.blockType==='notebook'||choice.blockType==='file')&&notebookFile?notebookFile.name.replace(/\.[^.]+$/u,''):text&&label?label[0].toUpperCase()+label.slice(1):choice.label} disabled={busy}/>
+      {papers?<PaperSearch chosen={paper} onChoose={setPaper} disabled={busy}/>:<><label className="field-label" htmlFor="new-node-title">Name <span>(optional)</span></label>
+      <input id="new-node-title" value={title} onChange={event=>setTitle(event.target.value)} maxLength={200} placeholder={(choice.blockType==='notebook'||choice.blockType==='file')&&notebookFile?notebookFile.name.replace(/\.[^.]+$/u,''):text&&label?label[0].toUpperCase()+label.slice(1):choice.label} disabled={busy}/></>}
       {choice.blockType==='notebook'&&<><label className="field-label" htmlFor="new-notebook-file">Start from a Jupyter notebook <span>(optional .ipynb)</span></label><input id="new-notebook-file" type="file" accept=".ipynb,application/x-ipynb+json" disabled={busy} onChange={event=>setNotebookFile(event.target.files?.[0]??null)}/></>}
       {choice.blockType==='file'&&<><label className="field-label" htmlFor="new-file">File</label><input id="new-file" type="file" required accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={busy} onChange={event=>setNotebookFile(event.target.files?.[0]??null)}/></>}
       {choice.blockType==='notion'&&<><label className="field-label" htmlFor="new-notion-url">Notion page or database link</label><input id="new-notion-url" type="url" required value={notionUrl} onChange={event=>setNotionUrl(event.target.value)} maxLength={500} placeholder="https://www.notion.so/…" disabled={busy}/><label className="field-label" htmlFor="new-notion-filter">For a database, only rows where <span>(optional)</span></label><input id="new-notion-filter" value={notionFilter} onChange={event=>setNotionFilter(event.target.value)} maxLength={1000} placeholder={'"Teams" LIKE \'%Research%\''} disabled={busy}/></>}
       {choice.blockType==='google'&&<><label className="field-label" htmlFor="new-google-url">Google Sheet or Doc link</label><input id="new-google-url" type="url" required value={googleUrl} onChange={event=>setGoogleUrl(event.target.value)} maxLength={1000} placeholder="https://docs.google.com/…" disabled={busy}/></>}
-      <p className="subtle node-kind-note">{choice.blockType==='file'?'The file is saved into files/ in the project folder and shown from there. A PDF\'s text is read so agents can use it.':choice.blockType==='notion'?'The page or rows stay in Notion: the block reads them live through your Notion connection.':choice.blockType==='google'?'The sheet or doc stays in Google Drive: the block reads it live through your Google Drive sign-in, which only reads.':choice.blockType==='code'?'Adds it to the canvas and opens the editor so you can start writing.':choice.blockType==='notebook'?notebookFile?'Opens a copy of this notebook in ros.ai. Nothing runs until you run a cell.':'Adds it to the canvas and opens an empty notebook, ready for Python.':text&&label==='report'?'Adds a report you write from exact saved evidence.':'Add it to the canvas now. Open the block when you’re ready to work on it.'}</p>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy}>{busy?choice.blockType==='notion'?'Reading Notion…':choice.blockType==='google'?'Reading Google…':choice.blockType==='file'?'Saving…':'Adding…':choice.blockType==='code'?'Add & write code':choice.blockType==='notebook'?'Add & open notebook':choice.blockType==='google'?'Add sheet or doc':text&&label?`Add ${label}`:`Add ${choice.label}`}</button></div>
+      <p className="subtle node-kind-note">{papers?folder?'Its open PDF, when there is one, is saved into files/ as a File block agents read. Otherwise a Text block holds the reference.':'This project has no folder, so the paper becomes a Text block with its reference. Choose a folder to keep PDFs.':choice.blockType==='file'?'The file is saved into files/ in the project folder and shown from there. A PDF\'s text is read so agents can use it.':choice.blockType==='notion'?'The page or rows stay in Notion: the block reads them live through your Notion connection.':choice.blockType==='google'?'The sheet or doc stays in Google Drive: the block reads it live through your Google Drive sign-in, which only reads.':choice.blockType==='code'?'Adds it to the canvas and opens the editor so you can start writing.':choice.blockType==='notebook'?notebookFile?'Opens a copy of this notebook in ros.ai. Nothing runs until you run a cell.':'Adds it to the canvas and opens an empty notebook, ready for Python.':text&&label==='report'?'Adds a report you write from exact saved evidence.':'Add it to the canvas now. Open the block when you’re ready to work on it.'}</p>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="primary" disabled={busy||(papers&&!paper)}>{busy?papers?paper?.pdf&&folder?'Saving the PDF…':'Adding…':choice.blockType==='notion'?'Reading Notion…':choice.blockType==='google'?'Reading Google…':choice.blockType==='file'?'Saving…':'Adding…':choice.blockType==='code'?'Add & write code':choice.blockType==='notebook'?'Add & open notebook':choice.blockType==='google'?'Add sheet or doc':papers?'Add paper':text&&label?`Add ${label}`:`Add ${choice.label}`}</button></div>
     </form>
   </Modal>;
 }

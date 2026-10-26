@@ -55,6 +55,8 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 **Google Sheets and Docs on the canvas.** With Google Drive connected (read-only), Add block › Google Drive takes a sheet or doc link and shows it live: a sheet's tab or a doc's text, read again when it changes, with nothing copied into ros.ai. A sheet's tab can be copied into a Data block for SQL. Every agent can search your Drive and read Sheets and Docs. Turn on the Google Sheets API next to the Drive API in your Google Cloud project to choose tabs; without it a sheet shows its first tab.
 
+**Papers on the canvas.** Add block › Paper searches OpenAlex and arXiv, and your Zotero library once its key is saved on the Plugins page. A paper's open PDF is saved into the project folder as a File block whose text agents read; without one, a Text block holds the reference and abstract. Turn OpenAlex or arXiv on for agents on the Plugins page (Zotero is on once connected) and every agent can search them and add papers to the canvas under the project's approval mode. A free OpenAlex key, saved there or as `OPENALEX_API_KEY` in the keys file, raises its daily allowance.
+
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 
 ## Three approval modes

@@ -6,6 +6,7 @@ import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
 import type { SkillSummary } from '../shared/skills';
+import type { PaperSourceStatus, PapersStatus } from '../shared/papers';
 import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
 import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
 import { BrandLogo, hasBrandLogo } from './brand-logos';
@@ -44,7 +45,7 @@ export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}
   </>;
 }
 const groups: { title: string; ids: PluginId[] }[] = [
-  { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'tavily', 'exa', 'brave'] },
+  { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'openalex', 'arxiv', 'tavily', 'exa', 'brave'] },
   { title: 'Team', ids: ['notion', 'slack', 'linear'] },
   { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
   { title: 'Not available yet', ids: ['overleaf'] },
@@ -69,12 +70,12 @@ export function PluginsSidebar({section,onSection,installed,selected,onSelect,sk
 }
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
-  const [plugins,setPlugins]=useState<PluginStatus[]>([]),[apps,setApps]=useState<AppConnectionStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[credentials,setCredentials]=useState<CredentialStatus[]>([]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[search,setSearch]=useState<SearchServiceStatus|null>(null);
+  const [plugins,setPlugins]=useState<PluginStatus[]>([]),[apps,setApps]=useState<AppConnectionStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[credentials,setCredentials]=useState<CredentialStatus[]>([]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[search,setSearch]=useState<SearchServiceStatus|null>(null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(null);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const [tokens,drive,keys,limits,signIns,searching]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search')]);
+    const [tokens,drive,keys,limits,signIns,searching,sources]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers')]);
     const failures:Record<string,string>={};
     if(tokens.status==='fulfilled')setPlugins(tokens.value.plugins);else failures.plugins=message(tokens.reason);
     if(drive.status==='fulfilled')setGoogle(drive.value);else failures.google=message(drive.reason);
@@ -82,6 +83,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(limits.status==='fulfilled')setBudgets(limits.value.budgets);
     if(signIns.status==='fulfilled')setApps(signIns.value.apps);
     if(searching.status==='fulfilled')setSearch(searching.value);
+    if(sources.status==='fulfilled')setPapers(sources.value.sources);
     setErrors(failures);setLoading(false);
   },[publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -90,6 +92,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.connect==='unavailable')return {label:'Not yet',connected:false};
     if(plugin.id==='google-drive')return google?.connected?{label:'Connected',connected:true}:{label:'Not connected',connected:false};
     if(plugin.id==='google-sheets'||plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
+    if(plugin.connect==='public')return papers?.find(item=>item.id===plugin.id)?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
     if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
     const token=plugins.find(item=>item.id===plugin.id),app=viaApp(plugin)?apps.find(item=>item.id===plugin.id):undefined;
     if(app?.connected)return {label:'Connected',connected:true};
@@ -110,6 +113,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
         {credential?.configured&&search?.active===id&&<p>Ros and your agents search the web with {label}.</p>}
       </KeyConnection>;
     }
+    if(plugin.connect==='public')return <PaperSource key={plugin.id} plugin={plugin} source={papers?.find(item=>item.id===plugin.id)} token={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
     if(plugin.connect==='sign-in'||plugin.connect==='desktop')return <AppPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} app={apps.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
@@ -130,6 +134,27 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     {groups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>row(PLUGINS.find(plugin=>plugin.id===id)!))}</div></section>)}
     <p className="plugins-footnote">Each plugin connects with a sign-in, key, token or desktop app you already have, and stays on this computer. Every agent you run here, from any vendor, uses the same connections; agents read through them and change things only after you accept.</p>
   </div>;
+}
+
+/** A free public source of papers (OpenAlex, arXiv). Add block › Paper always searches it; the switch offers it to every
+ * agent too. OpenAlex also takes an optional key, kept like a plugin token, for a larger daily allowance. */
+function PaperSource({plugin,source,token,onChanged}:{plugin:PluginDefinition;source?:PaperSourceStatus;token?:PluginStatus;onChanged:()=>Promise<void>}) {
+  const [open,setOpen]=useState(false),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const run=async(work:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await work();await onChanged();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
+  const on=source?.agents??false,id=plugin.id as TokenPluginId;
+  return <ConnectionCard label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} forceOpen connected={on} status={!source?'Checking…':on?'On for agents':'Off for agents'}>
+    <p>Free, with no account. Add block › Paper searches {plugin.name} whenever you add a paper. {on?`Every agent can search it too, and add the papers it finds to the canvas.`:`Turn it on and every agent can search it too.`}</p>
+    {token?.checkMessage&&<p className={token.verified?'connection-check':'inline-error'} role="status">{token.checkMessage}</p>}
+    <div className="connection-actions">
+      <button className={on?'secondary small':'primary small'} disabled={busy||!source} onClick={()=>void run(()=>api(`/api/papers/${plugin.id}`,{method:'PUT',body:JSON.stringify({agents:!on})}))}>{on?'Turn off for agents':'Turn on for agents'}</button>
+      {plugin.tokenLabel&&<button className="text-button" disabled={busy} aria-expanded={open} onClick={()=>{setOpen(!open);setKey('');setError('');}}>{open?'Close setup':token?.configured?'Replace key':'Add a key'}</button>}
+      {token?.configured&&<button className="text-button" disabled={busy} onClick={()=>void run(()=>post(`/api/plugins/${id}/check`,{}))}>{busy?'Checking…':'Check'}</button>}{token?.configured&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>api(`/api/plugins/${id}`,{method:'DELETE'}))}>Remove key</button>}
+    </div>
+    {open&&<div className="connection-setup"><p>{plugin.tokenHint} {plugin.tokenLink&&<a href={plugin.tokenLink} target="_blank" rel="noreferrer">Open {plugin.name}<ExternalLink size={11}/></a>}</p>
+      <form onSubmit={event=>{event.preventDefault();if(busy)return;void run(async()=>{await api(`/api/plugins/${id}`,{method:'PUT',body:JSON.stringify({token:key})});setKey('');setOpen(false);});}}><label className="field-label" htmlFor={`plugin-token-${id}`}>{plugin.tokenLabel}</label><input id={`plugin-token-${id}`} type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)} placeholder="Paste it here" required minLength={8} maxLength={4096}/><button className="primary small" type="submit" disabled={busy||key.trim().length<8}>{busy?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} Save</button></form>
+      <p className="subtle">Saved privately on this computer. Check makes one request to confirm the key.</p></div>}
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </ConnectionCard>;
 }
 
 /** An app connected through its own MCP server: Connect opens its sign-in page (sign-in), or checks that its desktop app serves it (desktop). */

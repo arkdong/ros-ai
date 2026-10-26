@@ -1,3 +1,4 @@
+import arxiv from './arxiv.svg';
 import brave from './brave.svg';
 import claude from './claude.svg';
 import codex from './codex.svg';
@@ -16,6 +17,7 @@ import nebius from './nebius.svg';
 import notion from './notion.svg';
 import ollama from './ollama.svg';
 import openai from './openai.svg';
+import openalex from './openalex.svg';
 import opencode from './opencode.svg';
 import overleaf from './overleaf.svg';
 import sentry from './sentry.svg';
@@ -24,7 +26,7 @@ import tavily from './tavily.svg';
 import zotero from './zotero.svg';
 
 /** Official company marks, copied unchanged from their sources (see SOURCES.md); each belongs to its owner. */
-const logos = { brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-sheets': googleSheets, goose, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, opencode, overleaf, sentry, slack, tavily, zotero };
+const logos = { arxiv, brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-sheets': googleSheets, goose, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, openalex, opencode, overleaf, sentry, slack, tavily, zotero };
 export type BrandId = keyof typeof logos;
 export const hasBrandLogo = (id: string): id is BrandId => id in logos;
 
