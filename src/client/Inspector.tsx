@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUp, ChevronDown, Clock3, FileText, Globe2, History, LoaderCircle, MessageSquare, RotateCcw, Square, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, ChevronDown, Clock3, Database, FileText, Globe2, History, LoaderCircle, MessageSquare, RotateCcw, Square, X } from 'lucide-react';
 import type { Artifact, CanvasNode, Mutation, ProjectDetail, Run } from '../shared/types';
 import { kindName, textLabel } from '../shared/vocabulary';
 import { useDraft, readSaved, saveLocal } from './persistence';
@@ -14,6 +14,7 @@ import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
 import { FileViewer, type ShownFile } from './FileView';
+import { SqlPanel } from './SqlPanel';
 
 type Props = {
   node: CanvasNode; detail: ProjectDetail;
@@ -27,9 +28,11 @@ type Props = {
   readOnlyNote?: string;
   /** The PDF or image a File block shows. */
   file?: ShownFile;
+  /** Set where SQL runs, on this computer: reloads the project after a query result is saved. */
+  sql?: { onChanged: () => Promise<unknown> };
 };
 
-export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file }: Props) {
+export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, sql }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
   const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
@@ -60,6 +63,10 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
   const messages = detail.messages.filter(message => message.nodeId === node.id);
   const primary = isGroup(node) ? undefined : primaryArtifact(node, detail), children = detail.project.canvas.nodes.filter(item => item.parentId === node.id);
   const thread = useRef<HTMLDivElement>(null);
+  // A Data block can query the project's data with SQL.
+  const sqlShown = Boolean(sql) && !readOnly && node.blockType === 'dataset' && !node.notion && !file;
+  const [sqlOpen, setSqlOpen] = useState(false);
+  const sqlPanel = sqlShown && sqlOpen && <SqlPanel projectId={detail.project.id} node={node} revision={detail.project.revision} onSaved={async (artifact, filled) => { await sql!.onChanged(); if (filled) setSqlOpen(false); else onOpenArtifact(artifact); }}/>;
   useEffect(() => { if (side === 'conversation') thread.current?.scrollTo({ top: thread.current.scrollHeight }); }, [side, messages.length, active?.events.length]);
   const submit = async () => {
     if (!request.trim() || submitting || active || readOnly) return;
@@ -74,7 +81,8 @@ export function Inspector({ node, detail, mutate, onRun, onCancel, onRetry, onAt
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
       {file&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}
-      {primary&&!file&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></div>{['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>}</section>}
+      {primary&&!file&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><span className="note-content-actions">{sqlShown&&<button className="text-button small" aria-pressed={sqlOpen} onClick={()=>setSqlOpen(!sqlOpen)}>{sqlOpen?<><X size={12}/> Close SQL</>:<><Database size={12}/> Query with SQL</>}</button>}<button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></span></div>{sqlPanel||(['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>)}</section>}
+      {!primary&&sqlShown&&<section className="note-content">{sqlOpen?<><div className="note-content-heading"><h3>Fill this block with a query</h3><button className="text-button small" onClick={()=>setSqlOpen(false)}><X size={12}/> Close SQL</button></div>{sqlPanel}</>:<button className="secondary small sql-start" onClick={()=>setSqlOpen(true)}><Database size={13}/> Query with SQL</button>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}
       {isGroup(node)&&<GroupHighlights node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>}
       {readOnly&&!description&&!primary&&!children.length&&!node.notion&&!file&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
