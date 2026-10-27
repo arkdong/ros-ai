@@ -1,4 +1,5 @@
 import type { NotionPage, NotionProperty, NotionPropertyType, NotionUnit } from '../shared/types.js';
+import { parseLine } from '../shared/notion-inline.js';
 
 /** A Notion page as ros.ai shows it, from the text Notion's hosted MCP returns for a page: the page's
  * properties (a JSON object), its content in Notion-flavored Markdown (CommonMark with Notion's own tags)
@@ -45,8 +46,6 @@ const HEADINGS: Record<string, string> = { h1: '# ', h2: '## ', h3: '### ', h4: 
 const UNITS = ['h1', 'h2', 'h3', 'h4', 'p', 'toggle', 'quote', 'callout', 'li', 'todo'];
 const BLOCK = [...UNITS, 'ul', 'ol', 'columns', 'column', 'tabs', 'tab', 'synced-block', 'synced-block-reference', 'meeting-notes', 'meeting-notes-section-notes', 'meeting-notes-section-summary', 'mail', 'table', 'tr', 'td', 'th', 'colgroup', 'col', 'thead', 'tbody', ...MEDIA];
 const BLOCK_TAG = new RegExp(`(<\\/?(?:${BLOCK.join('|')})(?:\\s[^<>]*?)?\\/?>)`, 'u');
-/** The words of a block without its list marks, quote marks or heading marks: what a person edits. */
-export const unitText = (markdown: string) => markdown.split('\n').map(line => line.replace(/^(?:\s*(?:#{1,3} |- ☐ |- ☑ |- |1\. |> ))+/u, '').replace(/^> /u, '')).join('\n').trim();
 
 /** The content of a page as plain Markdown, block by block: headings, lists, to-dos, quotes, callouts, tables and
  * media become their Markdown forms; columns, tabs and other containers only contribute what they hold. */
@@ -64,8 +63,12 @@ export function notionUnits(content: string, names: UserNames = () => undefined)
     const markdown = out.slice(from).join('\n').replace(/\n{3,}/gu, '\n\n').trim();
     if (!markdown) return;
     // One block of words: a block with children, a table row, an equation or an embedded page stays read only.
-    const editable = source !== undefined && source.trim().length > 0 && !/\n\s*\n/u.test(source.trim()) && !/^\s*\|/u.test(source) && !/<(?:table|columns|synced-block|database|page|image|pdf|file|audio|video|bookmark|embed|equation|callout|quote|toggle|ul|ol|li|todo|h[1-4]|p)\b/u.test(source);
-    units.push({ markdown, ...(editable ? { text: unitText(markdown), source: source!.trim() } : {}) });
+    const editable = source !== undefined && source.trim().length > 0 && !/\n\s*\n/u.test(source.trim()) && !/^\s*(?:\||```|\$\$|(?:-{3,}|\*{3,})\s*$)/u.test(source) && !/<(?:table|columns|synced-block|database|page|image|pdf|file|audio|video|bookmark|embed|equation|callout|quote|toggle|ul|ol|li|todo|h[1-4]|p)\b/u.test(source);
+    if (!editable) { units.push({ markdown }); return; }
+    // What each mention, date or inline page reads as, for the editor to show in place of the tag.
+    const atoms = parseLine(source!.trim()).runs.flatMap(run => 'atom' in run ? [run.atom] : []);
+    const labels = Object.fromEntries(atoms.map(atom => [atom, unescape(inline(atom, names)).replace(/^\[([\s\S]*)\]\([^)]*\)$/u, '$1').trim() || atom.match(/>([^<]+)</u)?.[1] || '…']));
+    units.push({ markdown, source: source!.trim(), ...(atoms.length ? { labels } : {}) });
   };
   const open = (tag: string, attrs: Attributes): Omit<Frame, 'used' | 'lines'> => {
     const parent = stack[stack.length - 1];
