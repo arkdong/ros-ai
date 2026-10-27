@@ -28,8 +28,10 @@ export function check(trajectory: Trajectory): Verdict {
     if (firsts.some((position, index) => index && position !== -1 && firsts[index - 1] !== -1 && position < firsts[index - 1])) reasons.push('research steps out of order');
     if (trajectory.findings < 3) reasons.push(`only ${trajectory.findings} findings saved`);
   }
-  // Questions are answered from what was read, not from memory.
-  if (['read-answer', 'report', 'add-notes'].includes(trajectory.family) && !used.some(name => name.startsWith('ros_read'))) reasons.push('answered without reading');
+  // Questions are answered from what was read, not from memory. Selected blocks arrive with their text
+  // in the first message, so a read is required only when nothing was selected.
+  const nothingSelected = trajectory.messages.some(message => message.role === 'user' && message.content.startsWith('Nothing is selected.'));
+  if (['read-answer', 'report', 'add-notes'].includes(trajectory.family) && nothingSelected && !used.some(name => name.startsWith('ros_read'))) reasons.push('answered without reading');
   if (!reply) reasons.push('empty answer');
   if (words(reply) > 160) reasons.push(`answer is ${words(reply)} words`);
   if (/^#{1,6} /mu.test(reply)) reasons.push('answer has a heading');
