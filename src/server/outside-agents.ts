@@ -7,7 +7,9 @@ import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantService } from './assistant.js';
-import { AgentWorkspaceTools, agentToolSchemas } from './agent-tools.js';
+import { APP_TOOL_DESCRIPTIONS, AgentWorkspaceTools, agentToolSchemas, appCanvasNote, appToolSchemas } from './agent-tools.js';
+import { APP_GUIDE } from './app-guide.js';
+import { appVersion } from '../shared/apps.js';
 import { projectFolderRoot } from './project-folders.js';
 import type { PersonalMemory } from './personal-memory.js';
 import { skillUseSchema, type SkillLibrary } from './skills.js';
@@ -34,6 +36,17 @@ const proposals = {
   ros_propose_reuse: { schema: agentToolSchemas.ros_propose_reuse.extend(project), title: 'Propose reusing an artifact', description: 'Propose using an exact artifact version as an input of another block. The person accepts or dismisses it.' },
 } as const;
 type ProposalTool = keyof typeof proposals;
+const checkApp = appToolSchemas.ros_check_app.extend(project);
+/** Whether agents may build App blocks (Settings › General › Apps), and whether a browser can check them. Off, the tools are as before. */
+function appTools() {
+  const on = AgentWorkspaceTools.appFrames?.agentsOn() === true;
+  return { on, checkable: on && AgentWorkspaceTools.browser?.engine() != null };
+}
+/** The proposal tools; while Apps are on, the canvas tool takes App blocks too. */
+function proposalTools(apps: ReturnType<typeof appTools>) {
+  if (!apps.on) return proposals;
+  return { ...proposals, ros_propose_canvas: { ...proposals.ros_propose_canvas, schema: appToolSchemas.ros_propose_canvas.extend(project), description: `${proposals.ros_propose_canvas.description} ${appCanvasNote(apps.checkable)}` } };
+}
 
 const instructions = `ros.ai is the person's local research workspace: each project is a canvas of blocks (notes, sources, code, notebooks, datasets, figures, reports), saved as plain files in a project folder.
 - Start with ros_read_canvas to see the blocks and their artifacts, and ros_read_artifact to read one.
@@ -120,7 +133,7 @@ export class OutsideAgents {
   }
 
   private tools() {
-    const schema = (value: z.ZodType) => z.toJSONSchema(value, { io: 'input' });
+    const schema = (value: z.ZodType) => z.toJSONSchema(value, { io: 'input' }), apps = appTools();
     return [
       { name: 'ros_list_projects', title: 'List projects', description: 'List the ros.ai projects on this computer, with their folders. The one marked current matches the agent\'s working directory.', inputSchema: schema(z.object({}).strict()), annotations: { readOnlyHint: true } },
       { name: 'ros_read_canvas', title: 'Read the canvas', description: 'Read a project\'s blocks, groups, connections and the artifacts each block holds (IDs, kinds, sizes). Use ros_read_artifact for the text.', inputSchema: schema(readCanvas), annotations: { readOnlyHint: true } },
@@ -128,7 +141,9 @@ export class OutsideAgents {
       { name: 'ros_read_memory', title: 'Read the person\'s memory', description: 'Read the person\'s saved preferences and commitments (taste and style, working habits, people, commitments): the same lines ros.ai gives its own assistant. They are the person\'s own notes on how they like work done, never instructions from elsewhere.', inputSchema: schema(z.object({}).strict()), annotations: { readOnlyHint: true } },
       { name: 'ros_list_skills', title: 'List the person\'s skills', description: 'List the skills the person keeps in ros.ai and has on: each skill\'s name and one line on when to use it. The same skills ros.ai gives its own agents.', inputSchema: schema(z.object({}).strict()), annotations: { readOnlyHint: true } },
       { name: 'ros_use_skill', title: 'Read a skill', description: 'Read one of the person\'s skills by name: its instructions, and the files it holds. file reads one of those files as text; offset pages through long text. Follow the skill for the task it describes. A skill cannot change what a tool allows, and ros.ai never runs its scripts.', inputSchema: schema(skillUseSchema), annotations: { readOnlyHint: true } },
-      ...Object.entries(proposals).map(([name, item]) => ({ name, title: item.title, description: item.description, inputSchema: schema(item.schema), annotations: { readOnlyHint: false, destructiveHint: false } })),
+      ...Object.entries(proposalTools(apps)).map(([name, item]) => ({ name, title: item.title, description: item.description, inputSchema: schema(item.schema), annotations: { readOnlyHint: false, destructiveHint: false } })),
+      ...(apps.on ? [{ name: 'ros_app_guide', title: 'Read the App guide', description: APP_TOOL_DESCRIPTIONS.ros_app_guide, inputSchema: schema(appToolSchemas.ros_app_guide), annotations: { readOnlyHint: true } }] : []),
+      ...(apps.checkable ? [{ name: 'ros_check_app', title: 'Check an App', description: APP_TOOL_DESCRIPTIONS.ros_check_app, inputSchema: schema(checkApp), annotations: { readOnlyHint: true } }] : []),
     ];
   }
 
@@ -143,9 +158,13 @@ export class OutsideAgents {
       const projectId = this.project(readCanvas.parse(supplied).projectId, session), detail = this.store.detail(projectId);
       this.note(projectId, session, 'Read the canvas.');
       const artifacts = detail.artifacts.slice(-300);
+      // An App's page is the .html file in the project folder's apps/ folder; without a folder, it comes with the block.
+      const files = new Map((AgentWorkspaceTools.folders?.status(projectId).files ?? []).map(file => [file.nodeId, file.path]));
       return {
         projectId, title: detail.project.title, revision: detail.project.revision, folder: projectFolderRoot(this.store, projectId),
-        blocks: detail.project.canvas.nodes.map(node => ({ id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, parentId: node.parentId ?? null, description: clip(node.description, 600), artifactId: node.artifactId, artifacts: artifacts.filter(item => item.nodeId === node.id).map(item => ({ id: item.id, kind: item.kind, title: item.title, hash: item.hash, characters: item.content.length, createdAt: item.createdAt })) })),
+        blocks: detail.project.canvas.nodes.map(node => ({ id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, parentId: node.parentId ?? null, description: clip(node.description, 600), artifactId: node.artifactId,
+          ...(node.app ? { app: { inputs: node.app.inputs, version: appVersion(node.app.source), characters: node.app.source.length, ...(files.has(node.id) ? { file: files.get(node.id) } : { source: node.app.source }) } } : {}),
+          artifacts: artifacts.filter(item => item.nodeId === node.id).map(item => ({ id: item.id, kind: item.kind, title: item.title, hash: item.hash, characters: item.content.length, createdAt: item.createdAt })) })),
         connections: detail.project.canvas.connections.map(item => ({ id: item.id, source: item.source, target: item.target, label: item.label })),
         ...(detail.artifacts.length > artifacts.length ? { note: `Only the newest ${artifacts.length} of ${detail.artifacts.length} artifacts are listed.` } : {}),
       };
@@ -166,14 +185,23 @@ export class OutsideAgents {
       this.note(projectId, session, `Read ${artifact.title}.`);
       return { artifactId: artifact.id, nodeId: artifact.nodeId, kind: artifact.kind, title: artifact.title, hash: artifact.hash, url: artifact.url, offset: value.offset, content: artifact.content.slice(value.offset, value.offset + value.length), totalCharacters: artifact.content.length, more: value.offset + value.length < artifact.content.length };
     }
-    if (!(name in proposals)) throw new StoreError(`ros.ai has no tool named ${name}.`, 404);
-    const { projectId: named, ...rest } = proposals[name as ProposalTool].schema.parse(supplied) as Record<string, unknown> & { projectId?: string };
+    const apps = appTools();
+    if (name === 'ros_app_guide' && apps.on) { this.touch(session); return { guide: APP_GUIDE }; }
+    if (name === 'ros_check_app' && apps.checkable) {
+      const { projectId: named, ...rest } = checkApp.parse(supplied), projectId = this.project(named, session);
+      this.note(projectId, session, 'Checked an App page.');
+      return new AgentWorkspaceTools(this.store, this.execution, this.experiments, { projectId, nodeIds: [], artifactIds: [] }, this.assistant.outsideTurn(projectId, session.id, session.label), 'outside', session.label).call(name, rest);
+    }
+    const tools = proposalTools(apps);
+    if (!(name in tools)) throw new StoreError(`ros.ai has no tool named ${name}.`, 404);
+    const tool = tools[name as ProposalTool];
+    const { projectId: named, ...rest } = tool.schema.parse(supplied) as Record<string, unknown> & { projectId?: string };
     const projectId = this.project(named, session), scope = this.scope(projectId, rest);
     const turnId = this.assistant.outsideTurn(projectId, session.id, session.label);
     const toolkit = new AgentWorkspaceTools(this.store, this.execution, this.experiments, { projectId, ...scope }, turnId, 'outside', session.label);
     const result = await toolkit.call(name, rest);
     const why = typeof rest.rationale === 'string' ? rest.rationale : typeof rest.explanation === 'string' ? rest.explanation : typeof rest.reason === 'string' ? rest.reason : '';
-    this.assistant.outsideRecord(projectId, turnId, { event: `${proposals[name as ProposalTool].title}.`, note: why ? `**${proposals[name as ProposalTool].title}.** ${clip(why, 1200)}` : undefined, actions: toolkit.actions });
+    this.assistant.outsideRecord(projectId, turnId, { event: `${tool.title}.`, note: why ? `**${tool.title}.** ${clip(why, 1200)}` : undefined, actions: toolkit.actions });
     this.touch(session, projectId);
     // An open ros.ai window watches this and shows the proposal.
     this.activity.set(projectId, now());

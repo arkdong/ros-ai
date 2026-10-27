@@ -36,7 +36,7 @@ const MCP_PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const COMMAND: Record<AcpAgentId, string> = { gemini: 'gemini', goose: 'goose', opencode: 'opencode' };
 /** The session mode a turn must run in, where the agent's own boundary depends on one. */
 const REQUIRED_MODE: Partial<Record<AcpAgentId, string>> = { opencode: 'ros-ai', goose: 'approve' };
-const READ_ONLY_TOOLS = new Set(['ros_read_canvas', 'ros_read_selected', 'ros_use_skill', 'ros_notion_search', 'ros_notion_read', 'ros_notion_query', 'ros_app_tools']);
+const READ_ONLY_TOOLS = new Set(['ros_read_canvas', 'ros_read_selected', 'ros_use_skill', 'ros_notion_search', 'ros_notion_read', 'ros_notion_query', 'ros_app_tools', 'ros_app_guide', 'ros_check_app']);
 
 /** Claude Code's instructions, with its folder line in words that fit the agent: Gemini CLI and OpenCode keep
  * their own read tools; Goose has none it may use, so it reads blocks through ros.ai. */

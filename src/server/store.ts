@@ -10,6 +10,7 @@ import { convertDecisionLogs } from '../shared/decisions.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
+import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -32,11 +33,19 @@ export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zote
 /** The agent whose turn an Agent block stands for, ACP agents (Gemini CLI, Goose, OpenCode) included. Kept apart from nodeFields, so the
  * canvas tool agents see reads as the training snapshot has it. */
 const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', ...ACP_AGENT_IDS]), turnId: identifier }).strict();
-export const mutationSchema = mutations({ ...liveNodeFields, agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** An App block's page and the blocks it reads (see AppDocument). An update may name only the page or only the inputs;
+ * ros.ai keeps the other. Kept apart from nodeFields, so the canvas tool agents see reads as the training snapshot has
+ * it until Apps are switched on for agents. */
+const appSchema = z.object({ source: z.string().max(APP_SOURCE_LIMIT).optional(), inputs: z.array(identifier).max(MAX_APP_INPUTS).optional() }).strict().refine(value => value.source !== undefined || value.inputs !== undefined, 'Give the page (source), the inputs, or both');
+const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','app']).optional(), app: appSchema.optional() };
+export const mutationSchema = mutations({ ...appNodeFields, agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
 export const snapshotProposalMutationSchema = mutations(nodeFields);
+/** What agents may propose while Apps are switched on for them, with and without Google blocks. */
+export const appProposalMutationSchema = mutations(appNodeFields);
+export const snapshotAppProposalMutationSchema = mutations({ ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','app']).optional(), app: appSchema.optional() });
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);
@@ -321,6 +330,36 @@ export class Store {
     return placed;
   }
 
+  /** A Code block whose language is html is saved as an App: the alias the frozen agent tools of 24 October write.
+   * An App keeps its page and inputs in `app`, never in `code`; a Code input artifact becomes the block holding it. */
+  private asApp(projectId: string, node: CanvasNode): CanvasNode {
+    const alias = isHtmlLanguage(node.code?.language) && (node.blockType === 'code' || node.blockType === undefined);
+    if (node.blockType !== 'app' && !alias) return node;
+    if (node.kind === 'group') throw new StoreError('A Group cannot be an App.');
+    if (node.code && !isHtmlLanguage(node.code.language)) throw new StoreError('An App block holds one HTML page. Send app {source, inputs}, or code with language "html".');
+    const { code, ...rest } = node;
+    return { ...rest, blockType: 'app', app: { source: node.app?.source ?? code?.source ?? '', inputs: node.app?.inputs ?? this.codeInput(projectId, code?.inputArtifactId) } };
+  }
+  /** The patch an update makes, with an App's page always whole in `app`. Edits that leave the page alone stay as sent. */
+  private appPatch(projectId: string, node: CanvasNode, patch: Partial<CanvasNode>): Partial<CanvasNode> {
+    const merged = { ...node, ...patch }, wasApp = node.blockType === 'app';
+    const alias = isHtmlLanguage(merged.code?.language) && (merged.blockType === 'code' || merged.blockType === 'app');
+    if (!wasApp && merged.blockType !== 'app' && !alias) return patch;
+    if (wasApp && merged.blockType !== 'app' && !alias) throw new StoreError(`${node.title} is an App and stays one. Change its page with app {source}.`);
+    if (!('app' in patch) && !('code' in patch) && !('blockType' in patch)) return patch;
+    if (patch.code && !isHtmlLanguage(patch.code.language)) throw new StoreError('An App block holds one HTML page. Send app {source, inputs}, or code with language "html".');
+    const { code, ...rest } = patch;
+    const source = patch.app?.source ?? code?.source ?? node.app?.source ?? node.code?.source ?? '';
+    const inputs = patch.app?.inputs ?? node.app?.inputs ?? this.codeInput(projectId, (code ?? node.code)?.inputArtifactId);
+    return { ...rest, blockType: 'app', app: { source, inputs } };
+  }
+  private codeInput(projectId: string, artifactId: string | null | undefined): string[] {
+    if (!artifactId) return [];
+    const artifact = this.getArtifact(artifactId);
+    if (artifact.projectId !== projectId) throw new StoreError('The Code input must belong to this project.');
+    return [artifact.nodeId];
+  }
+
   private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
     const parsed = operationsSchema.parse(supplied) as Mutation[];
     const operations = proposal && !arranged ? batchGrid(parsed, project.canvas.nodes) : parsed;
@@ -343,11 +382,13 @@ export class Store {
         if (canvas.nodes.some(item => item.id === operation.node.id) || this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, operation.node.id)) throw new StoreError(`Node id ${operation.node.id} already exists or belongs to a removed node`);
         if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
         added.add(operation.node.id);
-        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(operation.node, canvas.nodes, added);
+        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(this.asApp(project.id, operation.node), canvas.nodes, added);
         canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
-        let updated = { ...node, ...operation.patch };
+        const patch = this.appPatch(project.id, node, operation.patch);
+        let updated = { ...node, ...patch };
+        if (updated.blockType === 'app') delete updated.code;
         // A null height gives the card back to its content.
         if (operation.patch.height === null) delete updated.height;
         if ('x' in operation.patch || 'y' in operation.patch) {
@@ -356,7 +397,7 @@ export class Store {
         }
         coordinate.parse(updated.x); coordinate.parse(updated.y);
         canvas.nodes = canvas.nodes.map(item => item.id === node.id ? updated : item);
-        normalized.push({ type: 'updateNode', id: node.id, patch: { ...operation.patch, ...('x' in operation.patch || 'y' in operation.patch ? { x: updated.x, y: updated.y } : {}) } });
+        normalized.push({ type: 'updateNode', id: node.id, patch: { ...patch, ...('x' in operation.patch || 'y' in operation.patch ? { x: updated.x, y: updated.y } : {}) } });
       } else if (operation.type === 'removeNode') {
         activeNode(operation.id);
         // Removing a workspace removes its children in the same undoable edit;
@@ -365,6 +406,8 @@ export class Store {
         for(let previous=-1; previous!==removed.size;) { previous=removed.size; for(const item of canvas.nodes) if(item.parentId && removed.has(item.parentId)) removed.add(item.id); }
         canvas.nodes = canvas.nodes.filter(item => !removed.has(item.id));
         canvas.connections = canvas.connections.filter(item => !removed.has(item.source) && !removed.has(item.target));
+        // An App stops reading a removed block, as a link to it goes; Undo brings both back.
+        canvas.nodes = canvas.nodes.map(item => item.app?.inputs.some(input => removed.has(input)) ? { ...item, app: { ...item.app, inputs: item.app.inputs.filter(input => !removed.has(input)) } } : item);
         normalized.push(operation);
       } else if (operation.type === 'addConnection') {
         const connection = operation.connection;
@@ -406,6 +449,14 @@ export class Store {
         }
       }
       if (node.code?.inputArtifactId && this.getArtifact(node.code.inputArtifactId).projectId!==project.id) throw new StoreError('The Code input must belong to this project.');
+      if (node.app) {
+        if (node.blockType !== 'app') throw new StoreError('Only an App block has a page. Give it blockType "app".');
+        if (new Set(node.app.inputs).size !== node.app.inputs.length) throw new StoreError(`Name each input of ${node.title} once.`);
+        for (const input of node.app.inputs) {
+          if (input === node.id) throw new StoreError(`${node.title} cannot read itself.`);
+          if (!canvas.nodes.some(item => item.id === input)) throw new StoreError(`${node.title} reads ${input}, which is not a block on this canvas.`);
+        }
+      }
       if (node.artifactId) {
         const artifact = this.getArtifact(node.artifactId);
         if (artifact.projectId !== project.id) throw new StoreError('The block artifact must belong to this project.');

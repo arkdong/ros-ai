@@ -79,6 +79,8 @@ function downloaded(roots: string[]): Engine | null {
 export class BrowserService {
   private running: Promise<Browser> | null = null;
   private readonly sessions = new Set<BrowserSession>();
+  /** App checks open now; they keep the browser running like agent sessions do. */
+  private checks = 0;
   private idle?: NodeJS.Timeout;
   private download: BrowserDownload = { state: 'idle' };
   private installer?: ChildProcess;
@@ -158,9 +160,9 @@ export class BrowserService {
   /** Closes the browser a minute after its last session, so it holds no memory between turns. */
   private release(session?: BrowserSession) {
     if (session) this.sessions.delete(session);
-    if (this.sessions.size || !this.running) return;
+    if (this.sessions.size || this.checks || !this.running) return;
     clearTimeout(this.idle);
-    this.idle = setTimeout(() => { if (!this.sessions.size && this.running) { const running = this.running; this.running = null; void running.then(browser => browser.close()).catch(() => undefined); } }, BROWSER_IDLE_MS);
+    this.idle = setTimeout(() => { if (!this.sessions.size && !this.checks && this.running) { const running = this.running; this.running = null; void running.then(browser => browser.close()).catch(() => undefined); } }, BROWSER_IDLE_MS);
     this.idle.unref();
   }
 
@@ -179,6 +181,23 @@ export class BrowserService {
     const session = new BrowserSession(context, page, refused, url => this.reachable(url), () => { proxy.close(); this.release(session); });
     this.sessions.add(session);
     return session;
+  }
+  /** A window for checking an App page (ros_check_app): an empty context that reaches only ros.ai's own local
+   * servers at these origins, never the web, whether or not agents may browse. */
+  async checkWindow(origins: string[]): Promise<{ page: Page; close: () => Promise<void> }> {
+    const browser = await this.launch();
+    this.checks++;
+    const allowed = new Set(origins);
+    // Playwright sends even this computer's addresses through the proxy, which lets only those through.
+    const proxy = await openProxy(async host => { const name = host.replace(/^\[|\]$/gu, '').toLowerCase(); return name === 'localhost' || name === '127.0.0.1' ? { address: '127.0.0.1' } : { reason: 'An App check reaches only ros.ai' }; });
+    let context: BrowserContext | undefined;
+    const close = async () => { await context?.close().catch(() => undefined); proxy.close(); this.checks--; this.release(); };
+    try {
+      context = await browser.newContext({ proxy: { server: `http://127.0.0.1:${proxy.port}` }, acceptDownloads: false, serviceWorkers: 'block', viewport: { width: 960, height: 720 }, deviceScaleFactor: 1 });
+      context.setDefaultTimeout(ACTION_MS); context.setDefaultNavigationTimeout(NAVIGATION_MS);
+      await context.route('**/*', route => { let origin = ''; try { origin = new URL(route.request().url()).origin; } catch { /* refused below */ } return allowed.has(origin) ? route.continue() : route.abort('blockedbyclient'); });
+      return { page: await context.newPage(), close };
+    } catch (error) { await close(); throw new StoreError(`The browser could not open a window to check the App: ${reason(error)}`, 503); }
   }
   /** Starts the browser once and opens an empty page, so the Plugins page can say it works. */
   async check(): Promise<BrowserStatus> {
