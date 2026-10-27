@@ -211,7 +211,7 @@ export class ClaudeAgentService {
       attempt = { ...attempt, status: stopped && !refused && !timedOut ? 'interrupted' : settled ? 'failed' : 'uncertain', error: error instanceof StoreError ? error.message : `Claude Code failed: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its full reservation stays counted; nothing was repeated.` }; save();
       if (!settled) { const session = this.store.record<Session>('claude-session', request.projectId); if (session) this.store.saveRecord('claude-session', request.projectId, request.projectId, { ...session, state: 'uncertain' }); }
       throw new StoreError(attempt.error!, 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); void toolkit.close(); }
   }
   async shutdown() { this.closed = true; for (const value of this.active.values()) value.controller.abort(); await Promise.allSettled([...this.active.values()].map(value => value.done)); }
 }

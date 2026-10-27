@@ -2,6 +2,7 @@ import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Square, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
+import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal } from './persistence';
@@ -123,7 +124,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
     </div>
-    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
+    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model'||blocker.action==='steps')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='steps'?'Answer without tools':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
@@ -147,8 +148,13 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
 
 function HistoryLabel() { return <BookOpen size={13}/>; }
 
-function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'} {
+function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'|'steps'} {
+  // An agent on this computer says itself what is missing (installed, signed in, locked down) and where to fix it.
+  if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
   if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
+  // A local model that cannot work step by step: the reason names the model and what to change.
+  if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};
+  if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};
   if(/stopped|stop flag/i.test(reason))return {summary:'Research is stopped for this project.',action:'permissions'};
   if(backend==='claude'&&/api key/i.test(reason))return {summary:'Connect an Anthropic API key for Claude Code.',action:'connections'};
   if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':backend==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};

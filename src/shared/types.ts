@@ -1,5 +1,6 @@
+import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
@@ -27,8 +28,20 @@ export type NotionEdit =
   | { kind:'text'; old:string; new:string }
   | { kind:'append'; text:string };
 export type NotionRead = NotionTable | NotionPage;
-/** An Agent block stands for one assistant turn run by Claude Code or Codex; its timeline lives with that turn. */
-export type AgentLink = {runtime:'claude'|'codex'|'model'; turnId:string};
+/** A Google Sheet or Doc shown live on the canvas through the Google Drive sign-in: only which file (and for a
+ * sheet, which tab); the content stays in Google Drive. */
+export type GoogleView = { fileId:string; kind:'sheet'|'doc'; sheet?:string };
+/** What a Sheet block shows, read live: one tab's first rows as Google shows them, under its first row's names. */
+export type GoogleSheet = { kind:'sheet'; title:string; fileId:string; link:string; sheet:string; sheets:string[]; columns:string[]; rows:string[][]; truncated:boolean; modifiedAt?:string; fetchedAt:string; notice?:string };
+/** What a Doc block shows, read live: its text as Markdown, without images. */
+export type GoogleDoc = { kind:'doc'; title:string; fileId:string; link:string; content:string; truncated:boolean; modifiedAt?:string; fetchedAt:string; notice?:string };
+export type GoogleRead = GoogleSheet | GoogleDoc;
+/** Where a paper on the canvas came from (Add block › Paper, or an agent's add_paper): its source and its ID there
+ * (openalex:W…, arxiv:2401.01234v2, zotero:ABCD2345), and its DOI and page. The reference itself is the block's text. */
+export type PaperSource = 'openalex'|'arxiv'|'zotero';
+export type PaperRef = { source:PaperSource; id:string; doi?:string; link:string };
+/** An Agent block stands for one assistant turn run by Claude Code, Codex, a model or an ACP agent; its timeline lives with that turn. */
+export type AgentLink = {runtime:'claude'|'codex'|'model'|AcpAgentId; turnId:string};
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 export type NotebookDocument = {sessionId?:string; path:string};
 export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };
@@ -37,7 +50,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; notion?:NotionView; file?:FileView; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; notion?:NotionView; google?:GoogleView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };

@@ -39,7 +39,7 @@ export class NotionViews {
   constructor(private readonly apps: RemoteApps, private readonly cache?: ProjectCache) {}
 
   private async call(tool: string, args: Json, signal?: AbortSignal): Promise<Json> {
-    if (!this.apps.connected().includes('notion')) throw new StoreError('Connect Notion on the Apps page to show this database.', 409);
+    if (!this.apps.connected().includes('notion')) throw new StoreError('Connect Notion on the Plugins page to show this database.', 409);
     const result = await this.apps.call('notion', tool, args, signal);
     if (result.isError) {
       // Notion nests its JSON error in text; keep only the sentence a person can act on.

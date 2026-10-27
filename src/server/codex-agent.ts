@@ -244,7 +244,7 @@ export class CodexAgentService implements AgentRuntime {
       const session = this.store.record<Session>('codex-session', request.projectId);
       if (session) this.store.saveRecord('codex-session', request.projectId, request.projectId, { ...session, state: attempt.status === 'uncertain' ? 'uncertain' : 'interrupted' });
       throw new StoreError(attempt.error, 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); rpc.close(); finish(); this.active.delete(request.projectId); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); rpc.close(); finish(); this.active.delete(request.projectId); void toolkit.close(); }
   }
   async shutdown() { this.closed = true; await this.onboarding.shutdown(); for (const value of this.active.values()) value.stop(); await Promise.allSettled([...this.active.values()].map(value => value.done)); }
 }

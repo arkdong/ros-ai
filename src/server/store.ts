@@ -8,6 +8,7 @@ import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
+import { DOI, PAPER_ID } from '../shared/papers.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -22,9 +23,16 @@ const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
   z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
 ]);
-export const mutationSchema = mutations({ ...nodeFields, decisions: z.array(decisionSchema).max(100).optional() });
+/** A Google Sheet or Doc shown live (see GoogleView). Kept apart from nodeFields, so the canvas tool agents see reads as
+ * the training snapshot has it while Google Drive is not connected. */
+const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional() };
+/** Where a paper came from: set by ros.ai when the person or an agent adds one (papers.ts), so agents never write it. */
+export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zotero']), id: z.string().regex(PAPER_ID), doi: z.string().regex(DOI).optional(), link: z.string().url().max(2000) }).strict();
+export const mutationSchema = mutations({ ...liveNodeFields, paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
-export const proposalMutationSchema = mutations(nodeFields);
+export const proposalMutationSchema = mutations(liveNodeFields);
+/** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
+export const snapshotProposalMutationSchema = mutations(nodeFields);
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);
@@ -662,7 +670,7 @@ export class Store {
 
   addUsage(record: UsageRecord): UsageRecord {
     identifier.parse(record.id);
-    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
+    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude', 'exa', 'brave']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
     z.number().finite().nonnegative().parse(record.reservedUsd);
     if (record.estimatedUsd !== null) z.number().finite().nonnegative().parse(record.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(record.status);
