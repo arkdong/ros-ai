@@ -292,3 +292,25 @@ test('A web search plan from an ACP agent adds its Agent block under that agent\
     await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('A web search plan starts without asking about cost, even under Ask every time', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ros-plan-ask-')), store = new Store(directory);
+  const searched: string[] = [];
+  const search: SearchAdapter = { configured: true, async search(query) { searched.push(query); return { results: [{ title: 'A page', url: 'https://example.org/a', content: 'A passage.', locator: 'Search result 1' }], credits: 1, requestId: null }; } };
+  const execution = new ExecutionService(store, { search, includeSetupUsage: false });
+  try {
+    const project = store.createProject('Plan under ask');
+    store.mutate(project.id, [{ type: 'addNode', node: { id: 'question', title: 'Question', description: 'What is known?', x: 0, y: 0, kind: 'topic' } }], 'Add question');
+    const authority = new Authority(store);
+    authority.configure(project.id, { mode: 'ask' });
+    const tools = new AgentWorkspaceTools(store, execution, { authority } as unknown as ExperimentService, { projectId: project.id, nodeIds: ['question'], artifactIds: [] }, 'turn-ask', 'model', 'Test model');
+    const plan = await tools.call('ros_fan_out_search', { goal: 'What is known?', rationale: 'To find out.', directions: [{ title: 'Basics', why: 'Start there', queries: ['what is known'] }] }) as { status: string };
+    assert.equal(plan.status, 'accepted');
+    assert.deepEqual(searched, ['what is known']);
+    const proposal = store.detail(project.id).proposals.at(-1)!;
+    assert.equal(proposal.status, 'accepted');
+    assert.doesNotMatch(proposal.summary, /US\$/u);
+  } finally {
+    await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true });
+  }
+});

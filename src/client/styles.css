@@ -3372,57 +3372,6 @@ a {
 .canvas-artifact .data-table th,.canvas-artifact .data-table td {
   padding: 5px 7px;
 }
-.selection-toolbar {
-  position: absolute;
-  bottom: 89px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 9px 10px 9px 14px;
-  border: 1px solid #dedede;
-  background: #fffffff5;
-  box-shadow: 0 5px 22px #00000013;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 40px);
-  z-index: 10;
-  white-space: nowrap;
-}
-.selection-toolbar>span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 235px;
-  overflow: hidden;
-}
-.selection-toolbar strong {
-  font-size: 14px;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  color: #171717;
-}
-.selection-toolbar .small {
-  font-size: 13px;
-  padding: 7px 9px;
-}
-.project-floating-actions {
-  position: absolute;
-  bottom: 21px;
-  left: 22px;
-  display: flex;
-  gap: 8px;
-  z-index: 9;
-}
-.project-floating-actions button {
-  background: #ffffff;
-  font-size: 14px;
-  padding: 10px 12px;
-  box-shadow: 0 2px 8px #00000009;
-}
-.project-floating-actions .proposal-count {
-  margin-left: 6px;
-}
 .single-workspace .history-panel {
   right: 18px;
   top: 61px;
@@ -3822,9 +3771,6 @@ a {
   .single-canvas-shell .saved-indicator {
     display: none;
   }
-  .selection-toolbar>span {
-    max-width: 150px;
-  }
   .policy-button {
     font-size: 13px;
   }
@@ -3849,17 +3795,11 @@ a {
   .canvas-context {
     left: 18px;
   }
-  .project-floating-actions {
-    left: 16px;
-  }
   .single-workspace {
     width: 100%;
   }
   .node-modal .inspector-tabs button {
     padding: 11px 12px;
-  }
-  .selection-toolbar {
-    max-width: calc(100% - 32px);
   }
 }
 @media (max-width:600px) {
@@ -3915,47 +3855,6 @@ a {
   }
   .canvas-empty .primary {
     font-size: 14px;
-  }
-  .selection-toolbar {
-    bottom: 79px;
-    padding: 8px;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: center;
-    width: max-content;
-    max-width: calc(100% - 25px);
-  }
-  .selection-toolbar>span {
-    max-width: none;
-    flex-basis: 100%;
-    justify-content: center;
-  }
-  .selection-toolbar .small {
-    font-size: 13px;
-    padding: 6px 8px;
-  }
-  .project-floating-actions {
-    bottom: 17px;
-    left: 13px;
-    max-width: calc(100% - 114px);
-  }
-  .project-floating-actions button {
-    font-size: 13px;
-    padding: 9px;
-    gap: 5px;
-  }
-  .project-floating-actions .danger {
-    font-size: 0;
-    width: 31px;
-    flex-shrink: 0;
-  }
-  .project-floating-actions .proposal-count {
-    font-size: 13px;
-    width: 15px;
-    min-width: 15px;
-    height: 15px;
-    padding: 0;
-    margin-left: 0;
   }
   .unified-canvas .canvas-tools {
     bottom: 16px;
@@ -4434,33 +4333,6 @@ a {
   position: absolute;
   inset: 0;
   background: var(--canvas);
-}
-.single-canvas-shell .selection-toolbar {
-  bottom: 83px;
-  padding: 9px 10px;
-  gap: 7px;
-  box-shadow: 0 5px 22px #00000014;
-  flex-wrap: wrap;
-  justify-content: center;
-  width: max-content;
-  max-width: calc(100% - 28px);
-  background: #ffffff;
-  border-color: #dedede;
-}
-.single-canvas-shell .selection-toolbar>span {
-  max-width: 160px;
-}
-.single-canvas-shell .selection-toolbar strong {
-  font-size: 14px;
-  color: #171717;
-}
-.single-canvas-shell .selection-toolbar .small {
-  font-size: 14px;
-  padding: 8px 10px;
-}
-.single-canvas-shell .project-floating-actions {
-  bottom: 21px;
-  left: 20px;
 }
 .single-canvas-shell .proposal-preview h3 {
   font-size: 15px;
@@ -5340,11 +5212,6 @@ button.outline-title:hover {
   .single-canvas-shell .saved-indicator {
     display: none;
   }
-  .single-canvas-shell .selection-toolbar>span {
-    max-width: none;
-    flex-basis: 100%;
-    justify-content: center;
-  }
   .assistant-heading {
     padding-left: 15px;
     padding-right: 15px;
@@ -5439,9 +5306,6 @@ button.outline-title:hover {
     width: 16px;
     height: 16px;
   }
-  .single-canvas-shell .selection-toolbar {
-    bottom: 86px;
-  }
   .single-canvas-shell .assistant-scroll {
     padding-top: 19px;
   }
@@ -5532,23 +5396,6 @@ button.outline-title:hover {
   .single-canvas-shell .canvas-tools .icon-button {
     width: 32px;
     height: 34px;
-  }
-  .single-canvas-shell .selection-toolbar {
-    bottom: 78px;
-    padding: 8px;
-    gap: 5px;
-  }
-  .single-canvas-shell .selection-toolbar .small {
-    font-size: 13px;
-    padding: 8px;
-  }
-  .single-canvas-shell .project-floating-actions button {
-    font-size: 13px;
-    padding: 9px 10px;
-  }
-  .single-canvas-shell .project-floating-actions .danger {
-    font-size: 13px;
-    width: auto;
   }
   .single-canvas-shell .modal-backdrop {
     padding: 10px;

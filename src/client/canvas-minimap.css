@@ -11,6 +11,6 @@
 /* On maps too narrow for it to sit beside the Ros bar, it moves over the zoom controls at the bottom right, which
    already rise above the bar there; at the left it would run into the bar or the canvas tools. */
 .workspace:has(.ros-dock) .canvas-minimap.above-bar .react-flow__panel.react-flow__minimap {
-  left: auto; right: calc(var(--feedback-right, 21px) - 7px); bottom: calc(14px + var(--feedback-lift, 0px) + 58px);
+  left: auto; right: calc(var(--zoom-right, 21px) - 7px); bottom: 72px; margin-bottom: var(--zoom-lift, 0px);
 }
 @media (prefers-reduced-motion: reduce) { .canvas-minimap .react-flow__panel.react-flow__minimap { transition: none; } }

@@ -1,6 +1,6 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Square, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
@@ -12,6 +12,7 @@ import { presentAssistantResponse, type AssistantStructurePreview as StructurePr
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
 import { post } from './api';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
+import { StopButton, useEscToStop } from './EscToStop';
 import type { ResearchPolicy } from '../shared/research';
 import { RememberCard } from './MemoryPage';
 import type { PersonalMemoryState } from '../shared/personal-memory';
@@ -98,8 +99,9 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     catch(cause){const error=cause instanceof Error?cause.message:String(cause);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
     textarea.current?.focus();
   };
-  // Stop, by button or Esc, leaves the cursor in the box for the next question.
+  // Stop, by button or Esc twice, leaves the cursor in the box for the next question.
   const stop = () => { if (active) void onCancel(active.id); textarea.current?.focus(); };
+  const stopArmed = useEscToStop(active ? stop : null);
   const usePrompt = (value: string) => { setMessage(value); textarea.current?.focus(); };
   const openAnswers = (turnId: string, questions: AssistantClarificationQuestion[]) => {
     if (!questions.length || busy || submission?.status === 'pending') return;
@@ -136,7 +138,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
       {skills.menu}
-      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } else if (event.key === 'Escape' && active) { event.preventDefault(); stop(); } }}/>
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
@@ -145,7 +147,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
           ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
           : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
-        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop (Esc)" onClick={stop}><Square size={10} fill="currentColor"/></button>
+        {active ? <StopButton armed={stopArmed} onStop={stop}/>
           : <button className="ros-send" data-testid="send-project-message" aria-label="Send to Ros" title={blocker?.summary||'Send to Ros'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
@@ -161,7 +163,7 @@ function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:stri
   // A local model that cannot work step by step: the reason names the model and what to change.
   if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};
   if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};
-  if(/stopped|stop flag/i.test(reason))return {summary:'Research is stopped for this project.',action:'permissions'};
+  if(/stopped|stop flag/i.test(reason))return {summary:'Work in this project is paused.',action:'permissions'};
   if(backend==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
   if(backend==='claude'&&/claude plan/i.test(reason))return {summary:reason,action:'connections'};
   if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':backend==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};

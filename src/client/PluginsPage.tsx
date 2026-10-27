@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookText, Check, ChevronRight, ExternalLink, Globe, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
+import { Check, ChevronRight, ExternalLink, Globe, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
-import type { SkillSummary } from '../shared/skills';
 import type { PaperSourceStatus, PapersStatus } from '../shared/papers';
 import type { BrowserStatus } from '../shared/browser';
 import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
@@ -62,13 +61,9 @@ export const searchKeys: Record<SearchProviderId, { link: string; description: s
   brave: { link: 'https://api-dashboard.search.brave.com/app/keys', description: 'Web search for research you start, from Brave’s own index of the web. Each search is charged on your Brave Search plan; spend shows in Settings › Usage.' },
 };
 
-export type PluginsSection = 'plugins' | 'skills';
-const sections = [{ id: 'plugins', label: 'Plugins' }, { id: 'skills', label: 'Skills' }];
-/** Plugins and Skills share the page: the sidebar lists what is connected, or the person's skills. */
-export function PluginsSidebar({section,onSection,installed,selected,onSelect,skills,skill,onSkill}:{section:PluginsSection;onSection:(section:PluginsSection)=>void;installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void;skills:SkillSummary[];skill:string|null;onSkill:(name:string|null)=>void}) {
-  const open=(id:string)=>onSection(id as PluginsSection);
-  if(section==='skills')return <CatalogueSidebar sections={sections} section={section} onSection={open} label="Your skills" empty="No skills yet" installed={skills.map(item=>({id:item.name,name:item.title,mark:<BookText size={16}/>,off:!item.enabled}))} selected={skill} onSelect={onSkill} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
-  return <CatalogueSidebar sections={sections} section={section} onSection={open} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
+/** The sidebar lists the plugins connected on this computer. */
+export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void}) {
+  return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
 }
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {

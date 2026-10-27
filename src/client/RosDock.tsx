@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, Square, X } from 'lucide-react';
+import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, X } from 'lucide-react';
 import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
@@ -9,6 +9,7 @@ import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
+import { StopButton, useEscToStop } from './EscToStop';
 import type { PluginId } from '../shared/plugins';
 import { suggestionsWaiting, usePluginChip } from './PluginSuggestion';
 import { useSuggestions } from './plugin-suggestions';
@@ -60,6 +61,7 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
   };
   // Stopping leaves the cursor in the box, ready for the next question.
   const stop = () => { if (active) void onCancel(active.id); input.current?.focus(); };
+  const stopArmed = useEscToStop(active ? stop : null);
   return <div className="ros-dock" data-testid="ros-bar">
     {plugins.chip}
     <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
@@ -78,7 +80,7 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
         <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
       </div>}
       {skills.menu}
-      <input ref={input} aria-label="Ask Ros" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (active) { event.preventDefault(); stop(); } else (event.target as HTMLInputElement).blur(); }}/>
+      <input ref={input} aria-label="Ask Ros" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (!active) (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
@@ -90,7 +92,7 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
         <button type="button" className="icon-button" aria-label={rosSizeLabel.half} title="Half sheet" onClick={() => onOpen('half')}><RosSizeIcon size="half" px={15}/></button>
         <button type="button" className="icon-button" aria-label={rosSizeLabel.full} title="Side panel" onClick={() => onOpen('full')}><RosSizeIcon size="full" px={15}/></button>
-        {active ? <button type="button" className="ros-send ros-stop" aria-label="Stop Ros" title="Stop (Esc)" onClick={stop}><Square size={10} fill="currentColor"/></button>
+        {active ? <StopButton armed={stopArmed} onStop={stop}/>
           : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
