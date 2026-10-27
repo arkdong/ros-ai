@@ -121,7 +121,7 @@ function zoteroPaper(value: unknown): Paper | null {
 }
 
 /** Reads a response's body up to a size, without trusting its declared length. */
-async function readLimited(response: Response, maximum: number): Promise<Buffer> {
+export async function readLimited(response: Response, maximum: number): Promise<Buffer> {
   const declared = Number(response.headers.get('content-length') ?? Number.NaN);
   if (declared > maximum) { await response.body?.cancel().catch(() => undefined); throw new TooLarge(); }
   if (!response.body) return Buffer.alloc(0);
