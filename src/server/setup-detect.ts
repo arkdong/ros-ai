@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync 
 import { request } from 'node:http';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import type { AgentId, AppId, DetectedApp, DetectedModel, LinkMethod } from '../shared/setup.js';
+import type { AgentId, AppId, DetectedApp, DetectedModel, LinkMethod, LocalModel } from '../shared/setup.js';
 
 /** What is installed on this computer, from existence, names and modification times.
  * Credential files are checked for existence and never opened. Agent settings are parsed for the
@@ -28,7 +28,7 @@ function nvmBins() { const root = join(home, '.nvm', 'versions', 'node'); try { 
 /** PATH plus the folders installers use, because an app opened from the Finder or a shortcut sees a short PATH. */
 function searchDirs() {
   const extra = win ? [join(appData, 'npm'), join(localAppData, 'Programs', 'cursor', 'resources', 'app', 'bin')]
-    : ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local', 'bin'), join(home, '.npm-global', 'bin'), join(home, '.bun', 'bin'), join(home, '.volta', 'bin'), join(home, '.codex', 'bin'), join(home, '.claude', 'local'), join(home, '.cargo', 'bin'), ...nvmBins()];
+    : ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local', 'bin'), join(home, '.npm-global', 'bin'), join(home, '.bun', 'bin'), join(home, '.volta', 'bin'), join(home, '.codex', 'bin'), join(home, '.claude', 'local'), join(home, '.opencode', 'bin'), join(home, '.cargo', 'bin'), ...nvmBins()];
   return [...new Set([...(process.env.PATH ?? '').split(delimiter).filter(Boolean), ...extra])];
 }
 /** The first runnable file of this name on the search path, or an explicit path when it exists. */
@@ -97,23 +97,81 @@ export function detectAgents(): Found[] {
   ];
 }
 
-async function probe(url: string, ms = 500): Promise<unknown> {
-  try { const response = await fetch(url, { signal: AbortSignal.timeout(ms), headers: { accept: 'application/json' } }); return response.ok ? await response.json() : null; } catch { return null; }
+async function probe(url: string, ms = 500, body?: unknown): Promise<unknown> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(ms), headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) });
+    return response.ok ? await response.json() : null;
+  } catch { return null; }
 }
-const names = (value: unknown, list: string, key: string): string[] | null => {
-  const items = value && typeof value === 'object' ? (value as Record<string, unknown>)[list] : undefined;
-  return Array.isArray(items) ? items.map(item => item && typeof item === 'object' ? (item as Record<string, unknown>)[key] : undefined).filter((name): name is string => typeof name === 'string') : null;
+const items = (value: unknown, list: string): Record<string, unknown>[] | null => {
+  const found = value && typeof value === 'object' ? (value as Record<string, unknown>)[list] : undefined;
+  return Array.isArray(found) ? found.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : null;
 };
+const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null;
+/** A local server's address from a setting, when it names this computer; its usual port otherwise. Ollama reads
+ * OLLAMA_HOST itself (127.0.0.1:11435, :11435 or 0.0.0.0); LM Studio's port, when changed, comes from ROS_LMSTUDIO_URL. */
+function localBase(setting: string | undefined, port: number) {
+  const value = setting?.trim();
+  if (value) try {
+    const url = new URL(/^[a-z]+:\/\//iu.test(value) ? value : `http://${value.startsWith(':') ? `127.0.0.1${value}` : value}`);
+    if (['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '[::]'].includes(url.hostname)) return `http://127.0.0.1:${url.port || port}`;
+  } catch { /* not an address */ }
+  return `http://127.0.0.1:${port}`;
+}
+const ollamaBase = () => localBase(process.env.OLLAMA_HOST, 11434), lmStudioBase = () => localBase(process.env.ROS_LMSTUDIO_URL, 1234);
+
+/** Ollama's own facts about each model: whether it calls tools or only embeds, the context it was trained for, and
+ * the context Ollama gives it: set on the model itself, or else Ollama's default, which a model loaded now without
+ * its own setting shows. (ros.ai's requests carry no context setting, so they get that default.) */
+async function ollamaModels(base: string, tags: Record<string, unknown>[]): Promise<LocalModel[]> {
+  const listed = tags.filter(item => typeof item.name === 'string').slice(0, 32);
+  const [shows, ps] = await Promise.all([Promise.all(listed.map(item => probe(`${base}/api/show`, 1500, { model: item.name }))), probe(`${base}/api/ps`, 800)]);
+  const loaded = new Map((items(ps, 'models') ?? []).map(item => [String(item.name ?? item.model), count(item.context_length)]));
+  const models = listed.map((item, index) => {
+    const show = shows[index] && typeof shows[index] === 'object' ? shows[index] as Record<string, unknown> : {};
+    const capabilities = Array.isArray(show.capabilities) ? show.capabilities.filter((name): name is string => typeof name === 'string') : null;
+    const info = show.model_info && typeof show.model_info === 'object' ? show.model_info as Record<string, unknown> : {};
+    const maxContext = count(Object.entries(info).find(([key]) => key.endsWith('.context_length'))?.[1]);
+    const own = typeof show.parameters === 'string' ? count(Number(/^\s*num_ctx\s+(\d+)/mu.exec(show.parameters)?.[1])) : null;
+    return { id: String(item.name), own, maxContext, bytes: count(item.size),
+      tools: capabilities ? capabilities.includes('tools') : null, embedding: Boolean(capabilities?.includes('embedding') && !capabilities.includes('completion')) };
+  });
+  // A loaded model's context below what it was trained for is Ollama's default exactly; one at it is a lower bound.
+  const readings = models.filter(model => model.own === null && loaded.get(model.id)).map(model => ({ context: loaded.get(model.id)!, capped: model.maxContext !== null && loaded.get(model.id)! >= model.maxContext }));
+  const exact = readings.filter(reading => !reading.capped).map(reading => reading.context);
+  const usual = exact.length ? Math.min(...exact) : readings.length ? Math.max(...readings.map(reading => reading.context)) : null;
+  return models.map(({ own, ...model }) => ({ ...model, context: own ?? (usual !== null && model.maxContext !== null ? Math.min(usual, model.maxContext) : usual) }));
+}
+/** LM Studio's model list: its type, the context it was trained for, the context it is loaded with, and whether it
+ * was trained for tool use. LM Studio formats tools for other models itself, so those stay unknown, not refused. */
+function lmStudioModels(value: unknown): LocalModel[] | null {
+  const list = items(value, 'data');
+  return list && list.filter(item => typeof item.id === 'string').map(item => {
+    const capabilities = Array.isArray(item.capabilities) ? item.capabilities : [];
+    return { id: String(item.id), context: count(item.loaded_context_length), maxContext: count(item.max_context_length), bytes: null,
+      tools: capabilities.includes('tool_use') ? true : null, embedding: item.type === 'embeddings' };
+  });
+}
 /** Local model servers: an installed app or command, and whether a server answers on its usual port. */
 export async function detectModels(): Promise<Omit<DetectedModel, 'connectionId'>[]> {
-  const [ollama, lmStudio] = await Promise.all([probe('http://127.0.0.1:11434/api/tags'), probe('http://127.0.0.1:1234/v1/models')]);
-  const ollamaModels = names(ollama, 'models', 'name'), lmModels = names(lmStudio, 'data', 'id');
+  const ollamaAt = ollamaBase(), lmStudioAt = lmStudioBase();
+  const [tags, lmDetailed, lmPlain] = await Promise.all([probe(`${ollamaAt}/api/tags`), probe(`${lmStudioAt}/api/v0/models`), probe(`${lmStudioAt}/v1/models`)]);
+  const ollamaTags = items(tags, 'models'), ollama = ollamaTags ? await ollamaModels(ollamaAt, ollamaTags) : null;
+  const lmStudio = lmStudioModels(lmDetailed) ?? (items(lmPlain, 'data')?.filter(item => typeof item.id === 'string').map(item => ({ id: String(item.id), context: null, maxContext: null, tools: null, embedding: /embed/i.test(String(item.id)), bytes: null })) ?? null);
   return [
-    { id: 'ollama', label: 'Ollama', endpoint: 'http://127.0.0.1:11434/v1', running: ollamaModels !== null, models: ollamaModels ?? [],
-      found: ollamaModels !== null || app('Ollama') || Boolean(findBinary('ollama')) || isDir(join(home, '.ollama')) },
-    { id: 'lm-studio', label: 'LM Studio', endpoint: 'http://127.0.0.1:1234/v1', running: lmModels !== null, models: lmModels ?? [],
-      found: lmModels !== null || app('LM Studio') || Boolean(findBinary('lms')) || isDir(join(home, '.lmstudio')) || isDir(join(home, '.cache', 'lm-studio')) },
+    { id: 'ollama', label: 'Ollama', endpoint: `${ollamaAt}/v1`, running: ollama !== null, models: ollama?.map(model => model.id) ?? [], details: ollama ?? [],
+      found: ollama !== null || app('Ollama') || Boolean(findBinary('ollama')) || isDir(join(home, '.ollama')) },
+    { id: 'lm-studio', label: 'LM Studio', endpoint: `${lmStudioAt}/v1`, running: lmStudio !== null, models: lmStudio?.map(model => model.id) ?? [], details: lmStudio ?? [],
+      found: lmStudio !== null || app('LM Studio') || Boolean(findBinary('lms')) || isDir(join(home, '.lmstudio')) || isDir(join(home, '.cache', 'lm-studio')) },
   ];
+}
+/** Loads one model in Ollama, as using it would, and reads the context Ollama gave it: its default for models
+ * without their own setting. Only when the person connects Ollama, never while scanning. */
+export async function ollamaDefaultContext(model: string): Promise<number | null> {
+  const base = ollamaBase();
+  if (!await probe(`${base}/api/generate`, 120_000, { model, stream: false })) return null;
+  const ps = items(await probe(`${base}/api/ps`, 2000), 'models') ?? [];
+  return count(ps.find(item => item.name === model || item.model === model)?.context_length);
 }
 
 /** Whether a Docker engine answers on one of the usual sockets. */

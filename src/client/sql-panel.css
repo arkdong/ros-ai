@@ -1,0 +1,15 @@
+.sql-panel{display:grid;gap:10px;min-width:0}
+.sql-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sql-toolbar button{display:inline-flex;align-items:center;gap:5px}
+.sql-toolbar kbd{font:11px ui-monospace,monospace;opacity:.7;margin-left:2px}
+.sql-time{margin-left:auto;font-size:12px;color:#6b6b6b}
+.sql-tables{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;color:#6b6b6b}
+.sql-panel .chip{border:1px solid #dedede;background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:#2b2b2b}
+.sql-panel .chip:hover{border-color:#bdbdbd;background:#f4f4f4}
+.sql-panel .chip.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.sql-note{margin:0;font-size:12px;color:#6b6b6b}
+.sql-error{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.note-view .note-content-actions{display:inline-flex;align-items:baseline;gap:14px}
+.note-view .sql-start{display:inline-flex;align-items:center;gap:6px}
+.sql-panel .code-editor .cm-editor{height:auto;min-height:132px;max-height:300px}
+.sql-panel .code-editor-fallback{min-height:132px}

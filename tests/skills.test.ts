@@ -312,7 +312,7 @@ test('The agent tool is offered only while a skill is on, reads through the libr
   const f = library();
   const project = f.store.createProject('Skills');
   const experiments = { authority: { policy: () => ({ stopped: false }) } } as unknown as ExperimentService;
-  const toolkit = () => new AgentWorkspaceTools(f.store, {} as ExecutionService, experiments, { projectId: project.id, nodeIds: [], artifactIds: [] }, 'turn-1', 'model', 'Test model');
+  const toolkit = () => new AgentWorkspaceTools(f.store, { searchService: () => ({ id: 'tavily' }) } as unknown as ExecutionService, experiments,{ projectId: project.id, nodeIds: [], artifactIds: [] }, 'turn-1', 'model', 'Test model');
   try {
     AgentWorkspaceTools.skills = f.skills;
     assert(!toolkit().definitions.some(item => item.name === 'ros_use_skill'));

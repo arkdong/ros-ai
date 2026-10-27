@@ -8,18 +8,37 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { auth, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { StoreError } from './store.js';
-import type { AppConnectionStatus } from '../shared/plugins.js';
+import type { AppConnectionStatus, TokenPluginId } from '../shared/plugins.js';
 
-/** Apps that run their own hosted MCP server. ros.ai connects to it the way Claude and Claude Code do:
- * it registers itself with the app's sign-in, the person approves in the browser, and the app's own tools
- * become available to ros.ai's agents. Nothing to create or paste. `reads` names tools that only read,
- * for servers that do not mark them; any other tool waits for the person's approval before it runs. */
+/** How ros.ai reaches an app's own tools:
+ * sign-in: its hosted MCP server, after the person approves ros.ai in the browser. ros.ai registers itself
+ *   with the app's sign-in (dynamic registration and PKCE, as Claude and Claude Code do); nothing to create or paste.
+ * token: its hosted MCP server, with the token saved for the app on the Plugins page.
+ * desktop: the MCP server the app's own desktop program runs on this computer; `start` says how to turn it on.
+ * built-in: ros.ai's own tools for the app's web API, for apps whose hosted server admits only apps it lists (with
+ *   the token saved on the Plugins page) or that ros.ai already reaches (Google Drive, through its sign-in).
+ * `reads` names tools that only read, for servers that do not mark them; any other tool waits for the person's
+ * approval before it runs. */
+type AppEntry = { name: string; reads: readonly string[] } & ({ auth: 'sign-in'; url: string } | { auth: 'token'; url: string; token: TokenPluginId } | { auth: 'desktop'; url: string; start: string } | { auth: 'built-in'; token?: TokenPluginId });
 export const appCatalogue = {
-  notion: { name: 'Notion', url: 'https://mcp.notion.com/mcp', reads: ['notion-search', 'notion-fetch', 'notion-query-data-sources', 'notion-query-database-view', 'notion-get-comments', 'notion-get-users', 'notion-get-self', 'notion-get-teams', 'notion-get-file-download-urls', 'notion-list-page-backlinks'] },
-} as const satisfies Record<string, { name: string; url: string; reads: readonly string[] }>;
+  notion: { name: 'Notion', auth: 'sign-in', url: 'https://mcp.notion.com/mcp', reads: ['notion-search', 'notion-fetch', 'notion-query-data-sources', 'notion-query-database-view', 'notion-get-comments', 'notion-get-users', 'notion-get-self', 'notion-get-teams', 'notion-get-file-download-urls', 'notion-list-page-backlinks'] },
+  linear: { name: 'Linear', auth: 'sign-in', url: 'https://mcp.linear.app/mcp', reads: ['list_comments', 'list_cycles', 'get_document', 'list_documents', 'get_issue', 'get_issue_git_branch_name', 'list_issues', 'list_my_issues', 'list_issue_statuses', 'get_issue_status', 'list_issue_labels', 'list_projects', 'get_project', 'list_project_labels', 'list_teams', 'get_team', 'list_users', 'get_user', 'search_documentation'] },
+  sentry: { name: 'Sentry', auth: 'sign-in', url: 'https://mcp.sentry.dev/mcp', reads: ['whoami', 'find_organizations', 'find_teams', 'find_projects', 'find_releases', 'find_dsns', 'get_issue_details', 'get_trace_details', 'get_event_attachment', 'search_events', 'search_issues', 'search_docs', 'get_doc'] },
+  // GitHub's hosted server takes no dynamic registration, so it uses the token from GitHub's Plugins card; it marks its own read tools.
+  github: { name: 'GitHub', auth: 'token', token: 'github', url: 'https://api.githubcopilot.com/mcp/', reads: [] },
+  // Figma's hosted server admits only clients on Figma's list; its desktop app serves the same design tools on this computer.
+  figma: { name: 'Figma', auth: 'desktop', url: 'http://127.0.0.1:3845/mcp', start: 'Open the Figma desktop app, open a design file, switch to Dev Mode and turn on the desktop MCP server in the inspect panel.', reads: ['get_design_context', 'get_variable_defs', 'get_code_connect_map', 'get_screenshot', 'get_metadata', 'get_figjam', 'create_design_system_rules', 'get_code', 'get_image', 'whoami'] },
+  // Slack's hosted server admits only apps Slack approves, so ros.ai reads and posts with the bot token from Slack's Plugins card (slack.ts).
+  slack: { name: 'Slack', auth: 'built-in', token: 'slack', reads: ['list_channels', 'read_channel', 'read_thread'] },
+  // Google Sheets and Docs through the Google Drive sign-in, which only reads (google-workspace.ts).
+  'google-drive': { name: 'Google Drive', auth: 'built-in', reads: ['search_files', 'read_doc', 'read_sheet'] },
+  // Papers from OpenAlex and arXiv, as turned on in Plugins, and the Zotero library whose key is saved there (papers.ts).
+  papers: { name: 'Papers', auth: 'built-in', reads: ['search_papers', 'read_paper'] },
+} as const satisfies Record<string, AppEntry>;
 export type AppId = keyof typeof appCatalogue;
 const appIds = Object.keys(appCatalogue) as AppId[];
 const appIdSchema = z.enum(appIds as [AppId, ...AppId[]]);
+const entry = (id: AppId): AppEntry => appCatalogue[id];
 
 const CALLBACK = '/api/apps/callback', COOKIE = 'ros-ai-app-sign-in', SIGN_IN_TTL = 10 * 60_000;
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -28,8 +47,10 @@ const label = (value: unknown) => typeof value === 'string' ? value.replace(/[\x
 
 /** `ROS_APP_<ID>_URL` points an app at another server, but only https or this computer (for stand-ins). */
 export function appUrl(id: AppId) {
+  const app = entry(id);
+  if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server address.`);
   const override = process.env[`ROS_APP_${id.toUpperCase()}_URL`]?.trim();
-  if (!override) return appCatalogue[id].url;
+  if (!override) return app.url;
   const url = new URL(override);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error(`ROS_APP_${id.toUpperCase()}_URL must be https or on this computer.`);
   return url.href;
@@ -37,17 +58,25 @@ export function appUrl(id: AppId) {
 
 type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redirectUri?: string; connectedAt?: string; account?: string };
 type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number };
-export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean };
+/** proposes: the tool adds blocks to the canvas, which ros.ai proposes under the project's approval mode, instead of a
+ * change in the app that always waits for the person (Papers' add_paper). */
+export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean; proposes?: boolean };
 export type AppStatus = AppConnectionStatus & { id: AppId };
+/** An app whose tools ros.ai provides itself (Slack, Google Drive, Papers), shaped like an MCP server's; connected once
+ * its token is saved, its sign-in is done or, for Papers, a source is on. */
+export type BuiltInApp = { connected(): boolean; tools(): AppTool[]; call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; isError: boolean }> };
+type Options = { token?: (id: TokenPluginId) => string | undefined; builtIn?: Partial<Record<AppId, BuiltInApp>> };
 
-/** Sign-ins and tokens for hosted app servers, in one owner-only file in the data folder. The browser
- * only learns whether an app is connected; tokens never leave the server. */
+/** Sign-ins for hosted app servers and the desktop apps turned on, in one owner-only file in the data folder.
+ * Apps reached with a Plugins token read it from there when they connect. The browser only learns whether an
+ * app is connected; tokens never leave the server. */
 export class RemoteApps {
   private readonly file: string;
   private saved: Partial<Record<AppId, Saved>> = {};
   private readonly pending = new Map<string, Pending>();
-  private readonly clients = new Map<AppId, { client: Client; tools: AppTool[] }>();
-  constructor(dataDir: string) {
+  /** key: a digest of the token a token app connected with, so a replaced token connects again. */
+  private readonly clients = new Map<AppId, { client: Client; tools: AppTool[]; key?: string }>();
+  constructor(dataDir: string, private readonly options: Options = {}) {
     this.file = join(dataDir, 'app-connections.json');
     if (!existsSync(this.file)) return;
     const fd = openSync(this.file, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -85,7 +114,7 @@ export class RemoteApps {
       saveClientInformation: client => apps.save(id, { ...apps.saved[id], client, redirectUri, tokens: apps.saved[id]?.redirectUri === redirectUri ? apps.saved[id]?.tokens : undefined }),
       tokens: () => apps.saved[id]?.tokens,
       saveTokens: tokens => apps.save(id, { ...apps.saved[id], tokens, connectedAt: apps.saved[id]?.connectedAt ?? new Date().toISOString() }),
-      redirectToAuthorization: url => { if (!flow) throw new StoreError(`${appCatalogue[id].name} needs you to sign in again. Open Apps and connect it.`, 409); flow.open(url); },
+      redirectToAuthorization: url => { if (!flow) throw new StoreError(`${appCatalogue[id].name} needs you to sign in again. Open Plugins and connect it.`, 409); flow.open(url); },
       saveCodeVerifier: verifier => { if (flow) flow.pending.verifier = verifier; },
       codeVerifier: () => { if (!flow?.pending.verifier) throw new StoreError('This sign-in has no verifier. Start it again.'); return flow.pending.verifier; },
       invalidateCredentials: scope => {
@@ -97,14 +126,17 @@ export class RemoteApps {
       },
     };
   }
+  private token(id: AppId) { const app = entry(id); return (app.auth === 'token' || app.auth === 'built-in') && app.token ? this.options.token?.(app.token) || undefined : undefined; }
   status(id: AppId): AppStatus {
-    const saved = this.saved[id];
-    return { id, name: appCatalogue[id].name, connected: Boolean(saved?.tokens?.access_token), connectedAt: saved?.connectedAt ?? null, account: saved?.account ?? null };
+    const app = entry(id), saved = this.saved[id];
+    const connected = app.auth === 'sign-in' ? Boolean(saved?.tokens?.access_token) : app.auth === 'desktop' ? Boolean(saved?.connectedAt) : app.auth === 'built-in' ? this.options.builtIn?.[id]?.connected() === true : Boolean(this.token(id));
+    return { id, name: app.name, connected, connectedAt: app.auth === 'sign-in' || app.auth === 'desktop' ? saved?.connectedAt ?? null : null, account: saved?.account ?? null };
   }
   statuses() { return appIds.map(id => this.status(id)); }
   connected() { return appIds.filter(id => this.status(id).connected); }
   /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. */
   async begin(id: AppId, redirectUri: string) {
+    if (entry(id).auth !== 'sign-in') throw new StoreError(`${appCatalogue[id].name} does not connect with a sign-in.`);
     for (const [state, item] of this.pending) if (item.expiresAt < Date.now()) this.pending.delete(state);
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
     const pending: Pending = { app: id, nonceHash: digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL };
@@ -120,7 +152,7 @@ export class RemoteApps {
   async finish(query: unknown, nonce: string) {
     const { state, code, error } = z.object({ state: z.string().max(400), code: z.string().max(4000).optional(), error: z.string().max(200).optional() }).passthrough().parse(query);
     const pending = this.pending.get(state);
-    if (!pending || pending.expiresAt < Date.now() || !nonce || !sameDigest(pending.nonceHash, digest(nonce))) throw new StoreError('This sign-in expired or was started in another browser. Start it again from Apps.');
+    if (!pending || pending.expiresAt < Date.now() || !nonce || !sameDigest(pending.nonceHash, digest(nonce))) throw new StoreError('This sign-in expired or was started in another browser. Start it again from Plugins.');
     this.pending.delete(state);
     const name = appCatalogue[pending.app].name;
     if (error || !code) throw new StoreError(error === 'access_denied' ? `${name} sign-in was cancelled.` : `${name} did not complete the sign-in.`);
@@ -128,7 +160,7 @@ export class RemoteApps {
     catch (failure) { throw new StoreError(`${name} refused the sign-in: ${failure instanceof StoreError ? failure.message : label(failure instanceof Error ? failure.message : String(failure))}`, 502); }
     this.save(pending.app, { ...this.saved[pending.app], connectedAt: new Date().toISOString() });
     this.clients.delete(pending.app);
-    // Name the account when the app says who signed in, so the Apps page can show it.
+    // Name the account when the app says who signed in, so the Plugins page can show it.
     const tools = await this.tools(pending.app).catch(() => []);
     if (pending.app === 'notion' && tools.some(tool => tool.name === 'notion-get-self')) {
       const self = await this.call('notion', 'notion-get-self', {}).catch(() => null);
@@ -137,38 +169,82 @@ export class RemoteApps {
     }
     return pending.app;
   }
+  /** Turns on an app's desktop server: ros.ai connects once to check that it answers and lists its tools. */
+  async connectDesktop(id: AppId) {
+    if (entry(id).auth !== 'desktop') throw new StoreError(`${appCatalogue[id].name} has no desktop server.`);
+    this.drop(id);
+    await this.open(id, true);
+    this.save(id, { connectedAt: new Date().toISOString() });
+    return this.status(id);
+  }
   disconnect(id: AppId) {
-    const entry = this.clients.get(id); this.clients.delete(id);
-    void entry?.client.close().catch(() => undefined);
+    const app = entry(id);
+    if (app.auth === 'token' || (app.auth === 'built-in' && app.token)) throw new StoreError(`${app.name} uses the token on its Plugins card. Remove the token there to disconnect it.`);
+    if (app.auth === 'built-in') throw new StoreError(`${app.name} is connected on its Plugins card. Disconnect it there.`);
+    this.drop(id);
     this.save(id, undefined);
     return this.status(id);
   }
-  private async open(id: AppId) {
-    const cached = this.clients.get(id);
-    if (cached) return cached;
-    if (!this.status(id).connected) throw new StoreError(`${appCatalogue[id].name} is not connected. Open Apps and connect it.`, 409);
-    const redirectUri = this.saved[id]?.redirectUri ?? appRedirectUri(undefined);
-    const client = new Client({ name: 'ros.ai', version: '1' });
-    try { await client.connect(new StreamableHTTPClientTransport(new URL(appUrl(id)), { authProvider: this.provider(id, redirectUri) })); }
-    catch (error) { throw new StoreError(error instanceof StoreError ? error.message : `Could not reach ${appCatalogue[id].name}: ${label(error instanceof Error ? error.message : String(error))}`, 502); }
-    const reads = new Set<string>(appCatalogue[id].reads);
-    const listed = (await client.listTools()).tools;
-    const entry = { client, tools: listed.map(tool => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema as Record<string, unknown>, reads: tool.annotations?.readOnlyHint === true || reads.has(tool.name) })) };
-    this.clients.set(id, entry);
-    return entry;
+  private drop(id: AppId) {
+    const cached = this.clients.get(id); this.clients.delete(id);
+    void cached?.client.close().catch(() => undefined);
   }
-  async tools(id: AppId) { return (await this.open(id)).tools; }
+  /** probe: connect although the app is not turned on yet, to turn on a desktop server. */
+  private async open(id: AppId, probe = false) {
+    const app = entry(id), token = this.token(id), key = token ? digest(token) : undefined;
+    const cached = this.clients.get(id);
+    if (cached && cached.key === key) return cached;
+    if (cached) this.drop(id);
+    if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server.`);
+    if (!probe && !this.status(id).connected) throw new StoreError(app.auth === 'token' ? `${app.name} is not connected. Save its token on the Plugins page.` : `${app.name} is not connected. Open Plugins and connect it.`, 409);
+    const url = new URL(appUrl(id));
+    const transport = app.auth === 'sign-in' ? new StreamableHTTPClientTransport(url, { authProvider: this.provider(id, this.saved[id]?.redirectUri ?? appRedirectUri(undefined)) })
+      : new StreamableHTTPClientTransport(url, token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : {});
+    const client = new Client({ name: 'ros.ai', version: '1' });
+    try { await client.connect(transport); }
+    catch (error) {
+      if (error instanceof StoreError) throw error;
+      const reason = label(error instanceof Error ? error.message : String(error)), status = (error as { code?: unknown }).code;
+      if (app.auth === 'desktop') throw new StoreError(`${app.name}’s desktop app is not answering at ${url.host}. ${app.start}`, 502);
+      if (app.auth === 'token' && (status === 401 || status === 403)) throw new StoreError(`${app.name} did not accept the token saved on its Plugins card. Replace it there.`, 502);
+      throw new StoreError(`Could not reach ${app.name}: ${reason}`, 502);
+    }
+    const reads = new Set<string>(app.reads);
+    const listed = (await client.listTools()).tools;
+    const opened = { client, key, tools: listed.map(tool => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema as Record<string, unknown>, reads: tool.annotations?.readOnlyHint === true || reads.has(tool.name) })) };
+    this.clients.set(id, opened);
+    return opened;
+  }
+  /** The app ros.ai provides itself, once its token is saved; undefined for apps with an MCP server. */
+  private builtIn(id: AppId) {
+    const app = entry(id);
+    if (app.auth !== 'built-in') return undefined;
+    const provided = this.options.builtIn?.[id];
+    if (!provided) throw new StoreError(`${app.name} is not available here.`, 503);
+    if (!this.status(id).connected) throw new StoreError(`${app.name} is not connected. ${app.token ? 'Save its token on the Plugins page.' : 'Connect it on the Plugins page.'}`, 409);
+    return provided;
+  }
+  async tools(id: AppId): Promise<AppTool[]> {
+    const provided = this.builtIn(id);
+    if (provided) { const reads = new Set<string>(entry(id).reads); return provided.tools().map(tool => ({ ...tool, reads: tool.reads && reads.has(tool.name) })); }
+    return (await this.open(id)).tools;
+  }
   /** Runs one of the app's tools and returns its text. Callers decide first whether it needs approval. */
   async call(id: AppId, name: string, args: Record<string, unknown>, signal?: AbortSignal) {
-    let entry = await this.open(id);
-    if (!entry.tools.some(tool => tool.name === name)) throw new StoreError(`${appCatalogue[id].name} has no tool called ${label(name)}.`);
-    const run = () => entry.client.callTool({ name, arguments: args }, undefined, { signal, timeout: 120_000 });
+    const provided = this.builtIn(id);
+    if (provided) {
+      if (!provided.tools().some(tool => tool.name === name)) throw new StoreError(`${appCatalogue[id].name} has no tool called ${label(name)}.`);
+      return provided.call(name, args, signal);
+    }
+    let opened = await this.open(id);
+    if (!opened.tools.some(tool => tool.name === name)) throw new StoreError(`${appCatalogue[id].name} has no tool called ${label(name)}.`);
+    const run = () => opened.client.callTool({ name, arguments: args }, undefined, { signal, timeout: 120_000 });
     let result: Awaited<ReturnType<typeof run>>;
     try { result = await run(); }
     catch (error) {
       if (signal?.aborted || error instanceof StoreError) throw error;
       // A dropped session: connect once more, then give up.
-      this.clients.delete(id); entry = await this.open(id);
+      this.drop(id); opened = await this.open(id);
       try { result = await run(); } catch (again) { throw new StoreError(`${appCatalogue[id].name}: ${label(again instanceof Error ? again.message : String(again))}`, 502); }
     }
     const content = Array.isArray(result.content) ? result.content as { type: string; text?: string }[] : [];
@@ -186,6 +262,7 @@ export function attachAppRoutes(app: Express, apps: RemoteApps) {
   app.get('/api/apps', (_req, res) => res.json({ apps: apps.statuses() }));
   app.post('/api/apps/:id/connect', async (req, res) => {
     const id = appIdSchema.parse(req.params.id);
+    if (entry(id).auth === 'desktop') return res.json({ connected: true, app: await apps.connectDesktop(id) });
     const started = await apps.begin(id, appRedirectUri(req.headers.host));
     if ('alreadyConnected' in started) return res.json({ connected: true, app: apps.status(id) });
     cookie(res, started.nonce, SIGN_IN_TTL);
@@ -193,7 +270,7 @@ export function attachAppRoutes(app: Express, apps: RemoteApps) {
   });
   app.get(CALLBACK, async (req, res) => {
     try { const id = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0); res.redirect(303, `/?app=${id}`); }
-    catch (error) { cookie(res, '', 0); res.status(400).type('text/plain').send(`${error instanceof Error ? error.message : 'The sign-in failed.'}\n\nClose this tab and try again from Apps in ros.ai.`); }
+    catch (error) { cookie(res, '', 0); res.status(400).type('text/plain').send(`${error instanceof Error ? error.message : 'The sign-in failed.'}\n\nClose this tab and try again from Plugins in ros.ai.`); }
   });
   app.delete('/api/apps/:id', (req, res) => res.json(apps.disconnect(appIdSchema.parse(req.params.id))));
   // Read-only tools for ros.ai's own scripts on this computer (the eval runner); writes go through an agent and Accept.

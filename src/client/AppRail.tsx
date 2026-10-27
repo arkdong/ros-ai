@@ -23,6 +23,6 @@ export function AppRail({ page, onPage }: { page: RailPage; onPage: (page: RailP
 
 export function RailPageFrame({ page, children }: { page: Exclude<RailPage, 'canvas'>; children: ReactNode }) {
   const item = items.find(entry => entry.pages.includes(page))!;
-  // Every page draws its own heading; its sections live in the left menu.
-  return <section className="rail-page" aria-label={item.label}><div className={`rail-page-inner ${item.id === 'settings' ? 'rail-page-wide' : ''}`}>{children}</div></section>;
+  // Every page draws its own heading; its sections live in the left menu. All pages share one column so switching never shifts it.
+  return <section className="rail-page" aria-label={item.label}><div className="rail-page-inner">{children}</div></section>;
 }
