@@ -1,6 +1,6 @@
 /**
  * ros.ai's look in Mission Control: while Mission Control is open, the ros.ai window shows the ring over a blurred
- * view of its own workspace, Paper (white) when the Mac is in light mode and Night when it is dark.
+ * view of its own workspace.
  * macOS tells an app nothing when Mission Control opens, so a small script asks the window server a few times a
  * second whether the Dock is showing a full-screen window (Mission Control, App Exposé or Launchpad) and the
  * window covers itself only then. Mission Control's pictures of windows are live, so the cover appears in them.
@@ -28,18 +28,21 @@ for (;;) {
     last = state; say(state);
     if (debug) say('debug ' + JSON.stringify({ screens, dock: dock.map(w => [w.kCGWindowLayer, w.kCGWindowBounds]) }));
   }
-  delay(0.12);
+  delay(0.08);
 }`;
 
+// Only a blur of the window's own content and the ring, so it follows whatever theme the app shows.
+// Blur and ring fade together, about as long as Mission Control's own zoom.
 const CSS = `
-#ros-mission-control { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; display: none;
-  --veil: rgba(255,255,255,.80); --glow: rgba(214,255,60,.28); --halo: none;
-  background: radial-gradient(50% 48% at 50% 52%, var(--glow), transparent 70%), var(--veil);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-@media (prefers-color-scheme: dark) { #ros-mission-control { --veil: rgba(13,16,12,.82); --glow: rgba(122,216,12,.22); --halo: drop-shadow(0 0 28px rgba(122,216,12,.45)); } }
-html.ros-mission-control #ros-mission-control { display: block; }
-#ros-mission-control::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22vmin; height: 22vmin; transform: translate(-50%, -50%);
-  background: url('/brand/ros-ai-ring.png') center / contain no-repeat; filter: var(--halo); }`;
+#ros-mission-control { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; opacity: 0;
+  -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
+  transition: opacity .28s ease, backdrop-filter .28s ease, -webkit-backdrop-filter .28s ease; }
+html.ros-mission-control #ros-mission-control { opacity: 1; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+#ros-mission-control::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22vmin; height: 22vmin;
+  transform: translate(-50%, -50%) scale(.94); transition: transform .28s ease;
+  background: url('/brand/ros-ai-ring.png') center / contain no-repeat; }
+html.ros-mission-control #ros-mission-control::after { transform: translate(-50%, -50%) scale(1); }
+@media (prefers-reduced-motion: reduce) { #ros-mission-control, #ros-mission-control::after { transition: none; } }`;
 
 const ADD = `if (!document.getElementById('ros-mission-control')) { const cover = document.createElement('div'); cover.id = 'ros-mission-control'; document.documentElement.append(cover); }`;
 
