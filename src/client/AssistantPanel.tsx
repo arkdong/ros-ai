@@ -217,7 +217,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
 /** What an agent turn left on the canvas, so the answer below does not have to list it. */
 function AgentWorkSummary({ node, turn, detail, onReference }: { node: ProjectDetail['project']['canvas']['nodes'][number]; turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference'] }) {
   const work = agentDirections(detail.project.canvas, detail.artifacts, node.id), running = turn.status === 'running';
-  const waiting = turn.actions.filter(action => action.status === 'pending' && (!action.proposalId || detail.proposals.find(item => item.id === action.proposalId)?.status === 'pending')).length;
+  const waiting = turn.actions.filter(action => action.status === 'pending' && (!action.proposalId || detail.proposals.some(item => item.id === action.proposalId && item.status === 'pending' && item.baseRevision === detail.project.revision))).length;
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   if (!work.directions.length && !waiting) return null;
   return <div className="agent-work-summary">
@@ -294,14 +294,16 @@ function TurnReview({ actions, detail, onProposal, onProposals, onReference }: {
   const [showAll, setShowAll] = useState(false);
   const rows = actions.flatMap(action => { const proposal = detail.proposals.find(item => item.id === action.proposalId); return proposal ? [{ action, proposal }] : []; });
   if (!rows.length) return null;
+  // A pending change the canvas has moved past can no longer be accepted, only dismissed.
+  const stale = (proposal: Proposal) => proposal.baseRevision !== detail.project.revision;
   const pending = new Map(rows.filter(row => row.proposal.status === 'pending').map(row => [row.proposal.id, row]));
+  const fresh = [...pending.values()].filter(row => !stale(row.proposal)), outdated = pending.size - fresh.length;
   const accepted = rows.filter(row => row.proposal.status === 'accepted').length;
   const plural = (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`;
-  const heading = pending.size ? pending.size === rows.length ? `${plural(rows.length)} to review` : `${pending.size} of ${plural(rows.length)} to review` : accepted === rows.length ? `${plural(rows.length)} accepted` : `${accepted} of ${plural(rows.length)} accepted`;
-  const stale = (proposal: Proposal) => proposal.baseRevision !== detail.project.revision;
+  const heading = fresh.length ? fresh.length === rows.length ? `${plural(rows.length)} to review` : `${fresh.length} of ${plural(rows.length)} to review` : outdated ? `${plural(outdated)} out of date` : accepted === rows.length ? `${plural(rows.length)} accepted` : `${accepted} of ${plural(rows.length)} accepted`;
   const waitsOn = (proposal: Proposal) => (proposal.after ?? []).map(id => pending.get(id)).find(Boolean);
   const run = async (work: () => Promise<unknown>) => { setBusy(true); try { await work(); } finally { setBusy(false); } };
-  const ids = [...pending.keys()], shown = showAll || rows.length <= TURN_ROWS ? rows : rows.slice(0, TURN_ROWS - 1);
+  const ids = [...pending.keys()], freshIds = fresh.map(row => row.proposal.id), shown = showAll || rows.length <= TURN_ROWS ? rows : rows.slice(0, TURN_ROWS - 1);
   return <section className="proposal-review turn-review" aria-label="Proposed canvas changes">
     <header><GitBranch size={14} aria-hidden="true"/><strong>{heading}</strong></header>
     <ul className="turn-review-rows">{shown.map(({ action, proposal }) => {
@@ -310,15 +312,16 @@ function TurnReview({ actions, detail, onProposal, onProposals, onReference }: {
       return <li key={proposal.id} className={open ? 'open' : undefined}>
         <div className="turn-review-row">
           <button type="button" className="turn-review-toggle" aria-expanded={open} onClick={() => setOpened(open ? null : proposal.id)}><ChevronRight size={12} aria-hidden="true"/><span title={title}>{title}</span></button>
-          <span className="turn-review-kind">{changeKind(proposal)}</span>
-          {proposal.status !== 'pending' ? <span className="turn-review-status">{proposal.status === 'accepted' ? 'Accepted' : 'Dismissed'}</span> : <><button type="button" className="turn-review-decide" disabled={busy || stale(proposal) || Boolean(before)} title={before ? `Accept “${before.action.title.split('\n')[0]}” first` : stale(proposal) ? 'The canvas changed since. Ask Ros to update this.' : 'Accept'} aria-label={`Accept ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'accept'))}><Check size={13}/></button>
+          {proposal.status === 'pending' && stale(proposal) ? <span className="turn-review-status">Out of date</span> : <span className="turn-review-kind">{changeKind(proposal)}</span>}
+          {proposal.status !== 'pending' ? <span className="turn-review-status">{proposal.status === 'accepted' ? 'Accepted' : 'Dismissed'}</span> : <>{!stale(proposal) && <button type="button" className="turn-review-decide" disabled={busy || Boolean(before)} title={before ? `Accept “${before.action.title.split('\n')[0]}” first` : 'Accept'} aria-label={`Accept ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'accept'))}><Check size={13}/></button>}
           <button type="button" className="turn-review-decide" disabled={busy} title="Dismiss" aria-label={`Dismiss ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'dismiss'))}><X size={13}/></button></>}
         </div>
         {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
       </li>;
     })}</ul>
     {shown.length < rows.length && <button type="button" className="text-button small turn-review-more" onClick={() => setShowAll(true)}>{rows.length - shown.length} more</button>}
-    {rows.some(row => row.proposal.after?.some(id => pending.has(id))) && <p className="proposal-review-stale">Dismissing a change also drops the changes that go inside it.</p>}
-    <div className="proposal-review-actions">{pending.size > 0 && <><button className="primary small" disabled={busy || [...pending.values()].every(row => stale(row.proposal))} onClick={() => void run(() => onProposals(ids, 'accept'))}><Check size={13}/> Accept all</button><button className="text-button small" disabled={busy} onClick={() => void run(() => onProposals(ids, 'dismiss'))}>Dismiss all</button></>}<button className="text-button small proposal-review-open" onClick={() => { const first = [...pending.values()][0]; const block = rows.flatMap(row => row.proposal.status === 'accepted' ? row.proposal.operations : []).find(operation => operation.type === 'addNode'); if (first) onReference({ kind: 'proposal', id: first.proposal.id, label: first.action.title }); else if (block?.type === 'addNode') onReference({ kind: 'node', id: block.node.id, label: block.node.title }); }}>Show on canvas <ArrowRight size={12}/></button></div>
+    {fresh.some(row => row.proposal.after?.some(id => pending.has(id))) && <p className="proposal-review-stale">Dismissing a change also drops the changes that go inside it.</p>}
+    {outdated > 0 && <p className="proposal-review-stale">{outdated === pending.size ? 'The canvas changed since, so these can only be dismissed. Ask Ros to propose them again.' : `${plural(outdated)} no longer fit the canvas and can only be dismissed.`}</p>}
+    <div className="proposal-review-actions">{pending.size > 0 && <>{fresh.length > 0 && <button className="primary small" disabled={busy} onClick={() => void run(() => onProposals(freshIds, 'accept'))}><Check size={13}/> Accept all</button>}<button className="text-button small" disabled={busy} onClick={() => void run(() => onProposals(ids, 'dismiss'))}>Dismiss all</button></>}<button className="text-button small proposal-review-open" onClick={() => { const first = [...pending.values()][0]; const block = rows.flatMap(row => row.proposal.status === 'accepted' ? row.proposal.operations : []).find(operation => operation.type === 'addNode'); if (first) onReference({ kind: 'proposal', id: first.proposal.id, label: first.action.title }); else if (block?.type === 'addNode') onReference({ kind: 'node', id: block.node.id, label: block.node.title }); }}>Show on canvas <ArrowRight size={12}/></button></div>
   </section>;
 }
