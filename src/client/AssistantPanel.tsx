@@ -5,7 +5,7 @@ import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantRefere
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
-import { readSaved, saveLocal } from './persistence';
+import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { agentDirections } from '../shared/agent-work';
 import { presentAssistantResponse, type AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
@@ -39,7 +39,7 @@ type Props = {
 };
 
 export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills }: Props) {
-  const [message, setMessage] = useState(() => readSaved(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, '')));
+  const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, ''));
   const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
@@ -76,7 +76,6 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const blocker = state && !state.modelAvailable ? assistantBlocker(state.modelBlocker||'The selected model is unavailable.',state.backend) : null;
   const modelBlocked = Boolean(state && !state.modelAvailable);
   const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !turns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
-  useEffect(() => { saveLocal(`assistant-draft:${detail.project.id}`, message); }, [message, detail.project.id]);
   const asking = answerTarget?.projectId === detail.project.id;
   // The composer grows with its text, then scrolls.
   useEffect(() => { const element = textarea.current; if (!element || asking) return; element.style.height = ''; if (element.scrollHeight > element.clientHeight) element.style.height = `${Math.min(element.scrollHeight, Math.round(window.innerHeight * 0.4))}px`; }, [message, asking, mode]);
@@ -157,6 +156,7 @@ function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:stri
   if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};
   if(/stopped|stop flag/i.test(reason))return {summary:'Research is stopped for this project.',action:'permissions'};
   if(backend==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
+  if(backend==='claude'&&/claude plan/i.test(reason))return {summary:reason,action:'connections'};
   if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':backend==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
   if(/credential|api key|configured/i.test(reason))return {summary:'Connect the selected model provider.',action:'connections'};
   return {summary:backend==='codex'?'Codex cannot start. Check connection details.':backend==='claude'?'Claude Code cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};
