@@ -1,7 +1,7 @@
 /** First launch: what ros.ai found on this computer and the links it made for the person.
  * Detection reads existence, names and modification times, never credentials; every link is one
  * `ros-ai` entry in the agent's own settings, with a record here and an Undo. */
-export type AgentId = 'claude-code' | 'codex' | 'cursor' | 'gemini-cli';
+export type AgentId = 'claude-code' | 'codex' | 'cursor' | 'gemini-cli' | 'pi' | 'hermes';
 export type LinkMethod = 'cli' | 'file';
 export type LinkRecord = { agent: AgentId; method: LinkMethod; target: string; bridge: string; writtenAt: string; backup?: string };
 export type DetectedAgent = {
