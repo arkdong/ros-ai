@@ -8,7 +8,7 @@
 .app-rail-button:hover .app-rail-hint, .app-rail-button:focus-visible .app-rail-hint { opacity:1; transition-delay:.15s; }
 
 .workspace { position:relative; }
-.rail-page { position:absolute; inset:0; z-index:40; overflow:auto; background:#fcfcfc; }
+.rail-page { position:absolute; inset:0; z-index:40; overflow:auto; scrollbar-gutter:stable; background:#fcfcfc; }
 .rail-page-inner { max-width:760px; margin:0 auto; padding:36px 28px 64px; }
 .rail-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:22px 0 10px; }
 .rail-page-note { font-size:13px; color:#6b6b6b; line-height:1.55; }
