@@ -94,7 +94,7 @@ async function work(tasks: Task[], fixtures: Map<string, Fixture>, model: ModelA
   });
 }
 /** What every family's guide adds, from the 27 October pilot's commonest failures. */
-const ALWAYS = 'Before EVERY tool call, write one short sentence saying why (never send a tool call with empty text). Use exact IDs from the selection or from tool results. Selected blocks arrive with their text; read any other block you rely on with ros_read_canvas first. A tool may only change selected blocks or blocks this turn created. Keep the final answer under 120 words.';
+const ALWAYS = 'Before EVERY tool call, write one short sentence saying why (never send a tool call with empty text). Use exact IDs from the selection or from tool results; never make up an ID. A block\'s text in the selection needs no ros_read_selected call; call it with an artifactId only when that ID is listed. Selected blocks arrive with their text; read any other block you rely on with ros_read_canvas first. A tool may only change selected blocks or blocks this turn created; if asked to change or delete others, say which blocks to select instead. Keep the final answer under 120 words.';
 /** A copy of the teacher that sends the family guide after the system prompt, for this task only. */
 function withGuide(model: ChatAdapter, guide: string): ModelAdapter {
   const copy = Object.create(model) as ChatAdapter;
