@@ -1,9 +1,8 @@
-/* Mac app window (desktop/): no title bar. The red/yellow/green buttons sit at the top of the rail, in the row of the
-   wordmark and the project title, and that whole top row moves the window. Full screen hides the buttons. */
-html.mac-app .single-canvas-shell .app-rail { padding-top: 64px; -webkit-app-region: drag; }
-html.mac-app .single-canvas-shell .brand-row { padding-left: 26px; -webkit-app-region: drag; }
-html.mac-app .single-canvas-shell .workspace-header { -webkit-app-region: drag; }
-html.mac-app[data-full-screen] .single-canvas-shell .app-rail { padding-top: 16px; }
-html.mac-app[data-full-screen] .single-canvas-shell .brand-row { padding-left: 9px; }
-/* Anything you click or select keeps working inside the drag rows, and menus or dialogs drawn over them take the click. */
-html.mac-app :is(button, a, input, select, textarea, label, h1, [role="button"], [role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"], .modal-backdrop, .project-menu) { -webkit-app-region: no-drag; }
+/* Mac app window (desktop/): no system title bar. A slim strip of our own across the top holds the red/yellow/green
+   window buttons and moves the window; the app sits below it. Full screen hides the buttons, so the strip goes too. */
+html.mac-app body { padding-top: 36px; }
+html.mac-app .app-shell { height: calc(100dvh - 36px); }
+.mac-titlebar { position: fixed; inset: 0 0 auto; height: 36px; background: var(--rail-bg, #f2f2f2); border-bottom: 1px solid #e3e3e3; z-index: 1000; -webkit-app-region: drag; user-select: none; }
+html.mac-app[data-full-screen] body { padding-top: 0; }
+html.mac-app[data-full-screen] .app-shell { height: 100dvh; }
+html.mac-app[data-full-screen] .mac-titlebar { display: none; }

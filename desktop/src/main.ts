@@ -156,8 +156,8 @@ function openWindow() {
   const bounds = savedBounds();
   window = new BrowserWindow({
     width: 1440, height: 900, minWidth: 880, minHeight: 560, ...bounds, title: 'ros.ai', show: false, backgroundColor: '#ffffff',
-    // No grey title bar: the window buttons sit in ros.ai's own top row (src/client/mac-app.css lays the page out around them).
-    ...(mac ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 20, y: 26 } } : {}),
+    // No system title bar: the window buttons sit in ros.ai's own 36px strip (src/client/mac-app.css).
+    ...(mac ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 16, y: 12 } } : {}),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true },
   });
   window.webContents.setUserAgent(`${window.webContents.getUserAgent()} ros.ai/${version}`);
