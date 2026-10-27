@@ -41,7 +41,7 @@ export class LocalAgentOnboarding {
     this.starting = true;
     let login: Login | null = null;
     try {
-      const rpc = new CodexAppServer(cwd, disabledMcp), id = randomUUID();
+      const rpc = new CodexAppServer(cwd, { disabledMcp }), id = randomUUID();
       const publicStatus: CodexLoginStatus = { id, agent: 'codex', method, state: 'waiting', expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), message: 'Complete sign-in on the official OpenAI page. This changes only native Codex authentication; it sends no inference request and grants no research permission.' };
       login = { projectId, public: publicStatus, rpc, cwd, deadline: setTimeout(() => {}, 0) };
       const current = login;

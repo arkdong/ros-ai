@@ -163,6 +163,8 @@ function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:stri
   // An agent on this computer says itself what is missing (installed, signed in, locked down) and where to fix it.
   if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
   if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
+  if(backend==='codex'&&/OpenAI API key on the Agents page/i.test(reason))return {summary:'Connect an OpenAI API key for Codex.',action:'connections'};
+  if(backend==='codex'&&/signed out/i.test(reason))return {summary:'Sign in to Codex with your ChatGPT plan.',action:'connections'};
   // A local model that cannot work step by step: the reason names the model and what to change.
   if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};
   if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};

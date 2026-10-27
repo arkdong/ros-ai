@@ -6,7 +6,7 @@ export type AgentConnectionStatus = {
   signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | 'unknown' | null;
   configured: boolean; authorized: boolean; available: boolean;
   detail: string; blockers: string[];
-  features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean };
+  features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean; permissionProfiles: boolean };
   enforcement: string[]; limitations: string[];
   grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
 };
