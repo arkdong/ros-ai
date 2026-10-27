@@ -6,6 +6,8 @@ import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
 import { BrandLogo } from './brand-logos';
 import { RosMark } from './RosDock';
+import { Commands, DownloadLink } from './UpdateButton';
+import { checkForUpdates, installUpdate, setAutoUpdates, useUpdates } from './updates';
 import './settings.css';
 
 export type SettingsSection = 'general' | 'usage' | 'balances' | 'memory' | 'resources';
@@ -25,7 +27,7 @@ export function SettingsSidebar({ section, onSection }: { section: SettingsSecti
   </div>;
 }
 
-export function Row({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
+export function Row({ title, detail, children }: { title: string; detail?: ReactNode; children: ReactNode }) {
   return <div className="settings-row"><div><strong>{title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
 }
 
@@ -74,6 +76,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   };
   return <div className="settings-page">
     <h1>General</h1>
+    {!publicDemo && <UpdateSettings/>}
     {projectId && <section><h2>This project</h2><div className="settings-card">
       <Row title="Permissions" detail={`${projectTitle ? `${projectTitle}: ` : ''}${approvalDetail[mode]}`}>
         {busy && <LoaderCircle size={14} className="spin"/>}
@@ -95,6 +98,41 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
       <Row title="Keys file" detail="API keys every data folder reads, kept outside the code."><code title={paths?.keysFile ?? ''}>{paths ? paths.keysFile ?? 'None' : '…'}</code></Row>
     </div></section>}
   </div>;
+}
+
+const ago = (when: string) => {
+  const minutes = Math.round((Date.now() - Date.parse(when)) / 60_000), hours = Math.round(minutes / 60);
+  return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes} minute${minutes === 1 ? '' : 's'} ago` : hours < 24 ? `${hours} hour${hours === 1 ? '' : 's'} ago` : `on ${new Date(when).toLocaleDateString()}`;
+};
+const megabytes = (bytes = 0) => `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+
+/** The version this ros.ai runs, a newer one when there is one, and whether ros.ai looks by itself. */
+function UpdateSettings() {
+  const status = useUpdates(), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  if (!status) return null;
+  const run = async (task: () => Promise<unknown>) => { setBusy(true); setError(''); try { await task(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
+  const { latest, checking } = status, problem = error || status.error;
+  const whatsNew = latest && <a href={latest.url} target="_blank" rel="noreferrer">What's new</a>;
+  const check = <button className="secondary small" disabled={busy || checking} onClick={() => void run(checkForUpdates)}>{(busy || checking) && <LoaderCircle size={13} className="spin"/>}Check now</button>;
+  let row: [title: string, detail: ReactNode, control: ReactNode];
+  if (!status.enabled) row = [`ros.ai ${status.version}`, 'Update checks are off (ROS_UPDATE_URL=off).', null];
+  else if (!latest) row = [`ros.ai ${status.version}`, checking ? 'Checking for a newer version…' : `Up to date.${status.checkedAt ? ` Checked ${ago(status.checkedAt)}.` : ''}`, check];
+  else if (status.state === 'installing') row = [`Updating to ${latest.version}`, 'ros.ai restarts by itself.', <LoaderCircle size={14} className="spin"/>];
+  else if (status.state === 'downloading') {
+    const share = status.totalBytes ? Math.min(100, Math.round((status.doneBytes ?? 0) / status.totalBytes * 100)) : 0;
+    row = [`ros.ai ${latest.version} is downloading`, <>{share}% of {megabytes(status.totalBytes)}. Keep working; the Update button appears when it is ready.<span className="update-progress"><span style={{ width: `${share}%` }}/></span></>, null];
+  }
+  else if (status.action === 'restart') row = [`ros.ai ${latest.version} is ready`, <>You have {status.version}. The new version downloaded in the background. {whatsNew}</>, <button className="primary small" disabled={busy} onClick={() => void run(installUpdate)}>{busy && <LoaderCircle size={13} className="spin"/>}Restart to update</button>];
+  else if (status.action === 'update') row = [`ros.ai ${latest.version} is out`, <>You run {status.version} from a git checkout. Update pulls {latest.version}, installs packages if they changed, rebuilds and restarts. {whatsNew}</>, <button className="primary small" disabled={busy} onClick={() => void run(installUpdate)}>{busy && <LoaderCircle size={13} className="spin"/>}Update and restart</button>];
+  else if (status.action === 'steps') row = [`ros.ai ${latest.version} is out`, <>{status.note} {whatsNew}{status.commands && <Commands text={status.commands}/>}</>, status.commands ? status.install === 'source' && check : <DownloadLink status={status} button/>];
+  // Found, not ready yet: the Mac app downloads it next, or the download failed and Check now tries again.
+  else row = [`ros.ai ${latest.version} is out`, checking ? 'Getting it ready…' : `You have ${status.version}.`, check];
+  return <section><h2>Updates</h2><div className="settings-card">
+    <Row title={row[0]} detail={row[1]}>{row[2]}</Row>
+    {status.enabled && <Row title="Check for updates" detail={status.auto ? 'Asks GitHub for the newest release when ros.ai starts and every six hours. Nothing about you or this computer is sent.' : 'Off. ros.ai looks only when you press Check now.'}>
+      <button type="button" role="switch" aria-checked={status.auto} aria-label="Check for updates" className={`switch ${status.auto ? 'on' : ''}`} disabled={busy} onClick={() => void run(() => setAutoUpdates(!status.auto))}><span/></button>
+    </Row>}
+  </div>{problem && <p className="inline-error" role="alert">{problem}</p>}</section>;
 }
 
 // Categorical slots in fixed order; anything past them folds into Other.

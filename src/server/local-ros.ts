@@ -155,8 +155,8 @@ async function json(url: string, signal: AbortSignal) {
   return response.json();
 }
 
-/** Downloads into a .part file that a later attempt resumes, then checks size and SHA-256. */
-async function fetchFile(item: Download, signal: AbortSignal, progress: (done: number) => void) {
+/** Downloads into a .part file that a later attempt resumes, then checks size and SHA-256. ros.ai updates use it too. */
+export async function fetchFile(item: Download, signal: AbortSignal, progress: (done: number) => void) {
   mkdirSync(join(item.file, '..'), { recursive: true });
   if (existsSync(item.file) && statSync(item.file).size === item.bytes) { progress(item.bytes); return; }
   const part = `${item.file}.part`, have = existsSync(part) ? statSync(part).size : 0;
