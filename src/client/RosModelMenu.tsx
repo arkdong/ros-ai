@@ -95,7 +95,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
         {acpShown.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void switchTo(() => setBackend(item.id))}><BrandLogo id={acpLogo[item.id]} size={16}/><span className="ros-menu-label">{item.label}<small>{item.blocker ? 'Cannot start · see Agents' : item.checked && !item.checked.ok ? 'Check failed · see Agents' : ACP_AGENTS[item.id].caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
       </div>
       <hr/>
-      <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Model &amp; budget</span></button>
+      <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Models &amp; keys</span></button>
       <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permission details</span></button>
     </div>}
   </div>;
