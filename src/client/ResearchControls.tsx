@@ -5,7 +5,7 @@ import type { ProjectDetail } from '../shared/types';
 import { api, post } from './api';
 import './detail-polish.css';
 export const modeLabel=(mode:ApprovalMode)=>mode==='ask'?'Ask every time':mode==='review'?'Approve for me':'Full access';
-const explanations:Record<ApprovalMode,string>={ask:'Every code run, and every block the assistant adds, waits for your OK.',review:'Plain data-analysis code runs straight away. Other code, and blocks the assistant adds, wait for your OK.',full:'Code runs straight away in the isolated sandbox, and the assistant can add blocks. Everything stays undoable.'};
+const explanations:Record<ApprovalMode,string>={ask:'Every code run, and every canvas change the assistant makes, waits for your OK.',review:'Plain data-analysis code runs straight away, and the assistant adds, moves and regroups blocks at once. Other code, and any edit or removal, waits for your OK.',full:'Code runs straight away in the isolated sandbox, and the assistant\'s canvas changes land at once. Everything stays undoable.'};
 
 export function PolicyPanel({detail,policy,onRefresh}:{detail:ProjectDetail;policy:ResearchPolicy;onRefresh:()=>Promise<unknown>}) {
   const [mode,setMode]=useState(policy.mode),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);

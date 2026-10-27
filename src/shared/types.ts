@@ -15,18 +15,17 @@ export type NotionPropertyType = 'title'|'text'|'select'|'multi_select'|'checkbo
 /** One property of a Notion page as text; `links` are the pages or addresses the value points to; `values` the chosen
  * options of a multi-select; `date` the parts of a date. */
 export type NotionProperty = { name:string; value:string; type:NotionPropertyType; editable:boolean; options?:string[]; values?:string[]; date?:{ start:string; end:string }; links?:{ text:string; url:string }[] };
-/** One block of a page's text, as Markdown; `source` is Notion's own text for it, which an edit replaces (absent
- * for tables, media and other blocks that stay read only), and `text` the words a person edits (no list marks). */
-export type NotionUnit = { markdown:string; text?:string; source?:string };
+/** One block of a page's text, as Markdown; `source` is Notion's own text for it, one line, which an edit replaces
+ * (absent for tables, media and other blocks that stay read only), and `labels` what each mention or date in it reads as. */
+export type NotionUnit = { markdown:string; source?:string; labels?:Record<string,string> };
 /** What a Notion page block shows, read live: its properties, its content as Markdown (`units` block by block)
  * and where it lives. `titleProperty` names the database column that holds the title. */
 export type NotionPage = { kind:'page'; title:string; icon?:string; url:string; link:string|null; properties:NotionProperty[]; titleProperty?:string; content:string; units:NotionUnit[]; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string };
-/** A change a person makes to a page from ros.ai, saved straight to Notion. */
-export type NotionEdit =
-  | { kind:'title'; title:string }
-  | { kind:'property'; name:string; value:string|number|boolean|string[]|null; end?:string|null }
-  | { kind:'text'; old:string; new:string }
-  | { kind:'append'; text:string };
+/** A field's new value; `end` the end of a date range. */
+export type NotionFieldValue = { value:string|number|boolean|string[]|null; end?:string|null };
+/** The changes a person saves to a page in one go: a new title, fields, lines of text replaced (an empty `new`
+ * removes one; several lines make new blocks) and text added at the end. */
+export type NotionSave = { title?:string; properties?:({ name:string } & NotionFieldValue)[]; text?:{ old:string; new:string }[]; append?:string };
 export type NotionRead = NotionTable | NotionPage;
 /** A Google Sheet or Doc shown live on the canvas through the Google Drive sign-in: only which file (and for a
  * sheet, which tab); the content stays in Google Drive. */

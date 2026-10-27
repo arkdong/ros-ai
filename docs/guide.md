@@ -50,9 +50,9 @@ Pin an artifact as a highlight. Reuse it through the artifact menu or drag it in
 
 ## Three approval modes
 
-- **Ask every time:** review each experiment and additional block. Creating a related block and starting its work are separate decisions in this mode.
-- **Approve for me:** an independent, conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away. Other imports, file or system access and anything unfamiliar escalate to a person, and so do blocks the assistant adds. This is an automatic policy reviewer, not a second reasoning model or a scientific-validity guarantee.
-- **Full access:** code runs straight away in the isolated sandbox and the assistant can add blocks without asking; every change stays undoable. Stop controls, the isolated runtime and connection permissions still apply.
+- **Ask every time:** review each experiment and each change to the canvas. Creating a related block and starting its work are separate decisions in this mode.
+- **Approve for me:** an independent, conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away. Other imports, file or system access and anything unfamiliar escalate to a person. Blocks the assistant adds, moves, resizes or regroups land at once; it asks before it edits or removes anything already on the canvas, or opens a browser. This is an automatic policy reviewer, not a second reasoning model or a scientific-validity guarantee.
+- **Full access:** code runs straight away in the isolated sandbox and every canvas change the assistant makes lands without asking, edits and removals included; every change stays undoable. Writes to outside services such as Notion still ask, because Undo cannot take them back. Stop controls, the isolated runtime and connection permissions still apply.
 
 The project keeps running tallies of code runs, model requests, created Actions, runtime and spending. They are a record, not a limit: paid calls stay capped by each connection’s own allowance, which failures, retries, follow-ups and mode changes never replenish. **Stop** in the composer (or Esc) stops Ros and the agent it is running; a Code or Notebook block that runs on its own has its own Stop. A paused project resumes under Permissions and usage. Browser closure leaves the server working. Service/laptop shutdown interrupts work; reopening never blindly repeats a paid request.
 
