@@ -8,11 +8,8 @@ import { ErrorBoundary } from './ErrorBoundary';
 import './refined.css';
 import './mac-app.css';
 
-// The Mac app window has no system title bar; it gets our own strip instead (desktop/src/main.ts adds ros.ai/<version>).
-if (/Macintosh/.test(navigator.userAgent) && / ros\.ai\/\S+$/.test(navigator.userAgent)) {
-  document.documentElement.classList.add('mac-app');
-  document.body.prepend(Object.assign(document.createElement('div'), { className: 'mac-titlebar' }));
-}
+// The Mac app window has no system title bar; App draws its own strip instead (desktop/src/main.ts adds ros.ai/<version>).
+if (/Macintosh/.test(navigator.userAgent) && / ros\.ai\/\S+$/.test(navigator.userAgent)) document.documentElement.classList.add('mac-app');
 
 if (/^\/waitlist(?:\/pitch)?\/?$/.test(window.location.pathname)) {
   window.location.replace('/app');

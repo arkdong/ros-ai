@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, BookOpen, Braces, Check, ChevronDown, ChevronRight, Database, File as FileIcon, FileText, Group, NotebookPen, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin, Play, Plus, Square, Text as TextIcon, Trash2, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Braces, Check, ChevronDown, ChevronRight, Database, File as FileIcon, FileText, Group, NotebookPen, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeft, PanelLeftClose, PanelLeftOpen, Pin, Play, Plus, Square, Text as TextIcon, Trash2, X } from 'lucide-react';
 import type { Artifact, Change, ConnectionStatus, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import type { ResearchPolicy, ResearchSession } from '../shared/research';
 import { api, post, upload } from './api';
@@ -249,9 +249,12 @@ export function App(){
   const finishSetup=async(next?:RailPage)=>{setSetupOpen(false);void post('/api/setup/seen').catch(()=>undefined);if(next)setPage(next);await reloadConnections().catch(report);};
   const settingsOpen=page==='usage'||page==='balances'||page==='general'||page==='memory'||page==='resources';
   const railPage=page==='canvas'?null:<RailPageFrame page={page}>{page==='model'?<ModelPage key={projectId||'local'} projectId={projectId} connections={connections} publicDemo={publicDemo} selected={agentId} onSelect={setAgentId} onInstalled={setInstalledAgents} onChanged={reloadConnections}/>:page==='usage'?<UsageSettings publicDemo={publicDemo}/>:page==='balances'?<BalanceSettings publicDemo={publicDemo}/>:page==='general'?<GeneralSettings projectId={projectId} projectTitle={detail?demoDisplayTitle(detail.project):null} policy={policy} publicDemo={publicDemo} onChanged={()=>refresh()}/>:page==='memory'?<MemoryPage publicDemo={publicDemo}/>:page==='plugins'?pluginsSection==='skills'?<SkillsPage publicDemo={publicDemo} selected={skillName} onSelect={setSkillName} onSkills={setSkillList}/>:<PluginsPage projectId={projectId} publicDemo={publicDemo} selected={pluginId} onSelect={setPluginId} onInstalled={setInstalledPlugins} onChanged={reloadConnections} onResources={()=>setPage('resources')}/>:detail?<div className="settings-page"><h1>Resources</h1><Resources key={detail.project.id} detail={detail} onChanged={()=>refresh()} onOpenArtifact={openArtifact}/></div>:<div className="settings-page"><h1>Resources</h1><p className="rail-page-note">Open a project to see its resources.</p></div>}</RailPageFrame>;
+  // The Mac app window has no system title bar: its strip (mac-app.css) holds the window buttons and the sidebar button.
+  const macApp=document.documentElement.classList.contains('mac-app');
   // Hiding or showing the sidebar by its button hands focus to the button that undoes it.
   const toggleSidebar=(open:boolean)=>{setSidebarOpen(open);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(`[aria-label="${open?'Hide sidebar':'Show sidebar'}"]`)?.focus({preventScroll:true}));};
   return <div className={`app-shell single-canvas-shell ${sidebarOpen?'':'sidebar-hidden'}`}>
+    {macApp&&<div className="mac-titlebar"><button className="icon-button mac-titlebar-button" aria-label={sidebarOpen?'Hide sidebar':'Show sidebar'} onClick={()=>toggleSidebar(!sidebarOpen)}><PanelLeft size={16}/></button></div>}
     <AppRail page={page} onPage={setPage}/>
     <aside className="sidebar" aria-label="Projects and notes" inert={!sidebarOpen}>
       <div className="brand-row"><a className="wordmark" href="/" aria-label="ros.ai home"><Wordmark/></a><button className="icon-button" aria-label="Hide sidebar" onClick={()=>toggleSidebar(false)}><PanelLeftClose size={17}/></button></div>

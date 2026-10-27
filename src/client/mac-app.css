@@ -1,8 +1,15 @@
-/* Mac app window (desktop/): no system title bar. A slim strip of our own across the top holds the red/yellow/green
-   window buttons and moves the window; the app sits below it. Full screen hides the buttons, so the strip goes too. */
-html.mac-app body { padding-top: 36px; }
-html.mac-app .app-shell { height: calc(100dvh - 36px); }
-.mac-titlebar { position: fixed; inset: 0 0 auto; height: 36px; background: var(--rail-bg, #f2f2f2); border-bottom: 1px solid #e3e3e3; z-index: 1000; -webkit-app-region: drag; user-select: none; }
-html.mac-app[data-full-screen] body { padding-top: 0; }
-html.mac-app[data-full-screen] .app-shell { height: 100dvh; }
-html.mac-app[data-full-screen] .mac-titlebar { display: none; }
+/* Mac app window (desktop/): no system title bar. Like Codex, a grey frame holds the window: a 36px strip on top with the
+   red/yellow/green window buttons and the sidebar button (the strip moves the window), the rail on the left, and the app
+   itself as a white card with a border and rounded corners. Full screen hides the window buttons. */
+html.mac-app body { padding-top: 36px; background: var(--rail-bg, #f2f2f2); }
+html.mac-app .app-shell.single-canvas-shell { height: calc(100dvh - 36px); padding: 0 6px 6px 0; background: var(--rail-bg, #f2f2f2); }
+.mac-titlebar { position: fixed; inset: 0 0 auto; z-index: 1000; display: flex; align-items: center; height: 36px; padding-left: 84px; background: var(--rail-bg, #f2f2f2); -webkit-app-region: drag; user-select: none; }
+html.mac-app[data-full-screen] .mac-titlebar { padding-left: 16px; }
+.mac-titlebar-button { width: 28px; height: 26px; border-radius: 7px; color: #5c5f5d; -webkit-app-region: no-drag; }
+.mac-titlebar-button:hover { background: #e5e5e5; color: #1f2220; }
+/* The strip's button replaces the ones in the sidebar and the header. */
+html.mac-app .brand-row .icon-button[aria-label="Hide sidebar"], html.mac-app .workspace-heading > .icon-button[aria-label="Show sidebar"] { display: none; }
+html.mac-app .single-canvas-shell .app-rail { padding-top: 8px; border-right: 0; }
+html.mac-app .single-canvas-shell .sidebar { border: 1px solid #e3e3e3; border-right-color: #ebebeb; border-radius: 12px 0 0 12px; }
+html.mac-app .single-canvas-shell .workspace { border: 1px solid #e3e3e3; border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; }
+html.mac-app .single-canvas-shell.sidebar-hidden .workspace { border-left: 1px solid #e3e3e3; border-radius: 12px; }
