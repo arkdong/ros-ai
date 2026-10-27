@@ -1,0 +1,16 @@
+/* The canvas overview at the bottom left. Hidden at rest, it fades in while the map moves and stays while the pointer is on it. */
+.canvas-minimap .react-flow__panel.react-flow__minimap {
+  margin: 0; left: 16px; bottom: 18px; z-index: 12;
+  border: 1px solid var(--card-line, #e4e4e4); border-radius: 10px; overflow: hidden;
+  background: #fff; box-shadow: var(--float-shadow, 0 6px 18px rgba(0, 0, 0, .06));
+  opacity: 0; pointer-events: none; transition: opacity .35s ease;
+}
+.canvas-minimap.awake .react-flow__panel.react-flow__minimap { opacity: 1; pointer-events: auto; transition-duration: .12s; }
+.canvas-minimap .react-flow__minimap-svg { display: block; cursor: pointer; }
+.canvas-minimap .react-flow__minimap-svg:active { cursor: grabbing; }
+/* On maps too narrow for it to sit beside the Ros bar, it moves over the zoom controls at the bottom right, which
+   already rise above the bar there; at the left it would run into the bar or the canvas tools. */
+.workspace:has(.ros-dock) .canvas-minimap.above-bar .react-flow__panel.react-flow__minimap {
+  left: auto; right: calc(var(--feedback-right, 21px) - 7px); bottom: calc(14px + var(--feedback-lift, 0px) + 58px);
+}
+@media (prefers-reduced-motion: reduce) { .canvas-minimap .react-flow__panel.react-flow__minimap { transition: none; } }
