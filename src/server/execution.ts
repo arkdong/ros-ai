@@ -525,7 +525,7 @@ export class ExecutionService {
       const y = roots.length ? Math.ceil((Math.max(...roots.map(n=>n.y))+216)/24)*24 : 0;
       proposal = this.reviewProjectProposal(this.store.createProposal(projectId,project.revision,`One Text block: ${title}`,[{type:'addNode',node:{id:randomUUID(),title,description:message,kind:'topic',...(task?{label:'task'}:{}),parentId:null,x:0,y}}]));
       reply = `${label}\nHere is one Text block for the next step you described. Review its title and purpose, then accept or dismiss the preview. It stands alone; accepting it does not start research. You can open it to inspect a dataset or draft a local experiment.`;
-    } else reply = `${label}\nYour request is recorded. A useful next step is one focused task for that outcome. You can ask “Add a task for …” to preview it, or add a Text block directly. Open a node to inspect data and run a local analysis. Cloud conversation needs a fresh explicit provider budget.`;
+    } else reply = `${label}\nYour request is recorded. A useful next step is one focused task for that outcome. You can ask “Add a task for …” to preview it, or add a Text block directly. Open a node to inspect data and run a local analysis. Connect a model on the Agents page for a full conversation.`;
     return {message:this.store.addMessage(projectId,null,'assistant',reply),proposal};
   }
   startExperimentPlan(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;backend?:'bounded'|'docker-python'|'nebius-sandbox'}) {
