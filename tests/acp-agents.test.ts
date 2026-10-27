@@ -7,6 +7,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Store } from '../src/server/store.js';
 import { ExecutionService } from '../src/server/execution.js';
+import { Authority } from '../src/server/authority.js';
+import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
+import type { SearchAdapter } from '../src/server/providers.js';
 import type { ExperimentService } from '../src/server/experiments.js';
 import { AssistantService } from '../src/server/assistant.js';
 import { AcpAgentService, CLAUDE_CODE_READ, acpInstructions, attachAcpAgentRoutes, gooseAlwaysAllowed } from '../src/server/acp-agent.js';
@@ -270,4 +273,22 @@ test('Ros runs as an ACP agent from the assistant: the turn names the agent and 
     assert.deepEqual([turn.model, turn.destination, turn.location], ['Gemini CLI · fake-model-1', 'the provider Gemini CLI is signed in to', 'external']);
     assert.equal(turn.events[0]!.message, 'Starting Gemini CLI on this computer with its own sign-in.');
   } finally { await assistant.shutdown(); await f.close(); }
+});
+
+test('A web search plan from an ACP agent adds its Agent block under that agent\'s name', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ros-acp-plan-')), store = new Store(directory);
+  const search: SearchAdapter = { configured: true, async search(query) { return { results: [{ title: 'A page', url: `https://example.org/${encodeURIComponent(query)}`, content: 'A passage.', locator: 'Search result 1' }], credits: 1, requestId: null }; } };
+  const execution = new ExecutionService(store, { search, includeSetupUsage: false });
+  try {
+    const project = store.createProject('ACP search plan');
+    store.mutate(project.id, [{ type: 'addNode', node: { id: 'question', title: 'Question', description: 'What is known?', x: 0, y: 0, kind: 'topic' } }], 'Add question');
+    const authority = new Authority(store);
+    authority.configure(project.id, { mode: 'full' });
+    const tools = new AgentWorkspaceTools(store, execution, { authority } as unknown as ExperimentService, { projectId: project.id, nodeIds: ['question'], artifactIds: [] }, 'turn-gemini', 'gemini', 'Gemini CLI');
+    const plan = await tools.call('ros_fan_out_search', { goal: 'What is known?', rationale: 'To find out.', directions: [{ title: 'Basics', why: 'Start there', queries: ['what is known'] }] }) as { status: string };
+    assert.equal(plan.status, 'accepted');
+    assert.deepEqual(store.getProject(project.id).canvas.nodes.find(node => node.blockType === 'agent')?.agent, { runtime: 'gemini', turnId: 'turn-gemini' });
+  } finally {
+    await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true });
+  }
 });
