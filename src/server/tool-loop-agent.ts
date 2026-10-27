@@ -8,6 +8,7 @@ import { AGENT_LOOP_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import type { ChatMessage, ModelTool, ToolCall } from './providers.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import type { ModelSelection } from '../shared/model-settings.js';
+import { AGENT_CONTEXT_TOKENS } from '../shared/setup.js';
 
 const now = () => new Date().toISOString();
 const MAX_TOOL_CALLS = 30, MAX_MODEL_REQUESTS = 30, MAX_SECONDS = 900, MAX_FAILURES_IN_A_ROW = 3;
@@ -26,8 +27,8 @@ function modelTools(toolkit: AgentWorkspaceTools): ModelTool[] {
 }
 const bytes = (messages: ChatMessage[]) => Buffer.byteLength(JSON.stringify(messages), 'utf8');
 /** Keep the system prompt, the question and the newest results whole; clip older tool results first. */
-function fit(messages: ChatMessage[]) {
-  for (let index = 2; bytes(messages) > MESSAGE_BUDGET_BYTES && index < messages.length - 2; index++) {
+function fit(messages: ChatMessage[], budget: number) {
+  for (let index = 2; bytes(messages) > budget && index < messages.length - 2; index++) {
     const message = messages[index];
     if (message.role === 'tool' && message.content.length > OLD_RESULT_CHARACTERS) messages[index] = { ...message, content: `${message.content.slice(0, OLD_RESULT_CHARACTERS)}… [older result shortened; call the tool again to see it whole]` };
   }
@@ -83,9 +84,18 @@ export class ToolLoopAgentService {
     const connection = this.execution.inference?.statuses().find(item => item.id === selection.provider);
     return { destination: connection?.name ?? 'your model server', location: connection?.destination === 'local-unverified' ? 'local-unverified' : 'external' };
   }
+  /** The connected model a selection names, with what its server says about it. */
+  private registered(selection: ModelSelection) {
+    const connection = this.execution.inference?.statuses().find(item => item.id === selection.provider);
+    const model = connection?.models.find(item => item.id === selection.model);
+    return connection && model ? { connection, model, local: connection.destination === 'local-unverified' } : undefined;
+  }
   /** Cheap and local: no model request is sent. */
   readiness(projectId: string, selection: ModelSelection): { available: boolean; reason: string | null } {
     if (selection.provider === 'openai') return { available: false, reason: 'The agent runs on Nemotron or a model you connected, not on the OpenAI connection. Choose another model.' };
+    const found = this.registered(selection);
+    if (found?.model.tools === false) return { available: false, reason: `${found.model.label} cannot call tools in ${found.connection.name}, so it cannot work step by step. Choose a model that can, or turn off “Use ros.ai’s tools step by step”.` };
+    if (found?.local && found.model.contextTokens < AGENT_CONTEXT_TOKENS) return { available: false, reason: `${found.model.label} has a ${found.model.contextTokens.toLocaleString('en-US')}-token context in ${found.connection.name}; working step by step needs at least ${AGENT_CONTEXT_TOKENS / 1024}k (32k is better). Raise its context length there, then press Refresh under Agents › Local models.` };
     const capabilities = this.execution.assistantCapabilities(projectId);
     return capabilities.modelAvailable ? { available: true, reason: null } : { available: false, reason: capabilities.modelBlocker ?? 'The selected model cannot run.' };
   }
@@ -97,6 +107,9 @@ export class ToolLoopAgentService {
     const message = z.string().trim().min(1).max(12000).parse(request.message), label = this.label(request.selection);
     const toolkit = new AgentWorkspaceTools(this.store, this.execution, this.experiments, request, request.turnId, 'model', label);
     const tools = modelTools(toolkit), names = new Set(tools.map(item => item.name));
+    // A local model's context holds the tools as well: its messages get the room left, at three bytes a token.
+    const found = this.registered(request.selection), toolBytes = Buffer.byteLength(JSON.stringify(tools), 'utf8');
+    const budget = found?.local ? Math.min(MESSAGE_BUDGET_BYTES, Math.max(8_000, (found.model.contextTokens - 2_048) * 3 - toolBytes)) : MESSAGE_BUDGET_BYTES;
     const messages: ChatMessage[] = [
       { role: 'system', content: AGENT_LOOP_INSTRUCTIONS },
       { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}` },
@@ -118,7 +131,7 @@ export class ToolLoopAgentService {
       for (;;) {
         if (controller.signal.aborted) throw new StoreError(timedOut ? `The agent reached the ${MAX_SECONDS / 60}-minute limit for one turn and was stopped.` : 'The agent was stopped.', timedOut ? 503 : 409);
         if (attempt.requests >= MAX_MODEL_REQUESTS) throw new StoreError(`The agent reached the limit of ${MAX_MODEL_REQUESTS} model requests for one turn before finishing.`, 503);
-        fit(messages);
+        fit(messages, budget);
         attempt.requests++;
         const { response, usage } = await this.execution.assistantComplete(request.projectId, { messages, maxOutputTokens: MAX_OUTPUT_TOKENS, tools }, controller.signal, request.selection);
         attempt.usageIds.push(usage.id); attempt.estimatedUsd += usage.estimatedUsd ?? usage.reservedUsd; save();
@@ -143,7 +156,7 @@ export class ToolLoopAgentService {
       const text = error instanceof StoreError ? error.message : `The agent stopped: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its model requests stay recorded; nothing was repeated.`;
       attempt = { ...attempt, status: controller.signal.aborted && !timedOut ? 'interrupted' : 'failed', error: text }; save();
       throw new StoreError(text, error instanceof StoreError ? error.status : 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); void toolkit.close(); }
   }
   /** One tool call, checked like Claude Code's: an error goes back to the model as text it can fix. */
   private async run(call: ToolCall, names: Set<string>, toolkit: AgentWorkspaceTools, count: number, event: (value: AgentEvent) => void): Promise<{ text: string; failed: boolean }> {

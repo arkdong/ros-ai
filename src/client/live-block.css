@@ -1,0 +1,35 @@
+/* A block read live from another app (a Notion database or page, a Google Sheet or Doc): a quiet table or the text,
+   then how fresh it is and a way back to the app. */
+.live-block { display: grid; gap: 6px; min-width: 0; }
+.live-block-scroll { max-height: 240px; overflow: auto; border: 1px solid #ececec; border-radius: 6px; }
+.live-block.full .live-block-scroll { max-height: min(70vh, 640px); }
+.live-block.document.full .live-block-scroll { max-height: none; border: 0; border-radius: 0; }
+.live-block table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.45; }
+.live-block th { position: sticky; top: 0; background: #fafafa; color: #6b6b6b; font-weight: 500; text-align: left; white-space: nowrap; }
+.live-block th, .live-block td { padding: 5px 8px; border-bottom: 1px solid #f0f0f0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name column stays put while the other columns scroll sideways under it. */
+.live-block th:first-child, .live-block td:first-child { position: sticky; left: 0; background: #fff; box-shadow: inset -1px 0 #f0f0f0; }
+.live-block th:first-child { background: #fafafa; z-index: 1; }
+.live-block tr:last-child td { border-bottom: 0; }
+.live-block td a { color: #171717; text-decoration: none; }
+.live-block td a:hover { text-decoration: underline; }
+/* A page or doc's text. */
+.live-block-text { padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.live-block.full .live-block-text { padding: 0; font-size: 14px; line-height: 1.6; }
+/* A spreadsheet's tabs, along the bottom as Google Sheets shows them. */
+.live-block-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.live-block-tabs button { flex: none; border: 0; background: none; border-radius: 5px; padding: 3px 9px; font: inherit; font-size: 12px; color: #6b6b6b; cursor: pointer; white-space: nowrap; }
+.live-block-tabs button:hover { background: #f5f5f5; color: #171717; }
+.live-block-tabs button[aria-pressed="true"] { background: #efefef; color: #171717; font-weight: 500; }
+.live-block footer { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #8a8a8a; min-width: 0; }
+.live-block footer>span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-block footer a { color: inherit; }
+.live-block footer .icon-button { width: 22px; height: 22px; color: #8a8a8a; }
+.live-block-action { flex: none; white-space: nowrap; padding: 2px 9px; font-size: 11px; min-height: 0; height: 22px; }
+.live-block-open { display: inline-flex; align-items: center; gap: 3px; color: #6b6b6b; text-decoration: none; white-space: nowrap; }
+.live-block-open:hover { color: #171717; }
+.live-block-loading, .live-block-error, .live-block-empty { font-size: 12px; line-height: 1.6; color: #6b6b6b; margin: 0; padding: 6px 2px; display: flex; align-items: center; gap: 6px; }
+.direct-canvas .block-primary-preview:has(>.live-block) { max-height: none; overflow: visible; }
+.block-primary-preview .live-block-scroll { height: 176px; max-height: none; }
+.live-block-error, .live-block-loading { padding: 8px 10px; }
+.live-block-notice { font-size: 11px; line-height: 1.5; color: #8a6d3b; margin: 0; }

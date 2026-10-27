@@ -13,15 +13,16 @@ const money = (value: number) => `US$${value.toFixed(2)}`;
 const localPresets = [{ name: 'Ollama', endpoint: 'http://127.0.0.1:11434/v1', logo: 'ollama' as const }, { name: 'LM Studio', endpoint: 'http://127.0.0.1:1234/v1', logo: 'lm-studio' as const }];
 const makers: ModelMaker[] = [{ id: 'unknown', label: 'Configured model', monogram: 'M' }, { id: 'nvidia', label: 'NVIDIA', monogram: 'NV' }, { id: 'moonshot', label: 'Moonshot', monogram: 'M' }, { id: 'openai', label: 'OpenAI', monogram: 'AI' }];
 
-export function InferenceConnections({ onChanged }: { onChanged: () => Promise<unknown> }) {
+/** Other OpenAI-compatible servers; hidden holds the connections other cards manage (Ollama, LM Studio, Ros on this computer). */
+export function InferenceConnections({ hidden = [], onChanged }: { hidden?: string[]; onChanged: () => Promise<unknown> }) {
   const [connections, setConnections] = useState<InferenceConnectionStatus[]>([]), [loading, setLoading] = useState(true), [adding, setAdding] = useState(false), [error, setError] = useState('');
   const load = useCallback(async () => { const value = await api<{ connections: InferenceConnectionStatus[] }>(path); setConnections(value.connections); }, []);
   useEffect(() => { let current = true; void api<{ connections: InferenceConnectionStatus[] }>(path).then(value => { if (current) setConnections(value.connections); }).catch(cause => { if (current) setError(errorText(cause)); }).finally(() => { if (current) setLoading(false); }); return () => { current = false; }; }, []);
   const changed = async () => { await load(); window.dispatchEvent(new Event('ros-ai-model-settings')); await onChanged(); };
-  return <section className="inference-connections" aria-label="Local models and other servers"><div className="inference-section-heading"><div><p>Ollama, LM Studio, or any OpenAI-compatible server you run or rent</p></div><button type="button" className="icon-button" aria-label="Refresh your model connections" onClick={() => void load().catch(cause => setError(errorText(cause)))}><RefreshCw size={14}/></button></div>
+  return <section className="inference-connections" aria-label="Other model servers"><div className="inference-section-heading"><div><h3>Other servers</h3><p>Any OpenAI-compatible server you run or rent</p></div><button type="button" className="icon-button" aria-label="Refresh your model connections" onClick={() => void load().catch(cause => setError(errorText(cause)))}><RefreshCw size={14}/></button></div>
     {loading && <p role="status"><LoaderCircle className="spin" size={13}/> Reading saved connections…</p>}{error && <p className="inline-error" role="alert">{error}</p>}
-    {connections.map(connection => <RegisteredConnection key={`${connection.id}:${connection.revision}`} connection={connection} onChanged={changed}/>)}
-    <button type="button" className="secondary small" aria-expanded={adding} onClick={() => setAdding(!adding)}><Plus size={13}/>{adding ? 'Close new connection' : 'Add a local model or server'}</button>
+    {connections.filter(connection => !hidden.includes(connection.id)).map(connection => <RegisteredConnection key={`${connection.id}:${connection.revision}`} connection={connection} onChanged={changed}/>)}
+    <button type="button" className="secondary small" aria-expanded={adding} onClick={() => setAdding(!adding)}><Plus size={13}/>{adding ? 'Close new connection' : 'Add a server'}</button>
     {adding && <ConnectionConfiguration onSaved={async () => { setAdding(false); await changed(); }}/>}<p className="inference-footnote">Saving a connection starts no model call.</p>
   </section>;
 }

@@ -6,3 +6,4 @@
 .artifact-more[open]>summary{margin-bottom:12px}
 .artifact-more .result-actions{margin-top:12px}
 .artifact-source-link{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:#3d5a4a}
+.table-summary .table-query+.text-button{margin-left:0}.table-query{display:inline-flex;align-items:center;gap:5px}

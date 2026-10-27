@@ -1,10 +1,11 @@
 import type { Canvas, CanvasNode } from './types.js';
+import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
 /** What a block is on screen: seven kinds plus Group. Storage keeps the older blockType and kind words as aliases
- * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion is External). */
+ * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion and google are External). */
 export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Agent' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
   if (node.kind === 'group') return 'Group';
@@ -13,7 +14,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'notebook': return 'Notebook';
     case 'dataset': return 'Data';
     case 'figure': case 'file': return 'File';
-    case 'notion': return 'External';
+    case 'notion': case 'google': return 'External';
     case 'agent': return 'Agent';
     case 'search': return 'Search';
     default: return 'Text';
@@ -36,7 +37,7 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
-  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : 'Agent';
+  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
 }
 
 /** The caption of the link from a decision block to the block it rests on. */

@@ -7,9 +7,10 @@ export type ModelSelection = { provider: ModelProvider; model: string };
 export type ModelMaker = { id: 'nvidia' | 'moonshot' | 'openai' | 'unknown'; label: string; monogram: string };
 /** Presentation only: model makers and inference connections are different. */
 export function modelMaker(model: string, provider?: ModelProvider): ModelMaker {
-  if(model.toLowerCase().startsWith('nvidia/'))return {id:'nvidia',label:'NVIDIA',monogram:'NV'};
-  if(model.toLowerCase().startsWith('moonshotai/'))return {id:'moonshot',label:'Moonshot',monogram:'M'};
-  if(provider==='openai')return {id:'openai',label:'OpenAI',monogram:'AI'};
+  // Local servers name models without the maker's prefix: nemotron-3-nano:4b, gpt-oss:20b, kimi-k2.
+  if(model.toLowerCase().startsWith('nvidia/')||/(^|\/)nemotron/i.test(model))return {id:'nvidia',label:'NVIDIA',monogram:'NV'};
+  if(model.toLowerCase().startsWith('moonshotai/')||/(^|\/)kimi-/i.test(model))return {id:'moonshot',label:'Moonshot',monogram:'M'};
+  if(provider==='openai'||/(^|\/)gpt-oss/i.test(model))return {id:'openai',label:'OpenAI',monogram:'AI'};
   return {id:'unknown',label:'Configured model',monogram:'M'};
 }
 export type ProjectModelSettings = { default: ModelSelection; overrides: Record<string, ModelSelection> };

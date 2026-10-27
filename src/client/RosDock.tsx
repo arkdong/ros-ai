@@ -6,7 +6,7 @@ import { ResearchRing } from './Brand';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
 import type { ResearchPolicy } from '../shared/research';
 import { useFolderSuggestion } from './ProjectFolder';
-import { readSaved, saveLocal } from './persistence';
+import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
 import './ros-dock.css';
@@ -23,7 +23,8 @@ const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000
 
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
 export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void }) {
-  const [draft, setDraft] = useState(''), [now, setNow] = useState(() => Date.now());
+  // The bar and the opened panel share one saved draft per project, so text survives resizing Ros, switching projects and closing the window.
+  const [draft, setDraft] = useDraft(`assistant-draft:${detail.project.id}`), [now, setNow] = useState(() => Date.now());
   const skills = useSkillMenu(draft, setDraft, onSkills);
   const input = useRef<HTMLInputElement>(null);
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
@@ -99,7 +100,7 @@ export function titleFromQuestion(question: string) {
 
 /** The empty-state start: one box for the question; everything else sits behind Advanced. */
 export function RosStart({ folders, onStart, onAdvanced, onDemo }: { folders: boolean; onStart: (title: string, question: string, folder?: string) => Promise<void>; onAdvanced: () => void; onDemo: () => void }) {
-  const [question, setQuestion] = useState(''), [busy, setBusy] = useState(false);
+  const [question, setQuestion] = useDraft('start-question'), [busy, setBusy] = useState(false);
   const title = titleFromQuestion(question);
   const suggestion = useFolderSuggestion(title || 'New project', folders);
   const submit = async (event?: FormEvent) => {

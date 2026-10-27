@@ -1,4 +1,4 @@
-export const connectionBudgetProviders = ['nebius', 'openai', 'tavily', 'claude'] as const;
+export const connectionBudgetProviders = ['nebius', 'openai', 'tavily', 'claude', 'exa', 'brave'] as const;
 export type ConnectionBudgetProvider = typeof connectionBudgetProviders[number];
 export type ConnectionBudgetStatus = {
   provider: ConnectionBudgetProvider;

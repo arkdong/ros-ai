@@ -68,7 +68,6 @@
   .settings-row { flex-wrap: wrap; }
   .settings-row-control { max-width: 100%; }
 }
-.rail-page-inner.rail-page-wide { max-width: 860px; }
 
 /* Balances */
 .settings-head { display: flex; align-items: flex-start; gap: 14px; }

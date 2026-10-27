@@ -85,3 +85,11 @@
 /* Ros on this computer: download progress */
 .local-ros-progress{height:6px;border-radius:3px;background:var(--line,#e6e8e5);overflow:hidden;margin:2px 0 12px}
 .local-ros-progress span{display:block;height:100%;border-radius:3px;background:var(--ink,#1d211f);transition:width .4s ease}
+
+/* Agents › Local models: each server's models, with their context and whether Ros's agent can use them */
+.local-models{list-style:none;margin:0 0 12px;padding:0;border:1px solid #ececec;border-radius:7px}
+.local-models li{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f1f1f1}
+.local-models li:first-child{border-top:0}
+.local-model-name{flex:1;min-width:0;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,monospace;color:#222a26}
+.local-model-facts{font-size:11px;color:#777e7a;white-space:nowrap}
+.local-model-tag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;background:#f1f1f1;color:#4b524e;white-space:nowrap}
