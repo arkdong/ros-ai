@@ -1,0 +1,36 @@
+/* A model training run: one status line and a progress bar on the card; tabs per stage in the block view. */
+.training-status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #4a4a4a; min-width: 0; }
+.training-status>span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.training-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #c8c8c8; }
+.training-dot.running { background: #b45309; }
+.training-dot.done { background: #2f7d4f; }
+.training-spent { flex: none; color: #6b6b6b; font-variant-numeric: tabular-nums; }
+.training-progress { height: 4px; border-radius: 2px; background: #ebebeb; overflow: hidden; }
+.training-progress>div { height: 100%; border-radius: 2px; background: #171717; transition: width .3s ease; }
+.training-block.full { gap: 12px; }
+.training-block.full .training-status { font-size: 14px; color: #171717; }
+.training-tabs { display: flex; gap: 2px; border-bottom: 1px solid #ebebeb; }
+.training-tabs button { border: 0; background: none; padding: 8px 12px; font: inherit; font-size: 13px; color: #6b6b6b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.training-tabs button:hover { color: #171717; }
+.training-tabs button[aria-pressed="true"] { color: #171717; font-weight: 600; border-bottom-color: #171717; }
+.training-pane { display: grid; gap: 14px; min-width: 0; }
+.training-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 0; }
+.training-stats div { min-width: 0; }
+.training-stats dt { font-size: 12px; color: #6b6b6b; }
+.training-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; color: #171717; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.training-note { margin: 0; font-size: 12px; line-height: 1.6; color: #4a4a4a; }
+.training-block .live-block-empty code, .training-note code { font-size: 11px; }
+.training-chart { margin: 0; display: grid; gap: 6px; color: #3d6f8f; }
+.training-chart figcaption { display: flex; gap: 16px; font-size: 12px; color: #4a4a4a; }
+.training-key { display: inline-flex; align-items: center; gap: 6px; }
+.training-key svg { color: #3d6f8f; }
+.training-plot { position: relative; }
+.training-plot svg { display: block; width: 100%; height: auto; touch-action: none; }
+.training-plot text { font-size: 11px; fill: #6b6b6b; }
+.training-grid { stroke: #efefef; }
+.training-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.training-line.dashed { stroke-dasharray: 5 4; }
+.training-point { fill: currentColor; stroke: #fff; stroke-width: 2; }
+.training-cross { stroke: #c8c8c8; stroke-width: 1; }
+.training-tip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; display: grid; gap: 1px; padding: 6px 8px; border: 1px solid #dedede; border-radius: 6px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.08); font-size: 11px; color: #4a4a4a; white-space: nowrap; }
+.training-tip strong { color: #171717; font-weight: 600; }

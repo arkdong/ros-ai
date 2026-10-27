@@ -38,7 +38,10 @@ const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', 
  * it until Apps are switched on for agents. */
 const appSchema = z.object({ source: z.string().max(APP_SOURCE_LIMIT).optional(), inputs: z.array(identifier).max(MAX_APP_INPUTS).optional() }).strict().refine(value => value.source !== undefined || value.inputs !== undefined, 'Give the page (source), the inputs, or both');
 const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','app']).optional(), app: appSchema.optional() };
-export const mutationSchema = mutations({ ...appNodeFields, agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** A training run the person adds (see TrainingView). Kept out of what agents may propose, Apps on or off, because it names a
+ * folder and an ssh host on this computer, and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
+export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
+export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','app','training']).optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
