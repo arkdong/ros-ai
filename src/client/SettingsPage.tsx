@@ -50,9 +50,9 @@ function AmountField({ label, value, onSave }: { label: string; value: number | 
 const budgetDetail = (line: BudgetLine) => line.monthlyUsd === null ? `No budget. ${usd(line.spentUsd)} spent this month.` : `${usd(line.spentUsd)} spent this month, ${usd(line.leftUsd ?? 0)} left. Paid requests stop when it runs out.`;
 
 const approvalDetail: Record<ApprovalMode, string> = {
-  ask: 'Every code run, and every block an agent adds, waits for your OK.',
-  review: 'Plain data-analysis code runs straight away; everything else waits for your OK.',
-  full: 'Code runs straight away in the sandbox and agents add blocks. Everything stays undoable.',
+  ask: 'Every code run, and every canvas change an agent makes, waits for your OK.',
+  review: 'Plain data-analysis code runs straight away, and agents add, move and regroup blocks. Edits, removals and other code wait for your OK.',
+  full: 'Code runs straight away in the sandbox and agents change the canvas at once. Everything stays undoable.',
 };
 
 export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, onChanged }: { projectId: string | null; projectTitle: string | null; policy: ResearchPolicy | null; publicDemo: boolean; onChanged: () => Promise<unknown> }) {
