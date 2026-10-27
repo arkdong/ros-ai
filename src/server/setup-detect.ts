@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { request } from 'node:http';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import type { AgentId, AppId, DetectedApp, DetectedModel, LinkMethod, LocalModel } from '../shared/setup.js';
 
 /** What is installed on this computer, from existence, names and modification times.
@@ -60,6 +60,33 @@ function tomlServers(file: string): string[] | null {
   try { text = readFileSync(file, 'utf8'); } catch { return null; }
   return [...text.matchAll(/^[ \t]*\[mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))[ \t]*\]/gmu)].map(match => match[1] ?? match[2] ?? match[3] ?? '').filter(Boolean);
 }
+/** The names under the top-level mcp_servers: map of a Hermes Agent config.yaml, read line by line. */
+export function yamlServers(file: string): string[] | null {
+  let text: string;
+  try { text = readFileSync(file, 'utf8'); } catch { return null; }
+  const names: string[] = [];
+  let inside = false, indent = -1;
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.trim() || /^\s*#/u.test(line)) continue;
+    const depth = line.length - line.trimStart().length;
+    if (depth === 0) { inside = /^mcp_servers:\s*(#.*)?$/u.test(line); indent = -1; continue; }
+    if (!inside) continue;
+    if (indent < 0) indent = depth;
+    const name = depth === indent ? /^\s*(?:"([^"]+)"|'([^']+)'|([^\s"'#:][^:#]*?))\s*:(?:\s|$)/u.exec(line) : null;
+    if (name) names.push(name[1] ?? name[2] ?? name[3]!);
+  }
+  return names;
+}
+/** The Hermes Agent home its command line uses: HERMES_HOME when it names a profile, else the sticky profile in
+ * <root>/active_profile, else HERMES_HOME or the usual folder. */
+function hermesHome() {
+  const usual = win ? join(localAppData, 'hermes') : join(home, '.hermes'), set = process.env.HERMES_HOME?.trim();
+  if (set && basename(dirname(set)) === 'profiles') return set;
+  const below = set ? relative(usual, set) : '', root = set && (below.startsWith('..') || isAbsolute(below)) ? set : usual;
+  let profile = '';
+  try { profile = readFileSync(join(root, 'active_profile'), 'utf8').trim().toLowerCase(); } catch { /* none */ }
+  return profile && profile !== 'default' && /^[a-z0-9][a-z0-9_-]{0,63}$/u.test(profile) && isDir(join(root, 'profiles', profile)) ? join(root, 'profiles', profile) : set || usual;
+}
 const others = (servers: string[] | null | undefined) => (servers ?? []).filter(name => name !== 'ros-ai');
 
 /** One agent as the scan found it; the link command, record and sessions are added by Setup. */
@@ -77,6 +104,11 @@ export function detectAgents(): Found[] {
   const cursorApp = app('Cursor') || (win && exists(join(localAppData, 'Programs', 'cursor'))) || (!mac && !win && isDir(join(home, '.config', 'Cursor')));
   const cursorBinary = findBinary('cursor');
   const geminiDir = join(home, '.gemini'), geminiConfig = join(geminiDir, 'settings.json'), geminiShape = jsonShape(geminiConfig), geminiBinary = findBinary('gemini');
+  const piDir = process.env.PI_CODING_AGENT_DIR?.replace(/^~(?=$|[\\/])/u, home) || join(home, '.pi', 'agent'), piConfig = join(piDir, 'mcp.json'), piShape = jsonShape(piConfig);
+  const piSignedIn = exists(join(piDir, 'auth.json')), piBinary = findBinary('pi');
+  // Only a Hermes Agent home counts: other programs are called hermes too.
+  const hermesDir = hermesHome(), hermesConfig = join(hermesDir, 'config.yaml'), hermesServers = yamlServers(hermesConfig), hermesFound = Boolean(hermesServers) || isDir(hermesDir);
+  const hermesBinary = hermesFound ? findBinary(process.env.ROS_HERMES_BINARY || 'hermes') : null, hermesSignedIn = exists(join(hermesDir, 'auth.json'));
   return [
     { id: 'claude-code', label: 'Claude Code', sessionLabel: 'Claude Code', method: 'cli', binary: claudeBinary, target: claudeConfig,
       found: Boolean(claudeBinary || claudeShape || isDir(claudeHome)), signedIn: claudeSignedIn,
@@ -94,6 +126,14 @@ export function detectAgents(): Found[] {
       found: Boolean(geminiBinary || geminiShape || isDir(geminiDir)), signedIn: exists(join(geminiDir, 'oauth_creds.json')) ? true : null,
       signals: signals({ 'used recently': recent(join(geminiDir, 'tmp')), 'signed in': exists(join(geminiDir, 'oauth_creds.json')), 'command line': Boolean(geminiBinary) }),
       entry: Boolean(geminiShape?.servers.includes('ros-ai')), servers: others(geminiShape?.servers) },
+    { id: 'pi', label: 'Pi', sessionLabel: 'Pi', method: 'file', binary: piBinary, target: piConfig,
+      found: Boolean(piShape || isDir(piDir)), signedIn: piSignedIn ? true : null,
+      signals: signals({ 'used recently': recent(join(piDir, 'sessions')), 'signed in': piSignedIn, 'command line': Boolean(piBinary) }),
+      entry: Boolean(piShape?.servers.includes('ros-ai')), servers: others(piShape?.servers) },
+    { id: 'hermes', label: 'Hermes Agent', sessionLabel: 'Hermes Agent', method: 'cli', binary: hermesBinary, target: hermesConfig,
+      found: hermesFound, signedIn: hermesSignedIn ? true : null,
+      signals: signals({ 'used recently': recent(join(hermesDir, 'state.db')) || recent(join(hermesDir, 'sessions')), 'signed in': hermesSignedIn, 'command line': Boolean(hermesBinary) }),
+      entry: Boolean(hermesServers?.includes('ros-ai')), servers: others(hermesServers) },
   ];
 }
 

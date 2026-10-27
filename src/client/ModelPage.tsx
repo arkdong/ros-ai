@@ -22,7 +22,7 @@ import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agent
 import { AcpAgentCard, acpLogo, acpState } from './AcpAgents';
 import './connections.css';
 
-export type AgentId = 'ros' | 'claude' | 'codex' | 'gemini' | 'goose' | 'opencode' | 'own-claude' | 'own-codex' | 'own-cursor' | 'own-gemini' | 'nebius' | 'openai' | 'local';
+export type AgentId = 'ros' | 'claude' | 'codex' | 'gemini' | 'goose' | 'opencode' | 'own-claude' | 'own-codex' | 'own-cursor' | 'own-gemini' | 'own-pi' | 'own-hermes' | 'nebius' | 'openai' | 'local';
 type AgentItem = { id: AgentId; name: string; summary: string; mark: ReactNode; uses: string[] };
 const agentItems: AgentItem[] = [
   { id: 'ros', name: 'Ros', summary: 'ros.ai’s own assistant, hosted for free or on this computer', mark: <RosMark/>, uses: ['Plans and runs research on the map with ros.ai’s tools', 'Hosted: free with a ros.ai account; nothing to install', 'On this computer: one 3 GB download, works offline', 'Switch between them from the model name in the Ros bar'] },
@@ -35,6 +35,8 @@ const agentItems: AgentItem[] = [
   { id: 'own-codex', name: 'Your own Codex', summary: 'In your terminal, working on the map', mark: <BrandLogo id="codex"/>, uses: ['Keep working in Codex the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'own-cursor', name: 'Your own Cursor', summary: 'In Cursor, working on the map', mark: <AgentIcon id="cursor"/>, uses: ['Keep working in Cursor the way you already do', 'Its agent reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'own-gemini', name: 'Your own Gemini CLI', summary: 'In your terminal, working on the map', mark: <AgentIcon id="gemini-cli"/>, uses: ['Keep working in Gemini CLI the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-pi', name: 'Your own Pi', summary: 'In your terminal, working on the map', mark: <AgentIcon id="pi"/>, uses: ['Keep working in Pi the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-hermes', name: 'Your own Hermes Agent', summary: 'In your terminal, working on the map', mark: <AgentIcon id="hermes"/>, uses: ['Keep working in Hermes Agent the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'nebius', name: 'Nebius Token Factory', summary: 'Open models through your key', mark: <BrandLogo id="nebius"/>, uses: ['Nemotron, Kimi and other open models for Ros', 'Billed to your Token Factory key; spend shows in Settings › Usage'] },
   { id: 'openai', name: 'OpenAI API', summary: 'Direct model access, separate from Codex', mark: <BrandLogo id="openai"/>, uses: ['GPT models for Ros through your API key', 'Separate from the Codex sign-in'] },
   { id: 'local', name: 'Local models', summary: 'Ollama, LM Studio or any OpenAI-compatible server', mark: <BrandLogo id="ollama"/>, uses: ['Models running on this computer or your own server', 'Nothing leaves the machine'] },
@@ -46,7 +48,7 @@ const agentGroups: { billing: Billing; title: string; why?: string; ids: AgentId
   { billing: 'plan', title: 'On your subscription', why: 'Uses the plan you already pay for. No per-use charges.', ids: ['codex', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] },
   { billing: 'key', title: 'On your API keys', why: 'Pay per use, billed by the provider. Spend shows in Settings › Usage.', ids: ['claude', 'openai', 'nebius'] },
   { billing: 'free', title: 'Free', ids: ['ros', 'local'] },
-  { billing: 'own', title: 'Their own setup', why: 'Billed however you set the agent up: its own plan or its own key.', ids: ['gemini', 'goose', 'opencode'] },
+  { billing: 'own', title: 'Their own setup', why: 'Billed however you set the agent up: its own plan or its own key.', ids: ['gemini', 'goose', 'opencode', 'own-pi', 'own-hermes'] },
 ];
 /** The billing line on an agent's own page. */
 const billingLine: Record<AgentId, string> = {
@@ -54,6 +56,7 @@ const billingLine: Record<AgentId, string> = {
   codex: 'Runs on your ChatGPT plan; no API charges', 'own-claude': 'Runs on your own Claude plan or key, as in your terminal', 'own-codex': 'Runs on your own ChatGPT plan or key, as in your terminal', 'own-cursor': 'Runs on your Cursor plan', 'own-gemini': 'Runs on your own Google sign-in or key, as in your terminal',
   claude: 'Billed per use to your Claude API key', openai: 'Billed per use to your OpenAI API key', nebius: 'Billed per use to your Token Factory key',
   gemini: 'Billed through its own Google sign-in or key', goose: 'Billed through the provider Goose is set up with', opencode: 'Billed through OpenCode’s own providers, or free models',
+  'own-pi': 'Billed through the provider Pi is set up with, as in your terminal', 'own-hermes': 'Billed through the provider Hermes Agent is set up with, as in your terminal',
 };
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
@@ -78,7 +81,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const key=(provider:CredentialProvider)=>{const item=credentials.find(entry=>entry.provider===provider);return item?.configured?(item.verified===false?{label:'Check failed',connected:false}:{label:'Key saved',connected:true}):{label:'Not connected',connected:false};};
   const own=(id:SetupAgentId)=>{const agent=setup?.agents.find(item=>item.id===id);return !setup?{label:'',connected:false}:agent?.link||agent?.entry?{label:'Linked',connected:true}:agent?.seenAt?{label:'Used before',connected:true}:agent?.found?{label:'Not linked',connected:false}:{label:'Not found',connected:false};};
   const showAgain=async()=>{try{await api('/api/setup/seen',{method:'DELETE'});window.dispatchEvent(new Event('ros-setup-reset'));}catch(cause){setErrors(current=>({...current,setup:message(cause)}));}};
-  const stateOf=(id:AgentId)=>isAcpAgent(id)?acpState(acp.find(item=>item.id===id)):id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?(claude?.billing==='plan'?(claude.plan.state==='signed-in'?{label:'On your Claude plan',connected:true}:{label:claude.plan.state==='unknown'?'Checking…':'Not signed in',connected:false}):key('claude')):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
+  const stateOf=(id:AgentId)=>isAcpAgent(id)?acpState(acp.find(item=>item.id===id)):id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude'?(claude?.billing==='plan'?(claude.plan.state==='signed-in'?{label:'On your Claude plan',connected:true}:{label:claude.plan.state==='unknown'?'Checking…':'Not signed in',connected:false}):key('claude')):id==='codex'?(codex?.signedIn?{label:'Signed in',connected:true}:{label:'Not connected',connected:false}):id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='own-pi'?own('pi'):id==='own-hermes'?own('hermes'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
   const installedKey=agentItems.filter(item=>stateOf(item.id).connected).map(item=>item.id).join(',');
   useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as AgentId[]:[]);},[installedKey,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
@@ -93,6 +96,8 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     'own-codex':()=><OutsideAgents only="codex" onChanged={changed}/>,
     'own-cursor':()=><OutsideAgents only="cursor" onChanged={changed}/>,
     'own-gemini':()=><OutsideAgents only="gemini-cli" onChanged={changed}/>,
+    'own-pi':()=><OutsideAgents only="pi" onChanged={changed}/>,
+    'own-hermes':()=><OutsideAgents only="hermes" onChanged={changed}/>,
     local:()=><LocalModels hide={[local?.connectionId]} onChanged={changed}/>,
   };
   const current=selected?agentItems.find(item=>item.id===selected):undefined;
@@ -115,7 +120,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
 
 /** The left column on the Agents page: its sections and what is connected. */
 export function AgentsSidebar({installed,selected,onSelect}:{installed:AgentId[];selected:AgentId|null;onSelect:(id:AgentId|null)=>void}) {
-  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:isAcpAgent(id)?<BrandLogo id={acpLogo[id]} size={16}/>:id==='own-cursor'?<AgentIcon id="cursor" size={16}/>:id==='own-gemini'?<AgentIcon id="gemini-cli" size={16}/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
+  return <CatalogueSidebar sections={[{id:'agents',label:'Agents'}]} installed={installed.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return {id,name:item.name,mark:<span className="plugins-mark-small">{id==='ros'?<RosMark/>:isAcpAgent(id)?<BrandLogo id={acpLogo[id]} size={16}/>:id==='own-cursor'?<AgentIcon id="cursor" size={16}/>:id==='own-gemini'?<AgentIcon id="gemini-cli" size={16}/>:id==='own-pi'?<AgentIcon id="pi" size={16}/>:id==='own-hermes'?<AgentIcon id="hermes" size={16}/>:<BrandLogo id={id==='claude'||id==='own-claude'?'claude':id==='codex'||id==='own-codex'?'codex':id==='nebius'?'nebius':id==='openai'?'openai':'ollama'} size={16}/>}</span>};})} selected={selected} onSelect={id=>onSelect(id as AgentId|null)} note="Every agent and model that can work in your projects. Click one to manage keys, model and budget."/>;
 }
 
 /** Who pays for Claude Code: the person's own Claude plan or their Claude API key. */
