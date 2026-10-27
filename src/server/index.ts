@@ -25,6 +25,7 @@ import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
+import { PluginSuggestions } from './plugin-suggestions.js';
 import { RemoteApps } from './remote-apps.js';
 import { SlackApp } from './slack.js';
 import { GoogleDriveConnection } from './google-drive.js';
@@ -177,7 +178,9 @@ try {
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates,appFrames},guide);
+    // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
+    const suggestions = new PluginSuggestions(dataDir);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates,suggestions,appFrames},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
