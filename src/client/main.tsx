@@ -6,6 +6,10 @@ import './styles.css';
 import { App } from './App';
 import { ErrorBoundary } from './ErrorBoundary';
 import './refined.css';
+import './mac-app.css';
+
+// The Mac app window has no title bar; mac-app.css makes room for its window buttons (desktop/src/main.ts adds ros.ai/<version>).
+if (/Macintosh/.test(navigator.userAgent) && / ros\.ai\/\S+$/.test(navigator.userAgent)) document.documentElement.classList.add('mac-app');
 
 if (/^\/waitlist(?:\/pitch)?\/?$/.test(window.location.pathname)) {
   window.location.replace('/app');

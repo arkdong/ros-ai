@@ -156,10 +156,17 @@ function openWindow() {
   const bounds = savedBounds();
   window = new BrowserWindow({
     width: 1440, height: 900, minWidth: 880, minHeight: 560, ...bounds, title: 'ros.ai', show: false, backgroundColor: '#ffffff',
+    // No grey title bar: the window buttons sit in ros.ai's own top row (src/client/mac-app.css lays the page out around them).
+    ...(mac ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 20, y: 26 } } : {}),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true },
   });
   window.webContents.setUserAgent(`${window.webContents.getUserAgent()} ros.ai/${version}`);
   window.once('ready-to-show', () => window?.show());
+  // Full screen hides the window buttons, so the page drops the room it keeps for them.
+  const fullScreen = (on: boolean) => void window?.webContents.executeJavaScript(`document.documentElement.toggleAttribute('data-full-screen', ${on})`).catch(() => {});
+  window.on('enter-full-screen', () => fullScreen(true));
+  window.on('leave-full-screen', () => fullScreen(false));
+  window.webContents.on('did-finish-load', () => fullScreen(Boolean(window?.isFullScreen())));
   // The window shows ros.ai only; every other address opens in the default browser.
   window.webContents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; void shell.openExternal(target); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, target) => { if (!local(target)) { event.preventDefault(); void shell.openExternal(target); } });
