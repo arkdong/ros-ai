@@ -13,8 +13,6 @@ type Props = {
   validation?: 'draft' | 'proposal';
   /** Only the cards and warnings, for a review card that has its own title and actions. */
   compact?: boolean;
-  /** Blocks the person can untick before accepting, and those unticked so far. */
-  choice?: { addedIds: ReadonlySet<string>; leftOut: ReadonlySet<string>; onToggle: (id: string) => void };
 };
 type PreviewNote = StructurePreview['notes'][number];
 const kindLabel = (note: PreviewNote) => kindName({ kind: note.kind, blockType: note.blockType as CanvasNode['blockType'] });
@@ -51,7 +49,7 @@ export function proposalStructurePreview(proposal: Proposal, existingNodes: read
   return notes.length || relationships.length ? { summary: proposal.summary, validated: false, notes, relationships } : null;
 }
 
-export function AssistantStructurePreview({ structure, existingNodes, validation = 'draft', compact = false, choice }: Props) {
+export function AssistantStructurePreview({ structure, existingNodes, validation = 'draft', compact = false }: Props) {
   const [showAll, setShowAll] = useState(false);
   const notes = [...new Map(structure.notes.map(note => [note.id, note])).values()];
   const byId = new Map(notes.map(note => [note.id, note]));
@@ -95,8 +93,6 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     warnings.push('A circular parent relationship needs review. These cards are shown without implying valid containment.');
     visit(note, 0);
   }
-  // A block inside an unticked group is left out with it.
-  const leftOut = (id: string): boolean => { const note = byId.get(id); return Boolean(choice && note && (choice.leftOut.has(id) || (note.parentId ? leftOut(note.parentId) : false))); };
   const shown = compact && !showAll && rows.length > COMPACT_ROWS + 2 ? rows.slice(0, COMPACT_ROWS) : rows;
   const titleFor = (id: string) => byId.get(id)?.title ?? existingById.get(id)?.title ?? 'Unresolved card';
   return <section className={`assistant-structure-preview ${validation}${compact ? ' compact' : ''}`} aria-label={validation === 'draft' ? 'Draft card structure, not applied' : 'Pending canvas proposal outline'}>
@@ -106,10 +102,9 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     {rows.length > 0 && <ol className="structure-card-outline" aria-label="Proposed cards in parent order">{shown.map(({ note, depth, cycle }) => {
       const Icon = note.kind === 'group' ? FolderTree : TextIcon;
       const externalParent = note.parentId && !byId.has(note.parentId) ? existingById.get(note.parentId) : undefined;
-      const out = leftOut(note.id), inherited = out && !choice?.leftOut.has(note.id);
-      return <li key={note.id} className={`structure-card ${note.kind}${depth ? ' nested' : ''}${out ? ' left-out' : ''}`} data-depth={depth} style={{ marginInlineStart: Math.min(depth, 4) * 26 }}>
+      return <li key={note.id} className={`structure-card ${note.kind}${depth ? ' nested' : ''}`} data-depth={depth} style={{ marginInlineStart: Math.min(depth, 4) * 26 }}>
         {depth > 0 && <span className="structure-branch" aria-hidden="true"/>}
-        <div className="structure-card-heading">{choice?.addedIds.has(note.id) && <input type="checkbox" className="structure-card-choice" checked={!out} disabled={inherited} onChange={() => choice.onToggle(note.id)} aria-label={`Include ${note.title || 'this block'}`}/>}<span className={`structure-kind-mark ${note.kind}`}><Icon size={15} aria-hidden="true"/></span><div><strong>{note.title || 'Untitled card'}</strong><span>{kindLabel(note)}{externalParent && <> · {cycle ? 'parent needs review: ' : 'inside '}{externalParent.title}</>}{depth > 4 && <> · nesting level {depth + 1}</>}</span></div></div>
+        <div className="structure-card-heading"><span className={`structure-kind-mark ${note.kind}`}><Icon size={15} aria-hidden="true"/></span><div><strong>{note.title || 'Untitled card'}</strong><span>{kindLabel(note)}{externalParent && <> · {cycle ? 'parent needs review: ' : 'inside '}{externalParent.title}</>}{depth > 4 && <> · nesting level {depth + 1}</>}</span></div></div>
         {(parentWarning.has(note.id) || cycle) && <p className="structure-parent-warning"><CircleAlert size={12} aria-hidden="true"/>{cycle ? 'This parent relationship is circular and needs review.' : parentWarning.get(note.id)}</p>}
         {(note.description || note.rationale) && <details className="structure-card-details"><summary>Details{note.rationale ? ' & rationale' : ''}</summary>{note.description && <RichText text={note.description}/>} {note.rationale && <div className="structure-rationale"><span>Why this card</span><RichText text={note.rationale}/></div>}</details>}
       </li>;

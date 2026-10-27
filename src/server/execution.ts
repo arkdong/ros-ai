@@ -363,8 +363,8 @@ export class ExecutionService {
     finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
   }
   /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. */
-  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false):Proposal {
-    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged));
+  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false,links:{after?:string[];batch?:string}={}):Proposal {
+    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged,links));
   }
   /** Why an agent cannot search right now, or null when the search service in use has a key and remaining allowance. */
   agentSearchBlocker():string|null{
@@ -533,7 +533,8 @@ export class ExecutionService {
   }
   private reviewProjectProposal(proposal:Proposal):Proposal {
     const additions=proposal.operations.filter(op=>op.type==='addNode');
-    if(!additions.length)return proposal;
+    // One that builds on a change still waiting waits with it.
+    if(!additions.length||proposal.after?.length)return proposal;
     // Relationships that touch a block added in the same proposal belong to that addition.
     const added=new Set(additions.map(op=>op.node.id));
     const attached=proposal.operations.filter(op=>op.type==='addConnection'&&(added.has(op.connection.source)||added.has(op.connection.target))).length;
