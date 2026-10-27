@@ -16,6 +16,7 @@ files:
   - dist/client/**
   - dist/server/**
   - dist/desktop/**
+  - dist/app-kit/**
   - scripts/ros-ai-mcp.mjs
   - examples/**
   - "!**/*.map"
@@ -25,6 +26,8 @@ files:
   - "!node_modules/{react,react-dom,scheduler,katex,lucide-react,pdfjs-dist,zustand,use-sync-external-store,style-mod,w3c-keyname,crelt,classcat}/**"
   - "!node_modules/{@codemirror,@lezer,@xyflow,@marijn}/**"
   - "!node_modules/{d3-*,@types}/**"
+  # Built into dist/app-kit, the script App pages load.
+  - "!node_modules/{d3,htm,@observablehq,internmap,rw,delaunator,robust-predicates,binary-search-bounds,interval-tree-1d,isoformat}/**"
   # Linux-musl builds of native packages never run on a Mac.
   - "!node_modules/**/*-musl/**"
 mac:

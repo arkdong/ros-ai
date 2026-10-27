@@ -8,6 +8,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { python, pythonLanguage } from '@codemirror/lang-python';
 import { json } from '@codemirror/lang-json';
+import { html } from '@codemirror/lang-html';
 import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { classHighlighter } from '@lezer/highlight';
 import { rosCompletionSource } from './python-completions';
@@ -60,6 +61,8 @@ const plainContext: CodeContext = { runtime: 'docker', columns: null, paramKeys:
 function languageExtensions(language: string, readContext: () => CodeContext, sqlSchema?: Record<string, string[]>): Extension {
   const name = language.trim().toLowerCase();
   if (name === 'json') return json();
+  // An App block's page: one HTML document with its own scripts and styles.
+  if (name === 'html') return html();
   // DuckDB's SQL is close to PostgreSQL's.
   if (name === 'sql') return sql({ dialect: PostgreSQL, schema: sqlSchema, upperCaseKeywords: true });
   if (name !== 'python') return [];

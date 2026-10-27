@@ -47,6 +47,8 @@ import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
 import { PersonalMemory } from './personal-memory.js';
 import { SkillLibrary } from './skills.js';
 import { Updates } from './updates.js';
+import { AppKit } from './app-kit.js';
+import { AppFrames } from './app-frames.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
@@ -75,6 +77,7 @@ let claude:ClaudeAgentService|undefined;
 let loop:ToolLoopAgentService|undefined;
 let acp:AcpAgentService|undefined;
 let browser:BrowserService|undefined;
+let appFrames:AppFrames|undefined;
 let cloud:CloudAccount|undefined;
 let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
@@ -93,6 +96,7 @@ async function shutdown() {
   // Release the data lock even if one service fails to stop cleanly.
   try {
     projectFolders?.shutdown();
+    appFrames?.stop();
     updates?.shutdown();
     await notebooks?.shutdown();
     await guide?.shutdown();
@@ -168,12 +172,15 @@ try {
     // The browser agents use while it is on in Plugins: the Chrome or Edge on this computer, public websites only.
     browser = new BrowserService(store, dataDir);
     AgentWorkspaceTools.browser = browser;
+    // App blocks: pages agents write, run sealed on a second local server; checked in the same browser.
+    appFrames = new AppFrames(store, new AppKit(root), { browser });
+    AgentWorkspaceTools.appFrames = appFrames;
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
     const suggestions = new PluginSuggestions(dataDir);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates,suggestions},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates,suggestions,appFrames},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
@@ -199,6 +206,8 @@ try {
   server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
     outside?.publish(port);
     acp?.listen(port);
+    // App pages are framed only by this server's page, so their server starts once this port is known.
+    appFrames?.start(port).catch(error => console.error(`  App blocks are off: ${error instanceof Error ? error.message : error}`));
     updates?.start();
     console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
