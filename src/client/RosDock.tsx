@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, X } from 'lucide-react';
 import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
@@ -107,8 +107,9 @@ export function titleFromQuestion(question: string) {
   return `${cut.slice(0, space > 30 ? space : 60)}…`;
 }
 
-/** The empty-state start: one box for the question; everything else sits behind Advanced. */
-export function RosStart({ folders, onStart, onAdvanced, onDemo }: { folders: boolean; onStart: (title: string, question: string, folder?: string) => Promise<void>; onAdvanced: () => void; onDemo: () => void }) {
+/** The empty-state start: one box for the question; everything else sits behind Advanced. notice: a row on top of the box,
+ * such as what the first run connected. */
+export function RosStart({ folders, notice, onStart, onAdvanced, onDemo }: { folders: boolean; notice?: ReactNode; onStart: (title: string, question: string, folder?: string) => Promise<void>; onAdvanced: () => void; onDemo: () => void }) {
   const [question, setQuestion] = useDraft('start-question'), [busy, setBusy] = useState(false);
   const title = titleFromQuestion(question);
   const suggestion = useFolderSuggestion(title || 'New project', folders);
@@ -121,6 +122,7 @@ export function RosStart({ folders, onStart, onAdvanced, onDemo }: { folders: bo
   return <div className="ros-start">
     <h2>What do you want to find out?</h2>
     <form className="ros-start-box" onSubmit={submit}>
+      {notice}
       <textarea aria-label="Your question" data-testid="start-question" rows={3} autoFocus value={question} maxLength={12000} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} placeholder="Ask a research question. Ros plans it with you on the map."/>
       <div className="ros-start-row">
         <RosMark working={busy}/>

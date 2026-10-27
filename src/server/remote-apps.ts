@@ -58,8 +58,12 @@ export function appUrl(id: AppId) {
 
 type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redirectUri?: string; connectedAt?: string; account?: string };
 /** nonceHash: the cookie the browser that started the sign-in holds, or null for the Mac app, whose sign-in finishes in the
- * system browser. window: the sign-in opened in a window of its own, so its callback page tells ros.ai and closes. */
-type Pending = { app: AppId; nonceHash: string | null; redirectUri: string; verifier?: string; expiresAt: number; window?: boolean };
+ * system browser. window: the sign-in opened in a window of its own, so its callback page tells ros.ai and closes.
+ * chain: the sign-ins that follow in the same window (the first-run screen), and then: hosted Ros comes last. */
+type Pending = { app: AppId; nonceHash: string | null; redirectUri: string; verifier?: string; expiresAt: number; window?: boolean; chain?: AppId[]; then?: 'ros' };
+/** One step of a chain of sign-ins: the sign-in to open now, or, when none needs one, whether hosted Ros comes next.
+ * connected: apps already signed in, skipped; failed: apps whose sign-in could not start. */
+export type ChainStep = { app?: AppId; url?: string; nonce?: string; then?: 'ros'; connected: AppId[]; failed: { app: AppId; error: string }[] };
 /** proposes: the tool adds blocks to the canvas, which ros.ai proposes under the project's approval mode, instead of a
  * change in the app that always waits for the person (Papers' add_paper). */
 export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean; proposes?: boolean };
@@ -138,11 +142,12 @@ export class RemoteApps {
   connected() { return appIds.filter(id => this.status(id).connected); }
   /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. window: it opens in a
    * window of its own. bound (the default): only the browser holding the returned nonce, as a cookie, can finish it. */
-  async begin(id: AppId, redirectUri: string, options: { window?: boolean; bound?: boolean } = {}) {
+  async begin(id: AppId, redirectUri: string, options: { window?: boolean; bound?: boolean; chain?: AppId[]; then?: 'ros' } = {}) {
     if (entry(id).auth !== 'sign-in') throw new StoreError(`${appCatalogue[id].name} does not connect with a sign-in.`);
     for (const [state, item] of this.pending) if (item.expiresAt < Date.now()) this.pending.delete(state);
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
-    const pending: Pending = { app: id, nonceHash: options.bound === false ? null : digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL, ...(options.window ? { window: true } : {}) };
+    const pending: Pending = { app: id, nonceHash: options.bound === false ? null : digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL, ...(options.window ? { window: true } : {}),
+      ...(options.chain?.length ? { chain: options.chain } : {}), ...(options.then ? { then: options.then } : {}) };
     let opened: URL | undefined;
     let result: Awaited<ReturnType<typeof auth>>;
     try { result = await auth(this.provider(id, redirectUri, { state, pending, open: url => { opened = url; } }), { serverUrl: appUrl(id) }); }
@@ -151,8 +156,26 @@ export class RemoteApps {
     this.pending.set(state, pending);
     return { url: opened.href, nonce };
   }
-  /** The sign-in a callback belongs to, before it finishes: which app, and whether it opened in its own window. */
-  waiting(state: unknown) { const pending = typeof state === 'string' ? this.pending.get(state) : undefined; return pending && pending.expiresAt >= Date.now() ? { app: pending.app, window: pending.window === true } : undefined; }
+  /** Several sign-ins one after another in one window: starts the first of them that needs one, skipping apps already
+   * connected and any whose sign-in cannot start. Each callback page sends the window on to the next sign-in. */
+  async beginChain(ids: AppId[], redirectUri: string, options: { bound?: boolean; then?: 'ros' } = {}): Promise<ChainStep> {
+    const connected: AppId[] = [], failed: ChainStep['failed'] = [];
+    for (const [index, id] of ids.entries()) {
+      if (this.status(id).connected) { connected.push(id); continue; }
+      try {
+        const started = await this.begin(id, redirectUri, { window: true, bound: options.bound, chain: ids.slice(index + 1), then: options.then });
+        if ('alreadyConnected' in started) { connected.push(id); continue; }
+        return { app: id, url: started.url, ...(options.bound === false ? {} : { nonce: started.nonce }), connected, failed };
+      } catch (error) { failed.push({ app: id, error: error instanceof Error ? error.message : String(error) }); }
+    }
+    return { ...(options.then ? { then: options.then } : {}), connected, failed };
+  }
+  /** The sign-in a callback belongs to, before it finishes: which app, whether it opened in its own window, and the
+   * sign-ins that follow it there. */
+  waiting(state: unknown) {
+    const pending = typeof state === 'string' ? this.pending.get(state) : undefined;
+    return pending && pending.expiresAt >= Date.now() ? { app: pending.app, window: pending.window === true, chain: pending.chain ?? [], ...(pending.then ? { then: pending.then } : {}), bound: pending.nonceHash !== null, redirectUri: pending.redirectUri } : undefined;
+  }
   /** The app sent the browser back with a code: exchange it for tokens and remember them. */
   async finish(query: unknown, nonce: string) {
     const { state, code, error } = z.object({ state: z.string().max(400), code: z.string().max(4000).optional(), error: z.string().max(200).optional() }).passthrough().parse(query);
@@ -263,15 +286,22 @@ export const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\
 const cookie = (res: Response, value: string, maxAge: number) => res.cookie(COOKIE, value, { httpOnly: true, sameSite: 'lax', path: CALLBACK, maxAge, secure: false });
 const nonceOf = (req: Request) => { const item = (req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${COOKIE}=`)); const value = item?.slice(COOKIE.length + 1) ?? ''; return /^[\w-]{43}$/u.test(value) ? value : ''; };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/gu, character => `&#${character.charCodeAt(0)};`);
-/** Where a sign-in window ends: it tells the open ros.ai window over a BroadcastChannel and, once connected, closes itself. */
-function signInPage(id: AppId, error?: string) {
+/** Where a sign-in window ends: it tells the open ros.ai window over a BroadcastChannel and, once connected, closes itself.
+ * With a sign-in after it in the same window (next), it opens that one instead: by itself after a success, from a button
+ * after a failure. */
+function signInPage(id: AppId, error?: string, next?: ChainStep) {
   const name = appCatalogue[id].name, heading = error ? `Couldn’t connect ${name}` : `${name} connected`;
-  const lines = error ? [error, 'Close this window and try again in ros.ai.'] : ['You can close this window.'];
-  const message = JSON.stringify(error ? { failed: id, error } : { connected: id }).replace(/</gu, '\\u003c');
+  const target = next?.url ?? (next?.then === 'ros' ? '/api/cloud/start' : undefined);
+  const nextName = next?.app ? appCatalogue[next.app].name : next?.then === 'ros' ? 'ros.ai' : '';
+  const lines = error ? [error, target ? '' : 'Close this window and try again in ros.ai.'] : [target ? `Opening the ${nextName} sign-in…` : 'You can close this window.'];
+  const messages = [error ? { failed: id, error } : { connected: id }, ...(next?.failed ?? []).map(item => ({ failed: item.app, error: item.error })), ...(next?.connected ?? []).map(app => ({ connected: app }))]
+    .map(message => ({ ...message, ...(target ? { next: next?.app ?? 'ros' } : {}) }));
+  const json = (value: unknown) => JSON.stringify(value).replace(/</gu, '\\u003c');
+  const then = !target ? error ? '' : 'setTimeout(()=>window.close(),800)' : error ? '' : `setTimeout(()=>location.replace(${json(target)}),700)`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(heading)} · ros.ai</title>`
-    + '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fafafa;color:#171717;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:360px;padding:24px;text-align:center}h1{margin:0 0 6px;font-size:18px;font-weight:600}p{margin:0;color:#4a4a4a}</style></head>'
-    + `<body><main><h1>${escapeHtml(heading)}</h1>${lines.map(line => `<p>${escapeHtml(line)}</p>`).join('')}</main>`
-    + `<script>try{new BroadcastChannel('ros-ai-plugins').postMessage(${message})}catch{}${error ? '' : 'setTimeout(()=>window.close(),800)'}</script></body></html>`;
+    + '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fafafa;color:#171717;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:360px;padding:24px;text-align:center}h1{margin:0 0 6px;font-size:18px;font-weight:600}p{margin:0;color:#4a4a4a}a{display:inline-block;margin-top:14px;padding:7px 13px;border-radius:9px;background:#171717;color:#fff;text-decoration:none;font-weight:500}</style></head>'
+    + `<body><main><h1>${escapeHtml(heading)}</h1>${lines.filter(Boolean).map(line => `<p>${escapeHtml(line)}</p>`).join('')}${error && target ? `<a href="${escapeHtml(target)}">Go on to ${escapeHtml(nextName)}</a>` : ''}</main>`
+    + `<script>try{const channel=new BroadcastChannel('ros-ai-plugins');for(const message of ${json(messages)})channel.postMessage(message)}catch{}${then}</script></body></html>`;
 }
 
 export function attachAppRoutes(app: Express, apps: RemoteApps) {
@@ -290,17 +320,26 @@ export function attachAppRoutes(app: Express, apps: RemoteApps) {
     if (!desktop) cookie(res, started.nonce, SIGN_IN_TTL);
     res.json({ authorizationUrl: started.url });
   });
+  // The first-run screen signs in to several apps in one window, one after another, then to hosted Ros (then: 'ros').
+  app.post('/api/apps/sign-ins', async (req, res) => {
+    const { apps: ids, then } = z.object({ apps: z.array(appIdSchema).max(8), then: z.literal('ros').optional() }).strict().parse(req.body ?? {});
+    const desktop = / ros\.ai\/\S+$/u.test(req.headers['user-agent'] ?? '');
+    const step = await apps.beginChain([...new Set(ids)].filter(id => entry(id).auth === 'sign-in'), appRedirectUri(req.headers.host), { bound: !desktop, then });
+    if (step.nonce) cookie(res, step.nonce, SIGN_IN_TTL);
+    const { nonce: _nonce, ...answer } = step;
+    res.json(answer);
+  });
   app.get(CALLBACK, async (req, res) => {
     const waiting = apps.waiting(req.query.state);
-    try {
-      const id = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0);
-      if (waiting?.window) res.type('html').send(signInPage(id)); else res.redirect(303, `/?app=${id}`);
-    } catch (error) {
-      cookie(res, '', 0);
-      const message = error instanceof Error ? error.message : 'The sign-in failed.';
-      if (waiting?.window) res.status(400).type('html').send(signInPage(waiting.app, message));
-      else res.status(400).type('text/plain').send(`${message}\n\nClose this tab and try again from Plugins in ros.ai.`);
-    }
+    let id: AppId | undefined, message = '';
+    try { id = await apps.finish(req.query, nonceOf(req)); }
+    catch (error) { message = error instanceof Error ? error.message : 'The sign-in failed.'; }
+    // The next sign-in in the same window starts now, so this page can send the window on to it.
+    const next = waiting?.window && (waiting.chain.length || waiting.then) ? await apps.beginChain(waiting.chain, waiting.redirectUri, { bound: waiting.bound, then: waiting.then }) : undefined;
+    cookie(res, next?.nonce ?? '', next?.nonce ? SIGN_IN_TTL : 0);
+    if (waiting?.window) res.status(message ? 400 : 200).type('html').send(signInPage(waiting.app, message || undefined, next));
+    else if (message || !id) res.status(400).type('text/plain').send(`${message}\n\nClose this tab and try again from Plugins in ros.ai.`);
+    else res.redirect(303, `/?app=${id}`);
   });
   app.delete('/api/apps/:id', (req, res) => res.json(apps.disconnect(appIdSchema.parse(req.params.id))));
   // Read-only tools for ros.ai's own scripts on this computer (the eval runner); writes go through an agent and Accept.

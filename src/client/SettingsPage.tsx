@@ -6,9 +6,11 @@ import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
 import { BrandLogo } from './brand-logos';
 import { RosMark } from './RosDock';
+import { cloudAccountChanged } from './ProfileButton';
 import { Commands, DownloadLink } from './UpdateButton';
 import { checkForUpdates, installUpdate, setAutoUpdates, useUpdates } from './updates';
 import { changeSuggestions, pluginName, useSuggestions } from './plugin-suggestions';
+import type { SetupResetPlan, SetupResetResponse } from '../shared/setup';
 import './settings.css';
 
 export type SettingsSection = 'general' | 'usage' | 'balances' | 'memory' | 'resources';
@@ -96,11 +98,59 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
     {!publicDemo && <AppSettings/>}
+    {!publicDemo && <FirstRunSettings/>}
     {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>
       <Row title="Keys file" detail="API keys every data folder reads, kept outside the code."><code title={paths?.keysFile ?? ''}>{paths ? paths.keysFile ?? 'None' : '…'}</code></Row>
     </div></section>}
   </div>;
+}
+
+type ResetOption = 'links' | 'apps' | 'tokens' | 'cloud';
+/** Reset onboarding, to test the first run again: the screen comes back as on a new computer, and each option also undoes
+ * one kind of thing it connects. Only the agent links this ros.ai recorded are removed, so a test copy leaves the links of
+ * another ros.ai alone. */
+function FirstRunSettings() {
+  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, apps: false, tokens: false, cloud: false });
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState<string[]>([]), [error, setError] = useState('');
+  const show = () => window.dispatchEvent(new Event('ros-setup-reset'));
+  const start = async () => { setError(''); setFailed([]); try { setPlan(await api<SetupResetPlan>('/api/setup/reset')); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
+  const reset = async () => {
+    if (!plan) return;
+    setBusy(true); setError('');
+    try {
+      const cloud = choice.cloud && plan.cloud;
+      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify({ links: choice.links && plan.links.length > 0, apps: choice.apps && plan.apps.length > 0, tokens: choice.tokens && plan.tokens.length > 0, cloud }) });
+      setPlan(null);
+      if (cloud) cloudAccountChanged();
+      // What could not be undone stays here to read; otherwise the first-run screen opens at once.
+      if (answer.failed.length) setFailed(answer.failed); else show();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  };
+  const options: { id: ResetOption; label: string; detail?: string }[] = plan ? [
+    ...(plan.links.length ? [{ id: 'links' as const, label: 'Remove the ros-ai links in your agents', detail: plan.links.join(', ') }] : []),
+    ...(plan.apps.length ? [{ id: 'apps' as const, label: 'Disconnect apps', detail: plan.apps.join(', ') }] : []),
+    ...(plan.tokens.length ? [{ id: 'tokens' as const, label: 'Forget saved tokens', detail: plan.tokens.join(', ') }] : []),
+    ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted Ros' }] : []),
+  ] : [];
+  return <section><h2>First run</h2><div className="settings-card">
+    <Row title="Reset onboarding" detail="See the first-run screen again, as on a new computer.">
+      <button type="button" className={`secondary small ${plan ? 'pressed' : ''}`} disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>Reset…</button>
+    </Row>
+    {plan && <div className="settings-confirm">
+      <div className="settings-options">
+        <label className="settings-option"><input type="checkbox" checked disabled/><span><span>Show the first-run screen again</span></span></label>
+        {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
+      </div>
+      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset</button></div>
+    </div>}
+    {failed.length > 0 && <div className="settings-confirm">
+      <p className="settings-confirm-note">Reset, except for these:</p>
+      <ul className="settings-confirm-list">{failed.map(line => <li key={line}>{line}</li>)}</ul>
+      <div className="settings-confirm-actions"><button type="button" className="primary small" onClick={() => { setFailed([]); show(); }}>Show the first-run screen</button></div>
+    </div>}
+  </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }
 
 /** Whether agents may build App blocks. Off, they see their tools exactly as before; people can always add one. */

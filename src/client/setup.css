@@ -1,42 +1,87 @@
-/* First launch: the "Connect your tools" screen, in the refined style (white card on calm grey). */
-.setup-screen { flex:1; min-height:0; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:36px 24px 24px; background:var(--page, #f6f6f4); }
-.setup-column { width:100%; max-width:720px; display:flex; flex-direction:column; gap:14px; }
-.setup-card { background:#fff; border:1px solid var(--card-line, #e6e6e3); border-radius:var(--radius-card, 14px); box-shadow:0 1px 2px rgba(16, 16, 16, .04); padding:28px 32px 22px; box-sizing:border-box; }
-.setup-card h2 { margin:0; font-size:22px; font-weight:600; letter-spacing:-.3px; line-height:1.3; color:var(--ink); }
-.setup-lead { margin:6px 0 0; font-size:14px; color:var(--muted); line-height:1.5; }
-.setup-section { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:18px 0 2px; }
-.setup-row { display:flex; align-items:center; gap:14px; padding:12px 0; cursor:pointer; }
-.setup-row + .setup-row { border-top:1px solid var(--card-divider, #efefec); }
-.setup-row.static { cursor:default; align-items:flex-start; }
-.setup-check { appearance:none; -webkit-appearance:none; width:18px; height:18px; margin:0; border:1px solid #c9c9c6; border-radius:5px; background:#fff; display:grid; place-items:center; flex-shrink:0; cursor:pointer; }
-.setup-check:checked { background:var(--ink); border-color:var(--ink); }
-.setup-check:checked::after { content:''; width:9px; height:5px; border:2px solid #fff; border-top:0; border-right:0; transform:translateY(-1px) rotate(-45deg); }
-.setup-check:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.setup-check:disabled { opacity:.4; cursor:default; }
-.setup-tile { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; background:#fff; border:1px solid #e4e4e2; flex-shrink:0; color:#4a4a4a; }
-.setup-tile img, .setup-tile svg { width:20px; height:20px; display:block; }
-.setup-body { flex:1; min-width:0; }
-.setup-name { font-size:14px; font-weight:600; color:var(--ink); line-height:1.3; }
-.setup-why { font-size:13px; color:var(--muted); line-height:1.45; margin-top:2px; }
-.setup-why strong { color:var(--ink); font-weight:600; letter-spacing:.5px; }
-.setup-signal { margin-left:auto; padding-left:16px; font-size:12px; color:var(--muted); white-space:nowrap; flex-shrink:0; }
-.setup-state { margin-left:auto; padding-left:16px; display:inline-flex; align-items:center; gap:7px; font-size:12px; color:#4a4a4a; white-space:nowrap; flex-shrink:0; padding-top:2px; }
+/* First launch: "Connect your tools", one card in the style of Ros's question box (ros-dock.css), over the map's dots. */
+.setup-screen { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; padding:40px 24px 32px; background-color:var(--page, #fff); background-image:radial-gradient(#e4e4e4 1px, transparent 1px); background-size:22px 22px; }
+.setup-title { margin:0 0 18px; text-align:center; font-size:var(--text-2xl); font-weight:500; letter-spacing:-.6px; line-height:1.2; color:var(--ink); }
+.setup-card { width:min(640px, 100%); flex-shrink:0; box-sizing:border-box; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow-float), var(--signal-glow); padding:6px 8px 10px; }
+.setup-label { padding:10px 10px 4px; font-size:var(--text-xs); color:var(--muted); }
+.setup-row { display:flex; align-items:center; gap:12px; min-height:30px; padding:7px 10px; border-radius:8px; }
+.setup-row.open { background:var(--canvas); border-radius:8px 8px 0 0; }
+.setup-tile { width:28px; height:28px; box-sizing:border-box; border-radius:7px; border:1px solid var(--line-soft); display:flex; align-items:center; justify-content:center; flex-shrink:0; background:#fff; color:var(--body); }
+.setup-tile img, .setup-tile > svg { width:16px; height:16px; display:block; }
+.setup-tile .ros-mark, .setup-tile .ros-mark .research-ring { width:18px; height:18px; }
+.setup-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.setup-name { font-size:var(--text-sm); font-weight:500; color:var(--ink); line-height:1.35; }
+.setup-detail { font-size:var(--text-xs); color:var(--muted); line-height:1.4; overflow-wrap:anywhere; }
+.setup-switch { position:relative; width:26px; height:16px; flex-shrink:0; border:0; padding:0; border-radius:8px; background:var(--line); cursor:pointer; transition:background-color .15s ease; }
+.setup-switch::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; transition:transform .15s ease; }
+.setup-switch.on { background:var(--ink); }
+.setup-switch.on::after { transform:translateX(10px); }
+.setup-small-button { display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 10px; flex-shrink:0; border-radius:7px; border:1px solid var(--line); background:#fff; color:var(--ink); font:inherit; font-size:var(--text-xs); white-space:nowrap; cursor:pointer; }
+.setup-small-button:hover:not(:disabled) { background:var(--canvas); }
+.setup-small-button:disabled { color:var(--muted); cursor:default; }
+.setup-text-button { height:26px; padding:0 8px; flex-shrink:0; border:0; border-radius:var(--radius-control); background:transparent; color:var(--muted); font:inherit; font-size:var(--text-xs); white-space:nowrap; cursor:pointer; }
+.setup-text-button:hover:not(:disabled) { color:var(--ink); background:var(--canvas); }
+.setup-state { display:inline-flex; align-items:center; gap:6px; flex-shrink:0; font-size:var(--text-xs); color:var(--body); white-space:nowrap; }
 .setup-state i { width:6px; height:6px; border-radius:50%; background:#b7bfba; flex-shrink:0; }
 .setup-state.ok i { background:var(--ok); }
 .setup-state.wait i { background:var(--wait); }
 .setup-state.fail i { background:var(--fail); }
+.setup-link { display:inline-flex; align-items:center; gap:3px; flex-shrink:0; font-size:var(--text-xs); color:var(--body); text-decoration:none; white-space:nowrap; }
+.setup-link:hover { color:var(--ink); text-decoration:underline; }
+/* A token pasted into its row. */
+.setup-field { display:flex; flex-direction:column; gap:6px; padding:2px 10px 10px 50px; background:var(--canvas); border-radius:0 0 8px 8px; }
+.setup-field-row { display:flex; align-items:center; gap:8px; }
+.setup-field input { flex:1; min-width:0; height:30px; box-sizing:border-box; border:1px solid var(--line); border-radius:8px; padding:0 10px; background:#fff; color:var(--ink); font:12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.setup-field input::placeholder { color:#9a9a9a; }
+.setup-field input:focus { outline:0; border-color:var(--ink); box-shadow:0 0 0 3px rgba(23, 23, 23, .06); }
+.setup-error { margin:0; font-size:var(--text-xs); color:var(--fail); line-height:1.4; }
+.setup-extra { padding:0 10px 8px 50px; }
+.setup-extra .setup-command { margin-top:0; }
+/* The footer line: the ring, what ros.ai looked at, then the one primary action. */
+.setup-foot { display:flex; align-items:center; gap:8px; margin-top:6px; padding:10px 4px 0 10px; border-top:1px solid var(--line-soft); }
+.setup-foot > .ros-mark, .setup-foot > .ros-mark .research-ring { width:20px; height:20px; }
+.setup-space { flex:1; }
+.setup-later { height:32px; padding:0 10px; font-size:var(--text-sm); }
+.setup-card .setup-primary { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; border-radius:9px; font-size:var(--text-sm); font-weight:500; white-space:nowrap; }
+.setup-found { position:relative; min-width:0; }
+.setup-chip { display:inline-flex; align-items:center; gap:5px; height:26px; max-width:100%; padding:0 9px; border-radius:13px; border:1px solid var(--line-soft); background:var(--canvas); color:var(--body); font:inherit; font-size:var(--text-xs); white-space:nowrap; cursor:pointer; }
+.setup-chip:hover, .setup-chip[aria-expanded="true"] { border-color:var(--ink); background:#fff; color:var(--ink); }
+.setup-menu { position:absolute; left:-6px; bottom:34px; z-index:3; width:min(440px, calc(100vw - 64px)); box-sizing:border-box; padding:12px 14px; border-radius:var(--radius-view); border:1px solid var(--line); background:var(--paper); box-shadow:var(--shadow-view); color:var(--ink); }
+.setup-menu-title { margin:0 0 8px; font-size:var(--text-sm); font-weight:500; }
+.setup-menu ul { margin:0; padding:0 0 0 16px; display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--body); line-height:1.4; }
+.setup-menu-also { margin:10px 0 0; font-size:12.5px; color:var(--body); line-height:1.4; }
+.setup-menu-foot { display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft); }
+.setup-menu-foot span { flex:1; font-size:var(--text-xs); color:var(--muted); }
+/* Connecting: Ros's progress row on top of the card. */
+.setup-progress { display:flex; align-items:center; gap:10px; margin:2px 0 4px; padding:8px 12px; border-radius:10px; background:var(--canvas); }
+.setup-progress > svg { flex-shrink:0; color:var(--body); }
+.setup-progress > svg.ok { color:var(--ok); }
+.setup-progress-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.setup-progress-text strong { font-size:var(--text-sm); font-weight:500; color:var(--ink); }
+.setup-progress-text span { font-size:var(--text-xs); color:var(--muted); }
+.setup-progress-meta { font-size:var(--text-xs); color:var(--muted); font-variant-numeric:tabular-nums; }
+/* After the first run: what connected, on top of the question box (or over the map). */
+.setup-done { display:flex; align-items:center; gap:10px; margin:0 0 8px; padding:6px 4px 6px 12px; border-radius:10px; background:var(--canvas); text-align:left; }
+.setup-done > svg { flex-shrink:0; color:var(--muted); }
+.setup-done > svg.ok { color:var(--ok); }
+.setup-done-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.setup-done-text strong { font-size:var(--text-sm); font-weight:500; color:var(--ink); }
+.setup-done-text span { font-size:var(--text-xs); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.setup-logos { display:inline-flex; align-items:center; gap:4px; margin-right:2px; }
+.setup-logos > span { width:22px; height:22px; box-sizing:border-box; border-radius:6px; border:1px solid var(--line-soft); background:#fff; display:flex; align-items:center; justify-content:center; color:var(--body); }
+.setup-logos img, .setup-logos > span > svg { width:13px !important; height:13px !important; display:block; }
+.setup-logos .ros-mark, .setup-logos .ros-mark .research-ring { width:14px; height:14px; }
+.setup-done .icon-button { width:28px; height:28px; flex-shrink:0; color:var(--muted); }
+.setup-done.floating { margin:0; width:min(520px, calc(100vw - 48px)); box-sizing:border-box; border:1px solid var(--line); background:var(--paper); box-shadow:0 4px 14px #00000012; }
+.setup-screen button:focus-visible, .setup-screen a:focus-visible, .setup-done button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* A command to paste: also used on the Agents page. */
 .setup-command { display:flex; align-items:center; gap:10px; margin-top:10px; padding:8px 10px; border:1px solid var(--card-line, #e6e6e3); border-radius:9px; background:#f8f8f6; }
 .setup-command code { flex:1; min-width:0; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--ink); overflow-wrap:anywhere; user-select:all; }
 .setup-command .icon-button { width:28px; height:28px; flex-shrink:0; }
-.setup-actions { display:flex; align-items:center; gap:10px; margin-top:10px; }
-.setup-actions a.secondary { display:inline-flex; align-items:center; gap:6px; }
-.setup-also { margin:14px 0 0; font-size:13px; color:var(--muted); line-height:1.5; }
-.setup-footer { display:flex; align-items:center; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--card-divider, #efefec); }
-.setup-footer .setup-space { flex:1; }
-.setup-footer p { margin:0; flex:1; font-size:13px; color:var(--muted); line-height:1.45; }
-.setup-footer p span { color:var(--ink); }
-.setup-footer .primary, .setup-footer .secondary { border-radius:var(--radius-button, 9px); height:36px; padding:0 16px; font-size:14px; }
-.setup-footer .text-button, .setup-footer .secondary { white-space:nowrap; }
-.setup-fineprint { margin:0; text-align:center; font-size:12.5px; color:var(--muted); line-height:1.5; }
-.setup-screen .inline-error { margin:12px 0 0; font-size:13px; }
-@media (max-width: 700px) { .setup-card { padding:22px 18px 18px; } .setup-signal { display:none; } .setup-footer { flex-wrap:wrap; } }
+@media (max-width: 640px) {
+  .setup-screen { padding:24px 12px; }
+  .setup-title { font-size:var(--text-xl); }
+  .setup-field, .setup-extra { padding-left:10px; }
+  .setup-chip { max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .setup-logos { display:none; }
+}
+@media (prefers-reduced-motion: reduce) { .setup-switch, .setup-switch::after { transition:none; } }

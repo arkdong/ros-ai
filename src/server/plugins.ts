@@ -49,6 +49,8 @@ export class PluginTokens {
     return { id, configured: Boolean(this.token(id)), ...(this.checks.get(id) ?? { checkedAt: null, verified: null, checkMessage: null }) };
   }
   statuses() { return ids.map(id => this.status(id)); }
+  /** The tokens saved here, without the ones a keys file or the environment provides. */
+  saved() { return ids.filter(id => Boolean(this.tokens[id])); }
   /** For plugin features on the server; never sent to the browser. A saved token wins over the environment. */
   token(id: TokenPluginId) { const name = environment[id]; return this.tokens[id] ?? (name ? process.env[name]?.trim() || undefined : undefined); }
   save(id: TokenPluginId, supplied: unknown) {

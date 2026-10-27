@@ -25,7 +25,7 @@ import { acquireDataLock } from './lock.js';
 import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
-import { PluginSuggestions } from './plugin-suggestions.js';
+import { PluginSuggestions, pluginReadiness } from './plugin-suggestions.js';
 import { RemoteApps } from './remote-apps.js';
 import { SlackApp } from './slack.js';
 import { GoogleDriveConnection } from './google-drive.js';
@@ -175,7 +175,8 @@ try {
     // App blocks: pages agents write, run sealed on a second local server; checked in the same browser.
     appFrames = new AppFrames(store, new AppKit(root), { browser });
     AgentWorkspaceTools.appFrames = appFrames;
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
+    // The first-run screen shows apps already connected as connected, read the way the Plugins page reads them.
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,apps,readiness:()=>pluginReadiness({credentials,googleDrive:googleDrive!,plugins,apps,papers,browser})});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.

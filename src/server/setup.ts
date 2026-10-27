@@ -7,9 +7,12 @@ import type { InferenceConnections } from './inference-connections.js';
 import type { ToolCredentials } from './tool-credentials.js';
 import type { PluginTokens } from './plugins.js';
 import type { CloudAccount } from './cloud-account.js';
-import { detectAgents, detectApps, detectDocker, detectModels, mac, ollamaDefaultContext, pretty, win, type Found } from './setup-detect.js';
+import { appCatalogue, type RemoteApps } from './remote-apps.js';
+import { appRows, detectAgents, detectApps, detectDocker, detectModels, mac, ollamaDefaultContext, pretty, win, type Found } from './setup-detect.js';
 import { SetupLinks, linkCommand } from './setup-links.js';
-import type { DetectedAgent, DetectedApp, DetectedKey, DetectedModel, LinkResult, ModelLinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup.js';
+import { PLUGINS, type PluginId } from '../shared/plugins.js';
+import type { PluginReadiness } from '../shared/plugin-hints.js';
+import type { AgentId, DetectedAgent, DetectedApp, DetectedKey, DetectedModel, LinkResult, ModelLinkResult, SetupLinkResponse, SetupResetPlan, SetupResetResponse, SetupStatus } from '../shared/setup.js';
 
 /** First launch: what ros.ai found on this computer, the links it made for the person, and whether
  * the screen has been seen. Everything here is read from this computer and stays on it. */
@@ -19,15 +22,25 @@ const MODELS = ['ollama', 'lm-studio'] as const;
 /** The context Ollama gives a model below 24 GB of graphics memory, and LM Studio's usual load: assumed while unknown. */
 const LOCAL_DEFAULT_CONTEXT = 4096;
 const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Claude API key', openai: 'OpenAI key', tavily: 'Tavily key', exa: 'Exa key', brave: 'Brave Search key' };
-const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor, Gemini CLI, Pi and Hermes Agent (names only)', 'model servers on 127.0.0.1'];
+const agentLabels: Record<AgentId, string> = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
+/** What the scan looked at, for the screen's "Found on" menu. */
+const lookedAt = (computer: string) => [
+  mac ? 'Apps in your Applications folders, and commands on your PATH' : 'Installed apps, and commands on your PATH',
+  'The settings of your agents, Claude Desktop, VS Code and Windsurf: the names and addresses of their servers',
+  'When Notion, Slack, Linear, Figma and Zotero were last used, from their folders’ dates',
+  `Whether Zotero, Figma’s server, Ollama or LM Studio answer on ${computer}`,
+];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
+/** apps: sign-ins and desktop servers to disconnect on reset. readiness: whether agents can use each plugin now, which
+ * says the apps already connected. */
+type Deps = { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; apps?: RemoteApps; readiness?: () => Partial<Record<PluginId, PluginReadiness>> };
 
 export class Setup {
   private readonly file: string;
   private readonly links: SetupLinks;
   private cache: { at: number; scan: Scan } | null = null;
   private scanning: Promise<Scan> | null = null;
-  constructor(private readonly deps: { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount }) {
+  constructor(private readonly deps: Deps) {
     this.file = join(deps.dataDir, 'setup.json');
     this.links = new SetupLinks(deps.dataDir);
   }
@@ -47,8 +60,7 @@ export class Setup {
     const at = new Date().toISOString();
     if (process.env.ROS_NO_DETECT === '1') return { at, agents: [], models: [], apps: [], docker: { found: false, running: false } };
     const agents = detectAgents();
-    const connected = new Set<string>(this.deps.plugins.statuses().filter(item => item.configured).map(item => item.id));
-    const [models, apps, docker] = await Promise.all([detectModels(), detectApps(agents, connected), detectDocker()]);
+    const [models, apps, docker] = await Promise.all([detectModels(), detectApps(agents), detectDocker()]);
     return { at, agents, models, apps, docker };
   }
   async status(rescan = false): Promise<SetupStatus> {
@@ -56,16 +68,20 @@ export class Setup {
     const seenAt = this.seenAt(), bridge = this.deps.outside.bridge;
     const agents: DetectedAgent[] = scan.agents.map(found => {
       const link = this.links.record(found.id), seen = this.deps.outside.seen(found.sessionLabel);
-      const { binary, ...rest } = found;
+      const { binary, reach: _reach, ...rest } = found;
       return { ...rest, linkable: found.method === 'file' || Boolean(binary), link, seenAt: seen?.lastAt ?? null, seenIn: seen?.projectTitle ?? null, command: linkCommand(found.id, bridge), target: pretty(found.target) };
     });
     const connections = this.deps.inference.statuses().filter(item => !item.deleted);
     const models = scan.models.map(model => ({ ...model, connectionId: connections.find(item => item.endpointOrigin === new URL(model.endpoint).origin)?.id ?? null }));
     const keys: DetectedKey[] = this.deps.credentials.statuses().filter(item => item.configured && item.source !== 'none').map(item => ({ provider: item.provider, label: keyLabels[item.provider] ?? item.provider, source: item.source === 'saved' ? 'saved' : 'environment' }));
+    // Connected is read now, not at scan time, so an app signed in or a token checked a moment ago shows at once.
+    const ready: Partial<Record<string, PluginReadiness>> = this.deps.readiness?.() ?? {};
+    const apps = appRows(scan.apps, new Set(scan.apps.filter(item => ready[item.id] === 'ready').map(item => item.id)));
+    const computer = mac ? 'this Mac' : win ? 'this PC' : 'this computer';
     return {
-      seenAt, scannedAt: scan.at, platform: process.platform, computer: mac ? 'this Mac' : win ? 'this PC' : 'this computer', lookedAt, bridge,
-      agents, models, keys, apps: scan.apps, docker: scan.docker, cloud: { available: cloud.available, signedIn: cloud.state === 'signed-in' },
-      show: !seenAt && (agents.some(agent => agent.found) || models.some(model => model.running)),
+      seenAt, scannedAt: scan.at, platform: process.platform, computer, lookedAt: lookedAt(computer), bridge,
+      agents, models, keys, apps, docker: scan.docker, cloud: { available: cloud.available, signedIn: cloud.state === 'signed-in' },
+      show: !seenAt && (agents.some(agent => agent.found) || models.some(model => model.running) || apps.some(item => item.connect !== null && !item.connected)),
     };
   }
   async link(request: unknown): Promise<SetupLinkResponse> {
@@ -83,6 +99,40 @@ export class Setup {
     const result = await this.links.unlink(scan.agents.find(item => item.id === agent)!);
     this.cache = null;
     return result;
+  }
+  /** Apps signed in or turned on here, which Disconnect undoes; apps reached with a Plugins token go with the tokens. */
+  private signedInApps() {
+    return (this.deps.apps?.statuses() ?? []).filter(item => item.connected && ['sign-in', 'desktop'].includes(appCatalogue[item.id].auth));
+  }
+  /** What Reset onboarding can undo on this computer, for its options: the links ros.ai recorded (only those, so a test
+   * copy never removes the links another ros.ai made), apps signed in, saved tokens and the hosted Ros sign-in. */
+  resetPlan(): SetupResetPlan {
+    return {
+      links: this.links.records().map(record => agentLabels[record.agent] ?? record.agent),
+      apps: this.signedInApps().map(item => item.name),
+      tokens: this.deps.plugins.saved().map(id => PLUGINS.find(plugin => plugin.id === id)?.name ?? id),
+      cloud: this.deps.cloud.signedIn,
+    };
+  }
+  /** Reset onboarding, for testing the first run again: the screen shows again, plus whatever else the person chose. */
+  async reset(request: unknown): Promise<SetupResetResponse> {
+    const input = z.object({ links: z.boolean().default(false), apps: z.boolean().default(false), tokens: z.boolean().default(false), cloud: z.boolean().default(false) }).strict().parse(request ?? {});
+    const done: string[] = [], failed: string[] = [];
+    const attempt = async (success: string, work: () => unknown) => { try { await work(); done.push(success); } catch (error) { failed.push(error instanceof Error ? error.message : String(error)); } };
+    if (input.links && this.links.records().length) {
+      const scan = await this.scan(true);
+      for (const record of this.links.records()) {
+        const result = await this.links.unlink(scan.agents.find(item => item.id === record.agent)!);
+        if (result.ok) done.push(result.message);
+        else failed.push(result.command ? `${result.message} ${result.command}` : result.message);
+      }
+    }
+    if (input.apps && this.deps.apps) for (const item of this.signedInApps()) await attempt(`Disconnected ${item.name}.`, () => this.deps.apps!.disconnect(item.id));
+    if (input.tokens) for (const id of this.deps.plugins.saved()) await attempt(`Forgot the ${PLUGINS.find(plugin => plugin.id === id)?.name ?? id} token.`, () => this.deps.plugins.disconnect(id));
+    if (input.cloud && this.deps.cloud.signedIn) await attempt('Signed out of hosted Ros.', () => this.deps.cloud.signOut());
+    this.seen(false);
+    this.cache = null;
+    return { done, failed };
   }
   /** A running Ollama or LM Studio becomes an inference connection with no USD rate, like any loopback server.
    * Each model keeps the context its server gives it and whether it can call tools; embedding models stay out. */
@@ -123,4 +173,7 @@ export function attachSetupRoutes(app: Express, setup: Setup) {
   app.delete('/api/setup/links/:agent', async (req, res) => { res.json(await setup.unlink(String(req.params.agent))); });
   app.post('/api/setup/seen', (_req, res) => { setup.seen(true); res.json({ ok: true }); });
   app.delete('/api/setup/seen', (_req, res) => { setup.seen(false); res.json({ ok: true }); });
+  // Settings › General › Reset onboarding: what it can undo, and the reset itself.
+  app.get('/api/setup/reset', (_req, res) => { res.json(setup.resetPlan()); });
+  app.post('/api/setup/reset', async (req, res) => { res.json(await setup.reset(req.body)); });
 }

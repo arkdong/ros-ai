@@ -2,11 +2,12 @@ import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync 
 import { request } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, relative } from 'node:path';
-import type { AgentId, AppId, DetectedApp, DetectedModel, LinkMethod, LocalModel } from '../shared/setup.js';
+import type { AgentId, AppConnect, AppId, DetectedApp, DetectedModel, LinkMethod, LocalModel } from '../shared/setup.js';
 
 /** What is installed on this computer, from existence, names and modification times.
  * Credential files are checked for existence and never opened. Agent settings are parsed for the
- * names of their MCP servers and everything else in them is dropped. Nothing leaves the computer. */
+ * names of their MCP servers and the apps those servers reach; everything else in them is dropped.
+ * Nothing leaves the computer. */
 
 export const win = process.platform === 'win32', mac = process.platform === 'darwin';
 const DAY = 86_400_000;
@@ -42,29 +43,73 @@ export function findBinary(name: string): string | null {
   return null;
 }
 
-type Shape = { servers: string[]; keys: string[] };
-/** The top-level key names and the names under mcpServers of a JSON settings file. Values are never kept. */
-function jsonShape(file: string): Shape | null {
+/** The apps an MCP server reaches: its name, the host of its address, its command, or a package or address named in its
+ * arguments names the app (mcp.notion.com, @notionhq/notion-mcp-server, mcp-remote https://mcp.linear.app/sse, "notion").
+ * Only the matching app ids are kept. */
+const reachPatterns: Record<AppId, RegExp> = {
+  notion: /notion/i, linear: /linear/i, sentry: /sentry/i, figma: /figma/i, slack: /slack/i, zotero: /zotero/i,
+  github: /github/i, 'google-drive': /g(?:oogle)?[ _-]?drive/i, obsidian: /obsidian/i, dropbox: /dropbox/i,
+};
+const PACKAGE = /^@?[\w.-]+(?:\/[\w.-]+)?(?:@[\w.^~-]+)?$/u;
+type Server = { url?: unknown; serverUrl?: unknown; httpUrl?: unknown; command?: unknown; args?: unknown };
+/** An address's host; Figma's desktop app serves its MCP server on port 3845, whatever the entry is called. */
+function host(address: string) {
+  try {
+    const url = new URL(address);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return ['127.0.0.1', 'localhost'].includes(url.hostname) && url.port === '3845' ? 'figma' : url.hostname;
+  } catch { return null; }
+}
+function reachOf(name: string, server: Server | null): AppId[] {
+  const words = [name];
+  for (const address of [server?.url, server?.serverUrl, server?.httpUrl]) if (typeof address === 'string') words.push(host(address) ?? '');
+  if (typeof server?.command === 'string') words.push(basename(server.command));
+  if (Array.isArray(server?.args)) for (const arg of server.args) if (typeof arg === 'string') words.push(/^https?:\/\//iu.test(arg) ? host(arg) ?? '' : PACKAGE.test(arg) ? arg : '');
+  return (Object.keys(reachPatterns) as AppId[]).filter(id => words.some(word => reachPatterns[id].test(word)));
+}
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const reachIn = (tables: Record<string, unknown>[]) => [...new Set(tables.flatMap(table => Object.entries(table).flatMap(([name, server]) => reachOf(name, isRecord(server) ? server : null))))];
+
+type Shape = { servers: string[]; keys: string[]; reach: AppId[] };
+/** The top-level key names and the server names under mcpServers (VS Code: servers) of a JSON settings file, and the apps
+ * those servers reach, Claude Code's per-project servers included. Values are never kept. */
+function jsonShape(file: string, list = 'mcpServers'): Shape | null {
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return null; }
   try {
     const value = JSON.parse(text) as unknown;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return { servers: [], keys: [] };
-    const servers = (value as { mcpServers?: unknown }).mcpServers;
-    return { servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [], keys: Object.keys(value) };
-  } catch { return { servers: [], keys: [] }; }
+    if (!isRecord(value)) return { servers: [], keys: [], reach: [] };
+    const top = value[list], projects = value.projects;
+    const table = isRecord(top) ? top : {};
+    // Claude Code keeps the servers added for one project under projects.<folder>.mcpServers.
+    const perProject = isRecord(projects) ? Object.values(projects).flatMap(project => isRecord(project) && isRecord(project[list]) ? [project[list] as Record<string, unknown>] : []) : [];
+    return { servers: Object.keys(table), keys: Object.keys(value), reach: reachIn([table, ...perProject]) };
+  } catch { return { servers: [], keys: [], reach: [] }; }
 }
-/** The names of the [mcp_servers.<name>] tables in a Codex config.toml. */
-function tomlServers(file: string): string[] | null {
+/** The names of the [mcp_servers.<name>] tables in a Codex config.toml, and the apps their url, command and args reach. */
+function tomlShape(file: string): { servers: string[]; reach: AppId[] } | null {
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return null; }
-  return [...text.matchAll(/^[ \t]*\[mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))[ \t]*\]/gmu)].map(match => match[1] ?? match[2] ?? match[3] ?? '').filter(Boolean);
+  const headers = [...text.matchAll(/^[ \t]*\[mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))[ \t]*\]/gmu)];
+  const servers: string[] = [], tables: Record<string, unknown>[] = [];
+  headers.forEach((match, index) => {
+    const name = match[1] ?? match[2] ?? match[3] ?? '';
+    if (!name) return;
+    servers.push(name);
+    // The table's own lines, up to the next table of any kind.
+    const body = text.slice(match.index + match[0].length, headers[index + 1]?.index ?? text.length).split(/^[ \t]*\[/mu)[0] ?? '';
+    const value = (key: string) => new RegExp(`^[ \\t]*${key}[ \\t]*=[ \\t]*["']([^"'\\n]*)["']`, 'mu').exec(body)?.[1];
+    const args = /^[ \t]*args[ \t]*=[ \t]*\[([^\]]*)\]/mu.exec(body)?.[1];
+    tables.push({ [name]: { url: value('url'), command: value('command'), args: args ? [...args.matchAll(/["']([^"'\n]*)["']/gu)].map(item => item[1]) : [] } });
+  });
+  return { servers, reach: reachIn(tables) };
 }
-/** The names under the top-level mcp_servers: map of a Hermes Agent config.yaml, read line by line. */
-export function yamlServers(file: string): string[] | null {
+/** The names under the top-level mcp_servers: map of a Hermes Agent config.yaml, read line by line, and the apps their
+ * url, command and list items reach. */
+function yamlShape(file: string): { servers: string[]; reach: AppId[] } | null {
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return null; }
-  const names: string[] = [];
+  const servers: { name: string; url?: string; command?: string; args: string[] }[] = [];
   let inside = false, indent = -1;
   for (const line of text.split(/\r?\n/u)) {
     if (!line.trim() || /^\s*#/u.test(line)) continue;
@@ -73,10 +118,16 @@ export function yamlServers(file: string): string[] | null {
     if (!inside) continue;
     if (indent < 0) indent = depth;
     const name = depth === indent ? /^\s*(?:"([^"]+)"|'([^']+)'|([^\s"'#:][^:#]*?))\s*:(?:\s|$)/u.exec(line) : null;
-    if (name) names.push(name[1] ?? name[2] ?? name[3]!);
+    if (name) { servers.push({ name: name[1] ?? name[2] ?? name[3]!, args: [] }); continue; }
+    const current = depth > indent ? servers[servers.length - 1] : undefined;
+    if (!current) continue;
+    const pair = /^\s*(url|command)\s*:\s*["']?([^"'\s#]+)/u.exec(line), item = /^\s*-\s*["']?([^"'\s#]+)["']?\s*$/u.exec(line);
+    if (pair) current[pair[1] as 'url' | 'command'] = pair[2];
+    else if (item) current.args.push(item[1]!);
   }
-  return names;
+  return { servers: servers.map(server => server.name), reach: reachIn(servers.map(({ name, ...server }) => ({ [name]: server }))) };
 }
+export const yamlServers = (file: string): string[] | null => yamlShape(file)?.servers ?? null;
 /** The Hermes Agent home its command line uses: HERMES_HOME when it names a profile, else the sticky profile in
  * <root>/active_profile, else HERMES_HOME or the usual folder. */
 function hermesHome() {
@@ -90,7 +141,8 @@ function hermesHome() {
 const others = (servers: string[] | null | undefined) => (servers ?? []).filter(name => name !== 'ros-ai');
 
 /** One agent as the scan found it; the link command, record and sessions are added by Setup. */
-export type Found = { id: AgentId; label: string; sessionLabel: string; found: boolean; signals: string[]; signedIn: boolean | null; method: LinkMethod; binary: string | null; target: string; entry: boolean; servers: string[]; note?: string };
+/** reach: the apps its MCP servers already reach, from their names and addresses. */
+export type Found = { id: AgentId; label: string; sessionLabel: string; found: boolean; signals: string[]; signedIn: boolean | null; method: LinkMethod; binary: string | null; target: string; entry: boolean; servers: string[]; reach: AppId[]; note?: string };
 
 export function detectAgents(): Found[] {
   const claudeHome = join(home, '.claude'), claudeConfig = join(home, '.claude.json');
@@ -98,7 +150,7 @@ export function detectAgents(): Found[] {
   // Claude Code keeps its sign-in in the keychain on a Mac, so only a positive answer is known.
   const claudeSignedIn = exists(join(claudeHome, '.credentials.json')) || Boolean(claudeShape?.keys.includes('oauthAccount')) ? true : null;
   const codexHome = process.env.CODEX_HOME || join(home, '.codex'), codexConfig = join(codexHome, 'config.toml');
-  const codexBinary = findBinary(process.env.ROS_CODEX_BINARY || 'codex'), codexServers = tomlServers(codexConfig), codexApp = app('Codex');
+  const codexBinary = findBinary(process.env.ROS_CODEX_BINARY || 'codex'), codexShape = tomlShape(codexConfig), codexServers = codexShape?.servers ?? null, codexApp = app('Codex');
   const codexSignedIn = exists(join(codexHome, 'auth.json')) ? true : isDir(codexHome) ? false : null;
   const cursorDir = join(home, '.cursor'), cursorConfig = join(cursorDir, 'mcp.json'), cursorShape = jsonShape(cursorConfig);
   const cursorApp = app('Cursor') || (win && exists(join(localAppData, 'Programs', 'cursor'))) || (!mac && !win && isDir(join(home, '.config', 'Cursor')));
@@ -107,33 +159,33 @@ export function detectAgents(): Found[] {
   const piDir = process.env.PI_CODING_AGENT_DIR?.replace(/^~(?=$|[\\/])/u, home) || join(home, '.pi', 'agent'), piConfig = join(piDir, 'mcp.json'), piShape = jsonShape(piConfig);
   const piSignedIn = exists(join(piDir, 'auth.json')), piBinary = findBinary('pi');
   // Only a Hermes Agent home counts: other programs are called hermes too.
-  const hermesDir = hermesHome(), hermesConfig = join(hermesDir, 'config.yaml'), hermesServers = yamlServers(hermesConfig), hermesFound = Boolean(hermesServers) || isDir(hermesDir);
+  const hermesDir = hermesHome(), hermesConfig = join(hermesDir, 'config.yaml'), hermesShape = yamlShape(hermesConfig), hermesServers = hermesShape?.servers ?? null, hermesFound = Boolean(hermesServers) || isDir(hermesDir);
   const hermesBinary = hermesFound ? findBinary(process.env.ROS_HERMES_BINARY || 'hermes') : null, hermesSignedIn = exists(join(hermesDir, 'auth.json'));
   return [
     { id: 'claude-code', label: 'Claude Code', sessionLabel: 'Claude Code', method: 'cli', binary: claudeBinary, target: claudeConfig,
       found: Boolean(claudeBinary || claudeShape || isDir(claudeHome)), signedIn: claudeSignedIn,
       signals: signals({ 'used recently': recent(join(claudeHome, 'projects')) || recent(join(claudeHome, 'history.jsonl')), 'signed in': claudeSignedIn === true, 'command line': Boolean(claudeBinary) }),
-      entry: Boolean(claudeShape?.servers.includes('ros-ai')), servers: others(claudeShape?.servers) },
+      entry: Boolean(claudeShape?.servers.includes('ros-ai')), servers: others(claudeShape?.servers), reach: claudeShape?.reach ?? [] },
     { id: 'codex', label: 'Codex', sessionLabel: 'Codex', method: 'cli', binary: codexBinary, target: codexConfig,
       found: Boolean(codexBinary || codexServers || isDir(codexHome) || codexApp), signedIn: codexSignedIn,
       signals: signals({ 'used recently': recent(join(codexHome, 'sessions')) || recent(join(codexHome, 'history.jsonl')), 'signed in': codexSignedIn === true, app: codexApp, 'command line': Boolean(codexBinary) }),
-      entry: Boolean(codexServers?.includes('ros-ai')), servers: others(codexServers), ...(codexApp ? { note: 'The Codex app reads the same settings.' } : {}) },
+      entry: Boolean(codexServers?.includes('ros-ai')), servers: others(codexServers), reach: codexShape?.reach ?? [], ...(codexApp ? { note: 'The Codex app reads the same settings.' } : {}) },
     { id: 'cursor', label: 'Cursor', sessionLabel: 'Cursor', method: 'file', binary: cursorBinary, target: cursorConfig,
       found: Boolean(cursorApp || cursorBinary || cursorShape || isDir(cursorDir)), signedIn: null,
       signals: signals({ app: cursorApp, 'command line': Boolean(cursorBinary), settings: cursorShape !== null }),
-      entry: Boolean(cursorShape?.servers.includes('ros-ai')), servers: others(cursorShape?.servers) },
+      entry: Boolean(cursorShape?.servers.includes('ros-ai')), servers: others(cursorShape?.servers), reach: cursorShape?.reach ?? [] },
     { id: 'gemini-cli', label: 'Gemini CLI', sessionLabel: 'Gemini CLI', method: 'file', binary: geminiBinary, target: geminiConfig,
       found: Boolean(geminiBinary || geminiShape || isDir(geminiDir)), signedIn: exists(join(geminiDir, 'oauth_creds.json')) ? true : null,
       signals: signals({ 'used recently': recent(join(geminiDir, 'tmp')), 'signed in': exists(join(geminiDir, 'oauth_creds.json')), 'command line': Boolean(geminiBinary) }),
-      entry: Boolean(geminiShape?.servers.includes('ros-ai')), servers: others(geminiShape?.servers) },
+      entry: Boolean(geminiShape?.servers.includes('ros-ai')), servers: others(geminiShape?.servers), reach: geminiShape?.reach ?? [] },
     { id: 'pi', label: 'Pi', sessionLabel: 'Pi', method: 'file', binary: piBinary, target: piConfig,
       found: Boolean(piShape || isDir(piDir)), signedIn: piSignedIn ? true : null,
       signals: signals({ 'used recently': recent(join(piDir, 'sessions')), 'signed in': piSignedIn, 'command line': Boolean(piBinary) }),
-      entry: Boolean(piShape?.servers.includes('ros-ai')), servers: others(piShape?.servers) },
+      entry: Boolean(piShape?.servers.includes('ros-ai')), servers: others(piShape?.servers), reach: piShape?.reach ?? [] },
     { id: 'hermes', label: 'Hermes Agent', sessionLabel: 'Hermes Agent', method: 'cli', binary: hermesBinary, target: hermesConfig,
       found: hermesFound, signedIn: hermesSignedIn ? true : null,
       signals: signals({ 'used recently': recent(join(hermesDir, 'state.db')) || recent(join(hermesDir, 'sessions')), 'signed in': hermesSignedIn, 'command line': Boolean(hermesBinary) }),
-      entry: Boolean(hermesServers?.includes('ros-ai')), servers: others(hermesServers) },
+      entry: Boolean(hermesServers?.includes('ros-ai')), servers: others(hermesServers), reach: hermesShape?.reach ?? [] },
   ];
 }
 
@@ -228,33 +280,88 @@ export async function detectDocker() {
   return { found: Boolean(findBinary('docker') || app('Docker') || app('OrbStack')), running: await dockerAnswers() };
 }
 
-type AppSpec = { id: AppId; label: string; apps: string[]; folders: string[]; pattern: RegExp };
+/** Where desktop apps keep their data: it changes while they run, so its dates say when the app was last used. */
+const support = mac ? join(home, 'Library', 'Application Support') : win ? appData : join(home, '.config');
+/** apps: macOS bundles; folders: install folders; data: folders or files whose dates say when it was last used;
+ * commands: on the search path; files: settings checked for existence only. */
+type AppSpec = { id: AppId; label: string; connect: AppConnect | null; apps: string[]; folders: string[]; data: string[]; commands?: string[]; files?: string[] };
 const specs: AppSpec[] = [
-  { id: 'notion', label: 'Notion', apps: ['Notion'], folders: win ? [join(localAppData, 'Programs', 'Notion')] : [], pattern: /notion/i },
-  { id: 'slack', label: 'Slack', apps: ['Slack'], folders: win ? [join(localAppData, 'slack')] : mac ? [] : [join(home, '.config', 'Slack'), '/snap/slack', '/usr/lib/slack'], pattern: /slack/i },
-  { id: 'zotero', label: 'Zotero', apps: ['Zotero'], folders: [join(home, 'Zotero')], pattern: /zotero/i },
-  { id: 'github', label: 'GitHub', apps: ['GitHub Desktop'], folders: [], pattern: /github/i },
-  { id: 'obsidian', label: 'Obsidian', apps: ['Obsidian'], folders: win ? [join(localAppData, 'Obsidian')] : mac ? [] : [join(home, '.config', 'obsidian')], pattern: /obsidian/i },
-  { id: 'linear', label: 'Linear', apps: ['Linear'], folders: [], pattern: /linear/i },
-  { id: 'figma', label: 'Figma', apps: ['Figma'], folders: win ? [join(localAppData, 'Figma')] : [], pattern: /figma/i },
-  { id: 'google-drive', label: 'Google Drive', apps: ['Google Drive'], folders: [], pattern: /g(oogle)?[ _-]?drive/i },
-  { id: 'dropbox', label: 'Dropbox', apps: ['Dropbox'], folders: [join(home, 'Dropbox'), ...(mac ? [join(home, 'Library', 'CloudStorage', 'Dropbox')] : [])], pattern: /dropbox/i },
+  { id: 'notion', label: 'Notion', connect: 'sign-in', apps: ['Notion'], folders: win ? [join(localAppData, 'Programs', 'Notion')] : [], data: [join(support, 'Notion')] },
+  { id: 'linear', label: 'Linear', connect: 'sign-in', apps: ['Linear'], folders: [], data: [join(support, 'Linear')] },
+  // sentry-cli keeps its token in ~/.sentryclirc, which is only checked for existence.
+  { id: 'sentry', label: 'Sentry', connect: 'sign-in', apps: [], folders: [], data: [], commands: ['sentry-cli'], files: [join(home, '.sentryclirc')] },
+  { id: 'figma', label: 'Figma', connect: 'desktop', apps: ['Figma'], folders: win ? [join(localAppData, 'Figma')] : [], data: [join(support, 'Figma')] },
+  { id: 'slack', label: 'Slack', connect: 'token', apps: ['Slack'], folders: win ? [join(localAppData, 'slack')] : mac ? [] : ['/snap/slack', '/usr/lib/slack'], data: [join(support, 'Slack')] },
+  { id: 'zotero', label: 'Zotero', connect: 'token', apps: ['Zotero'], folders: [join(home, 'Zotero')], data: [join(home, 'Zotero', 'zotero.sqlite')] },
+  { id: 'github', label: 'GitHub', connect: 'token', apps: ['GitHub Desktop'], folders: [], data: [join(support, 'GitHub Desktop')] },
+  { id: 'google-drive', label: 'Google Drive', connect: 'setup', apps: ['Google Drive'], folders: [], data: [] },
+  // Found, but nothing to connect yet: only named in the screen's "Found on this computer" menu.
+  { id: 'obsidian', label: 'Obsidian', connect: null, apps: ['Obsidian'], folders: win ? [join(localAppData, 'Obsidian')] : [], data: [join(support, 'obsidian')] },
+  { id: 'dropbox', label: 'Dropbox', connect: null, apps: ['Dropbox'], folders: [join(home, 'Dropbox'), ...(mac ? [join(home, 'Library', 'CloudStorage', 'Dropbox')] : [])], data: [] },
 ];
-/** Apps on this computer, by their bundles and folders, plus the ones the person's agents already talk to. */
-export async function detectApps(agents: Found[], connected: Set<string>): Promise<DetectedApp[]> {
-  const [zoteroRunning, driveFolder] = await Promise.all([
-    fetch('http://127.0.0.1:23119/connector/ping', { signal: AbortSignal.timeout(400) }).then(response => response.ok, () => false),
-    Promise.resolve(mac && (() => { try { return readdirSync(join(home, 'Library', 'CloudStorage')).some(name => name.startsWith('GoogleDrive-')); } catch { return false; } })()),
-  ]);
+
+/** When a folder or file last changed, a folder's own entries included (names and dates only). */
+export function lastChanged(paths: string[]) {
+  const times: number[] = [];
+  for (const path of paths) {
+    const at = modifiedAt(path);
+    if (at === null) continue;
+    times.push(at);
+    if (!isDir(path)) continue;
+    let names: string[] = [];
+    try { names = readdirSync(path).slice(0, 200); } catch { /* unreadable */ }
+    for (const name of names) { const child = modifiedAt(join(path, name)); if (child !== null) times.push(child); }
+  }
+  return times.length ? Math.max(...times) : null;
+}
+const usedWithin = (at: number | null): DetectedApp['used'] => {
+  const age = at === null ? Infinity : Date.now() - at;
+  return age < DAY ? 'today' : age < 7 * DAY ? 'this week' : age < 30 * DAY ? 'this month' : null;
+};
+/** Other AI apps' MCP settings, read like the agents': which apps their servers already reach. */
+function otherClients(): { label: string; reach: AppId[] }[] {
+  return [
+    { label: 'Claude Desktop', shape: jsonShape(join(support, 'Claude', 'claude_desktop_config.json')) },
+    { label: 'VS Code', shape: jsonShape(join(support, 'Code', 'User', 'mcp.json'), 'servers') },
+    { label: 'Windsurf', shape: jsonShape(join(home, '.codeium', 'windsurf', 'mcp_config.json')) },
+  ].flatMap(({ label, shape }) => shape?.reach.length ? [{ label, reach: shape.reach }] : []);
+}
+/** Where Figma's desktop app serves its MCP server; ROS_APP_FIGMA_URL may point at a stand-in on this computer. */
+function figmaServer() {
+  try { const set = new URL(process.env.ROS_APP_FIGMA_URL ?? ''); if (['127.0.0.1', 'localhost', '[::1]'].includes(set.hostname)) return set.href; } catch { /* not set */ }
+  return 'http://127.0.0.1:3845/mcp';
+}
+/** Whether something answers at a loopback address; ok: only a successful answer counts. */
+const answers = (url: string, ok = false) => fetch(url, { signal: AbortSignal.timeout(400) })
+  .then(response => { void response.body?.cancel().catch(() => undefined); return !ok || response.ok; }, () => false);
+
+/** Every app ros.ai knows, with what shows it is on this computer: its bundle, folders or command, when it was last used,
+ * whether it answers, and the agents and other AI apps whose MCP servers already reach it. Not yet filtered by what
+ * is connected: appRows does that. */
+export async function detectApps(agents: Found[]): Promise<DetectedApp[]> {
+  const [zoteroOpen, figmaOn] = await Promise.all([answers('http://127.0.0.1:23119/connector/ping', true), answers(figmaServer())]);
+  const driveFolder = mac && (() => { try { return readdirSync(join(home, 'Library', 'CloudStorage')).some(name => name.startsWith('GoogleDrive-')); } catch { return false; } })();
   const gh = Boolean(findBinary('gh')) && exists(join(home, '.config', 'gh', 'hosts.yml'));
+  const clients = [...agents.filter(agent => agent.found).map(agent => ({ label: agent.label, reach: agent.reach })), ...otherClients()];
   return specs.map(spec => {
-    const usedBy = agents.filter(agent => agent.found && agent.servers.some(name => spec.pattern.test(name))).map(agent => agent.label);
+    const usedBy = clients.filter(client => client.reach.includes(spec.id)).map(client => client.label);
+    const used = usedWithin(lastChanged(spec.data)), running = spec.id === 'zotero' ? zoteroOpen : spec.id === 'figma' && figmaOn;
     const found = signals({
-      app: spec.apps.some(app) || spec.folders.some(isDir),
-      running: spec.id === 'zotero' && zoteroRunning,
+      app: spec.apps.some(app) || spec.folders.some(isDir) || spec.data.some(exists) || (spec.commands ?? []).some(name => Boolean(findBinary(name))),
+      open: spec.id === 'zotero' && zoteroOpen,
+      'server on': spec.id === 'figma' && figmaOn,
       'synced folder': spec.id === 'google-drive' && driveFolder,
       'signed in on the command line': spec.id === 'github' && gh,
+      'settings file': (spec.files ?? []).some(exists),
     });
-    return { id: spec.id, label: spec.label, signals: found, usedBy, connected: connected.has(spec.id) };
-  }).filter(item => item.signals.length || item.usedBy.length || item.connected);
+    // Switched on at the start only where one click does it and the person clearly uses the app.
+    const suggested = spec.connect === 'sign-in' ? used !== null || usedBy.length > 0 : spec.connect === 'desktop' && running;
+    return { id: spec.id, label: spec.label, signals: found, usedBy, used, running, connected: false, connect: spec.connect, suggested };
+  });
+}
+/** The apps the first-run screen lists: found here or reached by an agent, and the ones already connected, which are
+ * never offered again. */
+export function appRows(apps: DetectedApp[], connected: Set<AppId>): DetectedApp[] {
+  return apps.map(item => connected.has(item.id) ? { ...item, connected: true, suggested: false } : item)
+    .filter(item => item.signals.length || item.usedBy.length || (item.connected && item.connect));
 }

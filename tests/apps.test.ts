@@ -121,7 +121,7 @@ test('Linear signs in once in the browser, with ros.ai registering itself and PK
     assert.equal(linear.seen.resource, `${linear.base}/mcp`);
     // Another browser (no matching nonce) cannot finish it.
     await assert.rejects(f.apps.finish({ state: back.searchParams.get('state'), code: back.searchParams.get('code') }, 'x'.repeat(43)), /expired or was started in another browser/u);
-    assert.deepEqual(f.apps.waiting(back.searchParams.get('state')), { app: 'linear', window: false });
+    assert.deepEqual(f.apps.waiting(back.searchParams.get('state')), { app: 'linear', window: false, chain: [], bound: true, redirectUri: 'http://127.0.0.1:4310/api/apps/callback' });
     assert.equal(await f.apps.finish({ state: back.searchParams.get('state'), code: back.searchParams.get('code') }, started.nonce), 'linear');
     assert.equal(f.apps.waiting(back.searchParams.get('state')), undefined, 'a state finishes once');
     assert.equal(f.apps.status('linear').connected, true);
@@ -172,7 +172,7 @@ test('a sign-in from a suggestion opens in its own window, whose page tells ros.
     assert.equal(refused.status, 400);
     const refusal = await refused.text();
     assert.match(refusal, /Couldn’t connect Linear/u);
-    assert.match(refusal, /postMessage\(\{"failed":"linear","error":"This sign-in expired or was started in another browser/u);
+    assert.match(refusal, /for\(const message of \[\{"failed":"linear","error":"This sign-in expired or was started in another browser/u);
     assert.equal(f.apps.status('linear').connected, false);
     // From the Mac app: no cookie (the system browser would not have it), and the system browser finishes the sign-in.
     const desktop = await connect('Mozilla/5.0 (Macintosh) Electron/38 ros.ai/0.1.0');
@@ -182,9 +182,51 @@ test('a sign-in from a suggestion opens in its own window, whose page tells ros.
     assert.match(back.headers.get('content-type') ?? '', /text\/html/u);
     const page = await back.text();
     assert.match(page, /<h1>Linear connected<\/h1><p>You can close this window\.<\/p>/u);
-    assert.match(page, /new BroadcastChannel\('ros-ai-plugins'\)\.postMessage\(\{"connected":"linear"\}\)/u);
+    assert.match(page, /const channel=new BroadcastChannel\('ros-ai-plugins'\);for\(const message of \[\{"connected":"linear"\}\]\)channel\.postMessage\(message\)/u);
+    assert.match(page, /setTimeout\(\(\)=>window\.close\(\),800\)/u);
     assert.equal(f.apps.status('linear').connected, true);
   } finally { delete process.env.ROS_APP_LINEAR_URL; local.close(); await linear.close(); f.close(); }
+});
+
+test('the first-run screen signs in to several apps in one window: each sign-in page opens the next, and hosted Ros comes last', async () => {
+  const calls: Call[] = [], linear = await signInServer(calls), sentry = await signInServer(calls), f = fixture();
+  process.env.ROS_APP_LINEAR_URL = `${linear.base}/mcp`;
+  process.env.ROS_APP_SENTRY_URL = `${sentry.base}/mcp`;
+  const app = express(); app.use(express.json()); attachAppRoutes(app, f.apps);
+  const local = await new Promise<import('node:http').Server>(done => { const server = app.listen(0, '127.0.0.1', () => done(server)); });
+  const base = `http://127.0.0.1:${(local.address() as AddressInfo).port}`, agent = 'Mozilla/5.0 Chrome/140';
+  const cookieOf = (response: Response) => /ros-ai-app-sign-in=([\w-]*)/u.exec(response.headers.get('set-cookie') ?? '')?.[1] ?? '';
+  const start = (apps: string[]) => fetch(`${base}/api/apps/sign-ins`, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': agent }, body: JSON.stringify({ apps, then: 'ros' }) });
+  // The app's page approves at once and sends the window back to ros.ai, which holds the cookie of the sign-in it started.
+  const callback = async (url: string, cookie: string) => fetch((await fetch(url, { redirect: 'manual' })).headers.get('location')!.replace('http://127.0.0.1:4310', base), { headers: { cookie: `ros-ai-app-sign-in=${cookie}` } });
+  try {
+    const started = await start(['linear', 'figma', 'sentry']);
+    const first = await started.json() as { app: string; url: string; connected: string[]; failed: unknown[] };
+    assert.deepEqual([first.app, first.connected, first.failed, 'nonce' in first], ['linear', [], [], false]);
+    assert(first.url.startsWith(`${linear.base}/authorize?`), 'Figma has no sign-in, so it is left out of the window');
+    const linearPage = await callback(first.url, cookieOf(started));
+    const page = await linearPage.text(), next = cookieOf(linearPage);
+    assert.equal(linearPage.status, 200);
+    assert.match(page, /<h1>Linear connected<\/h1><p>Opening the Sentry sign-in…<\/p>/u);
+    assert.match(page, /for\(const message of \[\{"connected":"linear","next":"sentry"\}\]\)/u);
+    const sentryUrl = JSON.parse(/location\.replace\(("[^"]+")\)/u.exec(page)![1]!) as string;
+    assert(sentryUrl.startsWith(`${sentry.base}/authorize?`) && next.length === 43, 'the next sign-in starts in the same window, bound to the same browser');
+    const sentryPage = await (await callback(sentryUrl, next)).text();
+    assert.match(sentryPage, /<h1>Sentry connected<\/h1><p>Opening the ros\.ai sign-in…<\/p>/u);
+    assert.match(sentryPage, /location\.replace\("\/api\/cloud\/start"\)/u);
+    assert.deepEqual(f.apps.connected(), ['linear', 'sentry']);
+    // Apps already signed in are skipped: with nothing left to sign in to, hosted Ros comes next.
+    assert.deepEqual(await (await start(['linear', 'sentry'])).json(), { then: 'ros', connected: ['linear', 'sentry'], failed: [] });
+    // A sign-in the person turns down says so, and offers the next one from a button instead of moving on by itself.
+    f.apps.disconnect('linear'); f.apps.disconnect('sentry');
+    const again = await start(['linear', 'sentry']), step = await again.json() as { url: string };
+    const back = new URL((await fetch(step.url, { redirect: 'manual' })).headers.get('location')!);
+    const declined = await fetch(`${base}/api/apps/callback?state=${encodeURIComponent(back.searchParams.get('state')!)}&error=access_denied`, { headers: { cookie: `ros-ai-app-sign-in=${cookieOf(again)}` } });
+    const declinedPage = await declined.text();
+    assert.equal(declined.status, 400);
+    assert.match(declinedPage, /<h1>Couldn’t connect Linear<\/h1><p>Linear sign-in was cancelled\.<\/p><a href="http:\/\/127\.0\.0\.1:\d+\/authorize\?[^"]+">Go on to Sentry<\/a>/u);
+    assert.doesNotMatch(declinedPage, /location\.replace/u);
+  } finally { delete process.env.ROS_APP_LINEAR_URL; delete process.env.ROS_APP_SENTRY_URL; local.close(); await linear.close(); await sentry.close(); f.close(); }
 });
 
 test('GitHub uses its hosted MCP server with the token from its Plugins card, connects again when the token changes, and says when it is refused', async () => {
