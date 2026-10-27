@@ -3,6 +3,7 @@ import { AlertTriangle, AppWindow, ChevronDown, Code2, Folder, FolderOpen, Folde
 import type { FolderChoice, FolderFile, FolderSuggestion, OpenApp, ProjectFolderStatus, UnplacedFile } from '../shared/project-folders';
 import type { CanvasNode } from '../shared/types';
 import { api, post } from './api';
+import { openOnPress } from './press';
 import './project-folder.css';
 
 const fileApp = /Mac/i.test(navigator.userAgent) ? 'Finder' : 'your files';
@@ -75,7 +76,7 @@ export function FolderChip({ status, onClick }: { status: ProjectFolderStatus; o
   </button>;
 }
 
-const kindNames: Record<UnplacedFile['kind'], string> = { note: 'Note', code: 'Code', notebook: 'Notebook', dataset: 'Dataset', pdf: 'PDF, added as its text' };
+const kindNames: Record<UnplacedFile['kind'], string> = { note: 'Note', code: 'Code', notebook: 'Notebook', dataset: 'Dataset', pdf: 'PDF', image: 'Image' };
 const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 export function FolderPanel({ projectId, projectTitle, status, nodes, onStatus, onChanged, onOpenFolder, onRemoveBlock }: {
@@ -154,7 +155,7 @@ export function OpenIn({ projectId, nodeId, onError, label = 'Open in' }: { proj
   const item = (how: string, icon: ReactNode, text: string) => <button key={how} type="button" role="menuitem" onClick={() => go(how)}>{icon}{text}</button>;
   const editors = list.filter(app => app.kind === 'editor'), terminals = list.filter(app => app.kind === 'terminal');
   return <div className="open-in" ref={box} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); } }}>
-    <button type="button" className="secondary small open-in-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><FolderOpen size={13}/> {label} <ChevronDown size={13}/></button>
+    <button type="button" className="secondary small open-in-trigger" aria-haspopup="menu" aria-expanded={open} {...openOnPress(() => setOpen(value => !value))}><FolderOpen size={13}/> {label} <ChevronDown size={13}/></button>
     {open && <div className="open-in-menu" role="menu">
       {editors.map(app => item(app.id, <Code2 size={15}/>, app.label))}
       {item('default', <AppWindow size={15}/>, 'Default app')}

@@ -13,6 +13,7 @@ import { parseCsv } from '../shared/data-view';
 import { CodeEditor, CodeView, modKey, type CodeEditorApi, type ErrorMark } from './code';
 import { outputHelpers, paramsRead, starters, type CodeContext } from './code/context';
 import { logFailure, tracebackLines } from './code/traceback';
+import { openOnPress } from './press';
 import './code-block.css';
 
 export const blankCode:CodeDocument={language:'python',source:'',parameters:{},inputArtifactId:null};
@@ -94,7 +95,7 @@ function AttemptPicker({runs,selected,onSelect}:{runs:Run[];selected:Run;onSelec
   const label=(run:Run)=>run.status==='cancelled'?'Stopped':run.status[0].toUpperCase()+run.status.slice(1);
   if(runs.length<2)return <small className="attempt-time">{date(selected.createdAt)}</small>;
   return <div className="attempt-picker" ref={box} onKeyDown={event=>{if(event.key==='Escape'&&open){event.preventDefault();event.stopPropagation();setOpen(false);}}}>
-    <button type="button" className="attempt-trigger" aria-haspopup="listbox" aria-expanded={open} aria-label="Code attempt" onClick={()=>setOpen(value=>!value)}><span className={`attempt-dot ${selected.status}`}/>{date(selected.createdAt)}<ChevronDown size={14}/></button>
+    <button type="button" className="attempt-trigger" aria-haspopup="listbox" aria-expanded={open} aria-label="Code attempt" {...openOnPress(()=>setOpen(value=>!value))}><span className={`attempt-dot ${selected.status}`}/>{date(selected.createdAt)}<ChevronDown size={14}/></button>
     {open&&<div className="attempt-menu" role="listbox" aria-label="Attempts">{runs.map((run,index)=><button key={run.id} type="button" role="option" aria-selected={run.id===selected.id} className={run.id===selected.id?'selected':''} onClick={()=>{onSelect(run.id);setOpen(false);}}><span className={`attempt-dot ${run.status}`}/><span className="attempt-when">{date(run.createdAt)}</span><span className="attempt-outcome">{index===0?'Latest · ':''}{label(run)}</span>{run.id===selected.id&&<Check size={14}/>}</button>)}</div>}
   </div>;
 }

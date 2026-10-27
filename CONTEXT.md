@@ -1,6 +1,6 @@
 # ros.ai
 
-Shared language for the exploratory research workspace. Compatible HTTP connections and explicitly scoped guide reviews implement the first stages of [the inference design](docs/inference-design-2026-10-01.md); managed Nemotron packaging and conditional adaptation remain later stages. [Current delivery](RESULT.md) distinguishes implementation from verification.
+Shared language for the exploratory research workspace. Compatible HTTP connections and explicitly scoped guide reviews implement the first stages of the inference design; managed Nemotron packaging and conditional adaptation remain later stages. Current delivery distinguishes implementation from verification.
 
 ## Language
 

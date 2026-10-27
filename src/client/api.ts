@@ -14,3 +14,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function post<T>(path: string, body?: unknown) {
   return api<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 }
+/** Sends a file as the request body, for example a PDF dropped on the canvas. */
+export async function upload<T>(path: string, file: File): Promise<T> {
+  return api<T>(path, { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' }, signal: AbortSignal.timeout(120_000) });
+}

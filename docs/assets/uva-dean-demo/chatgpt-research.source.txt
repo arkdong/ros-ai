@@ -1,8 +1,0 @@
-ChatGPT research conversation screenshot
-Original resolution: 1920 x 1080 pixels, PNG
-Source: OpenAI public livestream, Introduction to Deep Research (February 2, 2025), reproduced by notai.jp.
-Article: https://notai.jp/blog/chatgpt-deep-research/
-Original image: https://img.notai.jp/wp-content/uploads/2025/02/Introduction-to-Deep-Research-00-14-36.96.png
-Retrieved: October 10, 2026
-Used unmodified in the first content slide of uva-dean-demo-slides.html. Embedded in the HTML for offline use.
-Public demonstration screenshot, not the presenter's personal conversation.

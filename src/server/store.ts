@@ -4,16 +4,18 @@ import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MAX_HEIGHT, cardWidth, estimatedCardHeight } from '../shared/card-size.js';
+import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
+import { DOI, PAPER_ID } from '../shared/papers.js';
+import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion']).optional(), label:z.string().trim().max(40).optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
@@ -22,9 +24,19 @@ const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
   z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
 ]);
-export const mutationSchema = mutations({ ...nodeFields, decisions: z.array(decisionSchema).max(100).optional() });
+/** A Google Sheet or Doc shown live (see GoogleView). Kept apart from nodeFields, so the canvas tool agents see reads as
+ * the training snapshot has it while Google Drive is not connected. */
+const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional() };
+/** Where a paper came from: set by ros.ai when the person or an agent adds one (papers.ts), so agents never write it. */
+export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zotero']), id: z.string().regex(PAPER_ID), doi: z.string().regex(DOI).optional(), link: z.string().url().max(2000) }).strict();
+/** The agent whose turn an Agent block stands for, ACP agents (Gemini CLI, Goose, OpenCode) included. Kept apart from nodeFields, so the
+ * canvas tool agents see reads as the training snapshot has it. */
+const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', ...ACP_AGENT_IDS]), turnId: identifier }).strict();
+export const mutationSchema = mutations({ ...liveNodeFields, agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
-export const proposalMutationSchema = mutations(nodeFields);
+export const proposalMutationSchema = mutations(liveNodeFields);
+/** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
+export const snapshotProposalMutationSchema = mutations(nodeFields);
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 const clone = <T>(value: T): T => structuredClone(value);
@@ -32,7 +44,6 @@ const GRID = 24;
 // Placement runs before the browser measures outcome content. Existing cards may
 // show results, so reserve the bounded maximum height for them; blocks added in
 // the same edit have no results yet. Explicit Arrange uses measured footprints.
-const CARD_HEIGHT = CARD_MAX_HEIGHT;
 const MAX_NODES = 500;
 const MAX_CONNECTIONS = 2_000;
 const snap = (value: number) => Math.round(value / GRID) * GRID;
@@ -42,7 +53,7 @@ export class StoreError extends Error {
 }
 
 type JsonRow = { data: string };
-type NodePresentation = Pick<CanvasNode, 'x' | 'y' | 'width'>;
+type NodePresentation = Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>;
 type HistoryState = { stack: Canvas[]; cursor: number; presentation?: Record<string, NodePresentation> };
 
 // Layout is a current preference, not research content. Compare canonical content
@@ -50,7 +61,7 @@ type HistoryState = { stack: Canvas[]; cursor: number; presentation?: Record<str
 function canvasContent(canvas: Canvas): string {
   const orderedFields = (value: object) => Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
   return JSON.stringify({
-    nodes: [...canvas.nodes].sort((a, b) => a.id.localeCompare(b.id)).map(({ x: _x, y: _y, width: _width, ...content }) => orderedFields(content)),
+    nodes: [...canvas.nodes].sort((a, b) => a.id.localeCompare(b.id)).map(({ x: _x, y: _y, width: _width, height: _height, ...content }) => orderedFields(content)),
     connections: [...canvas.connections].sort((a, b) => a.id.localeCompare(b.id)).map(orderedFields),
   });
 }
@@ -68,7 +79,7 @@ function contentCursor(history: HistoryState, canvas: Canvas, direction: -1 | 1)
 const presentationKey = (node: CanvasNode) => JSON.stringify([node.id, node.parentId ?? null]);
 function rememberPresentation(history: HistoryState, canvas: Canvas): void {
   history.presentation ??= {};
-  for (const node of canvas.nodes) history.presentation[presentationKey(node)] = { x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }) };
+  for (const node of canvas.nodes) history.presentation[presentationKey(node)] = { x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }) };
 }
 function restoreContent(history: HistoryState, target: Canvas, current: Canvas): Canvas {
   const currentNodes = new Map(current.nodes.map(node => [node.id, node]));
@@ -77,9 +88,12 @@ function restoreContent(history: HistoryState, target: Canvas, current: Canvas):
     const saved = history.presentation?.[presentationKey(node)];
     const position = live && (live.parentId ?? null) === (node.parentId ?? null) ? live : saved ?? node;
     const width = live ? live.width : saved ? saved.width : node.width;
+    const height = live ? live.height : saved ? saved.height : node.height;
     const restored = { ...node, x: position.x, y: position.y };
     if (width === undefined) delete restored.width;
     else restored.width = width;
+    if (height == null) delete restored.height;
+    else restored.height = height;
     return restored;
   }) };
 }
@@ -290,13 +304,13 @@ export class Store {
 
   private placeNode(node: CanvasNode, others: CanvasNode[], fresh: ReadonlySet<string> = new Set()): CanvasNode {
     const placed = { ...node, x: snap(node.x), y: snap(node.y) };
-    const height = (item: CanvasNode) => fresh.has(item.id) ? estimatedCardHeight(item) : CARD_HEIGHT;
+    const height = (item: CanvasNode) => fresh.has(item.id) ? estimatedCardHeight(item) : cardFootprintHeight(item);
     const overlaps = () => others.some(other => (other.parentId ?? null) === (placed.parentId ?? null)
       && placed.x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < placed.x + cardWidth(placed) + LAYOUT_GAP
       && (other.y <= placed.y ? placed.y < other.y + height(other) + LAYOUT_GAP : other.y < placed.y + height(placed) + LAYOUT_GAP));
     const originX = placed.x;
     const stepX = Math.ceil((cardWidth(placed) + LAYOUT_GAP) / GRID) * GRID;
-    const stepY = Math.ceil((CARD_HEIGHT + LAYOUT_GAP) / GRID) * GRID;
+    const stepY = Math.ceil((CARD_MAX_HEIGHT + LAYOUT_GAP) / GRID) * GRID;
     // Deterministic placement makes the proposal preview match the accepted mutation.
     for (let attempt = 0; overlaps(); attempt++) {
       if (attempt >= MAX_NODES * 4) throw new StoreError('No free placement found near the requested position');
@@ -308,7 +322,8 @@ export class Store {
   }
 
   private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
-    const operations = operationsSchema.parse(supplied) as Mutation[];
+    const parsed = operationsSchema.parse(supplied) as Mutation[];
+    const operations = proposal && !arranged ? batchGrid(parsed, project.canvas.nodes) : parsed;
     const canvas = clone(project.canvas);
     const activeNode = (id: string) => {
       const node = canvas.nodes.find(item => item.id === id);
@@ -333,6 +348,8 @@ export class Store {
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
         let updated = { ...node, ...operation.patch };
+        // A null height gives the card back to its content.
+        if (operation.patch.height === null) delete updated.height;
         if ('x' in operation.patch || 'y' in operation.patch) {
           updated.x = snap(updated.x); updated.y = snap(updated.y);
           if (proposal && !arranged) updated = this.placeNode(updated, canvas.nodes.filter(item => item.id !== node.id));
@@ -657,7 +674,7 @@ export class Store {
 
   addUsage(record: UsageRecord): UsageRecord {
     identifier.parse(record.id);
-    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
+    z.union([z.enum(['nebius', 'tavily', 'openai', 'claude', 'exa', 'brave']),z.string().regex(/^custom-[0-9a-f-]{36}$/)]).parse(record.provider);
     z.number().finite().nonnegative().parse(record.reservedUsd);
     if (record.estimatedUsd !== null) z.number().finite().nonnegative().parse(record.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(record.status);
@@ -677,4 +694,36 @@ export class Store {
   }
 
   listUsage(): UsageRecord[] { return this.all<UsageRecord>('SELECT data FROM usage ORDER BY rowid'); }
+}
+
+/** A proposal that adds several blocks to one scope is laid out by ros.ai as a
+ * compact grid, so the whole batch can be read at once. It starts where the
+ * proposal put its first block and moves down past existing blocks it would cover. */
+export function batchGrid(operations: Mutation[], existing: readonly CanvasNode[], columns = 4): Mutation[] {
+  const scopes = new Map<string | null, number[]>();
+  operations.forEach((op, index) => {
+    if (op.type !== 'addNode' || op.node.kind === 'group') return;
+    const scope = op.node.parentId ?? null;
+    scopes.set(scope, [...(scopes.get(scope) ?? []), index]);
+  });
+  const result = [...operations];
+  for (const [scope, indexes] of scopes) {
+    if (indexes.length < 3) continue;
+    const nodes = indexes.map(index => (result[index] as Extract<Mutation, { type: 'addNode' }>).node);
+    const count = Math.min(columns, nodes.length), stepX = Math.ceil((Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP) / GRID) * GRID;
+    const rows: number[] = [];
+    nodes.forEach((node, index) => { const row = Math.floor(index / count); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
+    const width = (count - 1) * stepX + Math.max(...nodes.map(cardWidth)), height = rows.reduce((sum, row) => sum + row + LAYOUT_GAP, -LAYOUT_GAP);
+    const x = snap(Math.min(...nodes.map(node => node.x))); let y = snap(Math.min(...nodes.map(node => node.y)));
+    // Existing blocks in this scope the grid would cover push it down below them.
+    const covered = existing.filter(other => (other.parentId ?? null) === scope && x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < x + width + LAYOUT_GAP);
+    if (covered.some(other => y < other.y + cardFootprintHeight(other) + LAYOUT_GAP && other.y < y + height + LAYOUT_GAP)) y = snap(Math.max(...covered.map(other => other.y + cardFootprintHeight(other) + LAYOUT_GAP)));
+    let top = y;
+    nodes.forEach((node, index) => {
+      const column = index % count, row = Math.floor(index / count);
+      if (column === 0 && row > 0) top += Math.ceil((rows[row - 1] + LAYOUT_GAP) / GRID) * GRID;
+      result[indexes[index]] = { type: 'addNode', node: { ...node, x: x + column * stepX, y: top } };
+    });
+  }
+  return result;
 }

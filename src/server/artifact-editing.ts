@@ -7,11 +7,12 @@ import type { Artifact, CanvasNode, Run } from '../shared/types.js';
 import { LocalConnections } from './connections.js';
 import { reportRecord } from './report-record.js';
 import { Store, StoreError } from './store.js';
+import { ACP_AGENTS, ACP_AGENT_IDS, isAcpAgent, type AcpAgentId } from '../shared/acp-agents.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), hash = z.string().regex(/^[a-f0-9]{64}$/u);
 const operationSchema = z.object({ trim:z.boolean(), dropEmptyRows:z.boolean(), deduplicate:z.boolean(), dropMissing:z.array(z.string()).max(500), search:z.string().max(2000), filterColumn:z.number().int().nonnegative().nullable(), filter:z.string().max(2000), sortColumn:z.number().int().nonnegative().nullable(), descending:z.boolean() }).strict();
 const now = () => new Date().toISOString();
-export type AgentReportProvenance = {agent:'codex'|'claude'|'outside'|'model';client?:string;assistantTurnId:string;captureHash:string};
+export type AgentReportProvenance = {agent:'codex'|'claude'|'outside'|'model'|AcpAgentId;client?:string;assistantTurnId:string;captureHash:string};
 /** Manual, fixed-operation edits. No model, code execution, source writes or
  * authority changes occur here. Each save creates a new immutable artifact. */
 export class ArtifactEditingService {
@@ -20,7 +21,7 @@ export class ArtifactEditingService {
   private save(projectId: string, node: CanvasNode, input: Omit<Artifact,'id'|'hash'|'createdAt'|'projectId'|'nodeId'|'runId'>, sources: Artifact[], configuration: Record<string, unknown>) {
     const project = this.store.getProject(projectId);
     const inputs = sources.map(source => ({ ...this.store.addInput(projectId,node.id,source.id), artifact:source }));
-    const agent = configuration.agent === 'codex' || configuration.agent === 'claude', agentName = configuration.agent === 'claude' ? 'Claude Code' : 'Codex';
+    const agent = configuration.agent === 'codex' || configuration.agent === 'claude' || isAcpAgent(configuration.agent), agentName = configuration.agent === 'claude' ? 'Claude Code' : isAcpAgent(configuration.agent) ? ACP_AGENTS[configuration.agent].label : 'Codex';
     const run: Run = { id:randomUUID(),projectId,nodeId:node.id,request:input.title,useSearch:false,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node,inputs,messages:[],provider:'local',model:agent?`${configuration.agent}-approved-report-revision-v1`:'manual-artifact-edit-v1',modelVersion:null,configuration:{kind:agent?'accepted-agent-report':'manual-artifact-edit',...configuration},tools:[],events:[{at:now(),type:agent?'accepted-agent-report':'manual-edit',message:agent?`User accepted this exact recorded ${agentName} report proposal. The proposal capture is retained; accepting does not call a model or execute code.`:'User saved a derived version. No model or code execution was used.'}],artifactIds:[] };
     this.store.createRun(run);
     const artifact = this.store.addArtifact({ ...input,projectId,nodeId:node.id,runId:run.id });
@@ -73,7 +74,7 @@ export class ArtifactEditingService {
     });
   }
   saveReport(projectId: string, supplied: unknown, agent?:AgentReportProvenance) {
-    if(agent) z.object({agent:z.enum(['codex','claude','outside','model']),client:z.string().max(40).optional(),assistantTurnId:id,captureHash:hash}).strict().parse(agent);
+    if(agent) z.object({agent:z.enum(['codex','claude','outside','model',...ACP_AGENT_IDS]),client:z.string().max(40).optional(),assistantTurnId:id,captureHash:hash}).strict().parse(agent);
     const body = z.object({ nodeId:id.optional(),sourceArtifactId:id.optional(),title:z.string().trim().min(1).max(200),text:z.string().max(200000),evidenceIds:z.array(id).max(100),aiUse:z.string().trim().max(2000).optional(),expectedRevision:z.number().int().nonnegative().optional() }).strict().parse(supplied);
     const project = this.store.getProject(projectId);
     if (body.expectedRevision !== undefined && project.revision !== body.expectedRevision) throw new StoreError('The project changed. Reload and review before saving the report.',409);

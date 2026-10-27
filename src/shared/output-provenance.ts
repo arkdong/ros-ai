@@ -13,6 +13,7 @@ export function outputFreshness(artifact:Artifact,detail:ProjectDetail):{state:'
     if(artifact.metadata.sourceMatchesRun===false)return {state:'stale',message:`The notebook's ${cell} was edited after it ran. This output keeps the run that made it.`};
     return {state:'unverifiable',message:`Made by ${cell} in ros.ai's notebook sandbox. Variables from earlier cells can affect it, so the cell alone may not reproduce it.`};
   }
+  if(artifact.metadata?.origin==='google-sheets')return {state:'unverifiable',message:'A copy of a Google Sheets tab as it was when copied. The sheet may have changed since; copy it again for its newest rows.'};
   if(artifact.capture==='external'||run?.configuration.kind==='external-notebook-capture') {
     const sourceId=artifact.metadata?.notebookSourceArtifactId;
     const current=detail.artifacts.find(value=>value.nodeId===artifact.nodeId&&value.kind==='notebook');

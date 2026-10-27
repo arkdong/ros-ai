@@ -10,7 +10,7 @@ import './setup.css';
 /** First launch: what ros.ai found on this computer, as rows to connect in one go. Every link is one
  * entry in that tool's own settings; the person can undo each one from Agents. */
 
-const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex' };
+const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
 export function AgentIcon({ id, size = 20 }: { id: AgentId; size?: number }) {
   const brand = brands[id];
@@ -129,7 +129,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged }: Props) {
           <div className="setup-body">
             <div className="setup-name">{choice.label}</div>
             {choice.kind === 'ros' && waiting && cloud ? <>
-              <div className="setup-why">Approve {status.computer} in your browser. The page shows this code: <strong>{cloud.userCode}</strong></div>
+              <div className="setup-why">Finish signing in in your browser; ros.ai picks it up by itself.</div>
               <div className="setup-actions"><a className="secondary small" href={cloud.verificationUrl} target="_blank" rel="noreferrer">Open the sign-in page <ExternalLink size={11}/></a></div>
             </> : result?.message && <div className="setup-why">{result.message}</div>}
             {result?.command && <CommandBox command={result.command} label={choice.label}/>}

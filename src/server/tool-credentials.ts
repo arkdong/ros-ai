@@ -7,10 +7,10 @@ import { StoreError } from './store.js';
 import { NEBIUS_BASE } from './providers.js';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections.js';
 
-const names = { nebius: 'NEBIUS_API_KEY', claude: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', tavily: 'TAVILY_API_KEY' } as const;
-const providerSchema = z.enum(['nebius', 'claude', 'openai', 'tavily']);
+const names = { nebius: 'NEBIUS_API_KEY', claude: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', tavily: 'TAVILY_API_KEY', exa: 'EXA_API_KEY', brave: 'BRAVE_API_KEY' } as const;
+const providerSchema = z.enum(['nebius', 'claude', 'openai', 'tavily', 'exa', 'brave']);
 const keySchema = z.string().trim().min(12).max(4096).refine(value => !/\s|[\x00-\x1f\x7f]/.test(value), 'Enter a single API key without spaces.');
-const savedSchema = z.object({ version: z.literal(1), keys: z.object({ nebius: keySchema.optional(), claude: keySchema.optional(), openai: keySchema.optional(), tavily: keySchema.optional() }).strict() }).strict();
+const savedSchema = z.object({ version: z.literal(1), keys: z.object({ nebius: keySchema.optional(), claude: keySchema.optional(), openai: keySchema.optional(), tavily: keySchema.optional(), exa: keySchema.optional(), brave: keySchema.optional() }).strict() }).strict();
 
 /** Local server credentials are deliberately separate from model spending grants.
  * The only browser-readable values are presence, source and a bounded check result.
@@ -86,7 +86,7 @@ export class ToolCredentials {
   }
   async checkClaude() {
     const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new StoreError('Connect an Anthropic API key first.');
+    if (!key) throw new StoreError('Connect a Claude API key first.');
     let verified = false, checkMessage = 'Could not reach Anthropic. The saved key has not been verified.';
     try {
       // Listing models authenticates the key without a model turn or charge.

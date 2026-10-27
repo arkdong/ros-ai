@@ -8,6 +8,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { python, pythonLanguage } from '@codemirror/lang-python';
 import { json } from '@codemirror/lang-json';
+import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { classHighlighter } from '@lezer/highlight';
 import { rosCompletionSource } from './python-completions';
 import type { CodeContext } from './context';
@@ -30,6 +31,8 @@ export interface CodeEditorProps {
   compact?: boolean;
   /** Line numbers show by default; notebook cells leave them out, as Jupyter does. */
   lineNumbers?: boolean;
+  /** For SQL: the tables a query can use and their columns, offered as completions. */
+  sqlSchema?: Record<string, string[]>;
   onRun?(): void;
   onSave?(): void;
   /** Notebook keys: Shift+Enter, Escape, and arrow keys that leave the first or last line. */
@@ -54,9 +57,11 @@ function difference(current: string, next: string) {
 }
 const plainContext: CodeContext = { runtime: 'docker', columns: null, paramKeys: [] };
 
-function languageExtensions(language: string, readContext: () => CodeContext): Extension {
+function languageExtensions(language: string, readContext: () => CodeContext, sqlSchema?: Record<string, string[]>): Extension {
   const name = language.trim().toLowerCase();
   if (name === 'json') return json();
+  // DuckDB's SQL is close to PostgreSQL's.
+  if (name === 'sql') return sql({ dialect: PostgreSQL, schema: sqlSchema, upperCaseKeywords: true });
   if (name !== 'python') return [];
   return [python(), pythonLanguage.data.of({ autocomplete: rosCompletionSource(readContext) })];
 }
@@ -116,7 +121,7 @@ export default function CodeEditor(props: CodeEditorProps) {
           lintGutter(),
           linter(current => diagnostics(current, latest.current.language, latest.current.errors ?? []), { delay: 400, needsRefresh: update => update.transactions.some(transaction => transaction.effects.some(effect => effect.is(refreshMarks))) }),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, ...lintKeymap, indentWithTab]),
-          languageSlot.current.of(languageExtensions(props.language, readContext)),
+          languageSlot.current.of(languageExtensions(props.language, readContext, props.sqlSchema)),
           readOnlySlot.current.of([EditorState.readOnly.of(Boolean(props.readOnly)), EditorView.editable.of(!props.readOnly)]),
           EditorState.tabSize.of(4),
           // The length limit stops typing that grows the text past it; deletions and values loaded from saved records always apply.
@@ -154,9 +159,10 @@ export default function CodeEditor(props: CodeEditorProps) {
     // Loaded values (starters, saved records, workspace undo) are their own undo step, so Mod-z restores the previous text.
     current.dispatch({ changes: difference(current.state.doc.toString(), props.value), annotations: [external.of(true), isolateHistory.of('full')] });
   }, [props.value]);
+  const schemaKey = JSON.stringify(props.sqlSchema ?? null);
   useEffect(() => {
-    view.current?.dispatch({ effects: [languageSlot.current.reconfigure(languageExtensions(props.language, () => latest.current.context ?? plainContext)), refreshMarks.of(null)] });
-  }, [props.language]);
+    view.current?.dispatch({ effects: [languageSlot.current.reconfigure(languageExtensions(props.language, () => latest.current.context ?? plainContext, latest.current.sqlSchema)), refreshMarks.of(null)] });
+  }, [props.language, schemaKey]);
   useEffect(() => {
     view.current?.dispatch({ effects: placeholderSlot.current.reconfigure(props.placeholder ? placeholderText(props.placeholder) : []) });
   }, [props.placeholder]);

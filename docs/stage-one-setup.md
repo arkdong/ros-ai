@@ -1,6 +1,6 @@
 # Stage One: Code and Notebook setup
 
-October 2, 2026; notebooks updated October 7. These workflows let you write your own code, run notebooks, and deliberately reuse saved outputs. Blocks remain independent: a connection or input selection never starts another block. Current integrated verification is recorded in [RESULT.md](../RESULT.md).
+October 2, 2026; notebooks updated October 7. These workflows let you write your own code, run notebooks, and deliberately reuse saved outputs. Blocks remain independent: a connection or input selection never starts another block. Current integrated verification is recorded in RESULT.md.
 
 ## Start ros.ai and its Python runtime
 

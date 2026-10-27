@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { CARD_SIZE, LAYOUT_GAP } from '../shared/layout.js';
 import { CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import type { Artifact, ConnectionStatus, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
-import type { Store } from './store.js';
+import { StoreError, type Store } from './store.js';
 import { Authority } from './authority.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
 import { ComparisonBudget } from './comparison-budget.js';
@@ -14,9 +14,12 @@ import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObject } from './response-normalization.js';
-import { NebiusAdapter, TavilyAdapter, EXTRACT_PAGES_PER_CREDIT, EXTRACT_SCHEMA, SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
+import { NebiusAdapter, TavilyAdapter, ExaAdapter, BraveAdapter, EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, TAVILY_CREDIT_USD, searchCostUsd, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
+import { aSearchLabel, isSearchProvider, searchLabels, searchProviders, type SearchProviderId, type SearchServiceStatus } from '../shared/search.js';
 
 const now = () => new Date().toISOString();
+/** A loopback request's allowance for its chat template, and the shortest answer worth sending it for. */
+const LOCAL_TEMPLATE_TOKENS = 256, LOCAL_MIN_OUTPUT_TOKENS = 1024;
 function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
   return new Promise((resolve,reject)=>{
     const abort = ()=>reject(new Error('Request stopped or timed out. Provider billing outcome may be unknown.'));
@@ -27,7 +30,7 @@ function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
 }
 const requestText = z.string().trim().min(1).max(12000);
 const id = z.string().min(1).max(120);
-const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','notebook','report']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
+const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','notebook','report','file']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
 const operation = z.discriminatedUnion('type',[
   z.object({type:z.literal('addNode'),node}).strict(),
   z.object({type:z.literal('updateNode'),id,patch:node.omit({id:true}).partial()}).strict(),
@@ -81,6 +84,9 @@ export class ExecutionService {
   readonly connectionBudgets:ConnectionBudgets;
   private readonly openaiLedger:BudgetLedger;
   private readonly search:SearchAdapter;
+  /** Every web search service by id; Tavily's is `search`, which a test may replace. */
+  private readonly searches:Record<SearchProviderId,SearchAdapter>;
+  private readonly injectedSearch:boolean;
   private readonly maxConcurrent:number;
   private readonly maxOutputTokens:number;
   private readonly timeoutMs:number;
@@ -104,6 +110,8 @@ export class ExecutionService {
     if(!Number.isFinite(openaiUsd)||openaiUsd<0||!Number.isInteger(openaiRequests)||openaiRequests<1)throw new Error('Invalid OpenAI authorization settings.');
     this.openaiLedger=new BudgetLedger(store,{nebius:0,tavily:0,openai:openaiUsd},openaiId,openaiRequests);
     this.search = options.search ?? new TavilyAdapter();
+    this.injectedSearch=Boolean(options.search);
+    this.searches={tavily:this.search,exa:new ExaAdapter(),brave:new BraveAdapter()};
     this.authorization = options.liveAuthorization ?? configuredAuthorization();
     this.combinedBudget=options.combinedBudget??(process.env.ROS_NEBIUS_COMBINED_AUTHORIZATION_ID?new CombinedNebiusBudget(store):undefined);
     this.maxConcurrent = Math.max(1,Math.min(4,Math.floor(options.maxConcurrent ?? Number(process.env.ROS_MAX_CONCURRENT || 2))));
@@ -138,12 +146,15 @@ export class ExecutionService {
     return selection?.provider==='openai'?new OpenAIAdapter(undefined,selection.model):new NebiusAdapter(undefined,selection?.model??this.model.model);
   }
   private legacyCloudAllowed(provider:ConnectionBudgetProvider) {
+    // Environment grants predate Exa and Brave Search; they run only under an app allowance.
+    if(provider==='exa'||provider==='brave')return false;
     if(provider==='tavily'&&this.comparisonBudget)return false;
     if(provider==='openai')return Boolean(this.openaiLedger.authorizationId&&(this.openaiLedger.limits.openai??0)>0);
     return provider==='nebius' ? this.customModel || Boolean(this.authorization && this.authorization.nebiusUsd>0) : !(this.search instanceof TavilyAdapter) || Boolean(this.authorization && this.authorization.tavilyUsd>0);
   }
   private environmentBudget(provider:ConnectionBudgetProvider):EnvironmentConnectionBudget {
     if(provider==='claude')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:'Save a Claude Code allowance before paid turns. A saved API key does not authorize spending.'};
+    if(provider==='exa'||provider==='brave')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:`Save ${aSearchLabel(provider)} allowance before paid research. A saved API key does not authorize spending.`};
     const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.listUsage();
     const enabled=this.legacyCloudAllowed(provider),limitUsd=ledger.limits[provider]??0,accountedUsd=ledger.accounted(provider);
     const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;
@@ -155,8 +166,8 @@ export class ExecutionService {
     return {source,enabled,ready,limitUsd,accountedUsd,maxRequests:source==='none'||!enabled?0:ledger.maxRequests,usedRequests:source==='none'||!enabled?0:usedRequests,reason};
   }
   private cloudAllowed(provider:string) {
-    if(provider!=='nebius'&&provider!=='openai'&&provider!=='tavily')return Boolean(this.inference?.status(provider).ready)&&!this.comparisonBudget;
-    if(provider==='tavily'&&this.comparisonBudget)return false;
+    if(provider!=='nebius'&&provider!=='openai'&&!isSearchProvider(provider))return Boolean(this.inference?.status(provider).ready)&&!this.comparisonBudget;
+    if(isSearchProvider(provider)&&this.comparisonBudget)return false;
     const budget=this.connectionBudgets.status(provider);
     if(budget.source==='app')return budget.ready&&!this.comparisonBudget;
     return this.legacyCloudAllowed(provider);
@@ -176,11 +187,32 @@ export class ExecutionService {
   }
   private signal(controller:AbortController) { return AbortSignal.any([controller.signal,AbortSignal.timeout(this.timeoutMs)]); }
   private checkSignal(signal:AbortSignal) { if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.'); }
-  private reserveSearch(purpose:string,basis:string,runId:string,trace:Record<string,unknown>,amountUsd=TAVILY_CREDIT_USD) {
-    const allowance=this.connectionBudgets.status('tavily',amountUsd);
-    if(!this.cloudAllowed('tavily'))throw new Error(allowance.reason);
-    if(allowance.source==='app')return this.connectionBudgets.reserve({provider:'tavily',amountUsd,purpose,basis,runId,trace},allowance.revision);
+  private reserveSearch(provider:SearchProviderId,purpose:string,basis:string,runId:string,trace:Record<string,unknown>,amountUsd=SEARCH_SERVICES[provider].searchUsd) {
+    const allowance=this.connectionBudgets.status(provider,amountUsd);
+    if(!this.cloudAllowed(provider))throw new Error(allowance.reason);
+    if(allowance.source==='app')return this.connectionBudgets.reserve({provider,amountUsd,purpose,basis,runId,trace},allowance.revision);
+    if(provider!=='tavily')throw new Error(allowance.reason);
     return this.ledger.reserve('tavily',amountUsd,purpose,basis,runId,trace);
+  }
+  /** The web search service in use: the one chosen on the Plugins page while it has a key, otherwise the first
+   * with a key (Tavily, Exa, Brave Search), otherwise Tavily, whose missing key then explains itself. */
+  searchService():{id:SearchProviderId;adapter:SearchAdapter}{
+    if(this.injectedSearch)return {id:'tavily',adapter:this.search};
+    const chosen=this.store.globalRecord<{provider:SearchProviderId}>('search-service','app')?.provider;
+    const id=chosen&&this.searches[chosen]?.configured?chosen:searchProviders.find(provider=>this.searches[provider].configured)??'tavily';
+    return {id,adapter:this.searches[id]};
+  }
+  searchStatus():SearchServiceStatus{
+    const active=this.searchService();
+    return {active:active.adapter.configured?active.id:null,chosen:this.store.globalRecord<{provider:SearchProviderId}>('search-service','app')?.provider??null,
+      services:searchProviders.map(id=>({id,label:searchLabels[id],configured:this.injectedSearch?id==='tavily':this.searches[id].configured,readsPages:Boolean(SEARCH_SERVICES[id].read)}))};
+  }
+  /** Search with this service from now on; it needs its key first. */
+  chooseSearch(supplied:unknown):SearchServiceStatus{
+    const {provider}=z.object({provider:z.enum(searchProviders)}).strict().parse(supplied);
+    if(!this.searches[provider].configured)throw new StoreError(`Add ${aSearchLabel(provider)} key first.`,409);
+    this.store.saveGlobalRecord('search-service','app',{provider});
+    return this.searchStatus();
   }
   private async modelCall(request:ModelRequest,signal:AbortSignal,purpose:string,runId?:string,projectId?:string,reservationMultiplier=2,selection?:ModelSelection):Promise<{response:ModelResponse;info:ModelInfo;usage:UsageRecord}> {
     selection??=this.customModel?{provider:'nebius',model:this.model.model}:runId?{provider:this.store.getRun(runId).provider as ModelSelection['provider'],model:this.store.getRun(runId).model}:projectId?this.modelSelection(projectId):undefined;
@@ -252,10 +284,18 @@ export class ExecutionService {
     request={...request,maxOutputTokens:Math.min(request.maxOutputTokens,before.caps.maxOutputTokens)};
     const boundedSignal=AbortSignal.any([signal,AbortSignal.timeout(before.caps.timeoutMs)]);
     const info=await abortable(model.prepare(boundedSignal),boundedSignal);this.checkSignal(boundedSignal);
-    const wireRequest=model.describeRequest!(request),wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));
-    if(wireBytes>64000)throw new Error('The complete inference request exceeds ros.ai\'s 64 KB context cap. Select less context.');
-    if(wireBytes+4096+request.maxOutputTokens>info.contextTokens)throw new Error('Selected context exceeds the conservative application byte/context guard. Select less context or configure the model capacity; its tokenizer remains unverified.');
     const local=before.destination==='local-unverified';
+    let wireRequest=model.describeRequest!(request),wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));
+    if(wireBytes>64000)throw new Error('The complete inference request exceeds ros.ai\'s 64 KB context cap. Select less context.');
+    if(local){
+      // Nothing is billed on a loopback server, so this guard only keeps the request inside the model's context:
+      // about three bytes of request JSON per token for current tokenizers, room for the chat template, and the
+      // output shortened to what is left.
+      const inputTokens=Math.ceil(wireBytes/3)+LOCAL_TEMPLATE_TOKENS,room=info.contextTokens-inputTokens;
+      if(room<LOCAL_MIN_OUTPUT_TOKENS)throw new Error(`This request needs about ${(inputTokens+LOCAL_MIN_OUTPUT_TOKENS).toLocaleString('en-US')} tokens, but ${selection.model} has a ${info.contextTokens.toLocaleString('en-US')}-token context on ${before.name}. Raise the model's context length there (32k is enough for ros.ai's agent), then press Refresh under Agents › Local models.`);
+      if(room<request.maxOutputTokens){request={...request,maxOutputTokens:room};wireRequest=model.describeRequest!(request);wireBytes=Buffer.byteLength(JSON.stringify(wireRequest));}
+    }
+    else if(wireBytes+4096+request.maxOutputTokens>info.contextTokens)throw new Error('Selected context exceeds the conservative application byte/context guard. Select less context or configure the model capacity; its tokenizer remains unverified.');
     const reserveUsd=local?0:Math.max(0.000001,2*info.contextTokens*(info.inputUsdPerToken+info.outputUsdPerToken));
     const basis=local?'Loopback inference: no provider USD debit; processing location/runtime are unverified. Request count, bytes, declared completion cap and deadline remain bounded.':`2 × full declared ${info.contextTokens} context × (input $${info.inputUsdPerToken}/token + output $${info.outputUsdPerToken}/token). Full output context reserved because total billable/reasoning cap is unverified. User-declared upper rates/context, not verified account pricing; reservation retained, no automatic retry.`;
     const trace={scope:purpose==='Explicit workspace guide review'?'workspace-guide':runId?'node':'project',projectId,request:structuredClone(request),wireRequest,provider:selection.provider,model:selection.model,catalog:info.metadata,processingDestination:before.endpointOrigin,processingLocation:local?'local-unverified':'external'};
@@ -292,16 +332,16 @@ export class ExecutionService {
     if(selection&&selection.provider!=='nebius'&&selection.provider!=='openai'){
       const c=this.inference?.statuses().find(c=>c.id===selection.provider),policy=projectId?new Authority(this.store).policy(projectId):undefined;
       const blocker=!c?'The selected inference connection is unavailable.':!c.models.some(m=>m.id===selection.model)?'The selected model is no longer configured.':!c.ready?c.reason:this.comparisonBudget?'Historical comparison mode cannot use registered connections.':policy?.stopped?'Project research is stopped.':null;
-      const search=this.connectionBudgets.status('tavily',TAVILY_CREDIT_USD);
-      return {modelAvailable:!blocker,modelBlocker:blocker,searchAvailable:this.search.configured&&this.cloudAllowed('tavily')&&search.ready&&!policy?.stopped};
+      const service=this.searchService(),search=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd);
+      return {modelAvailable:!blocker,modelBlocker:blocker,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&search.ready&&!policy?.stopped};
     }
     const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
-    const allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status('tavily',TAVILY_CREDIT_USD),usesAppAllowance=allowance.source==='app'&&!this.comparisonBudget;
+    const service=this.searchService(),allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd),usesAppAllowance=allowance.source==='app'&&!this.comparisonBudget;
     const comparison=this.comparisonBudget?.status(projectId,selection);
     const modelBudgetReady=comparison?comparison.ready:usesAppAllowance?allowance.ready:provider!=='nebius'||!this.combinedBudget||this.combinedBudget.status().ready;
     const ledgerReady=usesAppAllowance?allowance.ready:ledger.accounted(provider)<(ledger.limits[provider]??0)&&(allowance.source!=='environment'||allowance.remainingRequests>0);
-    const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
-    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? comparison?.reason??this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:this.search.configured&&this.cloudAllowed('tavily')&&searchBudgetReady};
+    const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:service.id==='tavily'&&this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
+    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? comparison?.reason??this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
     if(projectId&&new Authority(this.store).policy(projectId).stopped){
       capabilities.modelBlocker??='Project research is stopped. Open Permissions and resume deliberately.';
       capabilities.modelAvailable=false;capabilities.searchAvailable=false;
@@ -326,16 +366,22 @@ export class ExecutionService {
   assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false):Proposal {
     return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged));
   }
-  /** Why an agent cannot search right now, or null when Tavily has a key and remaining allowance. */
+  /** Why an agent cannot search right now, or null when the search service in use has a key and remaining allowance. */
   agentSearchBlocker():string|null{
-    if(!this.search.configured)return 'Tavily web search is not connected. Add its key on the Plugins page.';
-    if(!this.cloudAllowed('tavily'))return this.connectionBudgets.status('tavily',TAVILY_CREDIT_USD).reason;
+    const service=this.searchService();
+    if(!service.adapter.configured)return 'Web search is not connected. Add a Tavily, Exa or Brave Search key on the Plugins page.';
+    if(!this.cloudAllowed(service.id))return this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd).reason;
     return null;
+  }
+  /** Why the search service in use cannot read whole pages, or null when it can. */
+  pageReadingBlocker():string|null{
+    const service=this.searchService();
+    return SEARCH_SERVICES[service.id].read?null:`${SEARCH_SERVICES[service.id].label} cannot read whole pages. Quote the page's search excerpt instead, or leave it out.`;
   }
   async assistantSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
     return this.searchRun(projectId,nodeId,query,signal,turnId,true);
   }
-  /** One Tavily search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
+  /** One web search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
    * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes. */
   agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
     return this.searchRun(projectId,nodeId,query,signal,turnId,false);
@@ -343,46 +389,49 @@ export class ExecutionService {
   private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean):Promise<Run>{
     this.admitWork(false);
     this.checkSignal(signal);
-    if(!this.search.configured||!this.cloudAllowed('tavily'))throw new Error('Tavily search has no configured remaining authorization.');
+    const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
+    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} search has no configured remaining authorization.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
     if(lock&&this.chats.has(projectId))throw new Error('The project assistant is already responding.');
-    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-search',modelVersion:null,configuration:{purpose:lock?'assistant-search':'agent-search',assistantTurnId:turnId,search:SEARCH_SCHEMA.configuration},tools:[SEARCH_SCHEMA],events:[],artifactIds:[]});
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:pricing.model,modelVersion:null,configuration:{purpose:lock?'assistant-search':'agent-search',assistantTurnId:turnId,search:pricing.schema.configuration},tools:[pricing.schema],events:[],artifactIds:[]});
     const controller=new AbortController();if(lock)this.chats.set(projectId,controller);
     const active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combinedSignal=AbortSignal.any([signal,this.signal(controller)]);
     // Register before dispatch, so immediate cancellation/shutdown can prevent
     // submission entirely. The same task is awaited during shutdown.
-    const task=Promise.resolve().then(()=>this.performAssistantSearch(run,combinedSignal)).finally(()=>{
+    const task=Promise.resolve().then(()=>this.performAssistantSearch(run,combinedSignal,service)).finally(()=>{
       this.active.delete(run.id);
       if(this.chats.get(projectId)===controller)this.chats.delete(projectId);
     });
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
   }
-  /** The full text of up to five pages an agent's searches found, read in one Tavily extract and
+  /** The full text of up to five pages an agent's searches found, read in one request to the search service and
    * saved on its Agent block as exact versions it can quote. Runs inside the agent's turn, like its searches. */
   agentRead(projectId:string,nodeId:string,pages:{url:string;title:string}[],signal:AbortSignal,turnId:string):Promise<{run:Run;failed:string[]}>{
     this.admitWork(false);
     this.checkSignal(signal);
-    if(!this.search.configured||!this.search.extract||!this.cloudAllowed('tavily'))throw new Error('Tavily has no configured remaining authorization for reading pages.');
+    const service=this.searchService(),pricing=SEARCH_SERVICES[service.id],read=pricing.read;
+    if(!read||!service.adapter.extract)throw new Error(this.pageReadingBlocker()??`${pricing.label} cannot read whole pages.`);
+    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} has no configured remaining authorization for reading pages.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('The Agent block was removed from the canvas.');
     const urls=z.array(z.string().url().max(2000)).min(1).max(EXTRACT_PAGES_PER_CREDIT).parse(pages.map(page=>page.url));
-    const credits=Math.ceil(urls.length/EXTRACT_PAGES_PER_CREDIT),amountUsd=credits*TAVILY_CREDIT_USD;
-    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:urls.join('\n'),useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:'tavily',model:'basic-extract',modelVersion:null,configuration:{purpose:'agent-read',assistantTurnId:turnId,extract:EXTRACT_SCHEMA.configuration},tools:[EXTRACT_SCHEMA],events:[],artifactIds:[]});
+    const amountUsd=read.usd(urls.length);
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:urls.join('\n'),useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:read.model,modelVersion:null,configuration:{purpose:'agent-read',assistantTurnId:turnId,extract:read.schema.configuration},tools:[read.schema],events:[],artifactIds:[]});
     const controller=new AbortController(),active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combined=AbortSignal.any([signal,this.signal(controller)]);
     const task=Promise.resolve().then(async()=>{
       let reservation:UsageRecord|undefined;
       try{
-        reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:amountUsd});return this.reserveSearch('Agent page reading',`Continued cumulative Tavily allowance: basic extract of ${urls.length} page${urls.length===1?'':'s'}, ${credits} credit at $0.008 PAYG upper bound.`,run.id,{urls,assistantTurnId:turnId},amountUsd);});
-        const response=await abortable(this.search.extract!(urls,combined),combined);this.checkSignal(combined);
-        const reported={urls,credits:response.credits,requestId:response.requestId,failed:response.failed};
-        this.store.updateUsage(reservation.id,{status:response.credits===null?'uncertain':'settled',estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),...reported,assistantTurnId:turnId}});
+        reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:amountUsd});return this.reserveSearch(service.id,'Agent page reading',read.basis(urls.length),run.id,{urls,assistantTurnId:turnId},amountUsd);});
+        const response=await abortable(service.adapter.extract!(urls,combined),combined);this.checkSignal(combined);
+        const reported={urls,credits:response.credits,requestId:response.requestId,failed:response.failed},costUsd=searchCostUsd(response);
+        this.store.updateUsage(reservation.id,{status:costUsd===null?'uncertain':'settled',estimatedUsd:costUsd,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),...reported,assistantTurnId:turnId}});
         const artifacts=response.pages.map((page,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`P${index+1}`,capture:'full-content',title:pages.find(item=>item.url===page.url)?.title||new URL(page.url).hostname,url:page.url,content:page.content,locator:page.locator}));
-        const saved=this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'pages-captured',message:`Saved the text of ${artifacts.length} of ${urls.length} page${urls.length===1?'':'s'}. Page text is evidence, not independent verification.`}],cost:{reservedUsd:amountUsd,estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD},usage:reported});
+        const saved=this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'pages-captured',message:`Saved the text of ${artifacts.length} of ${urls.length} page${urls.length===1?'':'s'}. Page text is evidence, not independent verification.`}],cost:{reservedUsd:amountUsd,estimatedUsd:costUsd},usage:reported});
         return {run:saved,failed:response.failed};
       }catch(error){
         if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
@@ -396,16 +445,17 @@ export class ExecutionService {
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
   }
-  private async performAssistantSearch(run:Run,signal:AbortSignal):Promise<Run>{
-    const {projectId,nodeId,request:query}=run,turnId=run.configuration.assistantTurnId;
+  private async performAssistantSearch(run:Run,signal:AbortSignal,service:{id:SearchProviderId;adapter:SearchAdapter}):Promise<Run>{
+    const {projectId,nodeId,request:query}=run,turnId=run.configuration.assistantTurnId,pricing=SEARCH_SERVICES[service.id];
     let reservation:UsageRecord|undefined;
     try{
       this.checkSignal(signal);
-      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:TAVILY_CREDIT_USD});return this.reserveSearch('Assistant source discovery','Continued cumulative Tavily allowance: one basic search, 1 credit at $0.008 PAYG upper bound.',run.id,{query,assistantTurnId:turnId});});
-      const response=await abortable(this.search.search(query,signal),signal);this.checkSignal(signal);
-      this.store.updateUsage(reservation.id,{status:response.credits===null?'uncertain':'settled',estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,response,assistantTurnId:turnId}});
+      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:pricing.searchUsd});return this.reserveSearch(service.id,'Assistant source discovery',pricing.searchBasis,run.id,{query,assistantTurnId:turnId});});
+      const response=await abortable(service.adapter.search(query,signal),signal);this.checkSignal(signal);
+      const costUsd=searchCostUsd(response);
+      this.store.updateUsage(reservation.id,{status:costUsd===null?'uncertain':'settled',estimatedUsd:costUsd,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,response,assistantTurnId:turnId}});
       const artifacts=response.results.map((source,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`S${index+1}`,capture:'search-snippet',...source}));
-      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:response.credits===null?null:response.credits*TAVILY_CREDIT_USD},usage:response});
+      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:pricing.searchUsd,estimatedUsd:costUsd},usage:response});
     }catch(error){
       if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
       // cancelRun/shutdown have already saved their terminal state and event.
@@ -516,8 +566,9 @@ export class ExecutionService {
     }
     const selection=this.modelSelection(projectId,nodeId);
     this.admitWork(true,selection);
-    if (options.useSearch && !this.cloudAllowed('tavily')) throw new Error('Fresh explicit Tavily budget authorization is required for web search.');
-    if (options.useSearch && !this.search.configured) throw new Error('TAVILY_API_KEY is not configured; disable web search for model-only work.');
+    const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
+    if (options.useSearch && !this.cloudAllowed(service.id)) throw new Error(`Fresh explicit ${pricing.label} budget authorization is required for web search.`);
+    if (options.useSearch && !service.adapter.configured) throw new Error('No web search key is configured. Add a Tavily, Exa or Brave Search key on the Plugins page, or turn off web search for model-only work.');
     const detail = this.store.detail(projectId);
     const node = detail.project.canvas.nodes.find(n=>n.id===nodeId);
     if (!node) throw new Error('Node not found.');
@@ -529,7 +580,7 @@ export class ExecutionService {
       if (artifact.projectId!==projectId || artifact.kind!=='dataset') throw new Error('Select a dataset artifact from this project.');
       inputs.push({id:randomUUID(),projectId,nodeId,artifactId:artifact.id,excerpt:artifact.content,createdAt:now(),artifact});
     }
-    const run:Run = {id:runId,projectId,nodeId,request,useSearch:Boolean(options.useSearch),status:'queued',retryOf:options.retryOf,createdAt:now(),projectRevision:detail.project.revision,node:structuredClone(node),inputs:structuredClone(inputs),messages:history,provider:this.customModel?this.model.provider:selection.provider,model:this.customModel?this.model.model:selection.model,modelVersion:null,configuration:{maxOutputTokens:this.maxOutputTokens,temperature:0.3,contextPolicy:'Only this node conversation and explicitly selected immutable materials; no graph traversal.',toolPolicy:'At most one basic Tavily search then one model call; no automatic retries or executable code.',timeoutMs:this.timeoutMs},tools:options.useSearch?[SEARCH_SCHEMA]:[],events:[],artifactIds:[]};
+    const run:Run = {id:runId,projectId,nodeId,request,useSearch:Boolean(options.useSearch),status:'queued',retryOf:options.retryOf,createdAt:now(),projectRevision:detail.project.revision,node:structuredClone(node),inputs:structuredClone(inputs),messages:history,provider:this.customModel?this.model.provider:selection.provider,model:this.customModel?this.model.model:selection.model,modelVersion:null,configuration:{maxOutputTokens:this.maxOutputTokens,temperature:0.3,contextPolicy:'Only this node conversation and explicitly selected immutable materials; no graph traversal.',toolPolicy:`At most one ${service.id==='tavily'?'basic Tavily':pricing.label} search then one model call; no automatic retries or executable code.`,timeoutMs:this.timeoutMs,...(options.useSearch?{searchService:service.id}:{})},tools:options.useSearch?[pricing.schema]:[],events:[],artifactIds:[]};
     this.store.createRun(run);
     if (options.experimentDatasetId) this.store.updateRun(runId,{configuration:{...run.configuration,purpose:'experiment-plan',datasetArtifactId:options.experimentDatasetId,...(!options.research?{backend:options.experimentBackend??'bounded'}:{}),toolPolicy:'One validated experiment proposal; no code execution. Separate exact-action preview and approval required.'}});
     if(options.research)this.store.updateRun(runId,{configuration:{...this.store.getRun(runId).configuration,purpose:'research-step',research:options.research}});
@@ -556,20 +607,24 @@ export class ExecutionService {
       const toolCalls:unknown[] = [];
       if (run.useSearch) {
         const query = run.request.slice(0,400);
+        // A run searches with the service it was started with, even when another is chosen while it waits.
+        const id = isSearchProvider(String(run.configuration.searchService)) ? run.configuration.searchService as SearchProviderId : 'tavily';
+        const pricing = SEARCH_SERVICES[id], adapter = this.searches[id], schema = pricing.schema;
         const reservation = this.store.atomic(()=>{
-          new Authority(this.store).reserve(run.projectId,{kind:'model',nodeId:run.nodeId,fingerprint:`search-${run.id}`,spendUsd:TAVILY_CREDIT_USD});
-          return this.reserveSearch('Node basic search','One basic search = 1 credit; $0.008/credit published PAYG upper rate; no advanced search/automatic parameters.',runId,{query,configuration:SEARCH_SCHEMA.configuration});
+          new Authority(this.store).reserve(run.projectId,{kind:'model',nodeId:run.nodeId,fingerprint:`search-${run.id}`,spendUsd:pricing.searchUsd});
+          return this.reserveSearch(id,'Node basic search',id==='tavily'?'One basic search = 1 credit; $0.008/credit published PAYG upper rate; no advanced search/automatic parameters.':pricing.searchBasis,runId,{query,configuration:schema.configuration});
         });
-        this.event(runId,'tool-start','Searching the web with Tavily',{query,configuration:SEARCH_SCHEMA.configuration});
+        this.event(runId,'tool-start',`Searching the web with ${pricing.label}`,{query,configuration:schema.configuration});
         try {
-          const result = await abortable(this.search.search(query,signal),signal);
-          this.store.updateUsage(reservation.id,{status:result.credits===null?'uncertain':'settled',estimatedUsd:result.credits===null?null:result.credits*TAVILY_CREDIT_USD,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),credits:result.credits,requestId:result.requestId,query,configuration:SEARCH_SCHEMA.configuration}});
+          const result = await abortable(adapter.search(query,signal),signal);
+          const costUsd = searchCostUsd(result);
+          this.store.updateUsage(reservation.id,{status:costUsd===null?'uncertain':'settled',estimatedUsd:costUsd,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),credits:result.credits,requestId:result.requestId,query,configuration:schema.configuration}});
           this.checkSignal(signal);
           for (const [index,source] of result.results.entries()) {
             sourceArtifacts.push(this.store.addArtifact({projectId:run.projectId,nodeId:run.nodeId,runId,kind:'source',sourceId:`S${index+1}`,capture:'search-snippet',...source}));
           }
-          toolCalls.push({name:'tavily_search',query,configuration:SEARCH_SCHEMA.configuration,result:{requestId:result.requestId,credits:result.credits,artifactIds:sourceArtifacts.map(a=>a.id)}});
-          this.store.updateRun(runId,{tools:[SEARCH_SCHEMA,...toolCalls],artifactIds:sourceArtifacts.map(a=>a.id)});
+          toolCalls.push({name:schema.name,query,configuration:schema.configuration,result:{requestId:result.requestId,credits:result.credits,artifactIds:sourceArtifacts.map(a=>a.id)}});
+          this.store.updateRun(runId,{tools:[schema,...toolCalls],artifactIds:sourceArtifacts.map(a=>a.id)});
           this.event(runId,'tool-complete',`Captured ${sourceArtifacts.length} search-result snippets.`,{artifactIds:sourceArtifacts.map(a=>a.id)});
         } catch (error) { this.store.updateUsage(reservation.id,{status:'uncertain'}); throw error; }
       }

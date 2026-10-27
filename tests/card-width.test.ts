@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
-import { CARD_MAX_HEIGHT, cardWidth } from '../src/shared/card-size.js';
+import { cardWidth, estimatedCardHeight } from '../src/shared/card-size.js';
 import { LAYOUT_GAP } from '../src/shared/layout.js';
 import type { CanvasNode } from '../src/shared/types.js';
 
@@ -37,7 +37,7 @@ test('invalid card widths reject atomically, while both limits are accepted', ()
   try {
     const project = store.createProject('Width validation');
     store.mutate(project.id, [{ type: 'addNode', node: node('card') }], 'Original card');
-    for (const width of [319, 721, 400.5, Infinity, NaN]) {
+    for (const width of [319, 1201, 400.5, Infinity, NaN]) {
       assert.throws(() => store.mutate(project.id, [
         { type: 'updateNode', id: 'card', patch: { title: 'Must roll back' } },
         { type: 'updateNode', id: 'card', patch: { width } },
@@ -46,7 +46,7 @@ test('invalid card widths reject atomically, while both limits are accepted', ()
       assert.equal(store.getProject(project.id).revision, 1);
       assert.equal(store.getProject(project.id).canvas.nodes[0].title, 'card');
     }
-    for (const width of [320, 720]) {
+    for (const width of [320, 1200]) {
       store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { width } }], 'Resize to allowed limit');
       assert.equal(store.getProject(project.id).canvas.nodes[0].width, width);
     }
@@ -68,14 +68,35 @@ test('new and proposed cards respect unequal widths with deterministic snapped p
     const accepted = store.acceptProposal(project.id, proposal.id);
     assert.deepEqual(accepted.canvas.nodes.slice(1), proposal.operations.filter(operation => operation.type === 'addNode').map(operation => operation.node));
     for (const card of accepted.canvas.nodes) {
-      assert.equal(card.x % 24, 0);
-      assert.equal(card.y % 24, 0);
+      assert.equal(Math.abs(card.x % 24), 0);
+      assert.equal(Math.abs(card.y % 24), 0);
       for (const other of accepted.canvas.nodes.filter(candidate => candidate.id !== card.id)) {
         const separated = card.x >= other.x + cardWidth(other) + LAYOUT_GAP
           || other.x >= card.x + cardWidth(card) + LAYOUT_GAP
-          || Math.abs(card.y - other.y) >= CARD_MAX_HEIGHT + LAYOUT_GAP;
+          // A batch is laid out by each row's own card height (estimatedCardHeight), not the tallest possible card.
+          || Math.abs(card.y - other.y) >= estimatedCardHeight(card.y < other.y ? card : other) + LAYOUT_GAP;
         assert.equal(separated, true, `${card.id} and ${other.id} keep their reading gap`);
       }
     }
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('a card height set by resizing is layout, stays within its limits and is given back to the content with null', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ros-card-height-'));
+  let store = new Store(directory);
+  try {
+    const project = store.createProject('Height persistence');
+    store.mutate(project.id, [{ type: 'addNode', node: node('card') }], 'Original card');
+    const original = store.getProject(project.id).canvas.nodes[0];
+    for (const height of [223, 1201, 300.5, Infinity, NaN]) assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height } }], 'Invalid height'));
+    store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height: 640, width: 560, x: -48, y: -24 } }], 'Resize block');
+    assert.deepEqual(store.getProject(project.id).canvas.nodes[0], { ...original, height: 640, width: 560, x: -48, y: -24 });
+    assert.equal(estimatedCardHeight(store.getProject(project.id).canvas.nodes[0]), 640);
+    assert.equal(store.undo(project.id).canvas.nodes.length, 0, 'Resizing did not append an undo step');
+    store.redo(project.id);
+    store.close(); store = new Store(directory);
+    assert.equal(store.getProject(project.id).canvas.nodes[0].height, 640);
+    store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height: null } }], 'Fit block to its content');
+    assert.equal(Object.hasOwn(store.getProject(project.id).canvas.nodes[0], 'height'), false);
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });

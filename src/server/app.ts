@@ -4,6 +4,7 @@ import { StoreError, type Store } from './store.js';
 import type { ExecutionService } from './execution.js';
 import { attachResultHandoffRoutes } from './result-handoff.js';
 import { attachCloudAccountRoutes, type CloudAccount } from './cloud-account.js';
+import { attachFeedbackRoutes } from './feedback.js';
 import { attachLocalRosRoutes, type LocalRos } from './local-ros.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
@@ -12,9 +13,12 @@ import type { ResearchService } from './research.js';
 import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
+import { attachAcpAgentRoutes,type AcpAgentService } from './acp-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
+import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
+import { attachSkillRoutes, type SkillLibrary } from './skills.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
 import { seedDemo } from './demo.js';
 import { projectBudgetReport, usageAnalytics } from './budget-report.js';
@@ -25,9 +29,13 @@ import { ProviderUsage } from './provider-usage.js';
 import { attachTutorialRoutes, TutorialService } from './tutorial.js';
 import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
+import { attachGoogleRoutes, type GoogleWorkspace } from './google-workspace.js';
+import { attachPaperRoutes, type Papers } from './papers.js';
+import { attachBrowserRoutes, type BrowserService } from './browser.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
+import { NotionFileSaver } from './notion-files.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
@@ -35,13 +43,15 @@ import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspa
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
+import { attachSqlRoutes, SqlService } from './sql.js';
+import { attachUpdateRoutes, type Updates } from './updates.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;claude?:ClaudeAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;setup?:Setup},guide?:WorkspaceGuideService) {
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -59,7 +69,10 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Changes arrive only as JSON from ros.ai's own page. A form or a request from another site cannot send that without permission.
     if (!options.publicDemo && req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
-      if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
+      const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+      // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
+      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg'].includes(type);
+      if (type !== 'application/json' && !file) return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -71,6 +84,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
   // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
   if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
+  // A skill archive (.zip, up to 12 MB) arrives as base64 inside JSON.
+  if (!options.publicDemo) app.use('/api/skills/preview', express.json({ limit: '17mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
@@ -79,12 +94,19 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(!options.publicDemo&&options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
   if(!options.publicDemo&&options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
-  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;folders.start();}
+  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
+  // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
+  if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);attachNotionViewRoutes(app,store,new NotionViews(tools.apps,new ProjectCache(store)));}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
+  // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.
+  if(execution.searchStatus&&execution.chooseSearch&&!options.publicDemo){
+    app.get('/api/connections/search',(_req,res)=>res.json(execution.searchStatus!()));
+    app.put('/api/connections/search',(req,res)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON search choice.',415);res.json(execution.chooseSearch!(req.body));});
+  }
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
@@ -182,6 +204,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (assistant) attachAssistantRoutes(app,assistant);
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
+  if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;

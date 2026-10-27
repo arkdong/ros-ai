@@ -88,16 +88,9 @@ export class NetworkGate {
   /** A proxy for one sandboxed Python process, on a port of its own. */
   async open(projectId: string | null, source: string): Promise<NetworkSession> {
     const session: Session = { id: randomUUID(), projectId, source, once: new Set(), denied: new Set(), waiting: 0 };
-    const sockets = new Set<Socket>();
-    const server: Server = createServer((req, res) => void this.forward(session, req, res));
-    server.on('connect', (req: IncomingMessage, client: Socket, head: Buffer) => void this.tunnel(session, req, client, head));
-    server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
-    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('The network proxy could not start.');
-    return { port: address.port, waiting: () => session.waiting > 0, close: () => {
-      server.close();
-      for (const socket of sockets) socket.destroy();
+    const proxy = await openProxy(host => this.target(session, host));
+    return { port: proxy.port, waiting: () => session.waiting > 0, close: () => {
+      proxy.close();
       for (const item of this.pending.values()) if (item.session === session.id) this.answer(item.id, 'deny');
     } };
   }
@@ -115,38 +108,58 @@ export class NetworkGate {
     if (blockedAddress(address)) return { reason: `${name} is on this computer, which sandboxed Python cannot reach` };
     return { address };
   }
+}
 
-  private async tunnel(session: Session, req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
-    client.on('error', () => client.destroy());
-    const match = /^(\[[^\]]+\]|[^:]+):(\d{1,5})$/u.exec(req.url ?? '');
-    const port = match ? Number(match[2]) : 0;
-    if (!match || port < 1 || port > 65535) { client.end('HTTP/1.1 400 Bad request\r\n\r\n'); return; }
-    const target = await this.target(session, match[1]);
-    if ('reason' in target) { client.end(`HTTP/1.1 403 ${target.reason.replace(/[\r\n]/gu, ' ')}\r\nContent-Length: 0\r\n\r\n`); return; }
-    const upstream = connect(port, target.address, () => {
-      client.write('HTTP/1.1 200 Connection established\r\n\r\n');
-      if (head.length) upstream.write(head);
-      upstream.pipe(client); client.pipe(upstream);
-    });
-    upstream.on('error', () => { if (!client.destroyed) client.end('HTTP/1.1 502 Bad gateway\r\n\r\n'); });
-    client.on('close', () => upstream.destroy());
-  }
+/** Where one connection may go: the address to connect to, looked up once so the name cannot point elsewhere between
+ * the check and the connection, or why not. */
+export type ProxyTarget = (host: string) => Promise<{ address: string } | { reason: string }>;
 
-  private async forward(session: Session, req: IncomingMessage, res: import('node:http').ServerResponse): Promise<void> {
-    let url: URL;
-    try { url = new URL(req.url ?? ''); } catch { res.writeHead(400).end(); return; }
-    if (url.protocol !== 'http:') { res.writeHead(400).end(); return; }
-    const target = await this.target(session, url.hostname);
-    if ('reason' in target) { res.writeHead(403, target.reason.replace(/[\r\n]/gu, ' ')).end(); return; }
-    const headers = { ...req.headers };
-    delete headers['proxy-connection']; delete headers['proxy-authorization'];
-    const upstream = httpRequest({ host: target.address, port: Number(url.port || 80), method: req.method, path: `${url.pathname}${url.search}`, headers: { ...headers, host: url.host } }, reply => {
-      res.writeHead(reply.statusCode ?? 502, reply.headers);
-      reply.pipe(res);
-    });
-    upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
-    req.pipe(upstream);
-  }
+/** An HTTP proxy on this computer for one program (a sandboxed Python process, an agent's browser), on a port of its own:
+ * every connection goes only where `target` says. */
+export async function openProxy(target: ProxyTarget): Promise<{ port: number; close: () => void }> {
+  const sockets = new Set<Socket>();
+  const server: Server = createServer((req, res) => void forward(target, req, res));
+  server.on('connect', (req: IncomingMessage, client: Socket, head: Buffer) => void tunnel(target, req, client, head));
+  server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('The network proxy could not start.');
+  return { port: address.port, close: () => {
+    server.close();
+    for (const socket of sockets) socket.destroy();
+  } };
+}
+
+async function tunnel(target: ProxyTarget, req: IncomingMessage, client: Socket, head: Buffer): Promise<void> {
+  client.on('error', () => client.destroy());
+  const match = /^(\[[^\]]+\]|[^:]+):(\d{1,5})$/u.exec(req.url ?? '');
+  const port = match ? Number(match[2]) : 0;
+  if (!match || port < 1 || port > 65535) { client.end('HTTP/1.1 400 Bad request\r\n\r\n'); return; }
+  const to = await target(match[1]);
+  if ('reason' in to) { client.end(`HTTP/1.1 403 ${to.reason.replace(/[\r\n]/gu, ' ')}\r\nContent-Length: 0\r\n\r\n`); return; }
+  const upstream = connect(port, to.address, () => {
+    client.write('HTTP/1.1 200 Connection established\r\n\r\n');
+    if (head.length) upstream.write(head);
+    upstream.pipe(client); client.pipe(upstream);
+  });
+  upstream.on('error', () => { if (!client.destroyed) client.end('HTTP/1.1 502 Bad gateway\r\n\r\n'); });
+  client.on('close', () => upstream.destroy());
+}
+
+async function forward(target: ProxyTarget, req: IncomingMessage, res: import('node:http').ServerResponse): Promise<void> {
+  let url: URL;
+  try { url = new URL(req.url ?? ''); } catch { res.writeHead(400).end(); return; }
+  if (url.protocol !== 'http:') { res.writeHead(400).end(); return; }
+  const to = await target(url.hostname);
+  if ('reason' in to) { res.writeHead(403, to.reason.replace(/[\r\n]/gu, ' ')).end(); return; }
+  const headers = { ...req.headers };
+  delete headers['proxy-connection']; delete headers['proxy-authorization'];
+  const upstream = httpRequest({ host: to.address, port: Number(url.port || 80), method: req.method, path: `${url.pathname}${url.search}`, headers: { ...headers, host: url.host } }, reply => {
+    res.writeHead(reply.statusCode ?? 502, reply.headers);
+    reply.pipe(res);
+  });
+  upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+  req.pipe(upstream);
 }
 
 const choiceSchema = z.object({ choice: z.enum(['once', 'always', 'deny']) }).strict();

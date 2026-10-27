@@ -1,0 +1,27 @@
+/* Move / Hand tool button at the start of the canvas toolbar, with its menu below. */
+.canvas-tool-switch { position: relative; display: flex; align-items: center; gap: 1px; padding-right: 4px; margin-right: 1px; border-right: 1px solid #ececec; }
+.direct-canvas .canvas-edit-controls .canvas-tool-switch .icon-button { width: 32px; }
+.canvas-tool-more { width: 18px; height: 34px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #6b6b6b; }
+.canvas-tool-more:hover, .canvas-tool-more.open { background: #f2f2f2; color: var(--ink); }
+.canvas-tool-menu { position: absolute; top: calc(100% + 8px); left: -4px; z-index: 20; min-width: 196px; padding: 5px; border: 1px solid var(--card-line, #e3e3e3); border-radius: 12px; background: #fff; box-shadow: var(--float-shadow, 0 6px 20px #00000014); }
+.canvas-tool-menu button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 9px 7px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-size: 14px; font-weight: 400; text-align: left; }
+.canvas-tool-menu button:hover, .canvas-tool-menu button:focus-visible { background: #f2f2f2; }
+.canvas-tool-check { width: 14px; display: grid; place-items: center; }
+.canvas-tool-label { flex: 1; }
+.canvas-tool-menu kbd { font: inherit; font-size: 13px; color: #8a8a8a; }
+
+/* Hand tool: a drag on empty canvas moves the canvas; blocks drag, open and connect as they do with Move. */
+.canvas-hand-tool .react-flow__pane, .canvas-hand-tool .react-flow__pane.draggable { cursor: grab; }
+.canvas-hand-tool .react-flow__pane.dragging { cursor: grabbing; }
+/* While Space is held, blocks and links ignore the pointer, so a drag anywhere moves the canvas. */
+.canvas-space-pan .react-flow__nodes, .canvas-space-pan .react-flow__nodes *,
+.canvas-space-pan .react-flow__edges, .canvas-space-pan .react-flow__edges *,
+.canvas-space-pan .react-flow__edgelabel-renderer, .canvas-space-pan .react-flow__edgelabel-renderer * { pointer-events: none !important; }
+/* Move tool: the pointer is an arrow on empty canvas, where a drag draws a selection box (the middle button moves the canvas). */
+.canvas-move-tool .react-flow__pane, .canvas-move-tool .react-flow__pane.draggable { cursor: default; }
+.canvas-move-tool .react-flow__pane.dragging { cursor: grabbing; }
+.direct-canvas .react-flow__selection { border: 1px solid #a3d52b; border-radius: 4px; background: #b7ef3214; }
+/* Blocks picked with the box drag together from any one of them, so React Flow's own frame around them is not drawn. */
+.direct-canvas .react-flow__nodesselection { display: none; }
+/* A block being dragged passes over the others (a Group keeps its order, so its blocks stay above it). */
+.direct-canvas .react-flow__node.dragging:not(.parent) { z-index: 1500 !important; }
