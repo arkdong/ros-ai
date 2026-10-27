@@ -20,7 +20,7 @@ import { ExperimentService } from '../../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../../src/server/agent-tools.js';
 import { AGENT_LOOP_INSTRUCTIONS } from '../../src/server/agent-prompt.js';
 import type { ModelAdapter } from '../../src/server/providers.js';
-import { Ledger, dataDir, appendJsonl, arg, path, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
+import { Ledger, dataDir, flag, appendJsonl, arg, path, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
 import { rollout, type Fixture, type Task, type Trajectory } from './env.js';
 import { FAMILIES } from './families.js';
 import { EVAL_DOMAINS, TRAIN_DOMAINS, makeProjects, makeTasks, seeded } from './generate.js';
@@ -79,7 +79,8 @@ const KNMI_TASKS: [Task['family'], string, string[]][] = [
 ];
 
 async function work(tasks: Task[], fixtures: Map<string, Fixture>, model: ModelAdapter, writer: ChatAdapter | undefined, out: string, concurrency: number, guide: boolean) {
-  const done = new Set(readJsonl<Trajectory>(out).map(item => item.taskId));
+  // With --retry-failed a task is done only once one of its runs passed.
+  const done = new Set(readJsonl<Trajectory>(out).filter(item => !flag('retry-failed') || check(item).pass).map(item => item.taskId));
   const todo = tasks.filter(task => !done.has(task.id));
   console.log(`${todo.length} tasks to run (${done.size} already done).`);
   await pool(todo, concurrency, async task => {
@@ -127,11 +128,15 @@ if (step === 'snapshot') {
   const ledger = new Ledger(Number(arg('max-usd', '20'))), limit = Number(arg('limit', '40'));
   const fixtures = new Map(readJsonl<Fixture>(files.fixtures()).map(item => [item.id, item]));
   // Families interleaved, so a short pilot already covers all of them.
-  const tasks = readJsonl<Task>(files.tasks()).sort((a, b) => createHash('md5').update(a.id).digest('hex').localeCompare(createHash('md5').update(b.id).digest('hex'))).slice(0, limit);
+  const families = arg('family')?.split(',');
+  const tasks = readJsonl<Task>(files.tasks()).filter(task => !families || families.includes(task.family)).sort((a, b) => createHash('md5').update(a.id).digest('hex').localeCompare(createHash('md5').update(b.id).digest('hex'))).slice(0, limit);
   await work(tasks, fixtures, teacher(ledger), teacher(ledger, 'world', false), files.trajectories(), Number(arg('concurrency', '3')), true);
   console.log(`Spent US$${ledger.spentUsd.toFixed(2)} of US$${ledger.capUsd} so far.`);
 } else if (step === 'report' || step === 'export') {
-  const trajectories = readJsonl<Trajectory & { verdict: ReturnType<typeof check> }>(files.trajectories()).map(item => ({ ...item, verdict: check(item) }));
+  // A retried task counts once: its passing run if it has one, else its latest.
+  const best = new Map<string, Trajectory & { verdict: ReturnType<typeof check> }>();
+  for (const item of readJsonl<Trajectory>(files.trajectories()).map(item => ({ ...item, verdict: check(item) }))) if (!best.get(item.taskId)?.verdict.pass) best.set(item.taskId, item);
+  const trajectories = [...best.values()];
   const families = Object.keys(FAMILIES).map(family => { const all = trajectories.filter(item => item.family === family), kept = all.filter(item => item.verdict.pass); return { family, run: all.length, kept: kept.length, reasons: [...new Set(all.flatMap(item => item.verdict.reasons.map(reason => reason.replace(/\d+/gu, 'N'))))].slice(0, 4) }; });
   console.table(families.map(({ reasons, ...row }) => ({ ...row, top: reasons[0] ?? '' })));
   const spend = readJsonl<{ usd: number; purpose: string }>(path('spend.jsonl'));
