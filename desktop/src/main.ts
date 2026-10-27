@@ -3,13 +3,16 @@
  * started here as a child process on Electron's own Node, so a person needs nothing installed:
  *   pick a free port from 4310 → start the server → wait for /api/health → open one window on it.
  * Outside links open in the default browser; closing the window stops the server. Logs live in the data folder.
+ * Updates: the server finds, downloads and checks a new ros.ai.app (src/server/updates.ts); this side swaps it in
+ * after quitting and opens it again.
  */
 import { app, BrowserWindow, dialog, Menu, nativeImage, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import type { UpdateInstallMessage } from '../../src/shared/updates';
 
 // dist/desktop/main.cjs → the repository root (a checkout) or the app folder inside ros.ai.app.
 const root = resolve(__dirname, '..', '..');
@@ -30,6 +33,9 @@ let server: ChildProcess | undefined;
 let serverExited = false;
 let url = '';
 const logDir = join(desktopDir, 'logs'), logFile = join(logDir, 'server.log');
+// A packaged Mac app updates itself: the server downloads into updatesDir, this side replaces the bundle.
+const bundle = mac && app.isPackaged ? resolve(app.getPath('exe'), '..', '..', '..') : undefined;
+const updatesDir = join(desktopDir, 'updates');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
@@ -85,8 +91,10 @@ async function startServer(): Promise<string> {
   if (process.env.ROS_DATA_DIR === undefined && dataDir !== appData) env.ROS_DATA_DIR = dataDir;
   const path = shellPath();
   if (path) env.PATH = path;
-  server = spawn(process.execPath, [entry], { cwd: root, env, stdio: ['ignore', log, log] });
+  if (bundle?.endsWith('.app')) { mkdirSync(updatesDir, { recursive: true }); env.ROS_APP_BUNDLE = bundle; env.ROS_APP_UPDATES = updatesDir; }
+  server = spawn(process.execPath, [entry], { cwd: root, env, stdio: ['ignore', log, log, 'ipc'] });
   server.on('exit', () => { serverExited = true; });
+  server.on('message', installUpdate);
   const health = `http://127.0.0.1:${port}/api/health`;
   for (const deadline = Date.now() + 120_000; ; await new Promise(done => setTimeout(done, 250))) {
     if (serverExited) throw new Error(`ros.ai stopped before it was ready.\n\n${tail(logFile)}`);
@@ -103,6 +111,34 @@ function stopServer(): Promise<void> {
     server.once('exit', () => { clearTimeout(timer); done(); });
     server.kill('SIGTERM');
   });
+}
+
+// Runs after ros.ai has quit (and so stopped its server): replace the bundle, keep the old one if that fails, open
+// whichever is there. A failure leaves a note the server shows on the next start.
+const SWAP = `pid=$1 app=$2 next=$3 failed=$4
+old="$(dirname "$app")/.ros.ai-replaced.app"
+i=0
+while kill -0 "$pid" 2>/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -gt 300 ]; then echo "ros.ai did not quit in time, so it was not updated. Try again." > "$failed"; exit 1; fi
+  sleep 0.2
+done
+rm -rf "$old"
+if mv "$app" "$old"; then
+  if mv "$next" "$app"; then rm -rf "$old"; else mv "$old" "$app"; echo "ros.ai could not replace itself in $(dirname "$app"). Download the new version from GitHub instead." > "$failed"; fi
+else
+  echo "ros.ai could not replace itself in $(dirname "$app"). Download the new version from GitHub instead." > "$failed"
+fi
+open "$app"`;
+/** The server says a checked download is ready and the person chose Restart to update. */
+function installUpdate(message: unknown) {
+  const { type, version: next, app: update } = (message ?? {}) as Partial<UpdateInstallMessage>;
+  if (type !== 'ros-update-install' || !bundle || typeof next !== 'string' || !/^\d+\.\d+\.\d+$/u.test(next) || typeof update !== 'string') return;
+  // Only an app the server unpacked into its own updates folder (<updates>/<version>/ros.ai.app).
+  const target = resolve(update);
+  if (dirname(dirname(target)) !== updatesDir || !target.endsWith('.app')) return;
+  spawn('/bin/sh', ['-c', SWAP, 'ros-ai-update', String(process.pid), bundle, target, join(updatesDir, 'failed')], { detached: true, stdio: 'ignore' }).unref();
+  app.quit();
 }
 
 const local = (target: string) => { try { const { hostname } = new URL(target); return hostname === '127.0.0.1' || hostname === 'localhost'; } catch { return false; } };
@@ -135,8 +171,16 @@ function openWindow() {
   void window.loadURL(url);
 }
 
+/** Settings › General shows the Updates section and looks again. */
+function checkForUpdates() {
+  if (!window) return;
+  window.show(); window.focus();
+  void window.webContents.executeJavaScript(`window.dispatchEvent(new Event('ros-check-updates'))`);
+}
+
 function menu() {
   const help: MenuItemConstructorOptions[] = [
+    ...(mac ? [] : [{ label: 'Check for updates', click: checkForUpdates }, { type: 'separator' as const }]),
     { label: 'Open in browser', click: () => void shell.openExternal(url) },
     { label: 'Show data folder', click: () => void shell.openPath(dataDir) },
     { label: 'Show logs', click: () => shell.showItemInFolder(logFile) },
@@ -145,7 +189,10 @@ function menu() {
     { label: 'Source on GitHub', click: () => void shell.openExternal('https://github.com/arkdong/ros-ai') },
   ];
   const template: MenuItemConstructorOptions[] = [
-    ...(mac ? [{ role: 'appMenu' as const }] : []),
+    ...(mac ? [{ label: app.name, submenu: [
+      { role: 'about' }, { label: 'Check for Updates…', click: checkForUpdates }, { type: 'separator' }, { role: 'services' }, { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' },
+    ] as MenuItemConstructorOptions[] }] : []),
     { role: 'fileMenu' },
     { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },

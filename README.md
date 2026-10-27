@@ -29,6 +29,15 @@ The service binds to loopback only. ros.ai keeps its own records in the computer
 
 **Code and Notebook blocks** need nothing else on macOS: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs code in the macOS sandbox, the way Codex and Claude Code run commands. The only network is a proxy on this computer that asks before each new website (Allow once, Always for this project, Deny; PyPI is always allowed, so `%pip install` works in notebooks); Settings → General → Python network can switch to Full network. On Linux and Windows they use Docker: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
 
+## Updates
+
+ros.ai looks for a newer release on GitHub when it starts and every six hours. Once one is ready, an **Update** button appears at the top right, as in Codex.
+
+- **Mac app:** the new version downloads in the background and is checked against GitHub's checksum; Update restarts into it. This works from Applications; a copy opened from the disk image or Downloads links to the download instead.
+- **From source:** on `main` with nothing uncommitted, Update pulls the release, runs `npm ci` only when dependencies changed, rebuilds the page and restarts in the same terminal. On another branch or with local edits it shows the commands instead.
+
+The check is one request to GitHub's public release list, with nothing about you or your computer. Settings › General › Updates turns the automatic check off; `ROS_UPDATE_URL=off` stops every check.
+
 ## Keys in one file
 
 Keys can be pasted on the Model and Plugins pages and are saved privately in the data folder. To avoid typing them into every fresh data folder, put them once in `~/.config/ros.ai/keys.env`, readable only by you:

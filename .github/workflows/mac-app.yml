@@ -1,6 +1,8 @@
 # Builds ros.ai.app for Apple silicon and Intel Macs, each on a Mac of that architecture so the native
 # packages (the Claude Code binary inside the Agent SDK, PDF rendering) match. Start it by hand
-# (Actions → Mac app → Run workflow) or push a v* tag, which also attaches the DMGs to that release.
+# (Actions → Mac app → Run workflow) or push a v* tag. A tag publishes a GitHub release once both Macs'
+# DMGs and zips are attached: installed apps update from the zips (src/server/updates.ts), so a release
+# never shows up half-built, and its tag must match the version in package.json.
 # With the five Apple secrets below the app is signed and notarized; without them it is unsigned and
 # macOS asks for "Open Anyway" once.
 name: Mac app
@@ -19,9 +21,18 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.runner }}
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+      # An app that calls itself older than its release would offer the same update forever.
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in package.json. Set the version first (npm version <x.y.z> --no-git-tag-version), merge it, then tag."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -52,10 +63,27 @@ jobs:
             desktop/dist/*.dmg
             desktop/dist/*.zip
           if-no-files-found: error
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
         with:
+          pattern: ros.ai-mac-*
+          merge-multiple: true
+          path: dist
+      # A draft first, published only once every file is attached.
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
           files: |
-            desktop/dist/*.dmg
-            desktop/dist/*.zip
+            dist/*.dmg
+            dist/*.zip
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
