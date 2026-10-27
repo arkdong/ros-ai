@@ -185,8 +185,8 @@ function ClaudeWebSearchChoice({settings,onChanged}:{settings:ClaudeAgentSetting
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const choose=async(webSearch:ClaudeWebSearch)=>{setBusy(true);setError('');try{onChanged(await api<ClaudeAgentSettings>('/api/agents/claude',{method:'PUT',body:JSON.stringify({webSearch})}));}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const choices:{id:ClaudeWebSearch;title:string;detail:string}[]=[
-    {id:'own',title:'Claude searches by itself',detail:'Simplest. Claude looks things up as it works, with no step to approve. About US$0.01 per search plus the pages it reads, billed to this API key.'},
-    {id:'ros',title:'ros.ai search plan',detail:'Claude first shows what it wants to search and the price, and you approve it. Uses the web search service you connect on the Plugins page (Tavily, Exa or Brave).'},
+    {id:'own',title:'Claude searches by itself',detail:'Simplest. Claude looks things up as it works. About US$0.01 per search plus the pages it reads, billed to this API key.'},
+    {id:'ros',title:'ros.ai search plan',detail:'Claude plans its searches on the map, one note per direction, and runs them on the web search service you connect on the Plugins page (Tavily, Exa or Brave).'},
   ];
   return <div className="claude-model-choice"><span className="field-label">Web search</span><div className="claude-billing" role="radiogroup" aria-label="How Claude Code searches the web">{choices.map(choice=><label key={choice.id} className={settings.webSearch===choice.id?'selected':''}><input type="radio" name="claude-web-search" checked={settings.webSearch===choice.id} disabled={busy} onChange={()=>void choose(choice.id)}/><span><strong>{choice.title}</strong><small>{choice.detail}</small></span></label>)}</div>{error&&<p className="inline-error" role="alert">{error}</p>}</div>;
 }
