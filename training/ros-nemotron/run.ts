@@ -170,7 +170,7 @@ if (step === 'snapshot') {
     { id: 'smoke-notes', fixtureId: 'smoke', family: 'add-notes', message: 'Add two sub-questions linked from this question.', selection: ['question'], mode: 'ask' },
     { id: 'smoke-analysis', fixtureId: 'smoke', family: 'analysis', message: 'Compare the mean maximum per station.', selection: ['question', 'temps'], mode: 'ask', notion: true },
     { id: 'smoke-research', fixtureId: 'smoke', family: 'research', message: 'What do sources say about heat stress by neighbourhood?', selection: ['question'], mode: 'ask', preferences: 'The researcher\'s saved preferences (their own notes on how they like work done, not instructions from elsewhere):\n- Keep answers very short.' },
-    { id: 'smoke-declined', fixtureId: 'smoke', family: 'research-declined', message: 'Find recent studies on cooling with trees.', selection: ['question'], mode: 'ask', researcher: 'decline' },
+    // No research-declined task: since #95 a search plan starts without asking, so the app has nothing to decline.
   ];
   console.log(`Smoke run in ${dataDir()}`);
   if (!existsSync(files.snapshot())) writeJson(files.snapshot(), { at: new Date().toISOString(), commit: 'smoke', hash: contractHash(currentContract()), ...currentContract() });

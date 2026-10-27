@@ -23,6 +23,8 @@ Held out for evaluation: ten projects in domains the training data never sees, p
 
 `run.ts snapshot` saves the system prompt (`src/server/agent-prompt.ts`) and the tool schemas (`src/server/agent-tools.ts`) with their hash. Every later step refuses to run if the app's prompt or tools changed since, so all samples come from one contract. The snapshot is taken on **24 October**. After that, changes to the prompt or tools must keep the old names and arguments working, or wait for the next training round.
 
+By 27 October three tool descriptions had changed and no arguments (hash `105560b47f79` became `1e29538128f6`). A search plan now starts without asking (#95), so a `research-declined` turn no longer happens in the app, and later changes in one turn may build on changes that still wait (#96). The model learns from the 24 October contract and should read the new wording fine. Its evaluation runs on the snapshot commit, and `smoke` runs against the app as it is now.
+
 ## Steps
 
 From the repository root, with Node 24 and `NEBIUS_API_KEY` set (on Adam's Mac: `set -a; source ~/.config/ros.ai/keys.env; set +a`). Data goes to `training/ros-nemotron/data/` (not in git). Every paid step has a hard `--max-usd` cap kept in `data/spend.jsonl`; a request that would pass it is never sent.
