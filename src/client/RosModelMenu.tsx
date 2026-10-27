@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Check, ChevronDown, Hand, LoaderCircle, Plug, ShieldCheck, TriangleAlert, Zap } from 'lucide-react';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
-import type { AssistantBackend, AssistantState } from '../shared/assistant';
+import { IN_APP_AGENTS, inAppAgent, type AssistantBackend, type AssistantState, type InAppAgent } from '../shared/assistant';
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
 import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
+import type { ClaudeAgentSettings } from '../shared/claude-agent';
 import { acpLogo } from './AcpAgents';
 import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
@@ -42,15 +43,18 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
   const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
+  const [planAllowed, setPlanAllowed] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
-  const backend = state?.backend;
-  const agentLabel = backend === 'claude' ? 'Claude Code' : backend === 'codex' ? 'Codex' : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
+  const backend = state?.backend, inApp = inAppAgent(backend);
+  const agentLabel = inApp ? inApp.label : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
   // Gemini CLI, Goose and OpenCode are offered once they are installed on this computer.
   useEffect(() => {
     if (!menu) return;
     let active = true;
     void api<{ agents: AcpAgentStatus[] }>('/api/agents/acp').then(value => { if (active) setAcp(value.agents); }).catch(() => undefined);
+    // A Claude subscription can only be used in the local app.
+    void api<ClaudeAgentSettings>('/api/agents/claude').then(value => { if (active) setPlanAllowed(value.planAllowed); }).catch(() => undefined);
     return () => { active = false; };
   }, [menu]);
   const acpShown = acp.filter(item => item.installed || item.id === backend);
@@ -68,6 +72,18 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
     try { await change(); await onRefresh(); setMenu(false); } catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); } finally { setSwitching(false); }
   };
   const setBackend = (next: AssistantBackend) => post(`/api/projects/${detail.project.id}/assistant/backend`, { backend: next });
+  // Codex is checked the way the project now runs it, so the bar shows at once whether it can start.
+  const pickAgent = (next: InAppAgent) => switchTo(async () => {
+    await setBackend(next);
+    if (IN_APP_AGENTS[next].agent === 'codex') await post(`/api/projects/${detail.project.id}/agents/check${IN_APP_AGENTS[next].billing === 'api-key' ? '?billing=api-key' : ''}`);
+  });
+  // Claude Code and Codex each run here two ways, as two agents with their own names.
+  const agents: { id: InAppAgent; caption: string }[] = [
+    ...(planAllowed ? [{ id: 'claude-plan' as const, caption: 'On your Claude subscription' }] : []),
+    { id: 'claude', caption: 'On your Claude API key' },
+    { id: 'codex', caption: 'On your ChatGPT subscription' },
+    { id: 'codex-key', caption: 'On your OpenAI API key' },
+  ];
   // Picking a model while an outside agent runs Ros hands Ros back to that model.
   const pickModel = (choice: ModelChoice) => switchTo(async () => { await models.choose(choice); if (agentLabel) await setBackend('provider'); });
   const usingModel = (choice: ModelChoice) => !agentLabel && models.current?.provider === choice.provider && models.current?.model === choice.model;
@@ -79,7 +95,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const link = (action: () => void) => () => { setMenu(false); action(); };
   return <div className="ros-model">
     <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
-      {backend === 'claude' ? <BrandLogo id="claude" size={14}/> : backend === 'codex' ? <BrandLogo id="codex" size={14}/> : isAcpAgent(backend) ? <BrandLogo id={acpLogo[backend]} size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
+      {inApp ? <BrandLogo id={inApp.agent} size={14}/> : isAcpAgent(backend) ? <BrandLogo id={acpLogo[backend]} size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
       <span>{label}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
@@ -90,8 +106,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
       {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <div className="ros-menu-group">
         <p>Agents</p>
-        <button type="button" role="menuitemradio" aria-checked={backend === 'claude'} onClick={() => void switchTo(() => setBackend('claude'))}><BrandLogo id="claude" size={16}/><span className="ros-menu-label">Claude Code<small>Reads the project folder</small></span>{backend === 'claude' && <Check size={14}/>}</button>
-        <button type="button" role="menuitemradio" aria-checked={backend === 'codex'} onClick={() => void switchTo(() => setBackend('codex'))}><BrandLogo id="codex" size={16}/><span className="ros-menu-label">Codex<small>This computer’s sign-in</small></span>{backend === 'codex' && <Check size={14}/>}</button>
+        {agents.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void pickAgent(item.id)}><BrandLogo id={IN_APP_AGENTS[item.id].agent} size={16}/><span className="ros-menu-label">{IN_APP_AGENTS[item.id].label}<small>{item.caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
         {acpShown.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void switchTo(() => setBackend(item.id))}><BrandLogo id={acpLogo[item.id]} size={16}/><span className="ros-menu-label">{item.label}<small>{item.blocker ? 'Cannot start · see Agents' : item.checked && !item.checked.ok ? 'Check failed · see Agents' : ACP_AGENTS[item.id].caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
       </div>
       <hr/>

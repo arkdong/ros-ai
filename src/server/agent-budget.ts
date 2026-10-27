@@ -156,7 +156,8 @@ export class AgentBudget {
     const status = this.allowance(projectId);
     return { ready: status.ready, reason: status.reason, grant: status.grantId ? { id: status.grantId, remainingTurns: status.remaining.turns, remainingSeconds: status.remaining.runtimeSeconds, remainingToolCalls: status.remaining.toolCalls, expiresAt: status.expiresAt } : null };
   }
-  reserve(scope: AgentScope, requestId: string) {
+  /** spendUsd: what a turn on a paid API key may cost at most, tallied with the project's use. */
+  reserve(scope: AgentScope, requestId: string, spendUsd = 0) {
     return this.store.atomic(() => {
       const status = this.allowance(scope.projectId), app = this.app(scope.projectId), usage = this.usage(scope.projectId);
       if (!status.ready || !status.limits || !status.grantId) throw new StoreError(status.reason, 503);
@@ -164,7 +165,7 @@ export class AgentBudget {
       if (usage.reservations.some(value => value.requestId === requestId)) throw new StoreError('This Codex attempt was already admitted. Continue with a new recorded attempt.', 409);
       const limits = status.limits, at = now();
       // A shared modelCalls unit represents an agent turn, not hidden API calls.
-      this.authority.reserve(scope.projectId, { kind: 'model', nodeId: scope.nodeIds[0] ?? 'project', fingerprint: `codex:${requestId}`, runtimeSeconds: limits.perTurnSeconds });
+      this.authority.reserve(scope.projectId, { kind: 'model', nodeId: scope.nodeIds[0] ?? 'project', fingerprint: `codex:${requestId}`, runtimeSeconds: limits.perTurnSeconds, spendUsd });
       const reservation = { requestId, projectId: scope.projectId, at, seconds: limits.perTurnSeconds, toolCalls: limits.perTurnToolCalls };
       this.store.saveRecord('codex-project-usage', scope.projectId, scope.projectId, { ...usage, turns: usage.turns + 1, runtimeSeconds: usage.runtimeSeconds + limits.perTurnSeconds, toolCalls: usage.toolCalls + limits.perTurnToolCalls, reservations: [...usage.reservations, reservation] });
       if (!app && status.source === 'environment') {
