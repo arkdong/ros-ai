@@ -551,12 +551,14 @@ export class Store {
 
   /** A model's suggested moves are nudged to a free spot. `arranged` moves were laid out by ros.ai itself,
    * such as an agent's own tree, so they keep their positions and the preview matches the result. */
-  createProposal(projectId: string, baseRevision: number, summary: string, supplied: Mutation[], arranged = false): Proposal {
+  createProposal(projectId: string, baseRevision: number, summary: string, supplied: Mutation[], arranged = false, links: { after?: string[]; batch?: string } = {}): Proposal {
     return this.transaction(() => {
       const project = this.getProject(projectId);
       if (project.revision !== baseRevision) throw new StoreError('The canvas changed while this proposal was generated. Request an updated preview.', 409);
-      const { operations } = this.applyOperations(project, supplied, true, arranged);
-      const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now() };
+      // A proposal that builds on others is checked against the canvas as it would be once they are accepted.
+      const after = [...new Set(links.after ?? [])].map(id => this.getProposal(projectId, id));
+      const { operations } = this.applyOperations(this.withProposals(project, after), supplied, true, arranged);
+      const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now(), ...(after.length ? { after: after.map(p => p.id) } : {}), ...(links.batch ? { batch: links.batch } : {}) };
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
       return proposal;
     });
@@ -578,20 +580,46 @@ export class Store {
   acceptProposal(projectId: string, proposalId: string): Project {
     return this.transaction(() => {
       const proposal = this.getProposal(projectId, proposalId);
+      for (const id of proposal.after ?? []) {
+        const before = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', id, 'Proposal');
+        if (before.status !== 'accepted') throw new StoreError(`This change builds on “${before.summary.split('\n')[0]}”, which ${before.status === 'dismissed' ? 'was dismissed' : 'has to be accepted first'}.`, 409);
+      }
       const project = this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
       proposal.status = 'accepted';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      // The rest of its batch still applies to the new canvas, so it stays acceptable; one that no longer does stays stale.
+      if (proposal.batch) for (const other of this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', projectId)) {
+        if (other.status !== 'pending' || other.batch !== proposal.batch || other.baseRevision !== proposal.baseRevision) continue;
+        try {
+          const after = (other.after ?? []).flatMap(id => { const before = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', id, 'Proposal'); return before.status === 'pending' ? [before] : []; });
+          this.applyOperations(this.withProposals(project, after), other.operations, true, true);
+          other.baseRevision = project.revision;
+          this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id);
+        } catch (error) { if (!(error instanceof StoreError) && !(error instanceof z.ZodError)) throw error; }
+      }
       return project;
     });
   }
 
+  /** Dismissing a proposal also dismisses the pending ones that build on it. */
   dismissProposal(projectId: string, proposalId: string): Proposal {
     return this.transaction(() => {
       const proposal = this.getProposal(projectId, proposalId);
+      const gone = new Set([proposalId]);
+      const all = this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', projectId);
+      for (let grew = true; grew;) { grew = false; for (const other of all) if (other.status === 'pending' && !gone.has(other.id) && other.after?.some(id => gone.has(id))) { gone.add(other.id); grew = true; } }
+      for (const other of all) if (gone.has(other.id) && other.id !== proposalId) { other.status = 'dismissed'; this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id); }
       proposal.status = 'dismissed';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
       return proposal;
     });
+  }
+
+  /** The project as it would be with these pending proposals accepted, for checking one that builds on them. */
+  private withProposals(project: Project, proposals: Proposal[]): Project {
+    let canvas = project.canvas;
+    for (const p of proposals) canvas = this.applyOperations({ ...project, canvas }, p.operations, true, true).canvas;
+    return { ...project, canvas };
   }
 
   private requireNode(projectId: string, nodeId: string, includeRemoved = false): void {

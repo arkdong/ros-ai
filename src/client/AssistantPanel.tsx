@@ -7,6 +7,7 @@ import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
 import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
+import { kindName } from '../shared/vocabulary';
 import { agentDirections } from '../shared/agent-work';
 import { presentAssistantResponse, type AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { readAssistantClarifications, type AssistantClarificationQuestion } from '../shared/assistant-clarifications';
@@ -34,6 +35,8 @@ type Props = {
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
   onDecision: (actionId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
   onProposal: (proposalId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
+  /** Several proposals at once, in order: a turn's Accept all or Dismiss all. */
+  onProposals: (proposalIds: string[], decision: 'accept' | 'dismiss') => Promise<unknown>;
   onInspectAction: (action: AssistantAction) => void;
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
@@ -43,7 +46,7 @@ type Props = {
   onOpenPlugin: (id: PluginId) => void;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onProposals, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin }: Props) {
   const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, ''));
   const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
@@ -126,7 +129,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
       {state && !turns.length && !messages.length && <div className="assistant-welcome"><div className="assistant-welcome-signal" aria-hidden="true"><ResearchRing/></div><h3>What are you exploring?</h3><p>Start with a question or a half-formed idea. Keep the conversation here while your notes and evidence take shape.</p><div className="assistant-starters"><button onClick={() => usePrompt('Help me frame the question I want to explore: ')}>Shape a research question <ArrowRight size={14}/></button>{detail.project.canvas.nodes.length > 0 && <button onClick={() => usePrompt('What do we know so far, and what is still missing?')}>Make sense of this project <ArrowRight size={14}/></button>}</div></div>}
       {messages.length > 0 && <details className="assistant-previous" open={previousOpen} onToggle={event=>setPreviousOpen(event.currentTarget.open)}><summary><HistoryLabel/> Earlier project conversation <span>{messages.length}</span></summary>{messages.map(item => <article key={item.id} data-message-id={item.id} className={`assistant-message ${item.role}`}><div className="message-meta"><span>{item.role === 'user' ? 'You' : item.role === 'system' ? 'Workspace update' : 'ros.ai'}</span><time>{time(item.createdAt)}</time></div>{item.role === 'assistant' ? <AssistantResponse content={item.content} detail={detail} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(`message:${item.id}`,questions)}/> : <RichText text={item.content}/>}</article>)}</details>}
-      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)} plugins={{latest:turn.id===lastTurn?.id,running,backend:state?.backend,onSend:text=>onSend(text),onRefresh,onOpenPlugin}}/>)}
+      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onProposals={onProposals} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)} plugins={{latest:turn.id===lastTurn?.id,running,backend:state?.backend,onSend:text=>onSend(text),onRefresh,onOpenPlugin}}/>)}
       {pending.map(proposal => <ProposalReview key={proposal.id} proposal={proposal} title={proposal.summary} detail={detail} onProposal={onProposal} onOpen={() => onReference({kind:'proposal',id:proposal.id,label:proposal.summary})}/>)}
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
@@ -176,7 +179,7 @@ function ReferenceLinks({ references, onReference }: { references: AssistantRefe
   return <div className="assistant-references">{references.map((reference, index) => <button key={`${reference.kind}:${reference.id}:${index}`} onClick={() => onReference(reference)} title={`Open ${reference.label}`}>{reference.kind === 'artifact' ? <FileText size={12}/> : reference.kind === 'proposal' ? <GitBranch size={12}/> : <BookOpen size={12}/>}<span>{textPreview(reference.label,48).text}</span><ArrowRight size={11}/></button>)}</div>;
 }
 
-function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectAction, onAnswer, person, onMemory, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
+function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, onInspectAction, onAnswer, person, onMemory, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
   const focus = detail.project.canvas.nodes.find(node => node.id === turn.focus.nodeId);
   // The person's own Claude Code or Codex, connected over MCP: there is no message from them here.
   const outside = turn.source === 'outside-agent';
@@ -187,6 +190,9 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectActi
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.
   const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && (operation.node.blockType === 'search' || operation.node.label === 'result')));
+  // A turn with two or more canvas changes shows them on one card, waiting or decided.
+  const changes = turn.actions.filter(action => action.proposalId && !action.reportProposalId && !searchPlan(action) && detail.proposals.some(item => item.id === action.proposalId));
+  const grouped = changes.length > 1 ? new Set(changes) : new Set<AssistantAction>();
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
@@ -198,7 +204,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectActi
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
-      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
+      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => grouped.has(action) ? action === changes[0] ? <TurnReview key="turn-review" actions={changes} detail={detail} onProposal={onProposal} onProposals={onProposals} onReference={onReference}/> : null : <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
       {turn.suggested && turn.status !== 'running' && <PluginSuggestionCard turn={turn} projectId={detail.project.id} {...plugins}/>}
       {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'Ros'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
@@ -267,5 +273,50 @@ function ProposalReview({ proposal, title, detail, onProposal, onOpen }: { propo
     {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
     {stale && <p className="proposal-review-stale">The canvas changed since. Ask Ros to update this.</p>}
     <div className="proposal-review-actions"><button className="primary small" disabled={busy || stale} onClick={() => void decide('accept')}><Check size={13}/> Accept</button><button className="text-button small" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button><button className="text-button small proposal-review-open" onClick={onOpen}>Show on canvas <ArrowRight size={12}/></button></div>
+  </section>;
+}
+
+/** What a waiting change adds, in a word: the block's kind, or how many blocks. */
+function changeKind(proposal: Proposal) {
+  const added = proposal.operations.flatMap(operation => operation.type === 'addNode' ? [operation.node] : []);
+  return added.length === 1 ? kindName(added[0]) : added.length ? `${added.length} blocks` : 'Edits';
+}
+/** Rows a turn's card shows before "N more". */
+const TURN_ROWS = 6;
+
+/** A turn's canvas changes on one card: Accept all, or each row on its own. A row that builds on another (a CV inside a
+ * group from the layout row) waits for it, and is dismissed with it. Decided rows say how they were decided. */
+function TurnReview({ actions, detail, onProposal, onProposals, onReference }: { actions: AssistantAction[]; detail: ProjectDetail; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onReference: Props['onReference'] }) {
+  const [busy, setBusy] = useState(false);
+  const [opened, setOpened] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const rows = actions.flatMap(action => { const proposal = detail.proposals.find(item => item.id === action.proposalId); return proposal ? [{ action, proposal }] : []; });
+  if (!rows.length) return null;
+  const pending = new Map(rows.filter(row => row.proposal.status === 'pending').map(row => [row.proposal.id, row]));
+  const accepted = rows.filter(row => row.proposal.status === 'accepted').length;
+  const plural = (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`;
+  const heading = pending.size ? pending.size === rows.length ? `${plural(rows.length)} to review` : `${pending.size} of ${plural(rows.length)} to review` : accepted === rows.length ? `${plural(rows.length)} accepted` : `${accepted} of ${plural(rows.length)} accepted`;
+  const stale = (proposal: Proposal) => proposal.baseRevision !== detail.project.revision;
+  const waitsOn = (proposal: Proposal) => (proposal.after ?? []).map(id => pending.get(id)).find(Boolean);
+  const run = async (work: () => Promise<unknown>) => { setBusy(true); try { await work(); } finally { setBusy(false); } };
+  const ids = [...pending.keys()], shown = showAll || rows.length <= TURN_ROWS ? rows : rows.slice(0, TURN_ROWS - 1);
+  return <section className="proposal-review turn-review" aria-label="Proposed canvas changes">
+    <header><GitBranch size={14} aria-hidden="true"/><strong>{heading}</strong></header>
+    <ul className="turn-review-rows">{shown.map(({ action, proposal }) => {
+      const before = waitsOn(proposal), open = opened === proposal.id, structure = open ? proposalStructurePreview(proposal, detail.project.canvas.nodes) : null;
+      const title = action.title.split('\n')[0];
+      return <li key={proposal.id} className={open ? 'open' : undefined}>
+        <div className="turn-review-row">
+          <button type="button" className="turn-review-toggle" aria-expanded={open} onClick={() => setOpened(open ? null : proposal.id)}><ChevronRight size={12} aria-hidden="true"/><span title={title}>{title}</span></button>
+          <span className="turn-review-kind">{changeKind(proposal)}</span>
+          {proposal.status !== 'pending' ? <span className="turn-review-status">{proposal.status === 'accepted' ? 'Accepted' : 'Dismissed'}</span> : <><button type="button" className="turn-review-decide" disabled={busy || stale(proposal) || Boolean(before)} title={before ? `Accept “${before.action.title.split('\n')[0]}” first` : stale(proposal) ? 'The canvas changed since. Ask Ros to update this.' : 'Accept'} aria-label={`Accept ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'accept'))}><Check size={13}/></button>
+          <button type="button" className="turn-review-decide" disabled={busy} title="Dismiss" aria-label={`Dismiss ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'dismiss'))}><X size={13}/></button></>}
+        </div>
+        {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
+      </li>;
+    })}</ul>
+    {shown.length < rows.length && <button type="button" className="text-button small turn-review-more" onClick={() => setShowAll(true)}>{rows.length - shown.length} more</button>}
+    {rows.some(row => row.proposal.after?.some(id => pending.has(id))) && <p className="proposal-review-stale">Dismissing a change also drops the changes that go inside it.</p>}
+    <div className="proposal-review-actions">{pending.size > 0 && <><button className="primary small" disabled={busy || [...pending.values()].every(row => stale(row.proposal))} onClick={() => void run(() => onProposals(ids, 'accept'))}><Check size={13}/> Accept all</button><button className="text-button small" disabled={busy} onClick={() => void run(() => onProposals(ids, 'dismiss'))}>Dismiss all</button></>}<button className="text-button small proposal-review-open" onClick={() => { const first = [...pending.values()][0]; const block = rows.flatMap(row => row.proposal.status === 'accepted' ? row.proposal.operations : []).find(operation => operation.type === 'addNode'); if (first) onReference({ kind: 'proposal', id: first.proposal.id, label: first.action.title }); else if (block?.type === 'addNode') onReference({ kind: 'node', id: block.node.id, label: block.node.title }); }}>Show on canvas <ArrowRight size={12}/></button></div>
   </section>;
 }

@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { ArrowRight, CircleAlert, FolderTree, GitBranch, Text as TextIcon } from 'lucide-react';
 import type { AssistantStructurePreview as StructurePreview } from '../shared/assistant-presentation';
 import { layoutOnly } from '../shared/canvas-position';
 import type { CanvasNode, Proposal } from '../shared/types';
+import { kindName } from '../shared/vocabulary';
 import { RichText } from './Content';
 import './assistant-structure-preview.css';
 
@@ -13,7 +15,9 @@ type Props = {
   compact?: boolean;
 };
 type PreviewNote = StructurePreview['notes'][number];
-const kindLabel = (kind: PreviewNote['kind']) => kind === 'group' ? 'Group' : 'Text';
+const kindLabel = (note: PreviewNote) => kindName({ kind: note.kind, blockType: note.blockType as CanvasNode['blockType'] });
+/** Rows a long review shows before "Show all". */
+const COMPACT_ROWS = 12;
 
 /** Read-only projection. A saved proposal supplies authority separately from
  * this presentation; recovering model JSON never creates an actionable draft. */
@@ -40,12 +44,13 @@ export function proposalStructurePreview(proposal: Proposal, existingNodes: read
   for (const id of changedIds) {
     const node = nodes.get(id);
     if (!node) continue;
-    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', parentId: node.parentId ?? null, ...(updates.has(id) ? { rationale: updates.get(id) } : {}) });
+    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', ...(node.blockType ? { blockType: node.blockType } : {}), parentId: node.parentId ?? null, ...(updates.has(id) ? { rationale: updates.get(id) } : {}) });
   }
   return notes.length || relationships.length ? { summary: proposal.summary, validated: false, notes, relationships } : null;
 }
 
 export function AssistantStructurePreview({ structure, existingNodes, validation = 'draft', compact = false }: Props) {
+  const [showAll, setShowAll] = useState(false);
   const notes = [...new Map(structure.notes.map(note => [note.id, note])).values()];
   const byId = new Map(notes.map(note => [note.id, note]));
   const existingById = new Map(existingNodes.map(node => [node.id, node]));
@@ -88,21 +93,23 @@ export function AssistantStructurePreview({ structure, existingNodes, validation
     warnings.push('A circular parent relationship needs review. These cards are shown without implying valid containment.');
     visit(note, 0);
   }
+  const shown = compact && !showAll && rows.length > COMPACT_ROWS + 2 ? rows.slice(0, COMPACT_ROWS) : rows;
   const titleFor = (id: string) => byId.get(id)?.title ?? existingById.get(id)?.title ?? 'Unresolved card';
   return <section className={`assistant-structure-preview ${validation}${compact ? ' compact' : ''}`} aria-label={validation === 'draft' ? 'Draft card structure, not applied' : 'Pending canvas proposal outline'}>
     {!compact && <header><GitBranch size={14} aria-hidden="true"/><strong>{validation === 'draft' ? 'Proposed card outline' : 'Canvas changes'}</strong><span>{validation === 'draft' ? 'Draft · not applied' : 'Pending review'}</span></header>}
     {!compact && structure.summary && <div className="structure-summary"><RichText text={structure.summary}/></div>}
     {warnings.length > 0 && <div className="structure-warning" role="note"><CircleAlert size={13} aria-hidden="true"/><p>{[...new Set(warnings)].join(' ')}</p></div>}
-    {rows.length > 0 && <ol className="structure-card-outline" aria-label="Proposed cards in parent order">{rows.map(({ note, depth, cycle }) => {
+    {rows.length > 0 && <ol className="structure-card-outline" aria-label="Proposed cards in parent order">{shown.map(({ note, depth, cycle }) => {
       const Icon = note.kind === 'group' ? FolderTree : TextIcon;
       const externalParent = note.parentId && !byId.has(note.parentId) ? existingById.get(note.parentId) : undefined;
       return <li key={note.id} className={`structure-card ${note.kind}${depth ? ' nested' : ''}`} data-depth={depth} style={{ marginInlineStart: Math.min(depth, 4) * 26 }}>
         {depth > 0 && <span className="structure-branch" aria-hidden="true"/>}
-        <div className="structure-card-heading"><span className={`structure-kind-mark ${note.kind}`}><Icon size={15} aria-hidden="true"/></span><div><strong>{note.title || 'Untitled card'}</strong><span>{kindLabel(note.kind)}{externalParent && <> · {cycle ? 'parent needs review: ' : 'inside '}{externalParent.title}</>}{depth > 4 && <> · nesting level {depth + 1}</>}</span></div></div>
+        <div className="structure-card-heading"><span className={`structure-kind-mark ${note.kind}`}><Icon size={15} aria-hidden="true"/></span><div><strong>{note.title || 'Untitled card'}</strong><span>{kindLabel(note)}{externalParent && <> · {cycle ? 'parent needs review: ' : 'inside '}{externalParent.title}</>}{depth > 4 && <> · nesting level {depth + 1}</>}</span></div></div>
         {(parentWarning.has(note.id) || cycle) && <p className="structure-parent-warning"><CircleAlert size={12} aria-hidden="true"/>{cycle ? 'This parent relationship is circular and needs review.' : parentWarning.get(note.id)}</p>}
         {(note.description || note.rationale) && <details className="structure-card-details"><summary>Details{note.rationale ? ' & rationale' : ''}</summary>{note.description && <RichText text={note.description}/>} {note.rationale && <div className="structure-rationale"><span>Why this card</span><RichText text={note.rationale}/></div>}</details>}
       </li>;
     })}</ol>}
+    {shown.length < rows.length && <button type="button" className="text-button small structure-show-all" onClick={() => setShowAll(true)}>Show all {rows.length}</button>}
     {structure.relationships.length > 0 && <details className="structure-relationships"><summary>{structure.relationships.length} relationship{structure.relationships.length === 1 ? '' : 's'}</summary><p>Relationships do not schedule work or import inputs.</p><ul>{structure.relationships.map((relationship, index) => <li key={index}><div><strong>{titleFor(relationship.source)}</strong><ArrowRight size={12} aria-label="relates to"/><strong>{titleFor(relationship.target)}</strong></div><span>{relationship.label || 'Related'}</span>{(!byId.has(relationship.source) && !existingById.has(relationship.source) || !byId.has(relationship.target) && !existingById.has(relationship.target)) && <small>Endpoint needs review.</small>}</li>)}</ul></details>}
     {!compact && <details className="structure-identifiers"><summary>Exact card identifiers</summary><ul>{notes.map(note => <li key={note.id}><span>{note.title || 'Untitled card'}</span><code>{note.id}</code>{note.parentId && <small>Parent: <code>{note.parentId}</code></small>}</li>)}{structure.relationships.map((relationship, index) => <li key={`relationship-${index}`}><span>{relationship.label || 'Related'}</span><code>{relationship.source} → {relationship.target}</code></li>)}</ul></details>}
     {validation === 'draft' && <p className="structure-draft-caption">This preview has not been validated or applied.</p>}
