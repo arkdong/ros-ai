@@ -48,7 +48,6 @@
 /* Things that float over the map. */
 .single-canvas-shell .canvas-edit-controls,
 .single-canvas-shell .unified-canvas .canvas-tools,
-.single-canvas-shell .selection-toolbar { border: 1px solid var(--card-line); border-radius: 12px; background: #fff; box-shadow: var(--float-shadow); }
 .single-canvas-shell .canvas-dock .canvas-dock-item { border-radius: 10px; border: 1px solid var(--card-line); background: #fff; box-shadow: var(--float-shadow); }
 
 /* Blocks on the map. */

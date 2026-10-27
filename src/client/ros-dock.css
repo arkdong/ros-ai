@@ -144,19 +144,12 @@
 .ros-dock button:focus-visible, .ros-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Keep the map's own floating controls clear of the bar. */
-.canvas-stage:has(.ros-dock) .selection-toolbar { bottom: 124px; }
-.canvas-stage:has(.ros-dock) .project-floating-actions { bottom: 112px; }
-.canvas-stage:has(.ros-bar.running) .selection-toolbar { bottom: 180px; }
-.canvas-stage:has(.ros-bar.running) .project-floating-actions { bottom: 168px; }
 .canvas-stage:has(.ros-dock) .canvas-hint { display: none; }
 /* On maps too narrow for the bar to clear the bottom-right corner (under 986 px), the zoom controls rise
-   above it: higher under 472 px, where the bar's footer wraps to a second row, and higher again over a
-   selected block's buttons. Each clamp is 0 on wider maps. The lift is a margin, so the 100% in it counts
+   above it: higher under 472 px, where the bar's footer wraps to a second row. Each clamp is 0 on wider maps. The lift is a margin, so the 100% in it counts
    from the map's width; the minimap above the zoom controls reads it too (canvas-minimap.css). */
 .workspace:has(.ros-dock) { --zoom-lift: max(clamp(0px, (986px - 100%) * 1000, 98px), clamp(0px, (472px - 100%) * 1000, 138px)); }
 .workspace:has(.ros-bar.running) { --zoom-lift: max(clamp(0px, (986px - 100%) * 1000, 154px), clamp(0px, (472px - 100%) * 1000, 194px)); }
-.workspace:has(.ros-dock):has(.selection-toolbar) { --zoom-lift: clamp(0px, (986px - 100%) * 1000, 193px); }
-.workspace:has(.ros-bar.running):has(.selection-toolbar) { --zoom-lift: clamp(0px, (986px - 100%) * 1000, 249px); }
 .workspace:has(.ros-dock) .unified-canvas .canvas-tools { margin-bottom: var(--zoom-lift); }
 /* Ros's side panel covers the corner, so on maps with room beside it (620 px and up) the zoom controls
    move to its left, where the map's hint line would run under them. On narrower maps the panel covers
