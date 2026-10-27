@@ -11,6 +11,7 @@ import { EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES } from './providers.js';
 import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
 import { LAYOUT_GAP, arrangeCanvas } from '../shared/layout.js';
 import { RESULT_PLACEHOLDER, formatSources } from '../shared/agent-work.js';
+import { SET_ASIDE } from '../shared/groups.js';
 import type { NotionApi, NotionWrite } from './notion.js';
 import type { NotionViews } from './notion-view.js';
 import type { GoogleWorkspace } from './google-workspace.js';
@@ -238,6 +239,12 @@ export class AgentWorkspaceTools {
   private get named() { return this.agent === 'outside' || this.agent === 'model' || isAcpAgent(this.agent); }
   preview() { return { ...this.capture, artifacts: this.capture.artifacts.map(({ content, ...a }) => ({ ...a, characters: content.length, preview: content.slice(0, 1200), truncated: content.length > 1200 })) }; }
   private node(id: string) { if (!this.scope.nodeIds.includes(id) && !this.own.has(id)) throw new StoreError('Tool target is outside the explicit captured block selection.', 403); }
+  /** A block a canvas change may touch or put blocks in: any block on this project's canvas. The selection points Ros at
+   * a block but does not fence off the rest of the map, because a change to a block that is already there waits for the
+   * person's Accept in every approval mode; only additions are ever accepted automatically. */
+  private onCanvas(id: string, canvas = this.store.getProject(this.scope.projectId).canvas) {
+    if (!canvas.nodes.some(n => n.id === id)) throw new StoreError(`There is no block ${id} on this canvas. Call ros_read_canvas for the current block IDs.`, 404);
+  }
   private artifact(id: string) { const a = this.capture.artifacts.find(a => a.id === id); if (!a) throw new StoreError('Tool artifact is outside the exact captured version selection.', 403); return a; }
   private current() { if (this.store.getProject(this.scope.projectId).revision !== this.expectedRevision) throw new StoreError('The canvas changed after the agent capture. Review a new turn before proposing edits.', 409); }
   async call(name: string, supplied: unknown): Promise<unknown> {
@@ -260,8 +267,8 @@ export class AgentWorkspaceTools {
     let action: AssistantAction;
     if (name === 'ros_propose_canvas') {
       const value = lenient(canvasSchema, supplied); this.current();
-      const added = new Set(value.operations.flatMap(op => op.type === 'addNode' ? [op.node.id] : []));
-      const allowed = (target: string) => { if (!added.has(target) && !this.pendingNode(target)) this.node(target); };
+      const added = new Set(value.operations.flatMap(op => op.type === 'addNode' ? [op.node.id] : [])), canvas = this.store.getProject(this.scope.projectId).canvas;
+      const allowed = (target: string) => { if (!added.has(target) && !this.pendingNode(target)) this.onCanvas(target, canvas); };
       for (const op of value.operations) {
         if ((op.type === 'addNode' && op.node.agent) || (op.type === 'updateNode' && op.patch.agent)) throw new StoreError('Agent blocks are made by ros.ai for a running turn.');
         if (op.type === 'addNode') {
@@ -276,18 +283,13 @@ export class AgentWorkspaceTools {
           const edge = this.store.getProject(this.scope.projectId).canvas.connections.find(c => c.id === op.id);
           if (!edge) throw new StoreError('Connection not found.'); allowed(edge.source); allowed(edge.target);
         } else {
-          this.node(op.id);
+          this.onCanvas(op.id, canvas);
           if (op.type === 'updateNode') {
             if (op.patch.parentId) allowed(op.patch.parentId);
             this.checkFile(op.patch);
             this.checkGoogle(op.patch, this.store.getProject(this.scope.projectId).canvas.nodes.find(n => n.id === op.id));
             if (op.patch.artifactId) this.artifact(op.patch.artifactId);
             for (const a of op.patch.groupHighlights ?? []) { const artifact = this.artifact(a.artifactId); if (a.hash !== artifact.hash || a.nodeId !== artifact.nodeId) throw new StoreError('Group highlight must retain the exact captured artifact hash and originating block.'); }
-          } else if (op.type === 'removeNode') {
-            const nodes = this.store.getProject(this.scope.projectId).canvas.nodes;
-            const descendants = new Set([op.id]);
-            for (let changed = true; changed;) { changed = false; for (const n of nodes) if (n.parentId && descendants.has(n.parentId) && !descendants.has(n.id)) { descendants.add(n.id); changed = true; } }
-            for (const target of descendants) this.node(target);
           }
         }
       }
@@ -493,7 +495,7 @@ export class AgentWorkspaceTools {
     // The group may be one this turn proposed and the person has not accepted yet.
     const pendingParent = input.parentId ? this.pendingNode(input.parentId) : undefined;
     if (input.parentId) {
-      if (!pendingParent) this.node(input.parentId);
+      if (!pendingParent) this.onCanvas(input.parentId);
       if ((pendingParent ?? this.store.getProject(this.scope.projectId).canvas.nodes.find(n => n.id === input.parentId))?.kind !== 'group') throw new StoreError('parentId must be a group.');
     }
     const folder = folders?.status(this.scope.projectId);
@@ -925,7 +927,7 @@ export class AgentWorkspaceTools {
     };
     const themes = value.themes.map(theme => ({ id: randomUUID(), title: theme.title, description: theme.description, members: theme.members.map(block) }));
     const items = value.setAside.map(item => ({ node: block(item.nodeId), reason: item.reason }));
-    const aside = items.length ? { id: randomUUID(), title: 'Set aside', description: `Weak or off-topic for this question. Nothing is deleted; drag a block out to use it.\n\n${items.map(({ node, reason }) => `- **${node.title}:** ${reason}`).join('\n')}`, members: items.map(item => item.node) } : undefined;
+    const aside = items.length ? { id: randomUUID(), title: SET_ASIDE.title, description: `${SET_ASIDE.description}\n\n${items.map(({ node, reason }) => `- **${node.title}:** ${reason}`).join('\n')}`, members: items.map(item => item.node) } : undefined;
     const groups = aside ? [...themes, aside] : themes;
     // Until the tree is laid out below, each group waits where its first block is, its blocks in the order given.
     const operations: Mutation[] = groups.flatMap(group => [
