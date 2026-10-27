@@ -29,7 +29,8 @@ Return JSON {"projects":[{"title","blocks":[{"slug","title","text","blockType","
 
 export async function makeProjects(model: ChatAdapter, domain: string, count: number): Promise<Fixture[]> {
   const written = await ask<{ projects: Omit<Fixture, 'id' | 'domain'>[] }>(model, PROJECT, `Write ${count} different projects in the domain: ${domain}. Make them differ in stage, size and style.`, 12000);
-  return written.projects.map(project => ({ ...project, id: randomUUID().slice(0, 8), domain }));
+  // Dataset blocks often come back without text; the rest of the pipeline expects a string.
+  return written.projects.map(project => ({ ...project, blocks: project.blocks.map(block => ({ ...block, text: block.text ?? '' })), id: randomUUID().slice(0, 8), domain }));
 }
 
 const TASKS = `You write realistic requests a researcher types into the ros.ai assistant bar while looking at their canvas, for a training set. Return JSON {"tasks":[{"family","message","selection","researcher"?,"language"}]}.
@@ -45,9 +46,11 @@ export async function makeTasks(model: ChatAdapter, fixture: Fixture, random: ()
   const families = Object.entries(FAMILIES).map(([name, spec]) => `- ${name} (${Math.max(1, Math.round(spec.share * TASKS_PER_PROJECT))} tasks): ${spec.brief}`).join('\n');
   const canvas = JSON.stringify({ title: fixture.title, blocks: fixture.blocks.map(block => ({ slug: block.slug, title: block.title, blockType: block.csv ? 'dataset' : block.blockType, text: block.text.slice(0, 600), ...(block.csv ? { columns: block.csv.content.split('\n')[0] } : {}) })), links: fixture.links });
   const hasData = fixture.blocks.some(block => block.csv);
-  const written = await ask<{ tasks: { family: Family; message: string; selection: string[]; researcher?: 'decline' }[] }>(model, TASKS + families, `${hasData ? '' : 'This project has no dataset: skip the dataset and analysis families and add more research and add-notes tasks instead.\n'}Project:\n${canvas}`, 8000);
+  type Written = { family: Family; message: string; selection: string[]; researcher?: 'decline' }[];
+  const written = await ask<{ tasks: Written } | Written>(model, TASKS + families, `${hasData ? '' : 'This project has no dataset: skip the dataset and analysis families and add more research and add-notes tasks instead.\n'}Project:\n${canvas}`, 8000);
   const slugs = new Set(fixture.blocks.map(block => block.slug));
-  return written.tasks.filter(task => task.family in FAMILIES && task.message?.trim()).map(task => {
+  // The teacher sometimes answers with the bare array instead of { tasks }.
+  return ((Array.isArray(written) ? written : written?.tasks) ?? [] as Written).filter(task => task.family in FAMILIES && task.message?.trim()).map(task => {
     const modes = FAMILIES[task.family].mode;
     return {
       id: randomUUID().slice(0, 12), fixtureId: fixture.id, family: task.family, message: task.message.trim(),

@@ -89,11 +89,24 @@ export function student() {
 export function parseJson<T>(text: string): T {
   const trimmed = text.trim().replace(/^```(?:json)?\s*/u, '').replace(/```\s*$/u, '');
   const start = trimmed.search(/[[{]/u);
-  return JSON.parse(trimmed.slice(start)) as T;
+  const body = trimmed.slice(start);
+  try { return JSON.parse(body) as T; } catch {
+    // Raw newlines and tabs inside string literals are the teacher's commonest slip.
+    let inString = false, escaped = false, out = '';
+    for (const char of body) {
+      if (inString && !escaped && char < ' ') { out += char === '\n' ? '\\n' : char === '\t' ? '\\t' : char === '\r' ? '\\r' : ''; continue; }
+      if (char === '"' && !escaped) inString = !inString;
+      escaped = char === '\\' && !escaped;
+      out += char;
+    }
+    return JSON.parse(out) as T;
+  }
 }
 export async function ask<T>(model: ChatAdapter, system: string, user: string, maxOutputTokens = 6000): Promise<T> {
-  const signal = AbortSignal.timeout(300_000);
-  await model.prepare(signal);
-  const response = await model.complete({ messages: [{ role: 'system', content: system }, { role: 'user', content: user }], maxOutputTokens }, signal);
-  return parseJson<T>(response.content);
+  for (let attempt = 1; ; attempt++) {
+    const signal = AbortSignal.timeout(300_000);
+    await model.prepare(signal);
+    const response = await model.complete({ messages: [{ role: 'system', content: system }, { role: 'user', content: user }], maxOutputTokens }, signal);
+    try { return parseJson<T>(response.content); } catch (error) { if (attempt >= 2) throw error; console.warn(`Unparseable teacher JSON, retrying once: ${(error as Error).message}`); }
+  }
 }
