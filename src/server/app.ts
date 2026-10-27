@@ -35,6 +35,7 @@ import { attachPaperRoutes, type Papers } from './papers.js';
 import { attachBrowserRoutes, type BrowserService } from './browser.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
+import { attachSuggestionRoutes, pluginReadiness, type PluginSuggestions } from './plugin-suggestions.js';
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
 import { NotionFileSaver } from './notion-files.js';
 import { ProjectCache } from './project-cache.js';
@@ -46,13 +47,14 @@ import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
 import { attachSqlRoutes, SqlService } from './sql.js';
 import { attachUpdateRoutes, type Updates } from './updates.js';
+import { attachAppFrameRoutes, type AppFrames } from './app-frames.js';
 
 const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -78,6 +80,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
+    // ros.ai's page frames only App pages, so an App that navigates its own frame anywhere else sends nothing.
+    if (!options.publicDemo && tools?.appFrames) res.setHeader('Content-Security-Policy', tools.appFrames.framePolicy());
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
     next();
   });
@@ -110,6 +114,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     app.put('/api/connections/search',(req,res)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON search choice.',415);res.json(execution.chooseSearch!(req.body));});
   }
   if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
+  // App blocks run in the local app only; elsewhere their routes say so.
+  attachAppFrameRoutes(app,options.publicDemo?undefined:tools?.appFrames);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
     const { title,start,folder } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
@@ -139,7 +145,14 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const { message } = z.object({ message: z.string().trim().min(1).max(12000) }).strict().parse(req.body);
     res.json(await execution.chat(routeId(req.params.id), message));
   });
-  app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId));});
+  const acceptProposal=(id:string,proposalId:string)=>research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId);
+  app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(acceptProposal(id,proposalId));});
+  // A turn's changes from its review card, in the order given (a change before the ones that build on it). Ones already
+  // decided are skipped, so Accept all after accepting a row still works.
+  app.post('/api/projects/:id/proposals/decide', (req, res) => {const id=routeId(req.params.id);
+    const {ids,decision}=z.object({ids:z.array(z.string().min(1).max(200)).min(1).max(200),decision:z.enum(['accept','dismiss'])}).parse(req.body);
+    for(const proposalId of ids)if(store.proposalStatus(id,proposalId)==='pending'){if(decision==='accept')acceptProposal(id,proposalId);else store.dismissProposal(id,proposalId);}
+    res.json(store.getProject(id));});
   app.post('/api/projects/:id/proposals/:proposalId/dismiss', (req, res) => res.json(store.dismissProposal(routeId(req.params.id), routeId(req.params.proposalId))));
   app.post('/api/projects/:id/runs', (req, res) => {
     const { nodeId, ...options } = z.object({ nodeId: identifier, request: z.string().trim().min(1).max(12000), useSearch: z.boolean().default(false) }).strict().parse(req.body);
@@ -207,6 +220,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
   if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
+  // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now. The demo cannot connect tools, so it has none.
+  if (tools?.suggestions && !options.publicDemo) { const sources=tools; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;

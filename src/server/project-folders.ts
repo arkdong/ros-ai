@@ -10,6 +10,7 @@ import { CARD_DEFAULT_HEIGHT, cardWidth, setCardHeight } from '../shared/card-si
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
 import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
+import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
@@ -21,10 +22,10 @@ const RECORD = 'project-folder';
 const MANIFEST = '.ros-ai/project.json';
 const TRASH = '.ros-ai/trash';
 // Largest file read back per kind. Text limits in characters are checked after decoding.
-const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000, file: FILE_BYTES };
+const READ_BYTES: Record<FolderFileKind, number> = { note: 100_000, code: 500_000, report: 1_000_000, dataset: 5_000_000, notebook: 20_000_000, figure: 10_000_000, file: FILE_BYTES, app: 500_000 };
 /** The most of a PDF's text kept as a File block's saved version. */
 const FILE_TEXT = 2_000_000;
-const TWO_WAY = new Set<FolderFileKind>(['note', 'code', 'report', 'dataset', 'notebook']);
+const TWO_WAY = new Set<FolderFileKind>(['note', 'code', 'report', 'dataset', 'notebook', 'app']);
 const CODE_TYPES: [language: string, extension: string][] = [['python', '.py'], ['r', '.R'], ['julia', '.jl'], ['c', '.c'], ['haskell', '.hs'], ['sql', '.sql'], ['bash', '.sh']];
 const NOTE_EXTENSIONS = ['.md', '.markdown', '.txt'];
 const SKIPPED_FOLDERS = new Set(['node_modules', '__pycache__', 'venv', 'site-packages']);
@@ -90,6 +91,7 @@ function unplacedKind(path: string): UnplacedFile['kind'] | null {
   if (NOTE_EXTENSIONS.includes(extension)) return 'note';
   if (extension === '.csv') return 'dataset';
   if (extension === '.ipynb') return 'notebook';
+  if (extension === '.html' || extension === '.htm') return 'app';
   if (media) return isPdfType(media) ? 'pdf' : 'image';
   return codeLanguage(extension) ? 'code' : null;
 }
@@ -100,6 +102,7 @@ function fileKind(node: CanvasNode, artifacts: ReadonlyMap<string, Artifact>): F
   if (type === 'dataset') return artifact && ['dataset', 'table'].includes(artifact.kind) ? 'dataset' : null;
   if (type === 'figure') return artifact?.kind === 'plot' ? 'figure' : null;
   if (type === 'file') return node.file ? 'file' : null;
+  if (type === 'app') return 'app';
   return 'note';
 }
 function decodeText(bytes: Buffer): string {
@@ -212,10 +215,12 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'training']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
-    parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional() })).max(500),
+    parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional(),
+    // The blocks an App reads; an entry ros.ai cannot read is left out rather than failing the manifest.
+    inputs: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u)).max(MAX_APP_INPUTS).optional().catch(undefined) })).max(500),
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
 type Manifest = z.infer<typeof manifestSchema>;
@@ -437,7 +442,7 @@ export class ProjectFolders implements NotebookFolders {
     const groups = manifest.blocks.filter(block => block.kind === 'group').sort((a, b) => depth(a.id) - depth(b.id));
     const parentOf = (block: Manifest['blocks'][number]) => block.parentId && ids.has(block.parentId) && groups.some(group => group.id === block.parentId) ? block.parentId : null;
     if (groups.length) this.store.mutate(projectId, groups.map(group => ({ type: 'addNode', node: { id: group.id, title: group.title, description: '', kind: 'group', parentId: parentOf(group), x: group.x, y: group.y } })), 'Groups from the project folder');
-    const order: Record<string, number> = { figure: 0, dataset: 0, file: 0, note: 1, code: 1, notebook: 1, report: 2 };
+    const order: Record<string, number> = { figure: 0, dataset: 0, file: 0, note: 1, code: 1, notebook: 1, report: 2, app: 3 };
     const placed: string[] = [];
     for (const block of manifest.blocks.filter(item => item.kind !== 'group' && item.file).sort((a, b) => (order[kindForFile(a.file!, a.blockType)] ?? 1) - (order[kindForFile(b.file!, b.blockType)] ?? 1))) {
       const kind = kindForFile(block.file!, block.blockType);
@@ -451,6 +456,9 @@ export class ProjectFolders implements NotebookFolders {
     const positions: Mutation[] = manifest.blocks.filter(block => placed.includes(block.id)).map(block => ({ type: 'updateNode', id: block.id, patch: { x: block.x, y: block.y } }));
     if (positions.length) try { this.store.mutate(projectId, positions, 'Arrange blocks from the project folder'); } catch { /* blocks stay where ros.ai placed them */ }
     const live = new Set([...groups.map(group => group.id), ...placed]);
+    // An App reads the blocks the manifest names, once they are all back.
+    for (const block of manifest.blocks.filter(item => item.inputs?.length && placed.includes(item.id)))
+      try { this.store.mutate(projectId, [{ type: 'updateNode', id: block.id, patch: { app: { source: this.store.getProject(projectId).canvas.nodes.find(node => node.id === block.id)?.app?.source ?? '', inputs: block.inputs!.filter(input => live.has(input) && input !== block.id) } } }], 'App inputs from the project folder'); } catch { /* the App reads nothing until inputs are added */ }
     for (const connection of manifest.connections.filter(item => live.has(item.source) && live.has(item.target) && item.source !== item.target))
       try { this.store.mutate(projectId, [{ type: 'addConnection', connection }], 'Connections from the project folder'); } catch { /* a connection ros.ai cannot keep is left out */ }
   }
@@ -458,7 +466,7 @@ export class ProjectFolders implements NotebookFolders {
   /** Adds a file that is already in the folder to the canvas as a block. */
   add(projectId: string, rel: string, placement: Partial<Pick<CanvasNode, 'parentId' | 'x' | 'y'>> = {}): { nodeId: string } {
     const { record, files } = this.require(projectId), kind = unplacedKind(rel);
-    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook, PDF, PNG and JPEG files.');
+    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook, HTML (an App), PDF, PNG and JPEG files.');
     if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError('This file is already a block on the canvas.', 409);
     // A PDF or image becomes a File block that shows it; a PDF's text is read into the block's saved version afterwards.
     const node = this.blockFromFile(record, files, rel, kind === 'pdf' || kind === 'image' ? 'file' : kind, placement);
@@ -518,6 +526,10 @@ export class ProjectFolders implements NotebookFolders {
     } else if (kind === 'code') {
       if (text.length > 100_000) throw new StoreError(`${rel} is longer than 100,000 characters, the most a Code block holds.`);
       node = { ...base, blockType: 'code', code: { language: codeLanguage(extensionOf(rel)) ?? 'python', source: text, parameters: {}, inputArtifactId: null } };
+    } else if (kind === 'app') {
+      if (text.length > APP_SOURCE_LIMIT) throw new StoreError(`${rel} is longer than ${APP_SOURCE_LIMIT.toLocaleString('en')} characters, the most an App's page holds.`);
+      // The page alone: an App read from a file reads nothing until inputs are added in ros.ai.
+      node = { ...base, blockType: 'app', app: { source: text, inputs: [] } };
     } else if (kind === 'dataset') { parseCsv(text, true); node = { ...base, blockType: 'dataset' }; }
     else if (kind === 'file') node = { ...base, blockType: 'file', file: { path: rel } };
     else if (kind === 'notebook') node = { ...base, blockType: 'notebook' };
@@ -587,8 +599,8 @@ export class ProjectFolders implements NotebookFolders {
     const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
     // Code opens in a text editor: the default app for .py or .sh files can run them instead. The project folder itself opens rather than being selected in its parent.
     const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
-      : process.platform === 'darwin' ? ['/usr/bin/open', reveal && entry ? ['-R', target] : entry?.kind === 'code' ? ['-t', target] : [target]]
-      : process.platform === 'win32' ? ['explorer.exe', [reveal && entry ? `/select,${target}` : target]] : ['xdg-open', [reveal && entry ? dirname(target) : target]];
+      : process.platform === 'darwin' ? ['/usr/bin/open', reveal && entry ? ['-R', target] : entry?.kind === 'code' || entry?.kind === 'app' ? ['-t', target] : [target]]
+      : process.platform === 'win32' ? ['explorer.exe', [(reveal || entry?.kind === 'app') && entry ? `/select,${target}` : target]] : ['xdg-open', [(reveal || entry?.kind === 'app') && entry ? dirname(target) : target]];
     await launch(command, args);
     return { path: entry?.path ?? '.' };
   }
@@ -787,6 +799,10 @@ export class ProjectFolders implements NotebookFolders {
         } else if (entry.kind === 'code') {
           if (text.length > 100_000) throw new StoreError('is longer than 100,000 characters, so ros.ai kept its own copy.');
           operations.push({ type: 'updateNode', id: nodeId, patch: { code: { ...(node.code ?? { language: codeLanguage(extensionOf(entry.path)) ?? 'python', parameters: {}, inputArtifactId: null }), source: text } } });
+        } else if (entry.kind === 'app') {
+          if (text.length > APP_SOURCE_LIMIT) throw new StoreError(`is longer than ${APP_SOURCE_LIMIT.toLocaleString('en')} characters, so ros.ai kept its own copy.`);
+          // Only the page: what the App reads is set in ros.ai, so a file edit cannot widen it.
+          operations.push({ type: 'updateNode', id: nodeId, patch: { app: { source: text, inputs: node.app?.inputs ?? [] } } });
         } else { this.readArtifactFile(record, project.id, node, entry, text, seen.observed.hash); entry.hash = seen.observed.hash; delete entry.problem; continue; }
         agreed.push([entry, seen.observed]);
         edited.push(entry.path);
@@ -836,6 +852,7 @@ export class ProjectFolders implements NotebookFolders {
       return { bytes: Buffer.from(code.source, 'utf8'), extension: codeExtension(code.language) };
     }
     if (kind === 'report') return { bytes: Buffer.from(artifact ? reportForFolder(artifact.content, folder, exported) : '', 'utf8'), extension: '.md', ...(artifact ? { artifactId: artifact.id } : {}) };
+    if (kind === 'app') return { bytes: Buffer.from(node.app?.source ?? '', 'utf8'), extension: '.html' };
     if (kind === 'notebook') {
       if (!this.notebooks) return null;
       const file = this.notebooks.file(projectId, node.id);
@@ -960,7 +977,7 @@ export class ProjectFolders implements NotebookFolders {
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
       blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: node.notion } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.label ? { label: node.label } : {}),
-        parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}) }; }),
+        parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
   }

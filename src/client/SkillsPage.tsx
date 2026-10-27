@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BookText, Check, ExternalLink, FileCode2, FileText, FolderOpen, LoaderCircle, MoreHorizontal, Plus, Search, SquareTerminal, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { SKILL_SOURCES, normalizeName, skillTitle, type FoundSkill, type SkillCandidate, type SkillDetail, type SkillFile, type SkillOrigin, type SkillPreview, type SkillPreviewRequest, type SkillSourceListing, type SkillSummary, type SkillsState } from '../shared/skills';
-import { CatalogueHero, CatalogueRow } from './PluginsPage';
+import { CatalogueHero, CatalogueRow, CatalogueSidebar } from './PluginsPage';
 import { BrandLogo } from './brand-logos';
 import { MarkdownEditor } from './MarkdownEditor';
 import { Modal } from './Modal';
@@ -45,6 +45,11 @@ type AddTab = 'write' | 'paste' | 'link' | 'file';
 /** How the Add dialog opens: on a tab, or straight on the review of one skill (a row's +). */
 type AddStart = { tab?: AddTab; request?: SkillPreviewRequest };
 
+/** The sidebar lists the person's skills; a dot marks the ones that are on. */
+export function SkillsSidebar({ skills, selected, onSelect }: { skills: SkillSummary[]; selected: string | null; onSelect: (name: string | null) => void }) {
+  return <CatalogueSidebar sections={[{ id: 'skills', label: 'Skills' }]} label="Your skills" empty="No skills yet" installed={skills.map(item => ({ id: item.name, name: item.title, mark: <BookText size={16}/>, off: !item.enabled }))} selected={selected} onSelect={onSelect} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
+}
+
 export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publicDemo: boolean; selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillSummary[]) => void }) {
   const [state, setState] = useState<SkillsState | null>(null), [found, setFound] = useState<FoundSkill[]>([]), [error, setError] = useState('');
   const [adding, setAdding] = useState<AddStart | null>(null), [notice, setNotice] = useState('');
@@ -55,7 +60,8 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
     if (local.status === 'fulfilled') setFound(local.value.found);
   }, [publicDemo, onSkills]);
   useEffect(() => { void refresh(); }, [refresh]);
-  if (publicDemo) return <p className="rail-page-note">This demo keeps no skills. Launch the local workspace to add yours.</p>;
+  const head = (action?: ReactNode) => <header className="plugins-head"><div><h1>Skills</h1><p>Ways of working your agents follow when a task matches</p></div>{action}</header>;
+  if (publicDemo) return <div className="plugins-page skills-page">{head()}<p className="rail-page-note">This demo keeps no skills. Launch the local workspace to add yours.</p></div>;
   const skills = state?.skills ?? [];
   const added = (names: string[]) => {
     setAdding(null);
@@ -68,7 +74,7 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
     {dialog}
   </>;
   return <div className="plugins-page skills-page">
-    <header className="plugins-head"><div><h1>Skills</h1><p>Ways of working that your agents follow when a task matches. Every agent in ros.ai uses the same ones.</p></div><button type="button" className="primary small" onClick={() => setAdding({ tab: 'write' })}><Plus size={14}/> Add skill</button></header>
+    {head(<button type="button" className="primary small" onClick={() => setAdding({ tab: 'write' })}><Plus size={14}/> Add skill</button>)}
     {notice && <p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section className="plugin-group"><h2>Your skills</h2>
@@ -81,7 +87,7 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
       <div className="plugin-grid">{found.map(item => <CatalogueRow key={item.key} mark={<ToolMark tool={item.tool}/>} name={item.title} summary={`${item.toolLabel} · ${item.description}`} state={item.added === 'same' ? { label: 'Added', connected: true } : item.added === 'different' ? { label: 'Differs', connected: false, shown: true } : undefined} action={item.added === 'same' ? <Check size={16}/> : <Plus size={16}/>} onClick={() => setAdding({ request: { kind: 'found', key: item.key } })}/>)}</div>
     </section>}
     <SkillBrowse added={new Set(skills.map(skill => skill.name))} onPick={request => setAdding({ request })}/>
-    <p className="plugins-footnote">Skills from elsewhere are shown in full before they are added. Agents can read a skill's scripts; ros.ai never runs them on your computer.</p>
+    <p className="plugins-footnote">Every agent you run here, from any vendor, uses the same skills. Skills from elsewhere are shown in full before they are added. Agents can read a skill's scripts; ros.ai never runs them on your computer.</p>
     {dialog}
   </div>;
 }

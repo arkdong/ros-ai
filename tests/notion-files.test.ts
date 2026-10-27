@@ -105,7 +105,9 @@ test('Agents save a CV from a Notion Files column into the project folder as a F
     const empty = await toolkit(f.store, project.id).call('ros_app_call', { app: 'notion', tool: 'ros-save-file', arguments: { page: '3f0122069fec813999fbe0bd1235f178', property: 'Empty' }, summary: 'Save it', rationale: 'Because.' }) as { problems: string[] };
     assert.match(empty.problems[0], /Empty is empty on Jane Doe/u);
     await assert.rejects(toolkit(f.store, project.id).call('ros_app_call', { app: 'notion', tool: 'ros-save-file', arguments: { page: '3f0122069fec813999fbe0bd1235f178', property: 'Resume' }, summary: 'Save it', rationale: 'Because.' }), /has no column called Resume\. Its columns with files: CV, Letter/u);
-    await assert.rejects(toolkit(f.store, project.id).call('ros_app_call', { app: 'notion', tool: 'ros-save-file', arguments: { page: '3f0122069fec813999fbe0bd1235f178', property: 'CV', parentId: 'elsewhere' }, summary: 'Save it', rationale: 'Because.' }), /outside the explicit captured block selection/u);
+    await assert.rejects(toolkit(f.store, project.id).call('ros_app_call', { app: 'notion', tool: 'ros-save-file', arguments: { page: '3f0122069fec813999fbe0bd1235f178', property: 'CV', parentId: 'elsewhere' }, summary: 'Save it', rationale: 'Because.' }), /There is no block elsewhere on this canvas/u);
+    // Any group on the canvas can take the file, selected or not; a block that is not a group cannot.
+    await assert.rejects(toolkit(f.store, project.id).call('ros_app_call', { app: 'notion', tool: 'ros-save-file', arguments: { page: '3f0122069fec813999fbe0bd1235f178', property: 'CV', parentId: 'row' }, summary: 'Save it', rationale: 'Because.' }), /parentId must be a group/u);
 
     // Without a project folder there is nowhere to save it.
     const bare = f.store.createProject('No folder');

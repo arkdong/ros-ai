@@ -363,8 +363,8 @@ export class ExecutionService {
     finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
   }
   /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. */
-  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false):Proposal {
-    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged));
+  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false,links:{after?:string[];batch?:string}={}):Proposal {
+    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged,links));
   }
   /** Why an agent cannot search right now, or null when the search service in use has a key and remaining allowance. */
   agentSearchBlocker():string|null{
@@ -525,7 +525,7 @@ export class ExecutionService {
       const y = roots.length ? Math.ceil((Math.max(...roots.map(n=>n.y))+216)/24)*24 : 0;
       proposal = this.reviewProjectProposal(this.store.createProposal(projectId,project.revision,`One Text block: ${title}`,[{type:'addNode',node:{id:randomUUID(),title,description:message,kind:'topic',...(task?{label:'task'}:{}),parentId:null,x:0,y}}]));
       reply = `${label}\nHere is one Text block for the next step you described. Review its title and purpose, then accept or dismiss the preview. It stands alone; accepting it does not start research. You can open it to inspect a dataset or draft a local experiment.`;
-    } else reply = `${label}\nYour request is recorded. A useful next step is one focused task for that outcome. You can ask “Add a task for …” to preview it, or add a Text block directly. Open a node to inspect data and run a local analysis. Cloud conversation needs a fresh explicit provider budget.`;
+    } else reply = `${label}\nYour request is recorded. A useful next step is one focused task for that outcome. You can ask “Add a task for …” to preview it, or add a Text block directly. Open a node to inspect data and run a local analysis. Connect a model on the Agents page for a full conversation.`;
     return {message:this.store.addMessage(projectId,null,'assistant',reply),proposal};
   }
   startExperimentPlan(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;backend?:'bounded'|'docker-python'|'nebius-sandbox'}) {
@@ -533,7 +533,8 @@ export class ExecutionService {
   }
   private reviewProjectProposal(proposal:Proposal):Proposal {
     const additions=proposal.operations.filter(op=>op.type==='addNode');
-    if(!additions.length)return proposal;
+    // One that builds on a change still waiting waits with it.
+    if(!additions.length||proposal.after?.length)return proposal;
     // Relationships that touch a block added in the same proposal belong to that addition.
     const added=new Set(additions.map(op=>op.node.id));
     const attached=proposal.operations.filter(op=>op.type==='addConnection'&&(added.has(op.connection.source)||added.has(op.connection.target))).length;

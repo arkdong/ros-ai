@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
-import { cardWidth, estimatedCardHeight } from '../src/shared/card-size.js';
+import { CARD_MAX_HEIGHT, cardFootprintHeight, cardWidth, estimatedCardHeight, setCardHeight } from '../src/shared/card-size.js';
 import { LAYOUT_GAP } from '../src/shared/layout.js';
 import type { CanvasNode } from '../src/shared/types.js';
 
@@ -99,4 +99,13 @@ test('a card height set by resizing is layout, stays within its limits and is gi
     store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height: null } }], 'Fit block to its content');
     assert.equal(Object.hasOwn(store.getProject(project.id).canvas.nodes[0], 'height'), false);
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('a height saved on a Group, as an agent may send one, does not stretch its closed card into an empty frame', () => {
+  const group: CanvasNode = { ...node('candidate', 760), kind: 'group', height: 1100 };
+  assert.equal(setCardHeight(group), undefined);
+  assert.equal(estimatedCardHeight(group), CARD_MAX_HEIGHT);
+  assert.equal(cardFootprintHeight(group), CARD_MAX_HEIGHT);
+  // Any other card keeps the height it was given.
+  assert.equal(setCardHeight({ ...group, kind: 'topic' }), 1100);
 });

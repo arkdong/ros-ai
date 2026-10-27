@@ -13,6 +13,7 @@ import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { UpdateInstallMessage } from '../../src/shared/updates';
+import { watchMissionControl } from './mission-control';
 
 // dist/desktop/main.cjs → the repository root (a checkout) or the app folder inside ros.ai.app.
 const root = resolve(__dirname, '..', '..');
@@ -142,6 +143,31 @@ function installUpdate(message: unknown) {
 }
 
 const local = (target: string) => { try { const { hostname } = new URL(target); return hostname === '127.0.0.1' || hostname === 'localhost'; } catch { return false; } };
+const origin = (target: string) => { try { return new URL(target).origin; } catch { return ''; } };
+/** An App block's page: ros.ai serves it on a second local port, never the window's own (src/server/app-frames.ts). */
+const appPage = (target: string | undefined) => { try { const page = new URL(target ?? ''); return local(page.href) && page.port !== new URL(url).port && /^\/app\/[A-Za-z0-9_-]{32}$/u.test(page.pathname); } catch { return false; } };
+/** App pages are written by agents and run in a sealed frame: Chromium's sandbox and the page's own policy keep them
+ * off the network and away from ros.ai. The app also stops what a browser tab cannot: an App frame navigating itself
+ * to another address, and any request from inside one other than to its own page server. App frames get no
+ * permissions, and WebRTC sends nothing over UDP outside a proxy. */
+function sealAppFrames(contents: Electron.WebContents) {
+  const own = new URL(url).origin;
+  // A frame that is gone has no address; reading it throws.
+  const address = (frame: Electron.WebFrameMain | null | undefined) => { try { return frame?.url; } catch { return undefined; } };
+  // ros.ai gives an App frame its address once; any later navigation of that frame, away or a reload, is the page's own.
+  contents.on('will-frame-navigate', event => { if (!event.isMainFrame && appPage(address(event.frame))) event.preventDefault(); });
+  contents.session.webRequest.onBeforeRequest((details, callback) => {
+    const from = address(details.frame);
+    if (!appPage(from)) return callback({});
+    let leaves = details.resourceType === 'subFrame';
+    try { const target = new URL(details.url); leaves ||= !['data:', 'blob:'].includes(target.protocol) && target.origin !== new URL(from!).origin; } catch { leaves = true; }
+    callback({ cancel: leaves });
+  });
+  // The window's own page keeps every permission it had; any other frame (an App's has an opaque origin) gets none.
+  contents.session.setPermissionRequestHandler((_contents, _permission, callback, details) => callback(details.isMainFrame || (!appPage(details.requestingUrl) && origin(details.requestingUrl) === own)));
+  contents.session.setPermissionCheckHandler((_contents, _permission, requesting, details) => details.isMainFrame || requesting === own);
+  contents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+}
 const stateFile = join(desktopDir, 'window.json');
 function savedBounds(): Electron.Rectangle | undefined {
   try {
@@ -161,6 +187,7 @@ function openWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true },
   });
   window.webContents.setUserAgent(`${window.webContents.getUserAgent()} ros.ai/${version}`);
+  sealAppFrames(window.webContents);
   window.once('ready-to-show', () => window?.show());
   // Full screen hides the window buttons, so the page drops the room it keeps for them.
   const fullScreen = (on: boolean) => void window?.webContents.executeJavaScript(`document.documentElement.toggleAttribute('data-full-screen', ${on})`).catch(() => {});
@@ -176,6 +203,8 @@ function openWindow() {
   const smoke = process.env.ROS_DESKTOP_SMOKE;
   if (smoke) window.webContents.once('did-finish-load', () => setTimeout(() => void window?.webContents.capturePage().then(image => { writeFileSync(smoke, image.toPNG()); console.log(`ros.ai window loaded ${url}; picture saved to ${smoke}`); app.quit(); }), 2500));
   void window.loadURL(url);
+  // ros.ai's look in Mission Control (desktop/src/mission-control.ts).
+  if (mac && !smoke) watchMissionControl(window);
 }
 
 /** Settings › General shows the Updates section and looks again. */
