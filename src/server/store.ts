@@ -9,6 +9,7 @@ import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import { DOI, PAPER_ID } from '../shared/papers.js';
+import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -28,7 +29,10 @@ const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('
 const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional() };
 /** Where a paper came from: set by ros.ai when the person or an agent adds one (papers.ts), so agents never write it. */
 export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zotero']), id: z.string().regex(PAPER_ID), doi: z.string().regex(DOI).optional(), link: z.string().url().max(2000) }).strict();
-export const mutationSchema = mutations({ ...liveNodeFields, paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** The agent whose turn an Agent block stands for, ACP agents (Gemini CLI, Goose, OpenCode) included. Kept apart from nodeFields, so the
+ * canvas tool agents see reads as the training snapshot has it. */
+const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', ...ACP_AGENT_IDS]), turnId: identifier }).strict();
+export const mutationSchema = mutations({ ...liveNodeFields, agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
