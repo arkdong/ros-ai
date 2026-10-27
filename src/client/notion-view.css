@@ -38,21 +38,49 @@
 .notion-chip button { display: inline-flex; border: 0; background: none; padding: 0; color: #8a8a8a; cursor: pointer; }
 .notion-chip button:hover { color: #171717; }
 .notion-page-end { color: #8a8a8a; }
-.notion-page-status { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: #8a8a8a; margin-left: auto; white-space: nowrap; }
-.notion-page-status.saved { color: #1f7a3a; }
-.notion-page-status.error { color: #a43a2a; white-space: normal; }
-.notion-page-text { margin-top: 14px; padding-top: 14px; border-top: 1px solid #ececec; display: grid; gap: 2px; font-size: 14px; line-height: 1.6; }
-.notion-unit { position: relative; padding: 2px 6px; border-radius: 5px; }
-.notion-unit.editable { cursor: text; }
-.notion-unit.editable:hover { background: #f5f5f5; }
-.notion-unit .rich-text > *, .notion-unit .rich-text li, .notion-unit .rich-text li > p { margin: 0; }
-.notion-unit .rich-text table { margin: 6px 0; }
-.notion-unit .rich-text ul, .notion-unit .rich-text ol { padding-left: 22px; }
-.notion-unit .rich-text h1, .notion-unit .rich-text h2, .notion-unit .rich-text h3 { margin-top: 10px; }
-.notion-unit .notion-page-status { position: absolute; right: 6px; top: 4px; background: #fff; padding-left: 6px; }
-.notion-unit.editing { background: #f5f5f5; outline: 1px solid #e3e3e3; }
-.notion-unit.editing textarea { width: 100%; box-sizing: border-box; border: 0; background: transparent; font: inherit; line-height: 1.6; resize: none; overflow: hidden; padding: 0; }
-.notion-unit.editing textarea:focus { outline: none; }
-.notion-page-add { display: flex; align-items: center; gap: 8px; padding: 2px 6px; }
-.notion-page-add .text-button { color: #8a8a8a; }
+.notion-page-text { margin-top: 14px; padding-top: 14px; border-top: 1px solid #ececec; display: grid; gap: 1px; font-size: 15px; line-height: 1.6; color: #171717; }
+/* The text edits as Notion does: each block in place, formatted, with no box around the one being edited. */
+.notion-line { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 3px 2px; min-width: 0; }
+.notion-line::before { content: ""; position: absolute; left: -10px; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: transparent; }
+.notion-line.dirty::before { background: #c9a227; }
+.notion-page-field.dirty dd { box-shadow: inset 2px 0 0 #c9a227; }
+.notion-line-text { flex: 1; min-width: 0; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.notion-line-text[data-empty]:focus::before { content: attr(data-placeholder); color: #b0b0b0; pointer-events: none; }
+.notion-line:is(.h1, .h2, .h3, .h4) .notion-line-text[data-empty]::before { content: attr(data-placeholder); color: #c4c4c4; pointer-events: none; }
+.notion-line.h1 { margin-top: 18px; } .notion-line.h1 .notion-line-text { font-size: 26px; font-weight: 700; line-height: 1.3; }
+.notion-line.h2 { margin-top: 14px; } .notion-line.h2 .notion-line-text { font-size: 20px; font-weight: 650; line-height: 1.35; }
+.notion-line.h3, .notion-line.h4 { margin-top: 10px; } .notion-line:is(.h3, .h4) .notion-line-text { font-size: 17px; font-weight: 650; line-height: 1.4; }
+.notion-line-mark { flex: none; min-width: 18px; text-align: center; user-select: none; }
+.notion-line-mark.number { min-width: 22px; text-align: right; padding-right: 2px; font-variant-numeric: tabular-nums; }
+.notion-line.todo.checked .notion-line-text { color: #9a9a9a; text-decoration: line-through; }
+.notion-line.quote .notion-line-text { border-left: 3px solid #171717; padding-left: 14px; }
+.notion-line-text code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 85%; background: #f2f2f2; color: #c0392b; border-radius: 4px; padding: 1px 4px; }
+.notion-line-text a { color: inherit; text-decoration: underline; text-decoration-color: #b0b0b0; text-underline-offset: 2px; }
+.notion-line-text .underline { text-decoration: underline; }
+.notion-atom { color: #6b6b6b; border-radius: 3px; padding: 0 2px; background: #f2f2f2; white-space: nowrap; }
+.notion-line-add { position: absolute; left: -30px; top: 4px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: none; color: #b0b0b0; cursor: pointer; opacity: 0; }
+.notion-line:hover .notion-line-add { opacity: 1; }
+.notion-line-add:hover { background: #f2f2f2; color: #171717; }
+.notion-line.fixed { display: block; padding: 2px 2px; }
+.notion-line.fixed .rich-text > *, .notion-line.fixed .rich-text li, .notion-line.fixed .rich-text li > p { margin: 0; }
+.notion-line.fixed .rich-text table { margin: 6px 0; }
+.notion-line.fixed .rich-text ul, .notion-line.fixed .rich-text ol { padding-left: 22px; }
+.notion-page-tail { min-height: 56px; cursor: text; }
+.notion-page-title.dirty { box-shadow: none; }
+/* Save appears only while something is unsaved, floating at the bottom of the page. */
+.notion-save-bar { position: sticky; bottom: 12px; justify-self: center; z-index: 2; display: flex; align-items: center; gap: 8px; max-width: 100%; margin-top: 12px; padding: 6px 6px 6px 12px; border: 1px solid #e6e6e6; border-radius: 12px; background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08); font-size: 13px; white-space: nowrap; }
+.notion-save-count { display: inline-flex; align-items: center; gap: 7px; color: #6b6b6b; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.notion-save-count i { width: 6px; height: 6px; border-radius: 50%; background: #c9a227; flex: none; }
+.notion-save-count.error { color: #a43a2a; white-space: normal; max-width: 360px; }
+.notion-save-bar button { display: inline-flex; align-items: center; gap: 5px; }
+.notion-save-done { display: inline-flex; align-items: center; gap: 5px; color: #1f7a3a; padding-right: 6px; }
 .notion-page-empty { color: #8a8a8a; margin: 0; padding: 2px 6px; }
+.notion-page input.notion-line-check { width: 15px; height: 15px; flex: none; margin: 5px 4px 0 2px; padding: 0; border: 0; box-shadow: none; accent-color: #171717; cursor: pointer; }
+/* A page in the block view scrolls with the view, so Save stays in sight at its bottom edge. */
+.live-block.document.full .live-block-scroll { overflow: visible; }
+/* The card shows the same blocks, smaller. */
+.notion-text .notion-line { padding: 1px 0; gap: 4px; }
+.notion-text .notion-line-text { cursor: inherit; }
+.notion-text .notion-line.h1 .notion-line-text { font-size: 15px; } .notion-text .notion-line.h2 .notion-line-text { font-size: 14px; } .notion-text .notion-line:is(.h3, .h4) .notion-line-text { font-size: 13px; }
+.notion-text .notion-line:is(.h1, .h2, .h3, .h4) { margin-top: 6px; }
+.notion-text .notion-line-mark { min-width: 12px; }
