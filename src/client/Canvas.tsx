@@ -712,7 +712,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const failed=containedAttempts.filter(run=>['failed','interrupted'].includes(run.status)).length;
         const stopped=containedAttempts.filter(run=>run.status==='cancelled').length;
         const workLabel=[working?`${working} block${working===1?'':'s'} working`:'',pending?`${pending} approval${pending===1?'':'s'} pending`:'',failed?`${failed} block${failed===1?' needs':'s need'} attention`:'',stopped?`${stopped} stopped attempt${stopped===1?'':'s'}`:''].filter(Boolean).join(' · ');
-        const effective=modelSettings&&!['code','notebook'].includes(nodeBlockType(node))?resolveModelSetting(modelSettings,displayed.canvas.nodes,node.id):null;
+        const effective=modelSettings&&!['code','notebook','file'].includes(nodeBlockType(node))?resolveModelSetting(modelSettings,displayed.canvas.nodes,node.id):null;
         const selectedProvider=modelSettings?.providers.find(item=>item.id===effective?.selection.provider);
         const selectedModel=selectedProvider?.models.find(item=>item.id===effective?.selection.model);
         const modelTitle=effective?`Selected model: ${selectedProvider?.label??effective.selection.provider} · ${selectedModel?.label??effective.selection.model}${effective.inheritedFrom===node.id?' · task override':effective.inheritedFrom?' · inherited from '+displayed.canvas.nodes.find(item=>item.id===effective.inheritedFrom)?.title:' · project default'}. Saved results retain their original producing model.`:undefined;
