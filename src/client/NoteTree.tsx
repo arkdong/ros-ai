@@ -34,7 +34,7 @@ export function NoteTree({ projectId, nodes, runs, selectedId, limit, onSelect }
     return <div className="note-tree-branch" key={node.id}>
       <div className={`note-tree-row ${selectedId === node.id ? 'selected' : ''}`} role="treeitem" aria-selected={selectedId === node.id} aria-expanded={nested.length ? expanded : undefined} aria-level={depth + 1} aria-label={node.title} tabIndex={0} data-node-id={node.id} style={{ paddingLeft: 8 + depth * 16 }} onClick={() => onSelect(node.id)} onKeyDown={event => keyDown(event, node, nested.length > 0, expanded)}>
         {nested.length ? <button className="note-tree-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.title} in Notes`} tabIndex={-1} onClick={event => { event.stopPropagation(); toggle(node.id); }}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button> : branches && <span className="note-tree-spacer" />}
-        <KindIcon kind={node.kind} blockType={node.blockType} size={14} /><span className="note-tree-title" title={node.title}>{textPreview(node.title,64).text}</span>{busy && <LoaderCircle size={12} className="spin" />}
+        <KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} size={14} /><span className="note-tree-title" title={node.title}>{textPreview(node.title,64).text}</span>{busy && <LoaderCircle size={12} className="spin" />}
       </div>
       {nested.length > 0 && expanded && <div role="group">{nested.map(child => render(child, depth + 1, next))}</div>}
     </div>;

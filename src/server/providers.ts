@@ -1,4 +1,5 @@
 import type { ModelMessage } from '../shared/types.js';
+import type { SearchProviderId } from '../shared/search.js';
 import {captureChatCompletion} from './response-normalization.js';
 
 export type ModelCapabilities = { structuredOutput:boolean; cancellation:'abort-request'; toolCalling:boolean; modelVersion:boolean };
@@ -21,8 +22,9 @@ export interface ModelAdapter {
   complete(request:ModelRequest,signal:AbortSignal):Promise<ModelResponse>;
 }
 export type SearchResult = { title:string; url:string; content:string; locator:string };
-export type SearchResponse = { results:SearchResult[]; credits:number|null; requestId:string|null };
-export type ExtractResponse = { pages:{url:string;content:string;locator:string}[]; failed:string[]; credits:number|null; requestId:string|null };
+/** credits: Tavily's own unit. costUsd: the dollars a service reported (Exa) or charges at a flat price (Brave). */
+export type SearchResponse = { results:SearchResult[]; credits:number|null; requestId:string|null; costUsd?:number|null };
+export type ExtractResponse = { pages:{url:string;content:string;locator:string}[]; failed:string[]; credits:number|null; requestId:string|null; costUsd?:number|null };
 /** Basic search costs 1 credit and returns each page's summary; advanced costs 2 and returns the passages that best match the query. */
 export type SearchDepth = 'basic'|'advanced';
 /** A source of a Web block's sweep: its relevance to the query (0 to 1) and its site's icon, when the service gives them. */
@@ -111,10 +113,12 @@ async function requestJson(url:string,init:RequestInit):Promise<any> {
       const body=await response.json();
       const candidate=body?.error?.param;
       const field=['model','messages','tools','tool_choice','response_format','reasoning_effort','max_tokens','max_completion_tokens','temperature'].includes(candidate)?candidate:undefined;
-      const raw=body?.error?.message ?? (typeof body?.detail==='string'?body.detail:undefined);
-      const credential=new Headers(init.headers).get('Authorization')?.replace(/^Bearer\s+/i,'');
+      // Exa sends its error as a string; Brave Search puts it under error.detail.
+      const raw=body?.error?.message ?? (typeof body?.error==='string'?body.error:undefined) ?? (typeof body?.error?.detail==='string'?body.error.detail:undefined) ?? (typeof body?.detail==='string'?body.detail:undefined);
+      const headers=new Headers(init.headers);
+      const credentials=[headers.get('Authorization')?.replace(/^Bearer\s+/i,''),headers.get('x-api-key'),headers.get('x-subscription-token')].filter((value):value is string=>Boolean(value));
       let message=typeof raw==='string'?raw:'';
-      if(credential)message=message.split(credential).join('[redacted]');
+      for(const credential of credentials)message=message.split(credential).join('[redacted]');
       message=message.replace(/Bearer\s+\S+/gi,'Bearer [redacted]').replace(/[A-Za-z0-9_=-]{32,}/g,'[redacted]').replace(/[\r\n\x00-\x1f]+/g,' ').slice(0,240);
       const code=typeof body?.error?.code==='string'&&/^[a-z_]{1,40}$/.test(body.error.code)?body.error.code:'';
       diagnostic=[field?`field ${field}`:'',code,message].filter(Boolean).join('; ');
@@ -178,6 +182,10 @@ export class NebiusAdapter implements ModelAdapter {
   }
 }
 
+// A page can come back under a slightly different address (a trailing slash, www.); it keeps the one asked for.
+const pageKey = (url:string) => url.replace(/^https?:\/\/(?:www\.)?/u,'').replace(/\/+$/u,'');
+const samePage = (asked:string,returned:string) => pageKey(asked)===pageKey(returned);
+
 export const TAVILY_CREDIT_USD = 0.008;
 export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
 // Checking a claim needs the page's own words: advanced search returns up to three verbatim passages per page.
@@ -194,10 +202,8 @@ export class TavilyAdapter implements SearchAdapter {
   async extract(urls:string[],signal:AbortSignal):Promise<ExtractResponse> {
     const result = await requestJson(`${TAVILY_BASE}/extract`,{method:'POST',headers:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify({urls,...EXTRACT_SCHEMA.configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid page text.');
-    // A page can come back under a slightly different address (a trailing slash, www.); it keeps the one asked for.
-    const same = (url:string) => url.replace(/^https?:\/\/(?:www\.)?/u,'').replace(/\/+$/u,'');
     const pages = result.results.flatMap((page:any)=>{
-      const url = typeof page.url === 'string' ? urls.find(asked=>same(asked)===same(page.url)) : undefined;
+      const url = typeof page.url === 'string' ? urls.find(asked=>samePage(asked,page.url)) : undefined;
       if (!url || typeof page.raw_content !== 'string') return [];
       const content = page.raw_content.slice(0,PAGE_CHARACTERS);
       return [{url,content,locator:`Tavily extract; page text characters 0–${content.length}${page.raw_content.length > content.length ? ` of ${page.raw_content.length} (truncated)` : ''}`}];
@@ -232,3 +238,102 @@ export class TavilyAdapter implements SearchAdapter {
     }),credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null};
   }
 }
+
+const usd = (value:unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+const sourceUrl = (value:unknown) => {
+  if (typeof value !== 'string') throw new Error('Search provider returned a malformed source.');
+  const url = new URL(value);
+  if (!['http:','https:'].includes(url.protocol)) throw new Error('Search provider returned an unsupported source URL.');
+  return url;
+};
+/** Passages of one page as one saved excerpt: the exact text the model sees, with its bounded range. */
+const excerpt = (service:string,index:number,passages:string[]) => {
+  const full = passages.map(passage=>passage.trim()).filter(Boolean).join('\n…\n'), content = full.slice(0,6000);
+  return {content,locator:`${service} search result ${index+1}; passages characters 0–${content.length}${full.length > content.length ? ` of ${full.length} (truncated)` : ''}`};
+};
+
+// Exa finds pages by meaning and returns the passages of each that match the query. Search with
+// contents is US$7 per 1,000 requests of up to 10 results; reading pages is US$1 per 1,000 pages.
+// Exa reports each request's cost, which settles its reservation.
+// EXA_BASE_URL and BRAVE_BASE_URL name a compatible gateway instead, read at each request.
+const exaBase = () => process.env.EXA_BASE_URL?.replace(/\/+$/u, '') || 'https://api.exa.ai';
+export const EXA_SEARCH_USD = 0.007, EXA_PAGE_USD = 0.001;
+export const EXA_SEARCH_SCHEMA = {name:'exa_search',description:'One user-enabled Exa web search. Captured passages of each page, not full documents.',parameters:SEARCH_SCHEMA.parameters,configuration:{type:'auto',numResults:3,contents:{highlights:{maxCharacters:4000}}}};
+export const EXA_CONTENTS_SCHEMA = {name:'exa_contents',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{text:{maxCharacters:PAGE_CHARACTERS}}};
+export class ExaAdapter implements SearchAdapter {
+  get configured():boolean { return Boolean(this.key ?? process.env.EXA_API_KEY); }
+  constructor(private readonly key?:string) {}
+  private headers() {
+    if (!this.configured) throw new Error('Add an Exa key on the Plugins page; model-only work is available without search.');
+    return {'x-api-key':this.key ?? process.env.EXA_API_KEY ?? '','Content-Type':'application/json'};
+  }
+  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
+    const result = await requestJson(`${exaBase()}/search`,{method:'POST',headers:this.headers(),body:JSON.stringify({query,...EXA_SEARCH_SCHEMA.configuration}),signal});
+    if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
+    const results = result.results.slice(0,3).flatMap((source:any,index:number)=>{
+      const url = sourceUrl(source.url);
+      const passages = Array.isArray(source.highlights) ? source.highlights.filter((item:unknown):item is string=>typeof item === 'string') : typeof source.text === 'string' ? [source.text] : [];
+      const saved = excerpt('Exa',index,passages);
+      return saved.content ? [{title:String(source.title || url.hostname).slice(0,300),url:url.href,...saved}] : [];
+    });
+    return {results,credits:null,requestId:typeof result.requestId === 'string' ? result.requestId : null,costUsd:usd(result.costDollars?.total)};
+  }
+  async extract(urls:string[],signal:AbortSignal):Promise<ExtractResponse> {
+    const result = await requestJson(`${exaBase()}/contents`,{method:'POST',headers:this.headers(),body:JSON.stringify({urls,...EXA_CONTENTS_SCHEMA.configuration}),signal});
+    if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid page text.');
+    const pages = result.results.flatMap((page:any)=>{
+      const url = typeof page.url === 'string' ? urls.find(asked=>samePage(asked,page.url)) : undefined;
+      if (!url || typeof page.text !== 'string' || !page.text.trim()) return [];
+      const content = page.text.slice(0,PAGE_CHARACTERS);
+      return [{url,content,locator:`Exa contents; page text characters 0–${content.length}${page.text.length > content.length ? ` of ${page.text.length} (truncated)` : ''}`}];
+    });
+    const failed = urls.filter(url=>!pages.some((page:{url:string})=>page.url===url));
+    return {pages,failed,credits:null,requestId:typeof result.requestId === 'string' ? result.requestId : null,costUsd:usd(result.costDollars?.total)};
+  }
+}
+
+// Brave Search answers from its own index of the web. Its LLM context endpoint returns the passages of
+// each page that match the query. The Search plan charges US$5 per 1,000 requests and reports no cost
+// per request, so each search settles at that flat price. It cannot read a whole page.
+const braveBase = () => process.env.BRAVE_BASE_URL?.replace(/\/+$/u, '') || 'https://api.search.brave.com';
+export const BRAVE_SEARCH_USD = 0.005;
+export const BRAVE_SEARCH_SCHEMA = {name:'brave_llm_context',description:'One user-enabled Brave web search. Captured passages of each page, not full documents.',parameters:SEARCH_SCHEMA.parameters,configuration:{count:8,maximum_number_of_urls:3,maximum_number_of_tokens:4096,maximum_number_of_tokens_per_url:1536}};
+export class BraveAdapter implements SearchAdapter {
+  get configured():boolean { return Boolean(this.key ?? process.env.BRAVE_API_KEY); }
+  constructor(private readonly key?:string) {}
+  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
+    if (!this.configured) throw new Error('Add a Brave Search key on the Plugins page; model-only work is available without search.');
+    // Brave takes at most 50 words in a query.
+    const params = new URLSearchParams({q:query.split(/\s+/u).slice(0,50).join(' '),...Object.fromEntries(Object.entries(BRAVE_SEARCH_SCHEMA.configuration).map(([name,value])=>[name,String(value)]))});
+    const result = await requestJson(`${braveBase()}/res/v1/llm/context?${params}`,{method:'GET',headers:{Accept:'application/json','X-Subscription-Token':this.key ?? process.env.BRAVE_API_KEY ?? ''},signal});
+    const items = result?.grounding?.generic;
+    if (!Array.isArray(items)) throw new Error('Search provider returned invalid results.');
+    const results = items.slice(0,3).flatMap((item:any,index:number)=>{
+      const url = sourceUrl(item.url);
+      const passages = Array.isArray(item.snippets) ? item.snippets.filter((snippet:unknown):snippet is string=>typeof snippet === 'string') : [];
+      const saved = excerpt('Brave',index,passages), title = item.title || result.sources?.[item.url]?.title || url.hostname;
+      return saved.content ? [{title:String(title).slice(0,300),url:url.href,...saved}] : [];
+    });
+    return {results,credits:null,requestId:null,costUsd:BRAVE_SEARCH_USD};
+  }
+}
+
+/** What each search service is called and charges at most, for its reservations, the search plan a researcher
+ * approves and the agent's tool descriptions. Tavily's wording is what the agent was trained on and stays as it was. */
+export type SearchTool = {name:string;description:string;configuration:Record<string,unknown>};
+export type SearchPricing = {
+  label:string; searchUsd:number; searchBasis:string; model:string; schema:SearchTool & {parameters:Record<string,unknown>};
+  /** Reading whole pages, for a service that can: the upper bound and basis of one batch, and how plans and tools state the price. */
+  read?:{usd:(pages:number)=>number; basis:(pages:number)=>string; price:string; terms:string; model:string; schema:SearchTool};
+};
+export const SEARCH_SERVICES:Record<SearchProviderId,SearchPricing> = {
+  tavily:{label:'Tavily',searchUsd:TAVILY_CREDIT_USD,searchBasis:'Continued cumulative Tavily allowance: one basic search, 1 credit at $0.008 PAYG upper bound.',model:'basic-search',schema:SEARCH_SCHEMA,
+    read:{usd:pages=>Math.ceil(pages/EXTRACT_PAGES_PER_CREDIT)*TAVILY_CREDIT_USD,basis:pages=>`Continued cumulative Tavily allowance: basic extract of ${pages} page${pages===1?'':'s'}, ${Math.ceil(pages/EXTRACT_PAGES_PER_CREDIT)} credit at $0.008 PAYG upper bound.`,
+      price:`US$${TAVILY_CREDIT_USD} for each ${EXTRACT_PAGES_PER_CREDIT} read together`,terms:`Tavily charges 1 credit, US$0.008, for each ${EXTRACT_PAGES_PER_CREDIT} pages read together`,model:'basic-extract',schema:EXTRACT_SCHEMA}},
+  exa:{label:'Exa',searchUsd:EXA_SEARCH_USD,searchBasis:'Exa search with page passages: US$7 per 1,000 requests of up to 10 results, published rate; Exa reports the cost of each request.',model:'auto-search',schema:EXA_SEARCH_SCHEMA,
+    read:{usd:pages=>pages*EXA_PAGE_USD,basis:pages=>`Exa contents: the text of ${pages} page${pages===1?'':'s'} at US$1 per 1,000 pages, published rate; Exa reports the cost of each request.`,
+      price:`US$${EXA_PAGE_USD} each`,terms:`Exa charges US$${EXA_PAGE_USD} for each page`,model:'contents',schema:EXA_CONTENTS_SCHEMA}},
+  brave:{label:'Brave Search',searchUsd:BRAVE_SEARCH_USD,searchBasis:'Brave Search plan: one LLM context request at US$5 per 1,000 requests, published flat rate.',model:'llm-context',schema:BRAVE_SEARCH_SCHEMA},
+};
+/** What one search or page reading cost: the dollars a service reported, or Tavily's credits at its price. */
+export const searchCostUsd = (response:{credits:number|null;costUsd?:number|null}) => response.costUsd !== undefined ? response.costUsd : response.credits === null ? null : response.credits*TAVILY_CREDIT_USD;

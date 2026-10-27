@@ -115,6 +115,19 @@ test('continuous conversation preserves the original question and focus without 
   } finally { await f.close(); }
 });
 
+test('Ask carries out a direct request for ten blank blocks in one proposal without a written reason', async () => {
+  const blank = Array.from({ length: 10 }, (_, index) => ({ title: `Block ${index + 1}`, description: '', kind: 'topic', parentId: null, rationale: '' }));
+  const f = fixture([reply({ tools: [{ type: 'notes', summary: 'Ten blank blocks', notes: blank, relationships: [] }] })]);
+  try {
+    const before = f.store.getProject(f.project.id).canvas.nodes.length; f.assistant.start(f.project.id, { message: 'create 10 blank text blocks' }); const turn = await finished(f);
+    assert.equal(turn.status, 'completed'); assert.equal(turn.actions.length, 1); assert.equal(turn.actions[0].status, 'pending');
+    assert.match(JSON.stringify(f.requests[0]), /carry it out now with the notes tool/);
+    assert.equal(f.execution.acceptGovernedProposal(f.project.id, turn.actions[0].proposalId!), true);
+    const added = f.store.getProject(f.project.id).canvas.nodes.slice(before);
+    assert.equal(added.length, 10); assert.ok(added.every(node => node.description === ''));
+  } finally { await f.close(); }
+});
+
 test('Ask note proposals preserve structure until accepted and tools cannot use a pending note', async () => {
   const f = fixture([reply({ tools: [{ type: 'notes', summary: 'Fixture proposal', notes: [{ id: 'new-note', title: 'New fixture note', description: 'Research direction', kind: 'topic', parentId: null, rationale: 'Clarify the original fixture question.' }], relationships: [] }, { type: 'search', nodeId: 'new-note', query: 'Must wait for note acceptance' }] })]);
   try {

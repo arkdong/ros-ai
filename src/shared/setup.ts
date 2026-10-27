@@ -30,7 +30,13 @@ export type DetectedAgent = {
   servers: string[];
 };
 export type LocalModelId = 'ollama' | 'lm-studio';
-export type DetectedModel = { id: LocalModelId; label: string; endpoint: string; found: boolean; running: boolean; models: string[]; connectionId: string | null };
+/** The context ros.ai's agent needs to work step by step: its tools and instructions, a few results and an answer. */
+export const AGENT_CONTEXT_TOKENS = 16_384;
+/** One model a local server offers, as the server itself describes it. context is the context the server gives the
+ * model when that is known (set on the model, or read while it is loaded); maxContext is what it was trained for.
+ * tools is false only when the server says the model cannot call tools. */
+export type LocalModel = { id: string; context: number | null; maxContext: number | null; tools: boolean | null; embedding: boolean; bytes: number | null };
+export type DetectedModel = { id: LocalModelId; label: string; endpoint: string; found: boolean; running: boolean; models: string[]; details: LocalModel[]; connectionId: string | null };
 export type DetectedKey = { provider: string; label: string; source: 'environment' | 'saved' };
 export type AppId = 'notion' | 'slack' | 'zotero' | 'github' | 'obsidian' | 'linear' | 'figma' | 'google-drive' | 'dropbox';
 export type DetectedApp = { id: AppId; label: string; signals: string[]; usedBy: string[]; connected: boolean };

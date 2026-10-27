@@ -29,6 +29,15 @@ The service binds to loopback only. ros.ai keeps its own records in the computer
 
 **Code and Notebook blocks** need nothing else on macOS: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs code in the macOS sandbox, the way Codex and Claude Code run commands. The only network is a proxy on this computer that asks before each new website (Allow once, Always for this project, Deny; PyPI is always allowed, so `%pip install` works in notebooks); Settings → General → Python network can switch to Full network. On Linux and Windows they use Docker: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
 
+## Updates
+
+ros.ai looks for a newer release on GitHub when it starts and every six hours. Once one is ready, an **Update** button appears at the top right, as in Codex.
+
+- **Mac app:** the new version downloads in the background and is checked against GitHub's checksum; Update restarts into it. This works from Applications; a copy opened from the disk image or Downloads links to the download instead.
+- **From source:** on `main` with nothing uncommitted, Update pulls the release, runs `npm ci` only when dependencies changed, rebuilds the page and restarts in the same terminal. On another branch or with local edits it shows the commands instead.
+
+The check is one request to GitHub's public release list, with nothing about you or your computer. Settings › General › Updates turns the automatic check off; `ROS_UPDATE_URL=off` stops every check.
+
 ## Keys in one file
 
 Keys can be pasted on the Model and Plugins pages and are saved privately in the data folder. To avoid typing them into every fresh data folder, put them once in `~/.config/ros.ai/keys.env`, readable only by you:
@@ -51,7 +60,13 @@ codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 
 Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`, so no separate Node is needed. The agent can read the canvas, artifacts and your saved preferences and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's approval mode, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project.
 
-**Apps with their own hosted connection (Notion).** On the Apps page, Connect signs in to the app's hosted MCP server the way Claude and Claude Code do. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it.
+**Apps every agent can use.** On the Plugins page, Notion, Linear and Sentry connect by signing in to their hosted MCP servers the way Claude and Claude Code do. GitHub uses its hosted MCP server with the token you save there, Figma uses the MCP server of Figma's desktop app, and Slack uses the bot token of your own Slack app. Every agent you run in ros.ai gets the same app tools at once. Tools that only read run straight away; anything that could change something in the app appears as a note on the canvas and runs only after you accept it.
+
+**Google Sheets and Docs on the canvas.** With Google Drive connected (read-only), Add block › Google Drive takes a sheet or doc link and shows it live: a sheet's tab or a doc's text, read again when it changes, with nothing copied into ros.ai. A sheet's tab can be copied into a Data block for SQL. Every agent can search your Drive and read Sheets and Docs. Turn on the Google Sheets API next to the Drive API in your Google Cloud project to choose tabs; without it a sheet shows its first tab.
+
+**Papers on the canvas.** Add block › Paper searches OpenAlex and arXiv, and your Zotero library once its key is saved on the Plugins page. A paper's open PDF is saved into the project folder as a File block whose text agents read; without one, a Text block holds the reference and abstract. Turn OpenAlex or arXiv on for agents on the Plugins page (Zotero is on once connected) and every agent can search them and add papers to the canvas under the project's approval mode. A free OpenAlex key, saved there or as `OPENALEX_API_KEY` in the keys file, raises its daily allowance.
+
+**A browser for agents.** Turn on Plugins › Browser and agents can open public websites, click through them, fill in forms and take screenshots. It runs the Google Chrome or Microsoft Edge on this computer without a window (or Chromium, downloaded once into the data folder, about 100 MB), in an empty profile for each turn, so it never sees your cookies, logins or saved passwords. A proxy keeps it on public websites, never this computer or your network, and it keeps no downloads. An agent's first page in a turn follows the project's approval mode; a Browser block on the canvas then lists every step, and screenshots land beside it as File blocks in the project folder. `ROS_BROWSER_PATH` names another Chromium-based browser.
 
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 

@@ -5,16 +5,17 @@ import type { Express } from 'express';
 import { z } from 'zod';
 import { StoreError } from './store.js';
 import { notionBase } from './notion.js';
+import { slackApi } from './slack.js';
 import type { PluginStatus, TokenPluginId } from '../shared/plugins.js';
 
-const ids = ['zotero', 'slack', 'notion', 'github'] as const satisfies readonly TokenPluginId[];
+const ids = ['zotero', 'slack', 'notion', 'github', 'openalex'] as const satisfies readonly TokenPluginId[];
 const idSchema = z.enum(ids);
 const tokenSchema = z.string().trim().min(8).max(4096).refine(value => !/\s|[\x00-\x1f\x7f]/.test(value), 'Enter a single token without spaces.');
-const savedSchema = z.object({ version: z.literal(1), tokens: z.object({ zotero: tokenSchema.optional(), slack: tokenSchema.optional(), notion: tokenSchema.optional(), github: tokenSchema.optional() }).strict() }).strict();
+const savedSchema = z.object({ version: z.literal(1), tokens: z.object({ zotero: tokenSchema.optional(), slack: tokenSchema.optional(), notion: tokenSchema.optional(), github: tokenSchema.optional(), openalex: tokenSchema.optional() }).strict() }).strict();
 type Check = Pick<PluginStatus, 'checkedAt' | 'verified' | 'checkMessage'>;
 /** Names from a provider are echoed back only as a short label. */
 /** Tokens a local keys file or the shell may provide instead of the Plugins page. */
-const environment: Partial<Record<TokenPluginId, string>> = { notion: 'NOTION_TOKEN' };
+const environment: Partial<Record<TokenPluginId, string>> = { notion: 'NOTION_TOKEN', zotero: 'ZOTERO_API_KEY', openalex: 'OPENALEX_API_KEY' };
 const label = (value: unknown) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80) : '';
 
 /** Plugin tokens stay in an owner-only file on this computer; the browser only learns whether one is saved and the last check. */
@@ -75,10 +76,15 @@ export class PluginTokens {
         verified = response.ok;
         checkMessage = response.ok ? `Zotero accepted the key${label(body?.username) ? ` for ${label(body?.username)}` : ''}.` : response.status === 403 || response.status === 404 ? 'Zotero rejected this key.' : `Zotero returned HTTP ${response.status}.`;
       } else if (id === 'slack') {
-        const response = await request('https://slack.com/api/auth.test', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        const response = await request(`${slackApi()}/auth.test`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
         const body = response.ok ? await response.json() as { ok?: boolean; team?: unknown } : null;
         verified = body?.ok === true;
         checkMessage = verified ? `Slack accepted the token${label(body?.team) ? ` for ${label(body?.team)}` : ''}.` : response.ok ? 'Slack rejected this token.' : `Slack returned HTTP ${response.status}.`;
+      } else if (id === 'openalex') {
+        // OpenAlex's own page for a key's daily allowance; it needs a key it accepts.
+        const response = await request(`https://api.openalex.org/rate-limit?${new URLSearchParams({ api_key: token })}`, { headers: { 'User-Agent': 'ros.ai (https://github.com/arkdong/ros-ai)' } });
+        verified = response.ok;
+        checkMessage = response.ok ? 'OpenAlex accepted the key.' : response.status === 401 || response.status === 403 ? 'OpenAlex rejected this key.' : `OpenAlex returned HTTP ${response.status}.`;
       } else if (id === 'notion') {
         const response = await request(`${notionBase()}/v1/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
         verified = response.ok;

@@ -20,7 +20,7 @@ const ceilingUnits=(usd:number)=>Math.floor(usd*UNITS_PER_USD);
 const idSchema=z.string().regex(/^custom-[a-f0-9-]{36}$/);
 const keySchema=z.string().trim().min(1).max(4096).refine(value=>!/[\s\x00-\x1f\x7f]/.test(value),'Enter one API key without spaces.');
 const makerSchema=z.object({id:z.enum(['nvidia','moonshot','openai','unknown']),label:z.string().trim().min(1).max(60),monogram:z.string().trim().min(1).max(4)}).strict();
-const modelSchema=z.object({id:z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:@+-]*$/),label:z.string().trim().min(1).max(100),contextTokens:z.number().int().min(256).max(8_000_000),inputUsdPerMillion:z.number().finite().min(0).max(10000).optional(),outputUsdPerMillion:z.number().finite().min(0).max(10000).optional(),maker:makerSchema.optional()}).strict();
+const modelSchema=z.object({id:z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:@+-]*$/),label:z.string().trim().min(1).max(100),contextTokens:z.number().int().min(256).max(8_000_000),inputUsdPerMillion:z.number().finite().min(0).max(10000).optional(),outputUsdPerMillion:z.number().finite().min(0).max(10000).optional(),maker:makerSchema.optional(),tools:z.boolean().optional()}).strict();
 const capsSchema=z.object({maxInputBytes:z.number().int().min(256).max(64000),maxOutputTokens:z.number().int().min(1).max(32768),timeoutMs:z.number().int().min(1000).max(300000),maxConcurrent:z.number().int().min(1).max(4),maxResponseBytes:z.number().int().min(1024).max(512000).default(128000)}).strict();
 const connectionFields={name:z.string().trim().min(1).max(100),endpoint:z.string().trim().min(1).max(2000),apiKey:keySchema.nullable().optional(),models:z.array(modelSchema).min(1).max(16),caps:capsSchema,enabled:z.boolean()};
 const connectionSchema=z.object(connectionFields).strict();
@@ -44,7 +44,8 @@ function validateConnection(connection:PrivateConnection){
   const parsed=endpoint(connection.endpoint),ids=connection.models.map(model=>model.id);
   if(new Set(ids).size!==ids.length)throw new StoreError('Each configured model needs a unique stable model ID.');
   for(const model of connection.models){
-    if(connection.caps.maxOutputTokens>=model.contextTokens)throw new StoreError('The output cap must be below every configured model context cap.');
+    // A loopback request is not billed: its output is shortened to the room its model's context leaves, per request.
+    if(parsed.destination==='remote'&&connection.caps.maxOutputTokens>=model.contextTokens)throw new StoreError('The output cap must be below every configured model context cap.');
     if(parsed.destination==='remote'&&(!Number.isFinite(model.inputUsdPerMillion)||!Number.isFinite(model.outputUsdPerMillion)||Math.max(model.inputUsdPerMillion??0,model.outputUsdPerMillion??0)<=0))throw new StoreError('Every remote model needs explicit conservative input and output USD rates before it can be configured.');
     if(parsed.destination==='local-unverified'&&((model.inputUsdPerMillion??0)!==0||(model.outputUsdPerMillion??0)!==0))throw new StoreError('Loopback usage is recorded without a provider USD debit; remote billing must use a remote connection. Local processing remains unverified.');
   }
