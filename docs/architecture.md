@@ -331,6 +331,7 @@ A Feedback button at the top right of every page opens a card for a problem, an 
 - **Post publicly on GitHub** opens a new issue in arkdong/ros-ai through the issue form for the note's kind (`.github/ISSUE_TEMPLATE`, filled in by `publicIssueUrl` in src/shared/feedback.ts), never with the email address.
 - App details go only while their box is ticked, and the card shows the exact line. No logs, prompts, project content or screenshots. With `ROS_CLOUD_URL=off` and in the public demo the card offers GitHub only. A note that fails to send stays in the card as a draft.
 - Layout (src/client/feedback.css): on the map the button ends the header, after Saved, and the header keeps room for it; on full pages such as Settings it sits in the same corner. The card opens under it and scrolls in a short window. On phones the button keeps only its icon.
+- First visits: a dark hint under the button says ros.ai is in early access and asks what is missing or broken. It shows on the map on each visit until the person closes it or opens the card, then never again on that browser (`ros-ai:feedback-hint-done` in local storage). Their first press elsewhere (or Enter or Space) puts it aside until the next visit, so it never sits over a panel they open. It waits while setup, the demo picker or a walkthrough is showing, while Ros is open, and on full pages, where it would cover their controls.
 
 ## Updates · October 26, 2026
 

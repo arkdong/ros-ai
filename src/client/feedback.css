@@ -2,14 +2,27 @@
    ends the header, after Saved, and on full pages such as Settings it takes the page's empty corner.
    The layer covers the workspace without taking presses, so offsets count from its edges. */
 .feedback { position: absolute; inset: 0; z-index: 29; pointer-events: none; }
-.feedback .feedback-button, .feedback .feedback-card { pointer-events: auto; }
+.feedback .feedback-button, .feedback .feedback-hint, .feedback .feedback-card { pointer-events: auto; }
 /* Above full pages such as Settings, and above everything while open. */
 .workspace:has(> .rail-page) > .feedback, .feedback.open { z-index: 50; }
-.feedback .feedback-button { position: absolute; top: 16px; right: 24px; height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--card-line); border-radius: 8px; background: #fff; color: var(--ink); font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.feedback .feedback-anchor { position: absolute; top: 16px; right: 24px; display: flex; }
+.feedback .feedback-button { height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--card-line); border-radius: 8px; background: #fff; color: var(--ink); font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
 .feedback .feedback-button:hover { background: #f7f7f7; }
 .feedback.open .feedback-button { background: #f2f2f2; }
 /* The map's header leaves the button its room. */
 .workspace:has(> .feedback) > .workspace-header { padding-right: 148px; }
+
+/* The first-visit hint hangs under the button, its tip on the button's middle, and fades in once the page settles
+   (hidden until then, so it catches no presses before it shows). */
+.feedback .feedback-hint { position: absolute; top: calc(100% + 10px); right: 0; width: 236px; padding: 12px 34px 12px 14px; border-radius: 10px; background: #1d1f1e; color: #fff; font-size: var(--text-sm); line-height: 1.45; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.feedback-hint p { margin: 0; }
+.feedback-hint strong { display: block; margin-bottom: 2px; font-weight: 600; }
+.feedback-anchor.hinting::after { content: ''; position: absolute; top: calc(100% + 5px); left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 2px; background: #1d1f1e; transform: rotate(45deg); }
+.feedback .feedback-hint-close { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; padding: 0; border-radius: 6px; color: #bdbdbd; }
+.feedback .feedback-hint-close:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.feedback-hint, .feedback-anchor.hinting::after { animation: feedback-hint-in .24s ease .6s both; }
+@keyframes feedback-hint-in { from { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .feedback-hint, .feedback-anchor.hinting::after { animation: none; } }
 
 /* The card opens under the button; a long card scrolls in the room down to the bottom edge. */
 .feedback .feedback-card-space { position: absolute; top: 56px; right: 24px; bottom: 16px; width: 340px; max-width: calc(100% - 32px); display: flex; flex-direction: column; }
@@ -61,7 +74,8 @@
 
 /* Phones: the button keeps only its icon, level with the title row, and the card takes the width under it. */
 @media (max-width: 600px) {
-  .feedback .feedback-button { top: 6px; right: 12px; width: 32px; padding: 0; }
+  .feedback .feedback-anchor { top: 6px; right: 12px; }
+  .feedback .feedback-button { width: 32px; padding: 0; }
   .feedback .feedback-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .workspace:has(> .feedback) > .workspace-header { padding-right: 56px; }
   .feedback .feedback-card-space { top: 46px; right: 12px; bottom: 12px; max-width: calc(100% - 24px); }

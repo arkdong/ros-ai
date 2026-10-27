@@ -15,13 +15,19 @@ function browserName() {
 
 /** The Feedback button at the top right of every page, and its card for a problem, an idea or a
  * question. Opening it asks only the local server; nothing leaves this computer until the person
- * presses Send or Post publicly on GitHub. The public demo offers GitHub only. */
-export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
+ * presses Send or Post publicly on GitHub. The public demo offers GitHub only.
+ * On first visits a hint under the button says ros.ai is in early access. It goes for good once the
+ * person closes it or opens the card, steps aside until the next visit at their first press elsewhere,
+ * and waits while `quiet` (setup, the demo picker, a walkthrough, Ros or a full page is showing). */
+export function FeedbackButton({ publicDemo, quiet }: { publicDemo: boolean; quiet: boolean }) {
   const [open, setOpen] = useState(false), [setup, setSetup] = useState<FeedbackSetup>();
+  const [hintDone, setHintDone] = useState(() => readSaved('feedback-hint-done', false)), [hintAside, setHintAside] = useState(false);
+  const endHint = () => { if (!hintDone) { saveLocal('feedback-hint-done', true); setHintDone(true); } };
+  const hint = !hintDone && !hintAside && !quiet && !open;
   const [kindId, setKind] = useDraft('feedback-kind', 'problem'), [message, setMessage] = useDraft('feedback-message'), [email, setEmail] = useDraft('feedback-email');
   const [withDetails, setWithDetails] = useState(() => readSaved('feedback-details', true));
   const [sending, setSending] = useState(false), [error, setError] = useState(''), [sent, setSent] = useState<{ email?: string }>();
-  const box = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), text = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLDivElement>(null), anchor = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), text = useRef<HTMLTextAreaElement>(null);
   const kind = FEEDBACK_KINDS.find(item => item.id === kindId) ?? FEEDBACK_KINDS[0], ready = Boolean(setup);
 
   const close = () => { setOpen(false); setSent(undefined); setError(''); };
@@ -38,6 +44,14 @@ export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
     return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key); };
   }, [open, publicDemo]);
   useEffect(() => { if (open && ready && !sent) text.current?.focus(); }, [open, ready, sent]);
+  useEffect(() => {
+    if (!hint) return;
+    // A press, Enter or Space anywhere else puts the hint aside, so it never sits over what that opens.
+    const aside = (event: Event) => { if (!anchor.current?.contains(event.target as Node)) setHintAside(true); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') aside(event); };
+    document.addEventListener('pointerdown', aside, true); document.addEventListener('keydown', key, true);
+    return () => { document.removeEventListener('pointerdown', aside, true); document.removeEventListener('keydown', key, true); };
+  }, [hint]);
 
   const details = setup ? `${setup.details} · ${browserName()}` : '';
   const publicUrl = publicIssueUrl({ kind: kind.id, message, ...(withDetails && details ? { details } : {}) });
@@ -54,7 +68,13 @@ export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
   };
 
   return <div className={`feedback ${open ? 'open' : ''}`} ref={box}>
-    <button ref={trigger} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={open} onClick={() => open ? close() : setOpen(true)}><MessageSquare size={14} aria-hidden/><span>Feedback</span></button>
+    <div className={`feedback-anchor ${hint ? 'hinting' : ''}`} ref={anchor}>
+      <button ref={trigger} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={open} aria-describedby={hint ? 'feedback-hint-text' : undefined} onClick={() => { endHint(); if (open) close(); else setOpen(true); }}><MessageSquare size={14} aria-hidden/><span>Feedback</span></button>
+      {hint && <div className="feedback-hint" role="note">
+        <p id="feedback-hint-text"><strong>ros.ai is in early access</strong> Tell us what’s missing or broken. We read every note.</p>
+        <button type="button" className="feedback-hint-close" aria-label="Dismiss tip" onClick={endHint}><X size={14}/></button>
+      </div>}
+    </div>
     {open && setup && <div className="feedback-card-space"><section className="feedback-card" role="dialog" aria-label="Send feedback">
       <header><strong>Send feedback</strong><button type="button" className="feedback-close" aria-label="Close" onClick={close}><X size={16}/></button></header>
       {sent ? <>
