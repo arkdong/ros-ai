@@ -53,7 +53,7 @@ Claude Code can be the project assistant. It runs through Anthropic's [Agent SDK
 2. Save a usage allowance (total USD and requests) on the same card, and pick the model (Sonnet by default, Opus or Haiku).
 3. In the assistant, open settings and choose **Claude Code**.
 
-Each turn reserves up to US$1.00 of the allowance (`ROS_CLAUDE_TURN_USD` changes it, up to 20) and passes that amount to Claude Code as the turn's budget. A turn that finishes is then counted at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice. A stopped, failed or uncertain turn keeps its full reservation.
+Each turn reserves up to US$5.00 of the allowance (`ROS_CLAUDE_TURN_USD` changes it, up to 20) and passes that amount to Claude Code as the turn's budget. A turn that finishes is then counted at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice. A stopped, failed or uncertain turn keeps its full reservation.
 
 What it can do, enforced by ros.ai rather than by instructions:
 

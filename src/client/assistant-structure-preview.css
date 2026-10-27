@@ -83,3 +83,7 @@
 .assistant-structure-preview.compact .structure-relationships { margin-top:6px; padding-top:6px; }
 .assistant-structure-preview.compact .structure-card-heading>div { flex:1; }
 .assistant-structure-preview.compact .structure-card-heading strong { flex:1; }
+.proposal-review-count { flex-shrink:0; font-size:12px; color:#6b6b6b; }
+.assistant-structure-preview .structure-card-choice { flex-shrink:0; width:13px; height:13px; margin:5px 0 0; accent-color:#171717; }
+.assistant-structure-preview .structure-card.left-out .structure-card-heading strong { color:#9a9a9a; text-decoration:line-through; }
+.assistant-structure-preview .structure-show-all { margin-top:4px; }

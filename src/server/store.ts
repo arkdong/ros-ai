@@ -511,6 +511,37 @@ export class Store {
     });
   }
 
+  /** More changes for a pending proposal, checked against the canvas as it would be with the ones already in it,
+   * so a later block can go inside a group the same proposal adds. */
+  extendProposal(projectId: string, proposalId: string, summary: string, supplied: Mutation[], arranged = false): Proposal {
+    return this.transaction(() => {
+      const proposal = this.getProposal(projectId, proposalId), project = this.getProject(projectId);
+      if (project.revision !== proposal.baseRevision) throw new StoreError('The canvas changed while this proposal was generated. Request an updated preview.', 409);
+      const projected = { ...project, canvas: this.applyOperations(project, proposal.operations, true, true).canvas };
+      const { operations } = this.applyOperations(projected, supplied, true, arranged);
+      proposal.operations = [...proposal.operations, ...operations];
+      proposal.summary = z.string().trim().min(1).max(5_000).parse(`${proposal.summary}\nAlso: ${summary.split('\n')[0]}`.slice(0, 5_000));
+      this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      return proposal;
+    });
+  }
+
+  /** Leaves blocks a pending proposal adds out of it, with the blocks inside them and their connections, before it is
+   * accepted. A proposal left with nothing is dismissed. */
+  narrowProposal(projectId: string, proposalId: string, leaveOut: readonly string[]): Proposal {
+    return this.transaction(() => {
+      const proposal = this.getProposal(projectId, proposalId);
+      const added = new Map(proposal.operations.flatMap(op => op.type === 'addNode' ? [[op.node.id, op.node.parentId ?? null] as const] : []));
+      const out = new Set(leaveOut.filter(id => added.has(id)));
+      for (let grew = true; grew;) { grew = false; for (const [id, parent] of added) if (parent && out.has(parent) && !out.has(id)) { out.add(id); grew = true; } }
+      if (!out.size) return proposal;
+      proposal.operations = proposal.operations.filter(op => op.type === 'addNode' ? !out.has(op.node.id) : op.type === 'addConnection' ? !out.has(op.connection.source) && !out.has(op.connection.target) : op.type === 'updateNode' ? !(op.patch.parentId && out.has(op.patch.parentId)) : true);
+      if (!proposal.operations.length) proposal.status = 'dismissed';
+      this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      return proposal;
+    });
+  }
+
   proposalStatus(projectId: string, proposalId: string): Proposal['status'] {
     const proposal = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', proposalId, 'Proposal');
     if (proposal.projectId !== projectId) throw new StoreError('Proposal not found in this project', 404);

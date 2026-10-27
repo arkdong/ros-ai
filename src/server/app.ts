@@ -137,7 +137,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const { message } = z.object({ message: z.string().trim().min(1).max(12000) }).strict().parse(req.body);
     res.json(await execution.chat(routeId(req.params.id), message));
   });
-  app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId));});
+  app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);
+    // Blocks the person unticked in the review are left out first; a proposal left empty is dismissed.
+    const leaveOut=z.array(z.string().max(200)).max(1000).optional().parse(req.body?.leaveOut);
+    if(leaveOut?.length&&store.narrowProposal(id,proposalId,leaveOut).status==='dismissed'){res.json(store.getProject(id));return;}
+    res.json(research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId));});
   app.post('/api/projects/:id/proposals/:proposalId/dismiss', (req, res) => res.json(store.dismissProposal(routeId(req.params.id), routeId(req.params.proposalId))));
   app.post('/api/projects/:id/runs', (req, res) => {
     const { nodeId, ...options } = z.object({ nodeId: identifier, request: z.string().trim().min(1).max(12000), useSearch: z.boolean().default(false) }).strict().parse(req.body);

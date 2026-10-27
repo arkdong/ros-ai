@@ -4,7 +4,7 @@ export type {AssistantClarificationQuestion} from './assistant-clarifications.js
 export type AssistantStructurePreview={
   summary:string;
   validated:false;
-  notes:{id:string;title:string;description:string;kind:'topic'|'activity'|'group';parentId:string|null;rationale?:string}[];
+  notes:{id:string;title:string;description:string;kind:'topic'|'activity'|'group';blockType?:string;parentId:string|null;rationale?:string}[];
   relationships:{source:string;target:string;label:string}[];
 };
 export type AssistantResponsePresentation={reply:string;question?:string;clarifications?:AssistantClarificationQuestion[];structure?:AssistantStructurePreview};

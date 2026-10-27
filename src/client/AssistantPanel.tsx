@@ -31,7 +31,7 @@ type Props = {
   onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
   onDecision: (actionId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
-  onProposal: (proposalId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
+  onProposal: (proposalId: string, decision: 'accept' | 'dismiss', leaveOut?: string[]) => Promise<unknown>;
   onInspectAction: (action: AssistantAction) => void;
   /** Ros opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
@@ -251,13 +251,19 @@ function ActionCard({ action, detail, onReference, onDecision, onProposal, onIns
 /** A pending canvas change, reviewed where it was proposed: what changes, then Accept or Dismiss. */
 function ProposalReview({ proposal, title, detail, onProposal, onOpen }: { proposal: Proposal; title: string; detail: ProjectDetail; onProposal: Props['onProposal']; onOpen: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [leftOut, setLeftOut] = useState<ReadonlySet<string>>(new Set());
   const structure = proposalStructurePreview(proposal, detail.project.canvas.nodes);
   const stale = proposal.baseRevision !== detail.project.revision;
-  const decide = async (decision: 'accept' | 'dismiss') => { setBusy(true); try { await onProposal(proposal.id, decision); } finally { setBusy(false); } };
+  // The blocks this change adds, with their parents, so a block inside an unticked group counts as left out too.
+  const added = new Map(proposal.operations.flatMap(operation => operation.type === 'addNode' ? [[operation.node.id, operation.node.parentId ?? null] as const] : []));
+  const isOut = (id: string): boolean => leftOut.has(id) || Boolean(added.get(id) && isOut(added.get(id)!));
+  const kept = [...added.keys()].filter(id => !isOut(id)).length;
+  const toggle = (id: string) => setLeftOut(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
+  const decide = async (decision: 'accept' | 'dismiss') => { setBusy(true); try { await onProposal(proposal.id, decision, decision === 'accept' && leftOut.size ? [...leftOut] : undefined); } finally { setBusy(false); } };
   return <section className="proposal-review" aria-label="Proposed canvas change">
-    <header><GitBranch size={14} aria-hidden="true"/><strong title={title}>{title.split('\n')[0]}</strong></header>
-    {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
+    <header><GitBranch size={14} aria-hidden="true"/><strong title={title}>{title.split('\n')[0]}</strong>{added.size > 1 && <span className="proposal-review-count">{added.size} blocks</span>}</header>
+    {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact choice={added.size > 1 ? { addedIds: new Set(added.keys()), leftOut, onToggle: toggle } : undefined}/>}
     {stale && <p className="proposal-review-stale">The canvas changed since. Ask Ros to update this.</p>}
-    <div className="proposal-review-actions"><button className="primary small" disabled={busy || stale} onClick={() => void decide('accept')}><Check size={13}/> Accept</button><button className="text-button small" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button><button className="text-button small proposal-review-open" onClick={onOpen}>Show on canvas <ArrowRight size={12}/></button></div>
+    <div className="proposal-review-actions"><button className="primary small" disabled={busy || stale || (added.size > 0 && kept === 0 && proposal.operations.every(operation => operation.type === 'addNode' || operation.type === 'addConnection'))} onClick={() => void decide('accept')}><Check size={13}/> {leftOut.size && added.size ? `Accept ${kept} ${kept === 1 ? 'block' : 'blocks'}` : 'Accept'}</button><button className="text-button small" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button><button className="text-button small proposal-review-open" onClick={onOpen}>Show on canvas <ArrowRight size={12}/></button></div>
   </section>;
 }

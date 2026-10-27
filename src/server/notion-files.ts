@@ -21,7 +21,7 @@ export const notionSaveSchema = z.object({
   page: z.string().trim().min(32).max(400).describe('The Notion page the file is on: its link or ID (for a database row, the row\'s page)'),
   property: z.string().trim().min(1).max(200).optional().describe('A Files column of that page, such as "CV": every file in it is saved'),
   references: z.array(z.string().trim().startsWith('notion-file-block://').max(2000)).min(1).max(MAX_FILES).optional().describe('Or files in the page\'s content: their notion-file-block:// references, exactly as notion-fetch shows them'),
-  parentId: id.optional().describe('A group to put the File blocks in, such as the candidate\'s group; left out, they go beside you'),
+  parentId: id.optional().describe('A group to put the File blocks in, such as the candidate\'s group, including one you proposed earlier in this turn that still waits for the person; left out, they go beside you'),
 }).strict().refine(value => Boolean(value.property) !== Boolean(value.references), 'Give either property (a Files column) or references (files in the page\'s content), not both.');
 export type NotionSaveInput = z.infer<typeof notionSaveSchema>;
 
