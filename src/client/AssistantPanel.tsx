@@ -164,13 +164,13 @@ function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:stri
   if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
   if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
   if(backend==='codex'&&/OpenAI API key on the Agents page/i.test(reason))return {summary:'Connect an OpenAI API key for Codex.',action:'connections'};
-  if(backend==='codex'&&/signed out/i.test(reason))return {summary:'Sign in to Codex with your ChatGPT plan.',action:'connections'};
+  if(backend==='codex'&&/signed out/i.test(reason))return {summary:'Sign in to Codex with your ChatGPT subscription.',action:'connections'};
   // A local model that cannot work step by step: the reason names the model and what to change.
   if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};
   if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};
   if(/stopped|stop flag/i.test(reason))return {summary:'Work in this project is paused.',action:'permissions'};
   if(backend==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
-  if(backend==='claude'&&/claude plan/i.test(reason))return {summary:reason,action:'connections'};
+  if(backend==='claude'&&/claude subscription/i.test(reason))return {summary:reason,action:'connections'};
   if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':backend==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
   if(/credential|api key|configured/i.test(reason))return {summary:'Connect the selected model provider.',action:'connections'};
   return {summary:backend==='codex'?'Codex cannot start. Check connection details.':backend==='claude'?'Claude Code cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};

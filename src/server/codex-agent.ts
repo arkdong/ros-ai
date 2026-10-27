@@ -133,7 +133,7 @@ export class CodexAgentService implements AgentRuntime {
     if (!protocol.dynamicTools || !protocol.interrupt) blockers.push('This CLI protocol lacks the dynamic tool or cancellation surface required by ros.ai.');
     if (!codexIsolation(protocol)) blockers.push('This installed app-server protocol has no restricted read-root sandbox. Embedded turns are disabled because read-only alone can read unrelated host files. A CLI update supporting restricted read access or a separately verified OS isolation boundary is required.');
     if (rpc && !rpc.toolRestrictionsConfigured) blockers.push('The process could not confirm all host tool features disabled. Embedded turns remain disabled.');
-    if (!api && rpc?.signedIn && rpc.authMethod !== 'chatgpt') blockers.push('Your Codex is signed in with an API key rather than a ChatGPT plan. To run Codex on an API key, choose OpenAI API key on the Codex page under Agents.');
+    if (!api && rpc?.signedIn && rpc.authMethod !== 'chatgpt') blockers.push('Your Codex is signed in with an API key rather than a ChatGPT subscription. To run Codex on an API key, use OpenAI API key on the Codex page under Agents.');
     if (!grant.ready) blockers.push(grant.reason);
     if (this.experiments.authority.policy(projectId).stopped) blockers.push('Project work is stopped. Resume deliberately before a new turn.');
     const available = blockers.length === 0;
@@ -191,7 +191,7 @@ export class CodexAgentService implements AgentRuntime {
     this.store.getProject(projectId);
     if (this.closed) throw new StoreError('Local agent service is stopping.', 503);
     if (this.active.size) throw new StoreError('Stop active Codex research before changing its native account.', 409);
-    if (this.saved().billing !== 'plan') throw new StoreError('Choose ChatGPT plan on the Codex page before signing in with ChatGPT.', 409);
+    if (this.saved().billing !== 'plan') throw new StoreError('Use ChatGPT subscription on the Codex page before signing in with ChatGPT.', 409);
     await this.check(true);
     if (this.closed || this.active.size) throw new StoreError('Native sign-in cannot start while Codex research is active or the service is stopping.', 409);
     if (!this.checked?.cli.installed || !this.checked.protocol.appServer) throw new StoreError('Install the official Codex CLI before native sign-in. You can also run codex login in your own terminal.', 503);

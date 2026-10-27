@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// Codex runs inside ros.ai on the person's ChatGPT plan or on the OpenAI API key from the Agents page. These check
+// Codex runs inside ros.ai on the person's ChatGPT subscription or on the OpenAI API key from the Agents page. These check
 // what ros.ai hands the Codex process: read-only and kept to the project either way, and the key only on the key.
 const { codexProcessArgs, childEnvironment, codexIsolation } = await import('../src/server/codex-app-server.js');
 const { tokenUsd } = await import('../src/server/codex-agent.js');
@@ -20,7 +20,7 @@ test('older Codex keeps read roots, newer Codex uses the permission profile, and
   assert.equal(roots.has('default_permissions'), false);
 });
 
-test('on a ChatGPT plan Codex is read-only, offline apart from its own search, kept to the project and signs in itself', () => {
+test('on a ChatGPT subscription Codex is read-only, offline apart from its own search, kept to the project and signs in itself', () => {
   const plan = config(codexProcessArgs('/work/project', { isolation: 'profile' }));
   assert.equal(plan.get('sandbox_mode'), '"read-only"');
   assert.equal(plan.get('default_permissions'), '"ros_ai"');
