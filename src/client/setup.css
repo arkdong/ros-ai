@@ -1,5 +1,7 @@
 /* First launch: "Connect your tools", one card in the style of Ros's question box (ros-dock.css), over the map's dots. */
 .setup-screen { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; padding:40px 24px 32px; background-color:var(--page, #fff); background-image:radial-gradient(#e4e4e4 1px, transparent 1px); background-size:22px 22px; }
+/* In the first run's own window (first-run.css), which has the dots and the scrolling. */
+.setup-screen.framed { flex:none; width:100%; overflow:visible; padding:0; background:none; }
 .setup-title { margin:0 0 18px; text-align:center; font-size:var(--text-2xl); font-weight:500; letter-spacing:-.6px; line-height:1.2; color:var(--ink); }
 .setup-card { width:min(640px, 100%); flex-shrink:0; box-sizing:border-box; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow-float), var(--signal-glow); padding:6px 8px 10px; }
 .setup-label { padding:10px 10px 4px; font-size:var(--text-xs); color:var(--muted); }
@@ -25,6 +27,9 @@
 .setup-state.ok i { background:var(--ok); }
 .setup-state.wait i { background:var(--wait); }
 .setup-state.fail i { background:var(--fail); }
+/* A download under way, in its row: a thin bar in ink, since it is progress and not yet a status. */
+.setup-bar { width:64px; height:4px; flex-shrink:0; overflow:hidden; border-radius:2px; background:var(--line-soft); }
+.setup-bar > i { display:block; height:100%; background:var(--ink); transition:width .4s ease; }
 .setup-link { display:inline-flex; align-items:center; gap:3px; flex-shrink:0; font-size:var(--text-xs); color:var(--body); text-decoration:none; white-space:nowrap; }
 .setup-link:hover { color:var(--ink); text-decoration:underline; }
 /* A token pasted into its row. */
@@ -84,4 +89,4 @@
   .setup-chip { max-width:150px; overflow:hidden; text-overflow:ellipsis; }
   .setup-logos { display:none; }
 }
-@media (prefers-reduced-motion: reduce) { .setup-switch, .setup-switch::after { transition:none; } }
+@media (prefers-reduced-motion: reduce) { .setup-switch, .setup-switch::after, .setup-bar > i { transition:none; } }

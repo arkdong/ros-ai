@@ -106,21 +106,21 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   </div>;
 }
 
-type ResetOption = 'links' | 'apps' | 'tokens' | 'cloud';
-/** Reset onboarding, to test the first run again: the screen comes back as on a new computer, and each option also undoes
- * one kind of thing it connects. Only the agent links this ros.ai recorded are removed, so a test copy leaves the links of
- * another ros.ai alone. */
+type ResetOption = 'links' | 'apps' | 'tokens' | 'cloud' | 'localRos';
+/** Reset onboarding, to test the first run again: it starts again from the welcome page, as on a new computer, and each
+ * option also undoes one kind of thing it connects. Only the agent links this ros.ai recorded are removed, so a test copy
+ * leaves the links of another ros.ai alone. */
 function FirstRunSettings() {
-  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, apps: false, tokens: false, cloud: false });
+  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, apps: false, tokens: false, cloud: false, localRos: false });
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState<string[]>([]), [error, setError] = useState('');
-  const show = () => window.dispatchEvent(new Event('ros-setup-reset'));
+  const show = () => window.dispatchEvent(new CustomEvent('ros-setup-reset', { detail: { from: 'welcome' } }));
   const start = async () => { setError(''); setFailed([]); try { setPlan(await api<SetupResetPlan>('/api/setup/reset')); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
   const reset = async () => {
     if (!plan) return;
     setBusy(true); setError('');
     try {
       const cloud = choice.cloud && plan.cloud;
-      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify({ links: choice.links && plan.links.length > 0, apps: choice.apps && plan.apps.length > 0, tokens: choice.tokens && plan.tokens.length > 0, cloud }) });
+      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify({ links: choice.links && plan.links.length > 0, apps: choice.apps && plan.apps.length > 0, tokens: choice.tokens && plan.tokens.length > 0, cloud, localRos: choice.localRos && plan.localRos }) });
       setPlan(null);
       if (cloud) cloudAccountChanged();
       // What could not be undone stays here to read; otherwise the first-run screen opens at once.
@@ -133,14 +133,15 @@ function FirstRunSettings() {
     ...(plan.apps.length ? [{ id: 'apps' as const, label: 'Disconnect apps', detail: plan.apps.join(', ') }] : []),
     ...(plan.tokens.length ? [{ id: 'tokens' as const, label: 'Forget saved tokens', detail: plan.tokens.join(', ') }] : []),
     ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted Ros' }] : []),
+    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the Ros download', detail: 'Ros on this computer, about 3 GB' }] : []),
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
-    <Row title="Reset onboarding" detail="See the first-run screen again, as on a new computer.">
+    <Row title="Reset onboarding" detail="Start again from the welcome page, as on a new computer.">
       <button type="button" className={`secondary small ${plan ? 'pressed' : ''}`} disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>Reset…</button>
     </Row>
     {plan && <div className="settings-confirm">
       <div className="settings-options">
-        <label className="settings-option"><input type="checkbox" checked disabled/><span><span>Show the first-run screen again</span></span></label>
+        <label className="settings-option"><input type="checkbox" checked disabled/><span><span>Show the welcome, sign-in and tools pages again</span></span></label>
         {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
       </div>
       <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset</button></div>
@@ -148,7 +149,7 @@ function FirstRunSettings() {
     {failed.length > 0 && <div className="settings-confirm">
       <p className="settings-confirm-note">Reset, except for these:</p>
       <ul className="settings-confirm-list">{failed.map(line => <li key={line}>{line}</li>)}</ul>
-      <div className="settings-confirm-actions"><button type="button" className="primary small" onClick={() => { setFailed([]); show(); }}>Show the first-run screen</button></div>
+      <div className="settings-confirm-actions"><button type="button" className="primary small" onClick={() => { setFailed([]); show(); }}>Show the welcome page</button></div>
     </div>}
   </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }

@@ -108,16 +108,17 @@ test('Reset onboarding undoes only what this ros.ai recorded and shows the first
     readiness: () => ({ notion: 'ready', slack: 'ready' }),
   });
   const before = await setup.status(true);
-  assert.equal(before.show, true);
+  assert.deepEqual([before.offer, before.show], [true, true]);
   assert.deepEqual(before.apps.filter(item => item.connected).map(item => item.id), ['notion', 'slack']);
   assert.equal(before.agents.find(agent => agent.id === 'cursor')!.entry, true);
   assert.equal('reach' in before.agents[0]!, false, 'what agents reach stays on the server');
   assert.match(before.lookedAt.join(' '), /names and addresses of their servers/u);
   setup.seen(true);
-  assert.equal((await setup.status()).show, false);
+  // Seen, the tools card stays away, though it still has something to offer if Agents asks for it again.
+  assert.deepEqual([(await setup.status()).offer, (await setup.status()).show], [true, false]);
 
   // GitHub connects with a Plugins token, so it goes with the tokens, not with the sign-ins.
-  assert.deepEqual(setup.resetPlan(), { links: ['Cursor'], apps: ['Notion'], tokens: ['Slack'], cloud: true });
+  assert.deepEqual(setup.resetPlan(), { links: ['Cursor'], apps: ['Notion'], tokens: ['Slack'], cloud: true, localRos: false });
   const reset = await setup.reset({ links: true, apps: true, tokens: true, cloud: true });
   assert.deepEqual(reset, { done: ['Removed from Cursor.', 'Disconnected Notion.', 'Forgot the Slack token.', 'Signed out of hosted Ros.'], failed: [] });
   assert.deepEqual(JSON.parse(readFileSync(cursorConfig, 'utf8')), { mcpServers: { mine: { command: 'mine' } } });
@@ -132,4 +133,30 @@ test('Reset onboarding undoes only what this ros.ai recorded and shows the first
   assert.deepEqual(await setup.reset({ links: true }), { done: [], failed: [] });
   assert.equal(existsSync(cursorConfig) && JSON.parse(readFileSync(cursorConfig, 'utf8')).mcpServers['ros-ai'].args[0], '/elsewhere/ros-ai-mcp.mjs');
   assert.equal((await setup.status()).seenAt, null);
+});
+
+test('Reset onboarding can remove the Ros download, and only when there is one', async () => {
+  const dataDir = join(home, 'data-local-ros');
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  let state: 'not-downloaded' | 'downloading' | 'ready' = 'ready', removed = 0;
+  const setup = new Setup({
+    dataDir, plugins: new PluginTokens(dataDir),
+    outside: { bridge: join(dataDir, 'bin', 'ros-ai-mcp.mjs'), seen: () => undefined } as never,
+    inference: { statuses: () => [] } as never,
+    credentials: { statuses: () => [] } as never,
+    cloud: { status: async () => ({ available: true, state: 'signed-out' }), signedIn: false } as never,
+    localRos: { status: () => ({ supported: true, state }), remove: () => { removed += 1; state = 'not-downloaded'; return { supported: true, state }; } },
+  });
+  assert.equal(setup.resetPlan().localRos, true);
+  // Left unticked, the download stays.
+  assert.deepEqual(await setup.reset({}), { done: [], failed: [] });
+  assert.equal(removed, 0);
+  assert.deepEqual(await setup.reset({ localRos: true }), { done: ['Removed the Ros download.'], failed: [] });
+  assert.deepEqual([removed, setup.resetPlan().localRos], [1, false]);
+  // Nothing downloaded: the option is not offered, and asking for it does nothing.
+  assert.deepEqual(await setup.reset({ localRos: true }), { done: [], failed: [] });
+  assert.equal(removed, 1);
+  // A download still running counts too: removing it stops it.
+  state = 'downloading';
+  assert.equal(setup.resetPlan().localRos, true);
 });

@@ -7,6 +7,7 @@ import type { InferenceConnections } from './inference-connections.js';
 import type { ToolCredentials } from './tool-credentials.js';
 import type { PluginTokens } from './plugins.js';
 import type { CloudAccount } from './cloud-account.js';
+import type { LocalRos } from './local-ros.js';
 import { appCatalogue, type RemoteApps } from './remote-apps.js';
 import { appRows, detectAgents, detectApps, detectDocker, detectModels, mac, ollamaDefaultContext, pretty, win, type Found } from './setup-detect.js';
 import { SetupLinks, linkCommand } from './setup-links.js';
@@ -32,8 +33,8 @@ const lookedAt = (computer: string) => [
 ];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
 /** apps: sign-ins and desktop servers to disconnect on reset. readiness: whether agents can use each plugin now, which
- * says the apps already connected. */
-type Deps = { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; apps?: RemoteApps; readiness?: () => Partial<Record<PluginId, PluginReadiness>> };
+ * says the apps already connected. localRos: the Ros download, which reset can remove. */
+type Deps = { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; apps?: RemoteApps; readiness?: () => Partial<Record<PluginId, PluginReadiness>>; localRos?: Pick<LocalRos, 'status' | 'remove'> };
 
 export class Setup {
   private readonly file: string;
@@ -78,10 +79,11 @@ export class Setup {
     const ready: Partial<Record<string, PluginReadiness>> = this.deps.readiness?.() ?? {};
     const apps = appRows(scan.apps, new Set(scan.apps.filter(item => ready[item.id] === 'ready').map(item => item.id)));
     const computer = mac ? 'this Mac' : win ? 'this PC' : 'this computer';
+    const offer = agents.some(agent => agent.found) || models.some(model => model.running) || apps.some(item => item.connect !== null && !item.connected);
     return {
       seenAt, scannedAt: scan.at, platform: process.platform, computer, lookedAt: lookedAt(computer), bridge,
       agents, models, keys, apps, docker: scan.docker, cloud: { available: cloud.available, signedIn: cloud.state === 'signed-in' },
-      show: !seenAt && (agents.some(agent => agent.found) || models.some(model => model.running) || apps.some(item => item.connect !== null && !item.connected)),
+      offer, show: !seenAt && offer,
     };
   }
   async link(request: unknown): Promise<SetupLinkResponse> {
@@ -104,19 +106,23 @@ export class Setup {
   private signedInApps() {
     return (this.deps.apps?.statuses() ?? []).filter(item => item.connected && ['sign-in', 'desktop'].includes(appCatalogue[item.id].auth));
   }
+  /** Ros on this computer is downloaded, downloading, or left a download that stopped. */
+  private downloaded() { return Boolean(this.deps.localRos && this.deps.localRos.status().state !== 'not-downloaded'); }
   /** What Reset onboarding can undo on this computer, for its options: the links ros.ai recorded (only those, so a test
-   * copy never removes the links another ros.ai made), apps signed in, saved tokens and the hosted Ros sign-in. */
+   * copy never removes the links another ros.ai made), apps signed in, saved tokens, the hosted Ros sign-in and the Ros
+   * download. */
   resetPlan(): SetupResetPlan {
     return {
       links: this.links.records().map(record => agentLabels[record.agent] ?? record.agent),
       apps: this.signedInApps().map(item => item.name),
       tokens: this.deps.plugins.saved().map(id => PLUGINS.find(plugin => plugin.id === id)?.name ?? id),
       cloud: this.deps.cloud.signedIn,
+      localRos: this.downloaded(),
     };
   }
   /** Reset onboarding, for testing the first run again: the screen shows again, plus whatever else the person chose. */
   async reset(request: unknown): Promise<SetupResetResponse> {
-    const input = z.object({ links: z.boolean().default(false), apps: z.boolean().default(false), tokens: z.boolean().default(false), cloud: z.boolean().default(false) }).strict().parse(request ?? {});
+    const input = z.object({ links: z.boolean().default(false), apps: z.boolean().default(false), tokens: z.boolean().default(false), cloud: z.boolean().default(false), localRos: z.boolean().default(false) }).strict().parse(request ?? {});
     const done: string[] = [], failed: string[] = [];
     const attempt = async (success: string, work: () => unknown) => { try { await work(); done.push(success); } catch (error) { failed.push(error instanceof Error ? error.message : String(error)); } };
     if (input.links && this.links.records().length) {
@@ -130,6 +136,7 @@ export class Setup {
     if (input.apps && this.deps.apps) for (const item of this.signedInApps()) await attempt(`Disconnected ${item.name}.`, () => this.deps.apps!.disconnect(item.id));
     if (input.tokens) for (const id of this.deps.plugins.saved()) await attempt(`Forgot the ${PLUGINS.find(plugin => plugin.id === id)?.name ?? id} token.`, () => this.deps.plugins.disconnect(id));
     if (input.cloud && this.deps.cloud.signedIn) await attempt('Signed out of hosted Ros.', () => this.deps.cloud.signOut());
+    if (input.localRos && this.downloaded()) await attempt('Removed the Ros download.', () => this.deps.localRos!.remove());
     this.seen(false);
     this.cache = null;
     return { done, failed };

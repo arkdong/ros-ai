@@ -1,0 +1,54 @@
+/* The first run from the very start: a window of its own over the map's dots, with no sidebar, one page at a time. Its
+   cards are Ros's question box, like the tools card (setup.css): a 16px radius, the float shadow and the signal glow. */
+.first-run { position:relative; height:100dvh; box-sizing:border-box; overflow:auto; display:flex; flex-direction:column; background-color:var(--page, #fff); background-image:radial-gradient(#e4e4e4 1px, transparent 1px); background-size:22px 22px; color:var(--ink); }
+/* The Mac app's grey strip holds the window buttons above it, and the window is a white card like the app's. */
+html.mac-app .first-run { height:calc(100dvh - 42px); margin:0 6px 6px; border:1px solid #e3e3e3; border-radius:12px; }
+.brand-wordmark.first-run-brand { position:absolute; top:22px; left:28px; width:84px; }
+.first-run-page { width:100%; margin:auto 0; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; padding:72px 24px 48px; animation:first-run-in .22s ease-out both; }
+@keyframes first-run-in { from { opacity:0; transform:translateY(6px); } }
+.first-run-title { margin:0 0 10px; text-align:center; text-wrap:balance; font-size:var(--text-2xl); font-weight:500; letter-spacing:-.6px; line-height:1.2; color:var(--ink); }
+.first-run-lead { margin:0 0 22px; max-width:520px; text-align:center; text-wrap:balance; font-size:15px; line-height:1.5; color:var(--body); }
+.first-run-card { width:min(640px, 100%); flex-shrink:0; box-sizing:border-box; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow-float), var(--signal-glow); padding:8px 8px 10px; }
+.first-run-foot { display:flex; align-items:center; gap:8px; margin-top:8px; padding:10px 4px 0 10px; border-top:1px solid var(--line-soft); }
+.first-run-foot > .ros-mark, .first-run-foot > .ros-mark .research-ring { width:20px; height:20px; }
+.first-run .first-run-primary { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; border-radius:9px; font-size:var(--text-sm); font-weight:500; white-space:nowrap; }
+.first-run .first-run-primary:disabled { opacity:.48; cursor:default; }
+.first-run .first-run-back { height:32px; padding:0 10px; font-size:var(--text-sm); }
+.first-run-steps { display:flex; align-items:center; gap:6px; margin-top:20px; }
+.first-run-steps i { width:6px; height:6px; border-radius:50%; background:#d4d4d4; }
+.first-run-steps i.on { background:var(--ink); }
+.first-run-page > .setup-screen .setup-title { margin-bottom:18px; }
+/* Welcome: a small picture of a canvas, its blocks drawn like the map's. */
+.first-run-map { position:relative; height:292px; border-radius:10px; background-color:var(--canvas); background-image:radial-gradient(#dedede 1px, transparent 1px); background-size:18px 18px; overflow:hidden; }
+.first-run-lines { position:absolute; inset:0; width:100%; height:100%; fill:none; stroke:#d2d2d2; stroke-width:1.5; stroke-linecap:round; }
+.first-run-lines path { vector-effect:non-scaling-stroke; }
+.first-run-block { position:absolute; width:31.5%; box-sizing:border-box; display:flex; flex-direction:column; gap:3px; padding:9px 11px; background:#fff; border:1px solid #e3e3e3; border-radius:10px; box-shadow:0 1px 3px rgba(0, 0, 0, .05); }
+.first-run-kind { display:flex; align-items:center; gap:6px; font-size:11px; line-height:14px; color:var(--muted); }
+.first-run-kind img, .first-run-kind svg { width:12px; height:12px; display:block; flex-shrink:0; }
+.first-run-block strong { font-size:12.5px; font-weight:500; line-height:17px; color:var(--ink); }
+.first-run-sub { font-size:11px; line-height:14px; color:var(--muted); }
+/* Account: the two ways to use ros.ai side by side, then Ros downloaded to this computer. */
+.first-run-choices { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:2px; }
+.first-run-choice { display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid #e3e3e3; border-radius:12px; background:#fff; color:var(--ink); cursor:pointer; }
+.first-run-choice:hover { border-color:#c9c9c9; }
+.first-run-choice.on { border-color:var(--ink); box-shadow:inset 0 0 0 1px var(--ink); }
+.first-run-choice:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+.first-run-choice-head { display:flex; align-items:center; gap:9px; font-size:var(--text-md); font-weight:500; }
+.first-run-choice input { appearance:none; flex-shrink:0; width:16px; height:16px; min-width:0; margin:0; padding:0; display:grid; place-content:center; border:1.5px solid #c4c4c4; border-radius:50%; background:#fff; cursor:pointer; }
+.first-run-choice input:focus { border-color:#c4c4c4; box-shadow:none; outline:none; }
+.first-run-choice input:checked { border-color:var(--ink); }
+.first-run-choice input:checked::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ink); }
+.first-run-points { display:flex; flex-direction:column; gap:6px; padding-left:25px; font-size:12.5px; line-height:1.4; color:var(--body); }
+.first-run-wait { display:flex; align-items:center; gap:7px; color:var(--ink); font-weight:500; }
+.first-run-divider { height:1px; margin:8px 2px 2px; background:var(--line-soft); }
+.first-run-avatar { width:28px; height:28px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--ink); color:#fff; font-size:12px; font-weight:600; }
+.first-run-error { padding:8px 10px 0; }
+.first-run button:focus-visible, .first-run a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (max-width: 640px) {
+  .first-run-page { padding:64px 12px 32px; }
+  .first-run-title { font-size:var(--text-xl); }
+  .first-run-choices { grid-template-columns:1fr; }
+}
+/* On a phone the picture would crowd its blocks; the sentence above says it. */
+@media (max-width: 560px) { .first-run-map { display:none; } .first-run-foot { margin-top:0; border-top:0; } }
+@media (prefers-reduced-motion: reduce) { .first-run-page { animation:none; } }

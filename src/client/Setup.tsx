@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowUp, Check, ChevronDown, CircleCheck, Copy, ExternalLink, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, SquareTerminal, X } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowUp, Check, ChevronDown, CircleCheck, Copy, Download, ExternalLink, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, SquareTerminal, X } from 'lucide-react';
 import type { AgentId, AppId, LocalModelId, SetupLinkResponse, SetupStatus } from '../shared/setup';
 import type { CloudAccountStatus } from '../shared/cloud-account';
+import type { LocalRosStatus } from '../shared/local-ros';
 import type { PluginStatus } from '../shared/plugins';
 import { BrandLogo, type BrandId } from './brand-logos';
 import { RosMark } from './RosDock';
@@ -30,8 +31,30 @@ export const agentWhy: Record<AgentId, string> = {
 const fail = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 const list = (items: string[]) => items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
+export const gb = (bytes = 0) => `${(bytes / 1e9).toFixed(1)} GB`;
 /** The Mac app adds ros.ai/<version> to its user agent; it opens sign-ins in the system browser. */
-const macApp = () => / ros\.ai\/\S+$/u.test(navigator.userAgent);
+export const macApp = () => / ros\.ai\/\S+$/u.test(navigator.userAgent);
+
+/** Ros on this computer, followed every two seconds while it downloads or starts. onReady: called once the model
+ * answers, so the rest of ros.ai picks it up. */
+export function useLocalRos(follow: boolean, onReady?: () => Promise<unknown>) {
+  const [status, setStatus] = useState<LocalRosStatus>();
+  const ready = useRef(onReady), last = useRef<LocalRosStatus['state'] | undefined>(undefined);
+  ready.current = onReady;
+  const load = useCallback(() => api<LocalRosStatus>('/api/local-ros').then(setStatus, () => undefined), []);
+  useEffect(() => { if (follow) void load(); }, [follow, load]);
+  const state = status?.state, working = state === 'downloading' || state === 'starting';
+  useEffect(() => {
+    if (!follow || !working) return;
+    const timer = setInterval(() => void load(), 2000);
+    return () => clearInterval(timer);
+  }, [follow, working, load]);
+  useEffect(() => {
+    if (state === 'ready' && last.current && last.current !== 'ready') void ready.current?.().catch(() => undefined);
+    last.current = state;
+  }, [state]);
+  return { status, set: setStatus };
+}
 
 /** A command or settings entry to paste, with a copy button. */
 export function CommandBox({ command, label }: { command: string; label: string }) {
@@ -53,10 +76,10 @@ const tokenApps: Partial<Record<AppId, { need: string; button: string; placehold
 };
 
 type Group = 'agents' | 'apps' | 'ros';
-type Kind = 'agent' | 'sign-in' | 'desktop' | 'token' | 'setup' | 'ros' | 'model' | 'keys';
+type Kind = 'agent' | 'sign-in' | 'desktop' | 'token' | 'setup' | 'ros' | 'local' | 'model' | 'keys';
 /** One row of the card. switch: connected with the others by Connect; token: a field in the row; setup: done on Plugins;
- * state: nothing to do, already linked, connected or set; none: a hint only. */
-type Item = { key: string; group: Group; kind: Kind; id: string; label: string; icon: ReactNode; detail: string; control: 'switch' | 'token' | 'setup' | 'state' | 'none'; on: boolean; state?: string; method?: 'cli' | 'file' };
+ * state: nothing to do, already linked, connected or set, or a download under way (tone and progress); none: a hint only. */
+type Item = { key: string; group: Group; kind: Kind; id: string; label: string; icon: ReactNode; detail: string; control: 'switch' | 'token' | 'setup' | 'state' | 'none'; on: boolean; state?: string; tone?: 'ok' | 'busy' | 'fail'; progress?: number; method?: 'cli' | 'file' };
 const groups: { id: Group; label: string }[] = [{ id: 'agents', label: 'Your agents' }, { id: 'apps', label: 'Apps' }, { id: 'ros', label: 'Ros' }];
 
 /** Why an app is on the list, strongest first: an agent already reaches it, it is open, it was used lately. */
@@ -70,7 +93,9 @@ function appReason(app: SetupStatus['apps'][number], computer: string) {
   return `on ${computer}`;
 }
 
-function itemsFor(status: SetupStatus): Item[] {
+/** hostedRos: offer the hosted Ros sign-in here; off after the first run's account page asked already. localRos: Ros on this
+ * computer, shown while it downloads and once it is there. */
+function itemsFor(status: SetupStatus, { hostedRos = true, localRos }: { hostedRos?: boolean; localRos?: LocalRosStatus } = {}): Item[] {
   const items: Item[] = [];
   for (const agent of status.agents) {
     if (!agent.found) continue;
@@ -90,8 +115,15 @@ function itemsFor(status: SetupStatus): Item[] {
     else if (app.connect === 'token') items.push({ ...base, kind: 'token', detail: `${tokenApps[app.id]?.need ?? 'Needs a token'} · ${why}`, control: 'token' });
     else items.push({ ...base, kind: 'setup', detail: `Set up once on Plugins · ${why}`, control: 'setup' });
   }
-  if (status.cloud.available) items.push({ key: 'ros', group: 'ros', kind: 'ros', id: 'ros', label: 'Ros, hosted by ros.ai', icon: <RosMark/>,
+  if (status.cloud.available && (hostedRos || status.cloud.signedIn)) items.push({ key: 'ros', group: 'ros', kind: 'ros', id: 'ros', label: 'Ros, hosted by ros.ai', icon: <RosMark/>,
     ...(status.cloud.signedIn ? { detail: '', control: 'state', state: 'Signed in', on: false } : { detail: 'Free while ros.ai is new · one sign-in in your browser', control: 'switch', on: true }) });
+  if (localRos?.supported && localRos.state !== 'not-downloaded') {
+    const { state, doneBytes, totalBytes } = localRos, base = { key: 'local', group: 'ros' as const, kind: 'local' as const, id: 'local', label: `Ros on ${status.computer}`, icon: <RosMark/>, control: 'state' as const, on: false };
+    if (state === 'downloading') items.push({ ...base, detail: `Downloading in the background · ${totalBytes ? `${gb(doneBytes)} of ${gb(totalBytes)}` : 'finding the files'}`, progress: totalBytes ? Math.min(100, Math.round(((doneBytes ?? 0) / totalBytes) * 100)) : 0 });
+    else if (state === 'starting') items.push({ ...base, detail: 'Downloaded · getting Ros ready', state: 'Starting', tone: 'busy' });
+    else if (state === 'ready') items.push({ ...base, detail: `Works offline · nothing leaves ${status.computer}`, state: 'Ready' });
+    else items.push({ ...base, detail: localRos.error || 'The download stopped · try again in Agents', state: 'Stopped', tone: 'fail' });
+  }
   for (const model of status.models) {
     if (!model.running) continue;
     const n = model.models.length, base = { key: `model:${model.id}`, group: 'ros' as const, kind: 'model' as const, id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, on: false };
@@ -105,17 +137,31 @@ function itemsFor(status: SetupStatus): Item[] {
 }
 
 /** What the first run connected, for the row on the question box afterwards. waiting: what still needs the person, and
- * where to finish it. */
-export type SetupSummary = { connected: { key: string; label: string; icon: ReactNode }[]; waiting: { label: string; where: 'Plugins' | 'Agents' }[] };
+ * where to finish it. localRos: Ros on this computer's name, when the first run started its download. */
+export type SetupSummary = { connected: { key: string; label: string; icon: ReactNode }[]; waiting: { label: string; where: 'Plugins' | 'Agents' }[]; localRos?: string };
 const placeOf = (item: Item): 'Plugins' | 'Agents' => item.kind === 'agent' || item.kind === 'ros' || item.kind === 'model' ? 'Agents' : 'Plugins';
 
-/** The row on the question box after the first run: what connected, and what still waits for the person. */
-export function SetupDone({ summary, floating = false, onClose }: { summary: SetupSummary; floating?: boolean; onClose: () => void }) {
+/** One line on the Ros download the first run started, kept up to date while it runs. */
+function downloadLine(label: string, local: LocalRosStatus) {
+  if (local.state === 'downloading') return `${label} keeps downloading${local.totalBytes ? ` · ${((local.doneBytes ?? 0) / 1e9).toFixed(1)} of ${gb(local.totalBytes)}` : ''}`;
+  if (local.state === 'starting') return `${label} · getting ready`;
+  if (local.state === 'ready') return `${label} is ready`;
+  if (local.state === 'failed') return `${label} · the download stopped, try again in Agents`;
+  return '';
+}
+
+/** The row on the question box after the first run: what connected, what still waits for the person, and how the Ros
+ * download is going. */
+export function SetupDone({ summary, floating = false, onClose, onChanged }: { summary: SetupSummary; floating?: boolean; onClose: () => void; onChanged?: () => Promise<unknown> }) {
+  const local = useLocalRos(Boolean(summary.localRos), onChanged).status;
   const n = summary.connected.length, places = [...new Set(summary.waiting.map(item => item.where))];
   const waiting = summary.waiting.length ? `${list(summary.waiting.map(item => item.label))} ${summary.waiting.length === 1 ? 'waits' : 'wait'} in ${list(places)}` : '';
+  const download = summary.localRos && local ? downloadLine(summary.localRos, local) : '';
+  // With nothing connected, the download is the news.
+  const title = n ? `Connected ${n} ${n === 1 ? 'tool' : 'tools'}` : !waiting && download ? download : 'Nothing connected yet';
   return <div className={`setup-done ${floating ? 'floating' : ''}`} role="status">
-    <CircleCheck size={16} className={n ? 'ok' : ''}/>
-    <span className="setup-done-text"><strong>{n ? `Connected ${n} ${n === 1 ? 'tool' : 'tools'}` : 'Nothing connected yet'}</strong>{waiting && <span>{waiting}</span>}</span>
+    {!n && title === download ? <Download size={16}/> : <CircleCheck size={16} className={n ? 'ok' : ''}/>}
+    <span className="setup-done-text"><strong>{title}</strong>{waiting && <span>{waiting}</span>}{download && title !== download && <span>{download}</span>}</span>
     {n > 0 && <span className="setup-logos" aria-hidden="true">{summary.connected.slice(0, 6).map(item => <span key={item.key}>{item.icon}</span>)}</span>}
     <button type="button" className="icon-button" aria-label="Close" title="Close" onClick={onClose}><X size={14}/></button>
   </div>;
@@ -178,10 +224,13 @@ type Outcome = { state: 'busy' | 'ok' | 'fail' | 'wait' | 'next' | 'retry'; text
 type ChainStep = { app?: AppId; url?: string; then?: 'ros'; connected: AppId[]; failed: { app: AppId; error: string }[] };
 const settledStates: Outcome['state'][] = ['ok', 'fail', 'retry'];
 
-type Props = { status: SetupStatus; onDone: (summary?: SetupSummary) => void; onPlugins: (id: AppId) => void; onRescan: () => Promise<unknown>; onRefresh: () => Promise<unknown>; onChanged: () => Promise<unknown> };
+/** In the first run's own window (framed): no hosted Ros row after its account page, the Ros download's progress, and
+ * the step dots after the card. */
+type Props = { status: SetupStatus; onDone: (summary?: SetupSummary) => void; onPlugins: (id: AppId) => void; onRescan: () => Promise<unknown>; onRefresh: () => Promise<unknown>; onChanged: () => Promise<unknown>;
+  framed?: boolean; hostedRos?: boolean; localRos?: LocalRosStatus; after?: ReactNode };
 
-export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, onChanged }: Props) {
-  const all = useMemo(() => itemsFor(status), [status]);
+export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, onChanged, framed = false, hostedRos = true, localRos, after }: Props) {
+  const all = useMemo(() => itemsFor(status, { hostedRos, localRos }), [status, hostedRos, localRos]);
   // The person's own choices survive a new look at the computer; the rest follow what was found.
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const isOn = (item: Item) => item.control === 'switch' && (touched[item.key] ?? item.on);
@@ -354,7 +403,7 @@ export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, on
     const heading = !settled ? `Connecting ${selected.length}` : ok === selected.length ? selected.length === 1 ? 'Connected' : `Connected all ${ok}` : `Connected ${ok} of ${selected.length}`;
     const line = current ? current.outcome.detail : !settled ? shown.find(entry => entry.outcome.state === 'busy')?.outcome.detail
       : left.length ? `${list(left.map(entry => entry.item.kind === 'ros' ? 'Hosted Ros' : entry.item.label))} ${left.length === 1 ? 'waits' : 'wait'} for you · finish later in ${list(places)}` : '';
-    return <div className="setup-screen">
+    return <div className={`setup-screen ${framed ? 'framed' : ''}`}>
       <h1 className="setup-title">Connect your tools</h1>
       <section className="setup-card" aria-label="Connecting your tools" aria-busy={!settled}>
         <div className="setup-progress" role="status">
@@ -377,10 +426,11 @@ export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, on
         }, selected)}
         {footer(<button type="button" className="primary setup-primary" onClick={() => finish(selected)}>Done</button>)}
       </section>
+      {after}
     </div>;
   }
 
-  return <div className="setup-screen">
+  return <div className={`setup-screen ${framed ? 'framed' : ''}`}>
     <h1 className="setup-title">Connect your tools</h1>
     <section className="setup-card" aria-label="Connect your tools">
       {card(item => {
@@ -393,7 +443,8 @@ export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, on
               ? <a className="setup-link" href={spec.link} target="_blank" rel="noreferrer">{spec.linkLabel}<ExternalLink size={11}/></a>
               : <button type="button" className="setup-small-button" onClick={() => setField(item.key)}>{spec.button}</button>)}
             {item.control === 'setup' && <button type="button" className="setup-small-button" onClick={() => onPlugins(item.id as AppId)}>Set up</button>}
-            {item.control === 'state' && state('ok', item.state ?? '')}
+            {item.progress !== undefined && <span className="setup-bar" role="progressbar" aria-label={`${item.label} download`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={item.progress}><i style={{ width: `${item.progress}%` }}/></span>}
+            {item.control === 'state' && item.state && state(item.tone ?? 'ok', item.state)}
           </div>
           {open && <TokenField item={item} onCancel={() => setField(null)} onConnected={async () => { setField(null); setChecked(current => [...current.filter(entry => entry.key !== item.key), item]); await onRefresh(); }}/>}
         </Fragment>;
@@ -403,5 +454,6 @@ export function SetupScreen({ status, onDone, onPlugins, onRescan, onRefresh, on
         <button type="button" className="primary setup-primary" onClick={() => void connect()}>{chosen.length ? <><ArrowUp size={14}/>Connect {chosen.length}</> : 'Done'}</button>
       </>)}
     </section>
+    {after}
   </div>;
 }

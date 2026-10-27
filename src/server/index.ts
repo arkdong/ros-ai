@@ -176,7 +176,7 @@ try {
     appFrames = new AppFrames(store, new AppKit(root), { browser });
     AgentWorkspaceTools.appFrames = appFrames;
     // The first-run screen shows apps already connected as connected, read the way the Plugins page reads them.
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,apps,readiness:()=>pluginReadiness({credentials,googleDrive:googleDrive!,plugins,apps,papers,browser})});
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,apps,localRos,readiness:()=>pluginReadiness({credentials,googleDrive:googleDrive!,plugins,apps,papers,browser})});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.

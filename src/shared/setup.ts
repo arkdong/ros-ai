@@ -76,16 +76,18 @@ export type SetupStatus = {
   apps: DetectedApp[];
   docker: { found: boolean; running: boolean };
   cloud: { available: boolean; signedIn: boolean };
-  /** Show the first-launch screen: it has not been seen and it has something to offer, an agent, a running model server
-   * or an app to connect. */
+  /** The tools card has something to offer: an agent, a running model server or an app to connect. */
+  offer: boolean;
+  /** Show the tools card by itself: it has not been seen and it has something to offer. */
   show: boolean;
 };
 export type LinkResult = { agent: AgentId; ok: boolean; message: string; command?: string; link: LinkRecord | null };
 export type ModelLinkResult = { id: LocalModelId; ok: boolean; message: string; connectionId?: string };
 export type SetupLinkRequest = { agents?: AgentId[]; models?: LocalModelId[] };
 export type SetupLinkResponse = { agents: LinkResult[]; models: ModelLinkResult[] };
-/** Reset onboarding, for testing the first run again: what each option would undo on this computer. */
-export type SetupResetPlan = { links: string[]; apps: string[]; tokens: string[]; cloud: boolean };
-export type SetupResetRequest = { links?: boolean; apps?: boolean; tokens?: boolean; cloud?: boolean };
+/** Reset onboarding, for testing the first run again: what each option would undo on this computer. localRos: Ros on
+ * this computer is downloaded, or downloading. */
+export type SetupResetPlan = { links: string[]; apps: string[]; tokens: string[]; cloud: boolean; localRos: boolean };
+export type SetupResetRequest = { links?: boolean; apps?: boolean; tokens?: boolean; cloud?: boolean; localRos?: boolean };
 /** done and failed: one line each, for the person. */
 export type SetupResetResponse = { done: string[]; failed: string[] };
