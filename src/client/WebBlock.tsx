@@ -5,7 +5,7 @@ import { webState, type WebSource, type WebState } from '../shared/agent-work';
 import './web-block.css';
 
 /** What a Web block's card draws: the question in the middle, its directions around it, and each page the searches
- * found as a mark beside the direction that found it, larger the more relevant Tavily scored it. */
+ * found as a mark beside the direction that found it, larger the more relevant the search service scored it. */
 export type WebFaceData = { search: WebSearch; state: WebState; onOpen: (source: WebSource) => void; onStop?: () => void };
 
 /** At most this many pages show beside a direction, the most relevant; the block counts the rest. */
@@ -130,7 +130,7 @@ export function WebFace({ data }: { data: WebFaceData }) {
     <div className="web-head">
       <span className={`web-status ${state.phase}`} title={state.error}>{state.phase === 'searching' && <LoaderCircle size={12} className="spin"/>}{status}</span>
       <span className="web-stats"><span><b>{state.sources.length}</b> {state.sources.length === 1 ? 'page' : 'pages'}</span><span><b>{siteCount}</b> {siteCount === 1 ? 'site' : 'sites'}</span>
-        {state.pagesRead > 0 && <span><b>{state.pagesRead}</b> read</span>}<span title="Tavily credits: one per search, one per five pages read">{plural(state.credits, 'credit')}</span></span>
+        {state.pagesRead > 0 && <span><b>{state.pagesRead}</b> read</span>}{state.credits !== null && <span title="Tavily credits: one per search, one per five pages read">{plural(state.credits, 'credit')}</span>}</span>
       {data.onStop && state.phase === 'searching' && <button type="button" className="secondary web-stop nodrag" onClick={event => { event.stopPropagation(); data.onStop!(); }}><Square size={10}/> Stop</button>}
     </div>
     <div ref={box} className="web-map nodrag nopan">

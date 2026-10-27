@@ -76,8 +76,9 @@ export function siteOf(url: string): string {
 export type WebSource = { key: string; url: string; title: string; site: string; favicon?: string; score: number; order: number; directions: string[]; artifacts: Artifact[]; read: boolean; quoted: boolean };
 /** Where a Web block's searches are: not started (the plan may wait for approval), running, stopped, failed or done. */
 export type WebPhase = 'waiting' | 'searching' | 'stopped' | 'failed' | 'done';
-/** What a Web block shows: its pages, how far its searches got, and how many searches each direction still runs. */
-export type WebState = { sources: WebSource[]; searches: number; done: number; failed: number; phase: WebPhase; sweepId?: string; error?: string; pending: Record<string, number>; pagesRead: number; credits: number };
+/** What a Web block shows: its pages, how far its searches got, and how many searches each direction still runs.
+ * `credits` counts Tavily credits; it is null when another search service ran the searches. */
+export type WebState = { sources: WebSource[]; searches: number; done: number; failed: number; phase: WebPhase; sweepId?: string; error?: string; pending: Record<string, number>; pagesRead: number; credits: number | null };
 
 /** A Web block's state, read from its runs, the sources they saved and the Findings linked from it. Named links count
  * as sources before they are read. */
@@ -124,6 +125,6 @@ export function webState(node: CanvasNode, canvas: Pick<Canvas, 'nodes' | 'conne
   const phase: WebPhase = !latest ? 'waiting' : latest.status === 'running' || latest.status === 'queued' ? 'searching' : latest.status === 'completed' ? 'done'
     : latest.status === 'failed' ? 'failed' : 'stopped';
   return { sources, searches, done, failed, phase, ...(latest ? { sweepId: latest.id } : {}), ...(latest?.error ? { error: latest.error } : {}), pending, pagesRead,
-    // Each basic search costs one credit; pages are read five to a credit.
-    credits: done + Math.ceil(pagesRead / 5) };
+    // Each basic Tavily search costs one credit; pages are read five to a credit.
+    credits: !latest || latest.provider === 'tavily' ? done + Math.ceil(pagesRead / 5) : null };
 }
