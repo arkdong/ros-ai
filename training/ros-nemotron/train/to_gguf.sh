@@ -6,7 +6,8 @@ MERGED=${1:-out/merged}; OUT=${2:-out/gguf}; mkdir -p "$OUT"
 [ -d llama.cpp ] || git clone -q --depth 1 https://github.com/ggml-org/llama.cpp
 pip install -q -r llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
 python llama.cpp/convert_hf_to_gguf.py "$MERGED" --outtype bf16 --outfile "$OUT/ros-nemotron-4b-BF16.gguf"
-cmake -S llama.cpp -B llama.cpp/build -DGGML_CUDA=ON -DLLAMA_CURL=OFF >/dev/null && cmake --build llama.cpp/build -j --target llama-quantize llama-server >/dev/null
+# A CPU build: quantising and the one tool-call check need no GPU, and it builds without the CUDA compiler.
+cmake -S llama.cpp -B llama.cpp/build -DGGML_CUDA=OFF -DLLAMA_CURL=OFF >/dev/null && cmake --build llama.cpp/build -j --target llama-quantize llama-server >/dev/null
 llama.cpp/build/bin/llama-quantize "$OUT/ros-nemotron-4b-BF16.gguf" "$OUT/ros-nemotron-4b-Q4_K_M.gguf" Q4_K_M
 ls -lh "$OUT"
 # Quick check that the quantised model still calls a tool through llama-server's chat template.
