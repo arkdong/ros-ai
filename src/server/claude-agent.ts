@@ -90,7 +90,7 @@ export class ClaudeAgentService {
   }
   /** Cheap and local: no request is sent to Anthropic. */
   readiness(projectId: string): { available: boolean; reason: string | null } {
-    if (!process.env.ANTHROPIC_API_KEY?.trim()) return { available: false, reason: 'Connect an Anthropic API key on the Model page, then Claude Code can answer here.' };
+    if (!process.env.ANTHROPIC_API_KEY?.trim()) return { available: false, reason: 'Connect a Claude API key on the Agents page, then Claude Code can answer here.' };
     const budget = this.execution.connectionBudgets.status('claude');
     if (!budget.ready) return { available: false, reason: budget.reason };
     if (budget.remainingUsd < MIN_TURN_USD) return { available: false, reason: `Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains. Raise the allowance on the Model page.` };

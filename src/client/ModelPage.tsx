@@ -26,7 +26,7 @@ export type AgentId = 'ros' | 'claude' | 'codex' | 'gemini' | 'goose' | 'opencod
 type AgentItem = { id: AgentId; name: string; summary: string; mark: ReactNode; uses: string[] };
 const agentItems: AgentItem[] = [
   { id: 'ros', name: 'Ros', summary: 'ros.ai’s own assistant, hosted for free or on this computer', mark: <RosMark/>, uses: ['Plans and runs research on the map with ros.ai’s tools', 'Hosted: free with a ros.ai account; nothing to install', 'On this computer: one 3 GB download, works offline', 'Switch between them from the model name in the Ros bar'] },
-  { id: 'claude', name: 'Claude Code', summary: 'Reads the project folder and proposes changes', mark: <BrandLogo id="claude"/>, uses: ['Works as Ros with your Anthropic API key', 'Reads the project folder and proposes changes', 'Code runs in ros.ai’s sandbox under your approval mode'] },
+  { id: 'claude', name: 'Claude Code', summary: 'Reads the project folder and proposes changes', mark: <BrandLogo id="claude"/>, uses: ['Works as Ros with your Claude API key', 'Reads the project folder and proposes changes', 'Code runs in ros.ai’s sandbox under your approval mode'] },
   { id: 'codex', name: 'Codex', summary: 'This computer’s Codex sign-in', mark: <BrandLogo id="codex"/>, uses: ['Works as Ros through the Codex CLI on this computer', 'Uses Codex’s own sign-in; ros.ai never sees it', 'Spend shows in Settings › Usage'] },
   { id: 'gemini', name: 'Gemini CLI', summary: ACP_AGENTS.gemini.summary, mark: <BrandLogo id="gemini-cli"/>, uses: ['Works as Ros through Gemini CLI on this computer', 'Reads the project folder; its other tools are off in ros.ai', 'Uses its own Google sign-in or key; ros.ai never sees it'] },
   { id: 'goose', name: 'Goose', summary: ACP_AGENTS.goose.summary, mark: <BrandLogo id="goose"/>, uses: ['Works as Ros through Goose on this computer', 'Only ros.ai’s tools run; ros.ai refuses every tool of its own', 'Uses the model Goose is set up with; ros.ai never sees its key'] },
@@ -39,7 +39,7 @@ const agentItems: AgentItem[] = [
   { id: 'openai', name: 'OpenAI API', summary: 'Direct model access, separate from Codex', mark: <BrandLogo id="openai"/>, uses: ['GPT models for Ros through your API key', 'Separate from the Codex sign-in'] },
   { id: 'local', name: 'Local models', summary: 'Ollama, LM Studio or any OpenAI-compatible server', mark: <BrandLogo id="ollama"/>, uses: ['Models running on this computer or your own server', 'Nothing leaves the machine'] },
 ];
-/** Who pays for a turn, from how ros.ai runs the agent: Claude Code here only takes an Anthropic key, Codex here
+/** Who pays for a turn, from how ros.ai runs the agent: Claude Code here only takes a Claude API key, Codex here
  * only runs on a ChatGPT plan sign-in, and Gemini CLI, Goose and OpenCode bill however they were set up. */
 type Billing = 'plan' | 'key' | 'free' | 'own';
 const agentGroups: { billing: Billing; title: string; why?: string; ids: AgentId[] }[] = [
@@ -52,7 +52,7 @@ const agentGroups: { billing: Billing; title: string; why?: string; ids: AgentId
 const billingLine: Record<AgentId, string> = {
   ros: 'Free: hosted with a ros.ai account, or on this computer', local: 'Free: runs on this computer or your own server',
   codex: 'Runs on your ChatGPT plan; no API charges', 'own-claude': 'Runs on your own Claude plan or key, as in your terminal', 'own-codex': 'Runs on your own ChatGPT plan or key, as in your terminal', 'own-cursor': 'Runs on your Cursor plan', 'own-gemini': 'Runs on your own Google sign-in or key, as in your terminal',
-  claude: 'Billed per use to your Anthropic API key', openai: 'Billed per use to your OpenAI API key', nebius: 'Billed per use to your Token Factory key',
+  claude: 'Billed per use to your Claude API key', openai: 'Billed per use to your OpenAI API key', nebius: 'Billed per use to your Token Factory key',
   gemini: 'Billed through its own Google sign-in or key', goose: 'Billed through the provider Goose is set up with', opencode: 'Billed through OpenCode’s own providers, or free models',
 };
 
@@ -85,7 +85,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
     nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,
-    claude:()=><KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Anthropic API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
+    claude:()=><KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Claude API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
     codex:()=><CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>,
     openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
     ...Object.fromEntries((['gemini','goose','opencode'] as const).map(id=>[id,()=><AcpAgentCard status={acp.find(item=>item.id===id)} onChanged={value=>setAcp(list=>list.map(item=>item.id===value.id?value:item))}/>])) as Record<'gemini'|'goose'|'opencode',()=>ReactNode>,
