@@ -1,4 +1,4 @@
-import { BookOpen, BookOpenText, BookText, Bot, ExternalLink, FileImage, FileText, FolderClosed, GitBranch, Globe, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
+import { AppWindow, BookOpen, BookOpenText, BookText, Bot, ExternalLink, FileImage, FileText, FolderClosed, GitBranch, Globe, LayoutGrid, LoaderCircle, Quote, Search as SearchIcon, Wrench } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AssistantTurn } from '../shared/assistant';
 import type { AgentStep } from '../shared/agent-runtime';
@@ -67,11 +67,17 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
     if (step.outcome === 'requested') return action;
     return step.detail ? step.detail.replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1') : step.target === 'read' ? 'Read the page' : action;
   }
+  if (step.tool === 'ros_app_guide') return step.outcome === 'failed' ? 'Could not read the App guide' : step.outcome === 'requested' ? 'Reading the App guide' : 'Read the App guide';
+  if (step.tool === 'ros_check_app') {
+    // The target is the App's block; a page checked before it was proposed has none yet.
+    const app = title(step.target) ?? 'a new App page';
+    return step.outcome === 'failed' ? `Could not check ${app}` : step.outcome === 'requested' ? `Checking ${app}` : `Checked ${app}`;
+  }
   if (step.tool === 'ros_propose_canvas') return step.outcome === 'waiting' ? 'Proposed canvas changes · waiting for your review' : step.outcome === 'declined' ? 'Canvas changes declined' : step.outcome === 'failed' ? 'Canvas changes failed' : step.outcome === 'requested' ? 'Proposing canvas changes' : 'Changed the canvas';
   const labels: Record<string, string> = { ros_read_selected: 'Read the selected blocks', ros_propose_analysis: 'Proposed analysis code', ros_propose_report: 'Proposed a report', ros_propose_reuse: 'Proposed reusing a result' };
   return labels[step.tool] ?? title(step.target) ?? step.tool;
 }
-const icons: Record<string, ReactNode> = { ros_browser: <Globe size={13}/>, ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/> };
+const icons: Record<string, ReactNode> = { ros_browser: <Globe size={13}/>, ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/>, ros_app_guide: <BookText size={13}/>, ros_check_app: <AppWindow size={13}/> };
 
 type Props = { node: CanvasNode; turn?: AssistantTurn; detail: ProjectDetail; onOpenNode: (id: string) => void; onReveal: (id: string) => void; onOpenArtifact: (artifact: Artifact) => void; onReview: (proposalId: string) => void };
 /** One agent's turn: what it set out to do, each step with the agent's reason and what came of it, and its answer. */

@@ -8,7 +8,7 @@ import { createSdkMcpServer, query, tool, type AnyZodRawShape, type HookCallback
 import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
-import { AgentWorkspaceTools, agentToolSchemas } from './agent-tools.js';
+import { AgentWorkspaceTools } from './agent-tools.js';
 import { CLAUDE_CODE_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import { projectFolderRoot } from './project-folders.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
@@ -157,7 +157,7 @@ export class ClaudeAgentService {
     const thought = () => { const text = attempt.reply.slice(thoughtMark).trim(); thoughtMark = attempt.reply.length; if (text) event({ at: now(), type: 'thought', message: text.length > 600 ? `…${text.slice(-600)}` : text }); };
     const deadline = setTimeout(() => { timedOut = true; stop(); }, MAX_SECONDS * 1000);
     request.signal.addEventListener('abort', stop, { once: true });
-    const tools = toolkit.definitions.map(definition => tool(definition.name, definition.description, agentToolSchemas[definition.name as keyof typeof agentToolSchemas].shape as AnyZodRawShape, async (args: unknown) => {
+    const tools = toolkit.definitions.map(definition => tool(definition.name, definition.description, toolkit.schema(definition.name).shape as AnyZodRawShape, async (args: unknown) => {
       const reply = (text: string, isError = false) => ({ content: [{ type: 'text' as const, text }], ...(isError ? { isError: true } : {}) });
       if (stopped) return reply('The turn has stopped. No tool effect was applied.', true);
       if (++toolCalls > MAX_TOOL_CALLS) return reply(`This turn reached its limit of ${MAX_TOOL_CALLS} ros.ai tool calls. No effect was applied; finish your answer.`, true);

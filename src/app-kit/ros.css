@@ -1,0 +1,79 @@
+/* The ros.ai kit's look for App pages (/kit/ros.css): the app's neutrals, type sizes and radii, so a page an agent
+   writes sits on its card like the rest of the map. Pages may override any of it. */
+:root {
+  --ros-ink: #171717;
+  --ros-body: #4a4a4a;
+  --ros-muted: #6b6b6b;
+  --ros-line: #dedede;
+  --ros-line-soft: #ebebeb;
+  --ros-canvas: #fafafa;
+  --ros-paper: #ffffff;
+  --ros-ok: #2f7d4f;
+  --ros-wait: #b45309;
+  --ros-fail: #b42318;
+  --ros-focus: #b7ef32;
+  --ros-chart-1: #3d6f8f;
+  --ros-radius: 8px;
+  --ros-radius-control: 6px;
+  --ros-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ros-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; background: var(--ros-paper); }
+body { padding: 16px; color: var(--ros-body); font: 14px/1.55 var(--ros-font); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, h4 { margin: 0 0 8px; color: var(--ros-ink); font-weight: 600; line-height: 1.3; }
+h1 { font-size: 20px; } h2 { font-size: 16px; } h3, h4 { font-size: 14px; }
+p { margin: 0 0 10px; }
+code, pre, kbd { font-family: var(--ros-mono); font-size: 12.5px; }
+pre { margin: 0 0 10px; padding: 10px 12px; overflow: auto; background: var(--ros-canvas); border-radius: var(--ros-radius-control); }
+a, .ros-link { color: var(--ros-ink); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ros-line); }
+:focus-visible { outline: 2px solid var(--ros-focus); outline-offset: 2px; }
+button, select, input, textarea { font: inherit; font-size: 13px; color: var(--ros-ink); }
+button { padding: 5px 12px; background: var(--ros-paper); border: 1px solid var(--ros-line); border-radius: var(--ros-radius-control); cursor: pointer; }
+button:hover { border-color: var(--ros-muted); }
+button.primary { background: var(--ros-ink); border-color: var(--ros-ink); color: var(--ros-paper); }
+select, input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea { padding: 5px 8px; background: var(--ros-paper); border: 1px solid var(--ros-line); border-radius: var(--ros-radius-control); }
+input[type=range] { accent-color: var(--ros-ink); }
+hr { border: 0; border-top: 1px solid var(--ros-line-soft); margin: 14px 0; }
+
+/* Ready parts */
+.ros-note { margin: 6px 0 0; color: var(--ros-muted); font-size: 12px; }
+.ros-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ros-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.ros-card { padding: 12px 14px; background: var(--ros-paper); border: 1px solid var(--ros-line); border-radius: var(--ros-radius); }
+.ros-stat { display: grid; gap: 2px; }
+.ros-stat strong { color: var(--ros-ink); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ros-stat span { color: var(--ros-muted); font-size: 12px; }
+.ros-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.ros-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ros-muted); }
+.ros-status.ok::before { background: var(--ros-ok); } .ros-status.wait::before { background: var(--ros-wait); } .ros-status.fail::before { background: var(--ros-fail); }
+
+.ros-table { overflow: auto; max-width: 100%; border: 1px solid var(--ros-line); border-radius: var(--ros-radius); }
+.ros-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ros-table caption { padding: 8px 10px; color: var(--ros-muted); font-size: 12px; text-align: left; }
+.ros-table th { position: sticky; top: 0; padding: 7px 10px; background: var(--ros-canvas); border-bottom: 1px solid var(--ros-line); color: var(--ros-ink); font-weight: 600; text-align: left; white-space: nowrap; cursor: pointer; user-select: none; }
+.ros-table td { padding: 6px 10px; border-bottom: 1px solid var(--ros-line-soft); vertical-align: top; }
+.ros-table tr:last-child td { border-bottom: 0; }
+.ros-table td.number { text-align: right; font-variant-numeric: tabular-nums; }
+.ros-table tr.clickable { cursor: pointer; }
+.ros-table tr.clickable:hover td { background: var(--ros-canvas); }
+.ros-table + .ros-note, .ros-table > .ros-note { padding: 0 10px 8px; }
+
+.ros-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 0 0 10px; }
+.ros-filter label { display: grid; gap: 3px; font-size: 12px; color: var(--ros-muted); }
+.ros-filter input[type=search] { flex: 1; min-width: 140px; }
+
+.ros-chart { margin: 0 0 12px; }
+.ros-chart figcaption { margin: 0 0 6px; color: var(--ros-ink); font-weight: 600; font-size: 13px; }
+.ros-chart svg { max-width: 100%; height: auto; overflow: visible; }
+
+.ros-source { cursor: pointer; text-decoration: underline dotted var(--ros-muted); text-underline-offset: 3px; }
+.ros-source:hover { text-decoration-color: var(--ros-ink); }
+.ros-tooltip { position: fixed; z-index: 10; max-width: 280px; padding: 7px 10px; background: var(--ros-ink); color: var(--ros-paper); border-radius: var(--ros-radius-control); font-size: 12px; pointer-events: none; box-shadow: 0 10px 32px rgba(0, 0, 0, .1); }
+.ros-tooltip span { opacity: .75; }
+.ros-tooltip q { display: block; margin-top: 4px; opacity: .85; font-style: italic; }
+
+.ros-markdown > :last-child { margin-bottom: 0; }
+.ros-markdown ul, .ros-markdown ol { margin: 0 0 10px; padding-left: 20px; }
+.ros-markdown blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid var(--ros-line); color: var(--ros-muted); }

@@ -93,11 +93,25 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
       </Row>
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
+    {!publicDemo && <AppSettings/>}
     {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>
       <Row title="Keys file" detail="API keys every data folder reads, kept outside the code."><code title={paths?.keysFile ?? ''}>{paths ? paths.keysFile ?? 'None' : '…'}</code></Row>
     </div></section>}
   </div>;
+}
+
+/** Whether agents may build App blocks. Off, they see their tools exactly as before; people can always add one. */
+function AppSettings() {
+  const [settings, setSettings] = useState<{ agents: boolean; running: boolean } | null>(null), [error, setError] = useState('');
+  useEffect(() => { void api<{ agents: boolean; running: boolean }>('/api/apps/settings').then(setSettings).catch(() => setSettings(null)); }, []);
+  if (!settings) return null;
+  const toggle = async () => { setError(''); try { setSettings(await api('/api/apps/settings', { method: 'PUT', body: JSON.stringify({ agents: !settings.agents }) })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
+  return <section><h2>Apps</h2><div className="settings-card">
+    <Row title="Agents can build apps" detail="Agents may add App blocks: pages that run sealed on their card, with no web access, reading only the blocks they name.">
+      <button type="button" role="switch" aria-checked={settings.agents} aria-label="Agents can build apps" className={`switch ${settings.agents ? 'on' : ''}`} onClick={() => void toggle()}><span/></button>
+    </Row>
+  </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }
 
 const ago = (when: string) => {

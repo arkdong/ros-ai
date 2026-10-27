@@ -33,8 +33,8 @@ export function initialCardSize(node: { width?: number; title: string }, text: s
   return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
 }
 
-/** Cards that preview code, a figure, a table or a report can grow to the maximum height. */
-const PREVIEW_BLOCKS = ['code', 'notebook', 'figure', 'file', 'dataset', 'report'];
+/** Cards that preview code, a figure, a table, a report or a running App can grow to the maximum height. */
+const PREVIEW_BLOCKS = ['code', 'notebook', 'figure', 'file', 'dataset', 'report', 'app'];
 /** A card face shows at most this much of a block's text (.block-primary-preview). */
 const TEXT_PREVIEW_HEIGHT = 195;
 /** A height guess for a new block's card before the browser measures it. A text card keeps the height its first
