@@ -407,7 +407,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const overlay = element.getBoundingClientRect();
         if (overlay.height) top = Math.max(top, overlay.bottom - bounds.top + 22);
       }
-      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .selection-toolbar, .project-floating-actions, .edge-selection, .ros-dock') || []) {
+      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .edge-selection, .ros-dock') || []) {
         const overlay = element.getBoundingClientRect();
         if (overlay.height && overlay.top > bounds.top + bounds.height / 2) bottom = Math.max(bottom, bounds.bottom - overlay.top + 22);
       }
@@ -990,7 +990,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.filter(node=>!isGroup(node)).length} blocks · {displayed.canvas.nodes.filter(isGroup).length} groups</span></div>
       <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
         <CanvasToolSwitch tool={canvasTool.tool} onChange={canvasTool.setTool}/>
-        <button className="secondary small canvas-add-button" data-testid="add-node" aria-label="Add block to canvas" disabled={readonly||busy} onClick={()=>onAdd(null)}><Plus size={15}/> Add block</button>
+        <button className="secondary small canvas-add-button" data-testid="add-node" aria-label={selectedGroup?`Add a block inside ${selectedGroup.title}`:"Add block to canvas"} disabled={readonly||busy} onClick={()=>onAdd(selectedGroup?.id??null)}><Plus size={15}/> {selectedGroup?"Add inside":"Add block"}</button>
         {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title="Undo canvas change" disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
         {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title="Redo canvas change" disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
         {onHistory&&<button className={`icon-button ${historyOpen?'active':''}`} aria-label="Canvas history" title="Canvas content history" aria-expanded={historyOpen} aria-controls="canvas-content-history" onClick={onHistory}><History size={16}/></button>}

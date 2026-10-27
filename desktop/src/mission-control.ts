@@ -32,23 +32,25 @@ for (;;) {
 }`;
 
 // Only a blur of the window's own content and the ring, so it follows whatever theme the app shows.
-// Blur and ring fade together, about as long as Mission Control's own zoom.
+// Blur and ring fade in about as long as Mission Control's own zoom, and out faster, so ros.ai is back at once.
 const CSS = `
 #ros-mission-control { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; opacity: 0;
   -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
+  transition: opacity .12s ease-out, backdrop-filter .12s ease-out, -webkit-backdrop-filter .12s ease-out; }
+html.ros-mission-control #ros-mission-control { opacity: 1; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
   transition: opacity .28s ease, backdrop-filter .28s ease, -webkit-backdrop-filter .28s ease; }
-html.ros-mission-control #ros-mission-control { opacity: 1; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 #ros-mission-control::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22vmin; height: 22vmin;
-  transform: translate(-50%, -50%) scale(.94); transition: transform .28s ease;
+  transform: translate(-50%, -50%) scale(.94); transition: transform .12s ease-out;
   background: url('/brand/ros-ai-ring.png') center / contain no-repeat; }
-html.ros-mission-control #ros-mission-control::after { transform: translate(-50%, -50%) scale(1); }
-@media (prefers-reduced-motion: reduce) { #ros-mission-control, #ros-mission-control::after { transition: none; } }`;
+html.ros-mission-control #ros-mission-control::after { transform: translate(-50%, -50%) scale(1); transition: transform .28s ease; }
+@media (prefers-reduced-motion: reduce) { #ros-mission-control, #ros-mission-control::after, html.ros-mission-control #ros-mission-control, html.ros-mission-control #ros-mission-control::after { transition: none; } }`;
 
 const ADD = `if (!document.getElementById('ros-mission-control')) { const cover = document.createElement('div'); cover.id = 'ros-mission-control'; document.documentElement.append(cover); }`;
 
 /** Covers `main` while Mission Control is open. Stops with the window. */
 export function watchMissionControl(main: BrowserWindow) {
-  let open = false, stopped = false, restarted = false;
+  // `held`: ros.ai was picked in Mission Control, so the cover is already gone; skip `open` until the Dock closes.
+  let open = false, held = false, stopped = false, restarted = false;
   let watcher: ChildProcess | undefined;
   const show = () => {
     if (main.isDestroyed()) return;
@@ -65,7 +67,8 @@ export function watchMissionControl(main: BrowserWindow) {
         const line = buffer.slice(0, end).trim();
         buffer = buffer.slice(end + 1);
         if (line.startsWith('debug ')) console.log(`Mission Control: ${line.slice(6)}`);
-        else if (line === 'open' || line === 'closed') { open = line === 'open'; show(); }
+        else if (line === 'closed') { held = false; if (open) { open = false; show(); } }
+        else if (line === 'open' && !held && !open) { open = true; show(); }
       }
     });
     // A script that dies (a macOS change, a killed process) comes back once after a pause; a second death stays down.
@@ -75,6 +78,8 @@ export function watchMissionControl(main: BrowserWindow) {
       if (!restarted) { restarted = true; setTimeout(start, 3000); }
     });
   };
+  // Picking ros.ai focuses it as Mission Control starts to zoom out, well before the Dock's windows go.
+  main.on('focus', () => { if (open) { open = false; held = true; show(); } });
   start();
   main.once('closed', () => { stopped = true; watcher?.kill(); });
 }
