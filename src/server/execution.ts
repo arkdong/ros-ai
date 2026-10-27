@@ -362,9 +362,10 @@ export class ExecutionService {
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Explicit workspace guide review',undefined,projectId,1,selection);}
     finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
   }
-  /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. */
-  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false,links:{after?:string[];batch?:string}={}):Proposal {
-    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged,links));
+  /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. `browser`: accepting it opens a
+   * browser, which Approve for me asks about first. */
+  assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false,links:{after?:string[];batch?:string}={},browser=false):Proposal {
+    return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged,links),browser);
   }
   /** Why an agent cannot search right now, or null when the search service in use has a key and remaining allowance. */
   agentSearchBlocker():string|null{
@@ -531,29 +532,33 @@ export class ExecutionService {
   startExperimentPlan(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;backend?:'bounded'|'docker-python'|'nebius-sandbox'}) {
     return this.startRun(projectId,nodeId,{request:options.request,useSearch:false,experimentDatasetId:options.datasetArtifactId,experimentBackend:options.backend??'bounded'});
   }
-  private reviewProjectProposal(proposal:Proposal):Proposal {
-    const additions=proposal.operations.filter(op=>op.type==='addNode');
+  /** Accepts what the approval mode lets land at once: in Full access every change, in Approve for me additions and
+   * arranging (moves, sizes, regrouping). Edits and removals wait there, and everything waits in Ask every time or in
+   * a block set to it. Every accepted change stays one Undo away. */
+  private reviewProjectProposal(proposal:Proposal,browser=false):Proposal {
     // One that builds on a change still waiting waits with it.
-    if(!additions.length||proposal.after?.length)return proposal;
-    // Relationships that touch a block added in the same proposal belong to that addition.
-    const added=new Set(additions.map(op=>op.node.id));
-    const attached=proposal.operations.filter(op=>op.type==='addConnection'&&(added.has(op.connection.source)||added.has(op.connection.target))).length;
-    this.store.saveRecord('proposal-authority',proposal.id,proposal.projectId,{proposalId:proposal.id,projectId:proposal.projectId});
+    if(!proposal.operations.length||proposal.after?.length)return proposal;
+    if(proposal.operations.some(op=>op.type==='addNode'))this.store.saveRecord('proposal-authority',proposal.id,proposal.projectId,{proposalId:proposal.id,projectId:proposal.projectId});
     const authority=new Authority(this.store);
-    const reviews=additions.map(op=>authority.review(proposal.projectId,{kind:'create-action',nodeId:op.node.parentId??'project',fingerprint:`${proposal.id}:${op.node.id}`}));
-    if(additions.length+attached!==proposal.operations.length||reviews.some(r=>r.outcome!=='allow'))return proposal;
-    this.acceptGovernedProposal(proposal.projectId,proposal.id);
+    const reviews=authority.reviewCanvas(proposal.projectId,proposal.id,proposal.operations,this.store.getProject(proposal.projectId).canvas);
+    if(browser)reviews.push(authority.review(proposal.projectId,{kind:'browser',nodeId:'project',fingerprint:proposal.id}));
+    if(reviews.some(r=>r.outcome!=='allow'))return proposal;
+    this.acceptReviewed(proposal);
     return this.store.detail(proposal.projectId).proposals.find(p=>p.id===proposal.id)!;
   }
   acceptGovernedProposal(projectId:string,proposalId:string):boolean {
     if(!this.store.record('proposal-authority',proposalId))return false;
     const proposal=this.store.detail(projectId).proposals.find(p=>p.id===proposalId);
     if(!proposal||proposal.status!=='pending')throw new Error('Proposal is no longer pending.');
+    this.acceptReviewed(proposal);return true;
+  }
+  /** Accepts a proposal as one undoable change, tallying the blocks it adds. */
+  private acceptReviewed(proposal:Proposal){
     const authority=new Authority(this.store);
     this.store.atomic(()=>{
-      for(const op of proposal.operations)if(op.type==='addNode')authority.reserve(projectId,{kind:'create-action',nodeId:op.node.parentId??'project',fingerprint:`${proposalId}:${op.node.id}`});
-      this.store.acceptProposal(projectId,proposalId);
-    });return true;
+      for(const op of proposal.operations)if(op.type==='addNode')authority.reserve(proposal.projectId,{kind:'create-action',nodeId:op.node.parentId??'project',fingerprint:`${proposal.id}:${op.node.id}`});
+      this.store.acceptProposal(proposal.projectId,proposal.id);
+    });
   }
   startResearchStep(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;sessionId:string;messages:ModelMessage[];schema:Record<string,unknown>}) {
     return this.startRun(projectId,nodeId,{request:options.request,useSearch:false,experimentDatasetId:options.datasetArtifactId,research:{sessionId:options.sessionId,messages:options.messages,schema:options.schema}});
