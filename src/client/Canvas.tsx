@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type Viewport } from '@xyflow/react';
+import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowProps, type Viewport } from '@xyflow/react';
 import { ArrowUpRight, BookOpen, Bot, Check, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
@@ -36,6 +36,7 @@ import { BlockPreview } from './BlockPreview';
 import { FilePreview, type ShownFile } from './FileView';
 import { fileMediaType, fileUrl } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
+import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
 import { CodeView } from './code';
 import { CanvasDock } from './CanvasDock';
 import { CanvasToolSwitch, useCanvasTool } from './CanvasTool';
@@ -327,6 +328,15 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
   });
   return { items, width, height, minY };
 }
+/** The last blocks copied in this window, for browsers that hand a paste only its plain text. */
+let lastCopy: { text: string; plain: string } | null = null;
+type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMoveEnd';
+type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode | ArtifactNode, RoutedEdge>, FlowHandlerName>>;
+/** Handlers that keep their identity across renders and always run the latest code. */
+function useStableHandlers<T extends Record<string, (...args: never[]) => unknown>>(handlers: T): T {
+  const latest = useRef(handlers); latest.current = handlers;
+  return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
+}
 function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, agentTurns }: Props) {
   const expandedIds = useMemo(()=>{const canvas=historyCanvas||detail.project.canvas;return requestedExpandedIds.filter(id=>canvas.nodes.some(node=>node.id===id&&(isGroup(node)||canvas.nodes.some(child=>child.parentId===id))));},[requestedExpandedIds,historyCanvas,detail.project.canvas]);
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
@@ -365,7 +375,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }, [detail.project.id, runRevision]);
   const measureCard = useCallback((id: string, width: number, height: number) => setCardMeasurements(current => current[id]?.width === width && current[id]?.height === height ? current : { ...current, [id]: { width, height } }), []);
   const animateNextLayout = useRef<Map<string, { x: number; y: number }> | null>(null), animationFrame = useRef<number | null>(null);
-  const routeHistory = useRef(new Map<string, RelationshipRoute>());
+  const routeHistory = useRef(new Map<string, RelationshipRoute>()), shownEdges = useRef(new Map<string, { key: string; edge: RoutedEdge }>());
   const connectionCommittedAt = useRef(0); const connectionBusy = useRef(false);
   const viewKey = `canvas-view:${detail.project.id}`;
   const viewport = useRef(readSaved<Viewport>(viewKey, readSaved(`viewport:${detail.project.id}:project`, { x: 48, y: 216, zoom: 1 })));
@@ -538,6 +548,45 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, []);
   useEffect(() => { if (readonly) setPendingConnection(null); }, [readonly]);
+  // ⌘/Ctrl C copies the picked blocks and ⌘/Ctrl V pastes them as new blocks. Text being edited or
+  // selected keeps the browser's own copy and paste.
+  const copySelected = (event: ClipboardEvent) => {
+    const copy = copyBlocks(displayed.canvas, selecting ? groupSelection : selectedId ? [selectedId] : [], detail.project.id);
+    if (!copy || !event.clipboardData) return;
+    const roots = copy.nodes.filter(node => !copy.nodes.some(item => item.id === node.parentId));
+    const text = JSON.stringify(copy), plain = roots.map(node => node.title).join('\n');
+    event.clipboardData.setData(BLOCKS_MIME, text); event.clipboardData.setData('text/plain', plain); event.preventDefault();
+    lastCopy = { text, plain };
+    setMessage(roots.length === 1 ? `Copied ${roots[0].title}.` : `Copied ${roots.length} blocks.`);
+  };
+  const pasteCopied = (event: ClipboardEvent) => {
+    const data = event.clipboardData, plain = data?.getData('text/plain') ?? '';
+    // Some browsers keep only plain text, so the last copy made here stands in when the text still matches it.
+    const text = data?.getData(BLOCKS_MIME) || (lastCopy && plain === lastCopy.plain ? lastCopy.text : '');
+    const copy = text ? readCopiedBlocks(text) : null;
+    if (!copy) return;
+    event.preventDefault();
+    if (readonly || busy) { setMessage(readonly ? 'This canvas is read only. Go back to the current canvas to paste.' : 'Still saving. Paste again in a moment.'); return; }
+    const { operations, ids } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
+    const title = copy.nodes.find(node => !copy.nodes.some(item => item.id === node.parentId))?.title;
+    void mutate(operations, ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`).then(saved => {
+      if (saved === false) return;
+      setGroupSelection(selecting ? ids : []); onSelect(selecting || ids.length !== 1 ? null : ids[0]);
+      // The nearest free spot can be off screen on a full canvas; then the view moves to the pasted blocks.
+      const first = operations.find(op => op.type === 'addNode' && op.node.id === ids[0]), box = area.current?.getBoundingClientRect();
+      const at = first?.type === 'addNode' && !first.node.parentId ? flow.flowToScreenPosition({ x: first.node.x, y: first.node.y }) : null;
+      if (!at || !box || at.x < box.left || at.y < box.top || at.x > box.right - 120 || at.y > box.bottom - 120) setFrameRequest(ids);
+      setMessage(`${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}. Undo takes it away.`);
+    });
+  };
+  const clipboardRef = useRef({ copy: copySelected, paste: pasteCopied }); clipboardRef.current = { copy: copySelected, paste: pasteCopied };
+  useEffect(() => {
+    const typing = (event: ClipboardEvent) => Boolean((event.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]'));
+    const copy = (event: ClipboardEvent) => { if (!typing(event) && !window.getSelection()?.toString()) clipboardRef.current.copy(event); };
+    const paste = (event: ClipboardEvent) => { if (!typing(event)) clipboardRef.current.paste(event); };
+    document.addEventListener('copy', copy); document.addEventListener('paste', paste);
+    return () => { document.removeEventListener('copy', copy); document.removeEventListener('paste', paste); };
+  }, []);
   const resultPages = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const parentId = node.id;
         const runs = detail.runs.filter(r => r.nodeId === parentId && r.status === 'completed');
@@ -733,7 +782,12 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     return items.map(({ group, route, label, tooltip, showLabel }) => {
       const selected = group.id === selectedEdge, color = selected ? '#536f69' : '#99a5a2';
       const marker = { type: MarkerType.ArrowClosed, width: 17, height: 17, color };
-      return { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+      const edge: RoutedEdge = { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+      // An unchanged edge keeps its object, so dragging one block redraws only the lines that move with it.
+      const key = JSON.stringify(edge), shown = shownEdges.current.get(group.id);
+      if (shown?.key === key) return shown.edge;
+      shownEdges.current.set(group.id, { key, edge });
+      return edge;
     });
   }, [aggregatedRelationships, nodes, selectedEdge, expandedIds, displayed.canvas]);
   const broader = () => { const selected = displayed.canvas.nodes.find(n => n.id === selectedId); if (selected?.parentId) { onSelect(selected.parentId); setFocusRequest(selected.parentId); } else void fitCanvas(450); };
@@ -760,51 +814,68 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!onDropFiles || readonly || !Array.from(event.dataTransfer.types).includes('Files')) return false;
     event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return true;
   };
+  // React Flow redraws every block when a handler it is given changes, so it gets handlers that
+  // keep their identity and call the latest code; a drag then redraws only the block that moves.
+  const flowHandlers = useStableHandlers<FlowHandlers>({
+    onNodesChange: changes => setNodes(current => applyNodeChanges(changes, current)),
+    onNodeClick: (event, node) => { if ((event.target as HTMLElement).closest('.relationship-handle')) return; if (node.type === 'research') { if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side); else if(selecting){setGroupSelection(ids=>ids.includes(node.id)?ids.filter(id=>id!==node.id):[...ids,node.id]);} else onSelect(node.id); } setSelectedEdge(null); },
+    onNodeDoubleClick: (event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook','file'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); },
+    onPaneClick: () => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); closeLabelMenu(); },
+    onEdgeClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
+    onEdgeDoubleClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
+    onNodeDragStart: () => { dragging.current = true; setReflowRevision(revision => revision + 1); },
+    onNodeDrag: (event, node) => {
+      if (readonly || node.type !== 'research') return;
+      const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
+      const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null, nextId = target && target.id !== parentId ? target.id : null;
+      if (nextId === dropTargetId.current) return;
+      dropTargetId.current = nextId;
+      if (!target || !nextId) { setDropTarget(null); return; }
+      const box = area.current?.getBoundingClientRect(), origin = flow.flowToScreenPosition(target.absolute), corner = flow.flowToScreenPosition({ x: target.absolute.x + target.width, y: target.absolute.y + target.height });
+      setDropTarget({ id: nextId, left: origin.x - (box?.left ?? 0), top: origin.y - (box?.top ?? 0), width: corner.x - origin.x, height: corner.y - origin.y });
+    },
+    onNodeDragStop: (event, node) => {
+      dragging.current = false; dropTargetId.current = null; setDropTarget(null);
+      if (node.type === 'artifact') {
+        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const point = flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+        const targets = flow.getNodes().filter(n => n.type === 'research' && expandedIds.includes(n.id) && n.id !== node.parentId).map(n => ({ node: n, absolute: flow.getInternalNode(n.id)?.internals.positionAbsolute })).filter(({ node: n, absolute: p }) => p && point.x >= p.x && point.x <= p.x + (n.width || 0) && point.y >= p.y && point.y <= p.y + (n.height || 0)); const target = targets.at(-1)?.node;
+        if (target) { onReuse(node.data.artifact, target.id); setNodes(computedNodes); }
+        else if (resultPages[node.data.destinationId]?.size !== 'all') { setNodes(computedNodes); }
+        else { const position = { x: Math.max(GROUP_INSET.x, node.position.x), y: Math.max(GROUP_INSET.y, node.position.y) }; saveLocal(`artifact-group-position:${node.data.destinationId}:${node.data.artifact.id}`, position); setArtifactPlacementRevision(revision => revision + 1); const highlight = highlights.find(h => h.nodeId === node.data.destinationId && h.artifactId === node.data.artifact.id); if (highlight) onMoveHighlight(highlight.id, node.data.destinationId, position); setNodes(current => current.map(n => n.id === node.id ? { ...n, position } : n)); }
+        return;
+      }
+      if (readonly) return;
+      // Dropped on an expanded Group, the block joins it; dragged out past its edge, it leaves. Otherwise only its position is saved.
+      const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
+      const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null;
+      if ((target?.id ?? null) !== parentId) {
+        const absolute = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+        const position = target ? savedCanvasPosition({ x: absolute.x - target.absolute.x, y: absolute.y - target.absolute.y }, true) : savedCanvasPosition(absolute, false);
+        void mutate([{ type: 'updateNode', id: node.id, patch: { parentId: target?.id ?? null, ...position } }], target ? 'Move into a group' : 'Move out of its group').finally(() => setReflowRevision(revision => revision + 1));
+        return;
+      }
+      void mutate([{ type: 'updateNode', id: node.id, patch: savedCanvasPosition(node.position, Boolean(node.parentId)) }], 'Move note').finally(() => setReflowRevision(revision => revision + 1));
+    },
+    onConnect: c => { if (c.source && c.target) connect(c.source, c.target, c.sourceHandle as Side | undefined, c.targetHandle as Side | undefined); },
+    onConnectEnd: (event, state) => {
+      if (state.isValid || !state.fromNode || readonly) return;
+      const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
+      if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
+    },
+    onMoveStart: closeLabelMenu,
+    onMoveEnd: (_, view) => saveLocal(viewKey, view),
+  });
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
-    <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={changes => setNodes(current => applyNodeChanges(changes, current))}
-      onNodeClick={(event, node) => { if ((event.target as HTMLElement).closest('.relationship-handle')) return; if (node.type === 'research') { if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side); else if(selecting){setGroupSelection(ids=>ids.includes(node.id)?ids.filter(id=>id!==node.id):[...ids,node.id]);} else onSelect(node.id); } setSelectedEdge(null); }}
-      onNodeDoubleClick={(event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook','file'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); }}
-      onPaneClick={() => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); closeLabelMenu(); }} onEdgeClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }} onEdgeDoubleClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }}
-      onNodeDragStart={() => { dragging.current = true; setReflowRevision(revision => revision + 1); }} onNodeDrag={(event, node) => {
-        if (readonly || node.type !== 'research') return;
-        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
-        const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null, nextId = target && target.id !== parentId ? target.id : null;
-        if (nextId === dropTargetId.current) return;
-        dropTargetId.current = nextId;
-        if (!target || !nextId) { setDropTarget(null); return; }
-        const box = area.current?.getBoundingClientRect(), origin = flow.flowToScreenPosition(target.absolute), corner = flow.flowToScreenPosition({ x: target.absolute.x + target.width, y: target.absolute.y + target.height });
-        setDropTarget({ id: nextId, left: origin.x - (box?.left ?? 0), top: origin.y - (box?.top ?? 0), width: corner.x - origin.x, height: corner.y - origin.y });
-      }} onNodeDragStop={(event, node) => {
-        dragging.current = false; dropTargetId.current = null; setDropTarget(null);
-        if (node.type === 'artifact') {
-          const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const point = flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
-          const targets = flow.getNodes().filter(n => n.type === 'research' && expandedIds.includes(n.id) && n.id !== node.parentId).map(n => ({ node: n, absolute: flow.getInternalNode(n.id)?.internals.positionAbsolute })).filter(({ node: n, absolute: p }) => p && point.x >= p.x && point.x <= p.x + (n.width || 0) && point.y >= p.y && point.y <= p.y + (n.height || 0)); const target = targets.at(-1)?.node;
-          if (target) { onReuse(node.data.artifact, target.id); setNodes(computedNodes); }
-          else if (resultPages[node.data.destinationId]?.size !== 'all') { setNodes(computedNodes); }
-          else { const position = { x: Math.max(GROUP_INSET.x, node.position.x), y: Math.max(GROUP_INSET.y, node.position.y) }; saveLocal(`artifact-group-position:${node.data.destinationId}:${node.data.artifact.id}`, position); setArtifactPlacementRevision(revision => revision + 1); const highlight = highlights.find(h => h.nodeId === node.data.destinationId && h.artifactId === node.data.artifact.id); if (highlight) onMoveHighlight(highlight.id, node.data.destinationId, position); setNodes(current => current.map(n => n.id === node.id ? { ...n, position } : n)); }
-          return;
-        }
-        if (readonly) return;
-        // Dropped on an expanded Group, the block joins it; dragged out past its edge, it leaves. Otherwise only its position is saved.
-        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
-        const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null;
-        if ((target?.id ?? null) !== parentId) {
-          const absolute = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
-          const position = target ? savedCanvasPosition({ x: absolute.x - target.absolute.x, y: absolute.y - target.absolute.y }, true) : savedCanvasPosition(absolute, false);
-          void mutate([{ type: 'updateNode', id: node.id, patch: { parentId: target?.id ?? null, ...position } }], target ? 'Move into a group' : 'Move out of its group').finally(() => setReflowRevision(revision => revision + 1));
-          return;
-        }
-        void mutate([{ type: 'updateNode', id: node.id, patch: savedCanvasPosition(node.position, Boolean(node.parentId)) }], 'Move note').finally(() => setReflowRevision(revision => revision + 1));
-      }}
-      onConnect={c => { if (c.source && c.target) connect(c.source, c.target, c.sourceHandle as Side | undefined, c.targetHandle as Side | undefined); }}
-      onConnectEnd={(event, state) => {
-        if (state.isValid || !state.fromNode || readonly) return;
-        const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
-        if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
-      }}
-      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout && !hand} nodesConnectable={!readonly && !hand} elementsSelectable={!hand} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} snapToGrid snapGrid={[24, 24]} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} onMoveStart={closeLabelMenu} onMoveEnd={(_, view) => saveLocal(viewKey, view)} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
+    <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} {...flowHandlers}
+     
+     
+     
+     
+     
+     
+      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout && !hand} nodesConnectable={!readonly && !hand} elementsSelectable={!hand} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
       <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.filter(node=>!isGroup(node)).length} blocks · {displayed.canvas.nodes.filter(isGroup).length} groups</span></div>
       <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
