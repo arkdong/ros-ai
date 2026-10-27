@@ -1,6 +1,6 @@
 import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
@@ -36,6 +36,17 @@ export type GoogleSheet = { kind:'sheet'; title:string; fileId:string; link:stri
 /** What a Doc block shows, read live: its text as Markdown, without images. */
 export type GoogleDoc = { kind:'doc'; title:string; fileId:string; link:string; content:string; truncated:boolean; modifiedAt?:string; fetchedAt:string; notice?:string };
 export type GoogleRead = GoogleSheet | GoogleDoc;
+/** A model training run shown live (training/ros-nemotron): the run's folder on this computer, and optionally the
+ * GPU machine it trains on, reached with this computer's own ssh. ros.ai only reads; it starts and stops nothing. */
+export type TrainingView = { folder:string; host?:string; remote?:string };
+export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
+export type TrainingRead = {
+  stage:TrainingStage; running:boolean; fetchedAt:string; notice?:string;
+  data:{ tasks:number; run:number; kept:number; seconds:number; families:{ family:string; run:number; kept:number; top?:string }[]; spentUsd:number; train?:number; val?:number; updatedAt?:string };
+  training?:{ pilot:boolean; step:number; maxSteps:number; epoch:number; epochs:number; loss:{ step:number; value:number }[]; evalLoss:{ step:number; value:number }[]; seconds:number; usdPerHour:number; finished:boolean; base?:string; rank?:number; targets?:string[]; lr?:number; samples?:number };
+  evals:{ label:string; run:number; passed:number }[];
+  model?:{ file:string; bytes:number };
+};
 /** Where a paper on the canvas came from (Add block › Paper, or an agent's add_paper): its source and its ID there
  * (openalex:W…, arxiv:2401.01234v2, zotero:ABCD2345), and its DOI and page. The reference itself is the block's text. */
 export type PaperSource = 'openalex'|'arxiv'|'zotero';
@@ -53,7 +64,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; notion?:NotionView; google?:GoogleView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; notion?:NotionView; google?:GoogleView; training?:TrainingView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };
