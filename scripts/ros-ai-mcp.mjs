@@ -8,6 +8,7 @@
 // its own sign-in; ros.ai never sees it.
 // ros.ai also starts it for an agent it runs as Ros (Gemini CLI, Goose, OpenCode) when that agent has
 // no HTTP MCP: ROS_AI_MCP_URL and ROS_AI_MCP_TOKEN then name that one turn's endpoint, and mcp.json is not read.
+// An agent whose MCP client gives no name of its own is named by its link: --client=hermes (Hermes Agent).
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -26,6 +27,7 @@ const appData = process.platform === 'darwin' ? join(homedir(), 'Library', 'Appl
 // own folder, then the usual app-data folder, so a copy left by a removed try-out still reaches ros.ai.
 const candidates = [...new Set([process.env.ROS_DATA_DIR, installed ? dirname(here) : null, root && existsSync(resolve(root, '.ros-ai')) ? resolve(root, '.ros-ai') : null, appData].filter(Boolean).map(folder => resolve(folder)))];
 const notRunning = `ros.ai is not running. Start it${root ? ` with "npm start" in ${root}` : ''}, then reconnect (in Claude Code: /mcp).`;
+const client = process.argv.slice(2).map(arg => /^--client=([a-z0-9-]{1,40})$/iu.exec(arg)?.[1]).find(Boolean);
 const turn = process.env.ROS_AI_MCP_URL && process.env.ROS_AI_MCP_TOKEN && /^http:\/\/127\.0\.0\.1:\d+\//u.test(process.env.ROS_AI_MCP_URL) ? { url: process.env.ROS_AI_MCP_URL, token: process.env.ROS_AI_MCP_TOKEN } : null;
 
 let session;
@@ -33,6 +35,7 @@ const write = message => process.stdout.write(`${JSON.stringify(message)}\n`);
 async function forward(message) {
   const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-ros-cwd': encodeURIComponent(process.cwd()) };
   if (session) headers['mcp-session-id'] = session;
+  if (client) headers['x-ros-client'] = client;
   let response;
   if (turn) {
     try { response = await fetch(turn.url, { method: 'POST', headers: { ...headers, authorization: `Bearer ${turn.token}` }, body: JSON.stringify(message) }); } catch { throw new Error('ros.ai stopped during this turn.'); }

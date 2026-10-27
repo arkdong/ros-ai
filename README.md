@@ -4,7 +4,7 @@
 
 ros.ai is an open workspace where AI agents from any vendor and your own tools work on the same project. They collaborate through one shared context, a canvas of blocks, where you can inspect, evaluate and direct their work instead of each agent keeping its own. It runs on your computer: projects, keys and the Python sandbox stay there, and model requests go only to the providers you connect.
 
-A project is a canvas of Text, Code, Notebook, Data, File, External and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
+A project is a canvas of Text, Code, Notebook, Data, File, External and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
 
 ## Install
 
@@ -23,7 +23,7 @@ The service binds to loopback only. ros.ai keeps its own records in the computer
 
 ## First run
 
-1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go. You can come back to this on the **Agents** page.
+1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go. You can come back to this on the **Agents** page.
 2. **Pick a model for Ros.** Sign in for the free hosted Ros (Nemotron on Nebius, no key), paste your own key on the **Model** page, download Ros to run on this computer (Agents › Ros, about 3 GB), or point ros.ai at a local server.
 3. **Start a project.** New project opens a blank canvas; the book icon opens the bundled examples.
 
@@ -51,12 +51,15 @@ ros.ai reads it at each start (`ROS_KEYS_FILE` names another file, `ROS_KEYS_FIL
 
 ## Your own agents
 
-ros.ai is also an MCP server, so you can keep working in your own Claude Code, Codex, Cursor or Gemini CLI, signed in with your own plan or key; ros.ai never sees that login. The first-run screen links them, or paste the command yourself (the **Agents** page shows the exact path):
+ros.ai is also an MCP server, so you can keep working in your own Claude Code, Codex, Cursor, Gemini CLI, Pi or Hermes Agent, signed in with your own plan or key; ros.ai never sees that login. The first-run screen links them, or paste the command yourself (the **Agents** page shows the exact path):
 
 ```sh
 claude mcp add --scope user ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
+hermes mcp add ros-ai --command node --args "/path/to/ros.ai data/bin/ros-ai-mcp.mjs" --client=hermes
 ```
+
+Cursor, Gemini CLI and Pi take one `ros-ai` entry under `mcpServers` in their settings file instead; Pi's has `"exposure": "direct"`, so its model calls ros.ai's tools directly.
 
 Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`, so no separate Node is needed. The agent can read the canvas, artifacts and your saved preferences and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's approval mode, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project.
 
