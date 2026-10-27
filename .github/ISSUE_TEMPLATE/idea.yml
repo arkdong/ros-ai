@@ -1,0 +1,18 @@
+# The feedback button in ros.ai fills these fields in through the link (?template=idea.yml&message=…&details=…), so keep their ids.
+name: Idea
+description: Something that would make ros.ai better for you.
+title: "Idea: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: message
+    attributes:
+      label: What would make ros.ai better for you?
+      description: What you were trying to do helps as much as the idea. This page is public.
+    validations:
+      required: true
+  - type: input
+    id: details
+    attributes:
+      label: App details
+      description: Optional. The feedback button in ros.ai fills this in.
