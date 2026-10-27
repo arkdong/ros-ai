@@ -92,8 +92,8 @@ function PdfPage({ doc, number, width, fluid = false, onRendered }: { doc: PdfDo
   return <canvas ref={canvas} className="pdf-page" role="img" aria-label={`Page ${number}`}/>;
 }
 
-/** What a File block shows on its card: the first page of a PDF, or the image, as wide as the card and cut at the
- * card's preview height, with one quiet line about the file. The card's width sets the page's; resizing redraws it. */
+/** What a File block shows on its card: a PDF's pages in one scroll, or the image, as wide as the card and cut at the
+ * card's preview height, with one quiet line about the file. The card's width sets the pages'; resizing redraws them. */
 export function FilePreview({ file, title }: { file: ShownFile; title: string }) {
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   if (!isPdfType(file.mediaType)) return <>
@@ -102,13 +102,49 @@ export function FilePreview({ file, title }: { file: ShownFile; title: string })
   </>;
   return <PdfPreview file={file}/>;
 }
+/** The card's PDF: every page under the one before, scrolled with the wheel like a Notion page card (nowheel keeps the
+ * wheel off the canvas). Page 1 is drawn at once and the rest as they come near the view. */
 function PdfPreview({ file }: { file: ShownFile }) {
-  // While the card is resized the drawn page scales with it; it is drawn again once the width settles.
-  const box = useRef<HTMLDivElement>(null), width = useSettled(useWidth(box)), { doc, error } = usePdf(file.src);
+  // While the card is resized the drawn pages scale with it; they are drawn again once the width settles.
+  const box = useRef<HTMLDivElement>(null), width = useSettled(useWidth(box)), { doc, error } = usePdf(file.src), sizes = usePageSizes(doc);
+  const shown = useNearPages(box, sizes.length, 1);
   return <>
-    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 ? <PdfPage doc={doc} number={1} width={width} fluid/> : <LoaderCircle size={14} className="spin"/>}</div>
+    <div ref={box} className="block-figure-preview file-page-preview nowheel">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 && sizes.length ? sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ aspectRatio: `${size.width} / ${size.height}` }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={width} fluid/>}</div>) : <LoaderCircle size={14} className="spin"/>}</div>
     <FileLine parts={['PDF', doc ? `${doc.numPages} page${doc.numPages === 1 ? '' : 's'}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
   </>;
+}
+/** Every page's size at scale 1, so each page's box has its height before it is drawn and the scroll length is right. */
+function usePageSizes(doc: PdfDocument | null): { width: number; height: number }[] {
+  const [sizes, setSizes] = useState<{ doc: PdfDocument; all: { width: number; height: number }[] } | null>(null);
+  useEffect(() => {
+    if (!doc) return;
+    let live = true;
+    void Promise.all(Array.from({ length: doc.numPages }, (_, index) => doc.getPage(index + 1).then(page => { const view = page.getViewport({ scale: 1 }); return { width: view.width, height: view.height }; })))
+      .then(all => { if (live) setSizes({ doc, all }); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [doc]);
+  return sizes && sizes.doc === doc ? sizes.all : [];
+}
+/** The pages (counted from 1) that have come within a view's height or two of a scroll box; once near, a page stays drawn.
+ * `onUpdate` hears the box after each check, for the page counter. */
+function useNearPages(box: RefObject<HTMLElement | null>, total: number, layout: unknown, onUpdate?: (element: HTMLElement, pages: HTMLElement[]) => void): Set<number> {
+  const [shown, setShown] = useState<Set<number>>(() => new Set([1, 2]));
+  const heard = useRef(onUpdate); heard.current = onUpdate;
+  useEffect(() => {
+    const element = box.current;
+    if (!element || !total) return;
+    const update = () => {
+      const pages = Array.from(element.querySelectorAll<HTMLElement>('.pdf-page-box'));
+      const top = element.scrollTop, near = new Set<number>();
+      pages.forEach((page, index) => { if (page.offsetTop < top + element.clientHeight * 2 && page.offsetTop + page.offsetHeight > top - element.clientHeight) near.add(index + 1); });
+      setShown(previous => { const next = new Set([...previous, ...near]); return next.size === previous.size ? previous : next; });
+      heard.current?.(element, pages);
+    };
+    update();
+    element.addEventListener('scroll', update, { passive: true });
+    return () => element.removeEventListener('scroll', update);
+  }, [box, total, layout]);
+  return shown;
 }
 function FileLine({ parts }: { parts: string[] }) { return <div className="file-line">{parts.filter(Boolean).map(part => <small key={part}>{part}</small>)}</div>; }
 
@@ -135,35 +171,14 @@ export function FileViewer({ file, title, text }: { file: ShownFile; title: stri
 function PdfPages({ src, zoom, onPlace }: { src: string; zoom: number; onPlace: (page: number, total: number) => void }) {
   const box = useRef<HTMLDivElement>(null), width = useWidth(box), { doc, error } = usePdf(src);
   const place = useRef(onPlace); place.current = onPlace;
-  const [sizes, setSizes] = useState<{ width: number; height: number }[]>([]);
-  const [shown, setShown] = useState<Set<number>>(() => new Set([1, 2]));
+  const sizes = usePageSizes(doc);
   const pageWidth = Math.max(120, Math.floor((width - 32) * zoom / 100));
-  // The pages' proportions set every page's box before it is drawn, so the scroll length is right from the start.
-  useEffect(() => {
-    if (!doc) return;
-    let live = true;
-    void Promise.all(Array.from({ length: doc.numPages }, (_, index) => doc.getPage(index + 1).then(page => { const view = page.getViewport({ scale: 1 }); return { width: view.width, height: view.height }; })))
-      .then(all => { if (live) setSizes(all); }).catch(() => undefined);
-    return () => { live = false; };
-  }, [doc]);
-  useEffect(() => {
-    const element = box.current;
-    if (!element || !doc || !sizes.length) return;
-    const update = () => {
-      const pages = Array.from(element.querySelectorAll<HTMLElement>('.pdf-page-box'));
-      const top = element.scrollTop, middle = top + element.clientHeight / 2, near = new Set<number>();
-      let current = 1;
-      pages.forEach((page, index) => {
-        if (page.offsetTop < top + element.clientHeight * 2 && page.offsetTop + page.offsetHeight > top - element.clientHeight) near.add(index + 1);
-        if (page.offsetTop <= middle) current = index + 1;
-      });
-      setShown(previous => { const next = new Set([...previous, ...near]); return next.size === previous.size ? previous : next; });
-      place.current(current, doc.numPages);
-    };
-    update();
-    element.addEventListener('scroll', update, { passive: true });
-    return () => element.removeEventListener('scroll', update);
-  }, [doc, sizes, pageWidth]);
+  const shown = useNearPages(box, sizes.length, pageWidth, (element, pages) => {
+    const middle = element.scrollTop + element.clientHeight / 2;
+    let current = 1;
+    pages.forEach((page, index) => { if (page.offsetTop <= middle) current = index + 1; });
+    if (doc) place.current(current, doc.numPages);
+  });
   return <div ref={box} className="file-viewport pdf-pages">
     {error ? <p className="file-preview-note">{error}</p> : !doc || !sizes.length ? <p className="file-preview-note"><LoaderCircle size={14} className="spin"/> Opening…</p>
       : sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ width: pageWidth, height: Math.floor(pageWidth * size.height / size.width) }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={pageWidth}/>}</div>)}
