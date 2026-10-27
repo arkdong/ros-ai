@@ -5,7 +5,7 @@ import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
 /** What a block is on screen: eight kinds plus Group. Storage keeps the older blockType and kind words as aliases
- * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion and google are External).
+ * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
  * An App is a page you use; a Code block whose language is html becomes one when it is saved. */
 export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Agent' | 'App' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
@@ -15,7 +15,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'notebook': return 'Notebook';
     case 'dataset': return 'Data';
     case 'figure': case 'file': return 'File';
-    case 'notion': case 'google': return 'External';
+    case 'notion': case 'google': case 'training': return 'External';
     case 'agent': return 'Agent';
     case 'app': return 'App';
     case 'search': return 'Search';

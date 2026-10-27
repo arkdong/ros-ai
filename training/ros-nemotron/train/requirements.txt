@@ -1,0 +1,13 @@
+# For the Nebius H100 run (CUDA 12 or 13 drivers, Python 3.10-3.12). The 27 Oct run used torch 2.10.0+cu126 (installed
+# by setup-vm.sh), transformers 5.21.0, peft 0.21.2, accelerate 1.15.0 and safetensors 0.8.0; setup-vm.sh records what it
+# resolved in out/pip-freeze.txt. train_lora.py uses transformers 5 argument names (warmup_steps, train_sampling_strategy).
+# mamba-ssm and causal-conv1d give the Mamba-2 layers of Nemotron 3 Nano 4B their fast kernels; these versions have
+# prebuilt wheels for torch 2.6-2.10, so nothing is compiled on the VM.
+transformers>=5.21
+peft>=0.21
+accelerate>=1.15
+safetensors>=0.6
+sentencepiece
+huggingface_hub>=0.35
+mamba-ssm==2.3.2.post1
+causal-conv1d==1.7.0
