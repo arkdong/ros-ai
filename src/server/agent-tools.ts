@@ -281,8 +281,8 @@ export class AgentWorkspaceTools {
   preview() { return { ...this.capture, artifacts: this.capture.artifacts.map(({ content, ...a }) => ({ ...a, characters: content.length, preview: content.slice(0, 1200), truncated: content.length > 1200 })) }; }
   private node(id: string) { if (!this.scope.nodeIds.includes(id) && !this.own.has(id)) throw new StoreError('Tool target is outside the explicit captured block selection.', 403); }
   /** A block a canvas change may touch or put blocks in: any block on this project's canvas. The selection points Ros at
-   * a block but does not fence off the rest of the map, because a change to a block that is already there waits for the
-   * person's Accept in every approval mode; only additions are ever accepted automatically. */
+   * a block but does not fence off the rest of the map: the approval mode decides what lands at once (Full access every
+   * change, Approve for me additions and moves), the rest waits for the person's Accept, and all of it can be undone. */
   private onCanvas(id: string, canvas = this.store.getProject(this.scope.projectId).canvas) {
     if (!canvas.nodes.some(n => n.id === id)) throw new StoreError(`There is no block ${id} on this canvas. Call ros_read_canvas for the current block IDs.`, 404);
   }
@@ -696,7 +696,7 @@ export class AgentWorkspaceTools {
       if (this.agentNodeId) operations.push({ type: 'addConnection', connection: { id: randomUUID(), source: this.agentNodeId, target: blockId, label: 'browses' } });
       const folder = projectFolderRoot(this.store, this.scope.projectId) !== null;
       const summary = `Open a web browser for: ${purpose}. It starts at ${host}, empty, with no cookies, logins or saved passwords, and reaches public websites only, never this computer or your network. The agent may follow links and fill in and send forms; each step is listed on the Browser block${folder ? ', and its screenshots are saved into files/ as File blocks' : ''}.`;
-      const proposal = this.execution.assistantProposal(this.scope.projectId, summary.slice(0, 5000), operations, false, { batch: this.turnId });
+      const proposal = this.execution.assistantProposal(this.scope.projectId, summary.slice(0, 5000), operations, false, { batch: this.turnId }, true);
       this.store.saveRecord('agent-proposal', proposal.id, this.scope.projectId, { proposalId: proposal.id, agent: this.agent, client: this.client, turnId: this.turnId, captureHash: this.capture.hash, selectedArtifactVersions: this.capture.artifacts.map(a => ({ id: a.id, hash: a.hash })), rationale: purpose, browser: { url, goal: purpose } });
       asked = this.browserAsked = { blockId, log, action: { id: randomUUID(), type: 'proposal', title: `Browse: ${purpose}`, proposalId: proposal.id, status: 'pending' } };
       this.actions.push(asked.action);

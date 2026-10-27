@@ -77,9 +77,9 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 ## Three approval modes
 
-- **Ask every time:** review each experiment and additional block.
-- **Approve for me:** a conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away; anything else escalates to you.
-- **Full access:** code runs straight away in the sandbox and the assistant can add blocks without asking; every change stays undoable.
+- **Ask every time:** review each experiment and each change to the canvas.
+- **Approve for me:** a conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away, and the assistant's new blocks, moves and regrouping land at once; other code, edits and removals escalate to you.
+- **Full access:** code runs straight away in the sandbox and every canvas change the assistant makes lands without asking; every change stays undoable.
 
 [Working in ros.ai](docs/guide.md) covers the canvas, blocks, labels, Groups, history, resources, the Python boundary and spending in detail.
 
