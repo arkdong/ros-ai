@@ -324,13 +324,13 @@ Skills are the person's saved ways of doing a kind of task, in the Agent Skills 
 
 ## Feedback · October 26, 2026
 
-A question-mark circle in the bottom-right corner of every page opens a card for a problem, an idea or a question (src/client/FeedbackButton.tsx). The design canvas is https://claude.ai/artifact/2NzgxXuXuS5KRrkH2JMzpB and the comparison with other apps behind it https://claude.ai/artifact/CnbvuXBTvF7RcWjMEMpgL4.
+A Feedback button at the top right of every page opens a card for a problem, an idea or a question (src/client/FeedbackButton.tsx). It started on 26 October as a question-mark circle in the bottom-right corner; on 27 October it became a labelled button at the top, because the circle read as help and was easy to miss among the map's controls. The design canvas is https://claude.ai/artifact/2NzgxXuXuS5KRrkH2JMzpB and the comparison with other apps behind it https://claude.ai/artifact/CnbvuXBTvF7RcWjMEMpgL4.
 
 - Opening the card asks only the local server (`GET /api/feedback`, src/server/feedback.ts): whether ros.ai cloud is on, the signed-in email as saved on this computer, and the server's half of the app-details line (version and commit, operating system, Node). The browser adds its own name and major version, never the user agent.
 - **Send** posts the note to the local server, which passes it to ros.ai cloud (`POST /v1/feedback`) with the session token when the person is signed in (`CloudAccount.sendFeedback`). The cloud saves it, files it as an issue in a private GitHub repository and emails it to the team; a reply goes to the account email, or to the address a signed-out person typed.
 - **Post publicly on GitHub** opens a new issue in arkdong/ros-ai through the issue form for the note's kind (`.github/ISSUE_TEMPLATE`, filled in by `publicIssueUrl` in src/shared/feedback.ts), never with the email address.
 - App details go only while their box is ticked, and the card shows the exact line. No logs, prompts, project content or screenshots. With `ROS_CLOUD_URL=off` and in the public demo the card offers GitHub only. A note that fails to send stays in the card as a draft.
-- Layout (src/client/feedback.css): the circle sits level with the map's zoom controls, which move 44 px left for it. On a map under 986 px wide both rise above the Ros bar, and above a selected block's buttons; both move left of Ros's side panel where there is room. Where the side panel or the half sheet would cover the corner, the circle hides until it closes. The card opens above the circle and scrolls in a short window.
+- Layout (src/client/feedback.css): on the map the button ends the header, after Saved, and the header keeps room for it; on full pages such as Settings it sits in the same corner. The card opens under it and scrolls in a short window. On phones the button keeps only its icon.
 
 ## Updates · October 26, 2026
 

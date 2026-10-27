@@ -1,45 +1,18 @@
-/* The feedback circle and its card. The circle keeps the bottom-right corner of every page; on the
-   map it sits level with the zoom controls, which move left to make room. The layer covers the
-   workspace without taking presses, so offsets count from its edges and margins in % from its width. */
-.feedback { position: absolute; inset: 0; z-index: 29; pointer-events: none; container-type: inline-size; }
-.feedback .feedback-circle, .feedback .feedback-card { pointer-events: auto; }
-/* Below the Ros panels on the map; above full pages such as Settings, and above everything while open. */
+/* The Feedback button and its card. The button keeps the top-right corner of every page: on the map it
+   ends the header, after Saved, and on full pages such as Settings it takes the page's empty corner.
+   The layer covers the workspace without taking presses, so offsets count from its edges. */
+.feedback { position: absolute; inset: 0; z-index: 29; pointer-events: none; }
+.feedback .feedback-button, .feedback .feedback-card { pointer-events: auto; }
+/* Above full pages such as Settings, and above everything while open. */
 .workspace:has(> .rail-page) > .feedback, .feedback.open { z-index: 50; }
+.feedback .feedback-button { position: absolute; top: 16px; right: 24px; height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--card-line); border-radius: 8px; background: #fff; color: var(--ink); font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.feedback .feedback-button:hover { background: #f7f7f7; }
+.feedback.open .feedback-button { background: #f2f2f2; }
+/* The map's header leaves the button its room. */
+.workspace:has(> .feedback) > .workspace-header { padding-right: 148px; }
 
-.feedback .feedback-circle { position: absolute; right: 21px; bottom: 25px; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 1px solid var(--card-line); border-radius: 50%; background: #fff; color: var(--ink); box-shadow: var(--float-shadow); }
-.feedback .feedback-circle:hover { background: #f7f7f7; }
-.feedback.open .feedback-circle { background: var(--ink); border-color: var(--ink); color: #fff; }
-.workspace:has(> .feedback) .unified-canvas .canvas-tools { margin-right: 44px; }
-
-/* On maps too narrow for the Ros bar to clear the corner (under 986 px), the circle and the zoom
-   controls rise above it: higher under 472 px, where the bar's footer wraps to a second row, and
-   higher again over a selected block's buttons. Each clamp is 0 on wider maps. */
-.workspace:has(.ros-dock) { --feedback-lift: max(clamp(0px, (986px - 100%) * 1000, 98px), clamp(0px, (472px - 100%) * 1000, 138px)); }
-.workspace:has(.ros-bar.running) { --feedback-lift: max(clamp(0px, (986px - 100%) * 1000, 154px), clamp(0px, (472px - 100%) * 1000, 194px)); }
-.workspace:has(.ros-dock):has(.selection-toolbar) { --feedback-lift: clamp(0px, (986px - 100%) * 1000, 193px); }
-.workspace:has(.ros-bar.running):has(.selection-toolbar) { --feedback-lift: clamp(0px, (986px - 100%) * 1000, 249px); }
-.workspace:has(.ros-dock) > .feedback .feedback-circle,
-.workspace:has(.ros-dock) .unified-canvas .canvas-tools { margin-bottom: var(--feedback-lift); }
-/* The card always opens above the bar. */
-.workspace:has(.ros-dock) > .feedback .feedback-card-space { margin-bottom: max(47px, var(--feedback-lift)); }
-.workspace:has(.ros-bar.running) > .feedback .feedback-card-space { margin-bottom: max(103px, var(--feedback-lift)); }
-/* Ros's side panel covers the corner, so on maps with room beside it (620 px and up) both move to its
-   left, where the map's hint line would run under them. On narrower maps the panel covers the zoom
-   controls and the circle hides until it closes. */
-.workspace:has(.ros-full) .canvas-hint { display: none; }
-.workspace:has(.ros-full) { --feedback-right: calc(21px + clamp(0px, (100% - 620px) * 1000, min(420px, 100% - 36px) + 9px)); }
-.workspace:has(.ros-full) > .feedback .feedback-circle,
-.workspace:has(.ros-full) .unified-canvas .canvas-tools { right: var(--feedback-right); }
-.workspace:has(.ros-full) > .feedback .feedback-card-space { right: max(12px, min(var(--feedback-right), 100% - 356px)); }
-@container (max-width: 619px) { .workspace:has(.ros-full) > .feedback .feedback-circle { visibility: hidden; } }
-/* Ros's half sheet leaves the corner free only on maps 1126 px and wider. On narrower maps the circle
-   hides until the sheet closes, and the zoom controls keep the corner they have without the circle. */
-.workspace:has(.ros-half) .unified-canvas .canvas-tools { margin-right: clamp(0px, (100% - 1126px) * 1000, 44px); }
-@container (max-width: 1125px) { .workspace:has(.ros-half) > .feedback .feedback-circle { visibility: hidden; } }
-
-/* The room the card may take, from under the header to just above the circle; a long card scrolls in
-   it. In a short window it keeps at least 260 px and reaches down over the controls below instead. */
-.feedback .feedback-card-space { position: absolute; top: 76px; right: 21px; bottom: 69px; width: 340px; max-width: calc(100% - 32px); min-height: min(260px, 100% - 92px); display: flex; flex-direction: column; justify-content: flex-end; }
+/* The card opens under the button; a long card scrolls in the room down to the bottom edge. */
+.feedback .feedback-card-space { position: absolute; top: 56px; right: 24px; bottom: 16px; width: 340px; max-width: calc(100% - 32px); display: flex; flex-direction: column; }
 .feedback .feedback-card { max-height: 100%; overflow-y: auto; padding: 16px 16px 14px; display: flex; flex-direction: column; border: 1px solid var(--card-line); border-radius: 14px; background: #fff; box-shadow: var(--shadow-view); color: var(--ink); font-size: var(--text-md); }
 .feedback-card form { display: flex; flex-direction: column; }
 .feedback-card header { height: 28px; display: flex; align-items: center; justify-content: space-between; }
@@ -86,7 +59,10 @@
 .feedback-sent + footer { margin-top: 20px; }
 .feedback-card footer .text-button { padding: 0; font-size: var(--text-sm); color: var(--body); text-decoration: underline; text-underline-offset: 3px; }
 
+/* Phones: the button keeps only its icon, level with the title row, and the card takes the width under it. */
 @media (max-width: 600px) {
-  .feedback .feedback-circle { right: 12px; bottom: 19px; }
-  .feedback .feedback-card-space { right: 12px; }
+  .feedback .feedback-button { top: 6px; right: 12px; width: 32px; padding: 0; }
+  .feedback .feedback-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .workspace:has(> .feedback) > .workspace-header { padding-right: 56px; }
+  .feedback .feedback-card-space { top: 46px; right: 12px; bottom: 12px; max-width: calc(100% - 24px); }
 }

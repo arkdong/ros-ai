@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, LoaderCircle, UserRound, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageSquare, UserRound, X } from 'lucide-react';
 import { FEEDBACK_KINDS, FEEDBACK_MAX_CHARS, publicIssueUrl, type FeedbackSetup } from '../shared/feedback';
 import { api, post } from './api';
 import { BrandLogo } from './brand-logos';
@@ -13,18 +13,15 @@ function browserName() {
   return 'another browser';
 }
 
-// Lucide's question mark from circle-help, half as large again so it reads without its circle.
-const QuestionMark = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7.65 7.5a4.5 4.5 0 0 1 8.7 1.5c0 3-4.5 4.5-4.5 4.5"/><path d="M12 19.5h.01"/></svg>;
-
-/** The question-mark circle in the bottom-right corner of every page, and its card for a problem, an
- * idea or a question. Opening it asks only the local server; nothing leaves this computer until the
- * person presses Send or Post publicly on GitHub. The public demo offers GitHub only. */
+/** The Feedback button at the top right of every page, and its card for a problem, an idea or a
+ * question. Opening it asks only the local server; nothing leaves this computer until the person
+ * presses Send or Post publicly on GitHub. The public demo offers GitHub only. */
 export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
   const [open, setOpen] = useState(false), [setup, setSetup] = useState<FeedbackSetup>();
   const [kindId, setKind] = useDraft('feedback-kind', 'problem'), [message, setMessage] = useDraft('feedback-message'), [email, setEmail] = useDraft('feedback-email');
   const [withDetails, setWithDetails] = useState(() => readSaved('feedback-details', true));
   const [sending, setSending] = useState(false), [error, setError] = useState(''), [sent, setSent] = useState<{ email?: string }>();
-  const box = useRef<HTMLDivElement>(null), circle = useRef<HTMLButtonElement>(null), text = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), text = useRef<HTMLTextAreaElement>(null);
   const kind = FEEDBACK_KINDS.find(item => item.id === kindId) ?? FEEDBACK_KINDS[0], ready = Boolean(setup);
 
   const close = () => { setOpen(false); setSent(undefined); setError(''); };
@@ -36,7 +33,7 @@ export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
     // Captured, because the map stops presses from bubbling up to the page.
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) close(); };
     // Handled here first, so the app's own Escape (which closes open views) leaves them alone.
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close(); circle.current?.focus(); } };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close(); trigger.current?.focus(); } };
     document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key); };
   }, [open, publicDemo]);
@@ -57,7 +54,7 @@ export function FeedbackButton({ publicDemo }: { publicDemo: boolean }) {
   };
 
   return <div className={`feedback ${open ? 'open' : ''}`} ref={box}>
-    <button ref={circle} type="button" className="feedback-circle" aria-label="Send feedback" title="Send feedback" aria-haspopup="dialog" aria-expanded={open} onClick={() => open ? close() : setOpen(true)}><QuestionMark/></button>
+    <button ref={trigger} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={open} onClick={() => open ? close() : setOpen(true)}><MessageSquare size={14} aria-hidden/><span>Feedback</span></button>
     {open && setup && <div className="feedback-card-space"><section className="feedback-card" role="dialog" aria-label="Send feedback">
       <header><strong>Send feedback</strong><button type="button" className="feedback-close" aria-label="Close" onClick={close}><X size={16}/></button></header>
       {sent ? <>
