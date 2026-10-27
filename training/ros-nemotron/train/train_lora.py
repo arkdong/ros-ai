@@ -8,9 +8,10 @@ Each sample is rendered with the model's own chat template (tools included, thin
 Ros runs it with --reasoning-budget 0). Loss falls only on assistant turns marked train: true, so the
 model learns its tool calls and answers, never the tool results, and never a call ros.ai refused.
 """
-import argparse, json, math, os, time
+import argparse, json, math, os, shutil, time
 
 import torch
+from huggingface_hub import hf_hub_download, list_repo_files
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
@@ -103,6 +104,8 @@ training = TrainingArguments(
     num_train_epochs=args.epochs, max_steps=40 if args.pilot else -1, lr_scheduler_type="cosine", warmup_steps=0.03,
     bf16=True, logging_steps=5, save_strategy="no" if args.pilot else "epoch", eval_strategy="epoch" if val and not args.pilot else "no",
     report_to=[], remove_unused_columns=False, train_sampling_strategy="group_by_length", dataloader_num_workers=2,
+    # Evaluation otherwise batches 8 and keeps full-vocabulary logits: 77 GiB on long samples. Only eval_loss is used.
+    per_device_eval_batch_size=1, prediction_loss_only=True,
 )
 
 
@@ -143,7 +146,19 @@ if args.pilot:
 
 model.save_pretrained(f"{args.out}/adapter")
 merged = model.merge_and_unload()
+# The base generation_config sets top_p without do_sample, which transformers 5 refuses to save.
+merged.generation_config.do_sample = True
+# The remote code lists _tied_weights_keys, which transformers 5 expects as a dict; Nemotron-H ties nothing.
+for module in merged.modules():
+    if isinstance(getattr(module, "_tied_weights_keys", None), list):
+        module._tied_weights_keys = {}
 merged.save_pretrained(f"{args.out}/merged", safe_serialization=True)
 tokenizer.save_pretrained(f"{args.out}/merged")
+# transformers 5 writes tokenizer_config.json for its TokenizersBackend, which llama.cpp's converter (on transformers 4) cannot
+# load. Training leaves the tokenizer as it was, so the base model's own files replace those.
+listed = set(list_repo_files(args.base))
+for name in ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "chat_template.jinja"):
+    if name in listed:
+        shutil.copy(hf_hub_download(args.base, name), f"{args.out}/merged/{name}")
 json.dump({"base": args.base, "samples": len(train), "tokens": tokens, "epochs": args.epochs, "lr": args.lr, "rank": args.rank, "minutes": seconds / 60}, open(f"{args.out}/training.json", "w"), indent=2)
 print(f"Adapter in {args.out}/adapter, merged weights in {args.out}/merged. Next: bash to_gguf.sh {args.out}/merged {args.out}/gguf")

@@ -68,12 +68,21 @@ npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-us
 | Projects and tasks | US$0.34 | Token Factory credit |
 | Rollouts, two pilots and a retry of failed tasks | US$31.65 for 1,351 tasks (about US$0.02 each), 1,140 samples kept | Token Factory credit |
 | H100 pilot, 40 steps | 11 min, 43 GiB peak memory | AI Cloud credit |
-| H100 training, 2 epochs | about 37 min (pilot estimate), about US$2 | AI Cloud credit |
+| H100 training, 2 epochs (134 steps) | 31.7 min, 43.2 GiB peak memory | AI Cloud credit |
+| H100 VM in all: setup, pilot, waiting, a restart, merge and GGUF | about 4 hours, about US$12 at about US$3 an hour | AI Cloud credit |
 | Evaluation | under US$3 (estimate) | Token Factory credit |
 
 The H100 VM bills by the hour from creation, so setup, the GGUF step and idle time count too; delete it once the GGUF is copied off.
 
-Three things the first run on the VM taught (already in the scripts): pin torch 2.10, whose prebuilt Mamba kernels avoid a source build that fails with CUDA 13; LoRA cannot target the Mamba-2 out_proj or conv1d, so the targets are listed; and Nemotron-H's remote code ignores the Trainer's num_items_in_batch, so `model_accepts_loss_kwargs` is turned off, or the loss is summed over the 16 accumulation steps.
+The 27 October run brought the validation loss from 0.54 (the base model) to 0.405 after epoch 1 and 0.403 after epoch 2; the training loss ended at about 0.33. The Q4_K_M GGUF is 2.84 GB: some layers stay at q5_0 or q8_0 because their 3,136 columns do not divide by 256. In llama-server its first reply was a proper `ros_read_canvas` call.
+
+What the runs on the VM taught (already in the scripts):
+- Pin torch 2.10. Its prebuilt Mamba kernels avoid a source build that fails with CUDA 13.
+- LoRA cannot target the Mamba-2 out_proj or conv1d, so the targets are listed.
+- Nemotron-H's remote code ignores the Trainer's num_items_in_batch, so `model_accepts_loss_kwargs` is turned off. Otherwise the loss is summed over the 16 accumulation steps.
+- Evaluation runs one sample at a time and keeps only the loss. Batches of 8 with full-vocabulary logits needed 77 GiB.
+- transformers 5 refuses to save the merged model as the base model ships it, so `do_sample` is set and `_tied_weights_keys` becomes a dict.
+- llama.cpp's converter runs transformers 4 and cannot read a tokenizer that transformers 5 saved, so the base model's own tokenizer files go next to the merged weights.
 
 ## Known risks
 
