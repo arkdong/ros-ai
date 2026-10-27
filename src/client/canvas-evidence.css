@@ -1,4 +1,2 @@
-.node-model-indicator{display:inline-flex;align-items:center;gap:5px;margin:5px 0 2px;color:#677065;font-size:10px;line-height:1.4;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.node-model-indicator>span{color:#6b7f3c;font-size:11px}
 .artifact-origin{display:block;font-size:10px;line-height:1.4;color:#697166;margin:0 0 5px}
 .artifact-producer{font-size:9px;color:#72776e;white-space:normal}

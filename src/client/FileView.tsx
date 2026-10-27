@@ -7,6 +7,7 @@ import './file-view.css';
 type PdfModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 type RenderTask = import('pdfjs-dist/legacy/build/pdf.mjs').RenderTask;
+type TextLayer = import('pdfjs-dist/legacy/build/pdf.mjs').TextLayer;
 /** The file a block shows: its address (which changes with the file's version), type and size. */
 export type ShownFile = { src: string; mediaType: string; bytes?: number };
 const OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
@@ -63,9 +64,10 @@ function useSettled(value: number, wait = 160): number {
 }
 
 /** One page drawn at a CSS width, sharp on high-density screens. The page is drawn off screen and then shown in one
- * step, so a redraw never blanks the page. A fluid page fills its box and scales while a new width is drawn. */
-function PdfPage({ doc, number, width, fluid = false, onRendered }: { doc: PdfDocument; number: number; width: number; fluid?: boolean; onRendered?: () => void }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
+ * step, so a redraw never blanks the page. A fluid page fills its box and scales while a new width is drawn. With
+ * `text`, pdf.js lays the page's words over it as invisible text, so they can be selected and copied. */
+function PdfPage({ doc, number, width, fluid = false, text = false, onRendered }: { doc: PdfDocument; number: number; width: number; fluid?: boolean; text?: boolean; onRendered?: () => void }) {
+  const canvas = useRef<HTMLCanvasElement>(null), words = useRef<HTMLDivElement>(null);
   const rendered = useRef(onRendered); rendered.current = onRendered;
   useEffect(() => {
     let live = true, task: RenderTask | undefined;
@@ -89,7 +91,23 @@ function PdfPage({ doc, number, width, fluid = false, onRendered }: { doc: PdfDo
     }).catch((error: unknown) => { if (live && !(error instanceof Error && error.name === 'RenderingCancelledException')) console.error(`Page ${number} could not be drawn`, error); });
     return () => { live = false; task?.cancel(); };
   }, [doc, number, width, fluid]);
-  return <canvas ref={canvas} className="pdf-page" role="img" aria-label={`Page ${number}`}/>;
+  useEffect(() => {
+    const element = words.current;
+    if (!text || !element) return;
+    let live = true, layer: TextLayer | undefined;
+    void Promise.all([loadPdfjs(), doc.getPage(number)]).then(([pdfjs, page]) => {
+      if (!live) return;
+      const scale = width / page.getViewport({ scale: 1 }).width;
+      if (!(scale > 0)) return;
+      element.replaceChildren();
+      element.style.setProperty('--total-scale-factor', String(scale));
+      layer = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: element, viewport: page.getViewport({ scale }) });
+      return layer.render();
+    }).catch((error: unknown) => { if (live && !(error instanceof Error && error.name === 'AbortException')) console.error(`The text of page ${number} could not be laid out`, error); });
+    return () => { live = false; layer?.cancel(); };
+  }, [doc, number, width, text]);
+  const page = <canvas ref={canvas} className="pdf-page" role="img" aria-label={`Page ${number}`}/>;
+  return text ? <>{page}<div ref={words} className="pdf-text"/></> : page;
 }
 
 /** What a File block shows on its card: a PDF's pages in one scroll, or the image, as wide as the card and cut at the
@@ -181,6 +199,6 @@ function PdfPages({ src, zoom, onPlace }: { src: string; zoom: number; onPlace: 
   });
   return <div ref={box} className="file-viewport pdf-pages">
     {error ? <p className="file-preview-note">{error}</p> : !doc || !sizes.length ? <p className="file-preview-note"><LoaderCircle size={14} className="spin"/> Opening…</p>
-      : sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ width: pageWidth, height: Math.floor(pageWidth * size.height / size.width) }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={pageWidth}/>}</div>)}
+      : sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ width: pageWidth, height: Math.floor(pageWidth * size.height / size.width) }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={pageWidth} text/>}</div>)}
   </div>;
 }

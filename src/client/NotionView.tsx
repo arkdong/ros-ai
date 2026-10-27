@@ -3,8 +3,7 @@ import { ArrowUpRight, LoaderCircle, Rows3, RotateCw } from 'lucide-react';
 import type { NotionPage, NotionRead, NotionTable, NotionView } from '../shared/types';
 import { MAX_ROW_BLOCKS } from '../shared/notion-rows';
 import { api } from './api';
-import { MarkdownPreview } from './Content';
-import { NotionPageEditor } from './NotionPage';
+import { NotionPageEditor, NotionText } from './NotionPage';
 import { clock, stop } from './live-block';
 import './live-block.css';
 import './notion-view.css';
@@ -69,7 +68,7 @@ function PageBody({ page }: { page: NotionPage }) {
   const properties = page.properties.filter(property => property.type !== 'title' && property.value);
   return <>
     {properties.length > 0 && <dl className="notion-page-properties">{properties.map(property => <div key={property.name}><dt title={property.name}>{property.name}</dt><dd title={property.value}>{property.links?.length ? property.links.map((link, index) => <a key={index} href={link.url} target="_blank" rel="noreferrer" onClick={stop}>{link.text}<ArrowUpRight size={10}/></a>) : property.value}</dd></div>)}</dl>}
-    {page.content ? <div className="live-block-text"><MarkdownPreview text={page.content}/></div> : !properties.length ? <p className="live-block-empty">An empty page.</p> : null}
+    {page.units.length ? <div className="live-block-text"><NotionText page={page}/></div> : !properties.length ? <p className="live-block-empty">An empty page.</p> : null}
   </>;
 }
 
