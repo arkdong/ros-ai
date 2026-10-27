@@ -31,7 +31,7 @@ export function codexProcessArgs(disabledMcp: string[] = []) {
   if (disabledMcp.some(key => !/^[A-Za-z0-9_-]+$/.test(key))) throw new StoreError('An inherited MCP server name cannot be safely disabled with this installed CLI. Embedded turns remain unavailable.', 503);
   const entries: [string, unknown][] = [
     ['model_provider', 'ros_ai_local'], ['approval_policy', 'never'], ['sandbox_mode', 'read-only'],
-    ['web_search', 'disabled'], ['analytics.enabled', false], ['allow_login_shell', false],
+    ['web_search', 'live'], ['analytics.enabled', false], ['allow_login_shell', false],
     ['project_doc_max_bytes', 0],
     ['memories.generate_memories', false], ['memories.use_memories', false],
     ['model_providers.ros_ai_local.name', 'ros.ai native Codex authentication'],
