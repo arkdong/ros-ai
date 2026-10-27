@@ -6,7 +6,7 @@ import type { CredentialProvider, CredentialStatus } from '../shared/tool-connec
 import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-setup';
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
-import type { ClaudeAgentSettings, ClaudeBilling, ClaudeModel, ClaudePlanLogin } from '../shared/claude-agent';
+import type { ClaudeAgentSettings, ClaudeBilling, ClaudeModel, ClaudePlanLogin, ClaudeWebSearch } from '../shared/claude-agent';
 import { LocalModels } from './LocalModels';
 import { CloudAccount } from './CloudAccount';
 import { LocalRos } from './LocalRos';
@@ -85,7 +85,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
     nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,
-    claude:()=><>{claude?.planAllowed&&<ClaudeBillingChoice settings={claude} onChanged={setClaude}/>}{claude?.billing==='plan'?<ClaudePlanConnection settings={claude} loadError={errors.claude} onChanged={setClaude}/>:<KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Claude API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<ClaudeModelChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>}</>,
+    claude:()=><>{claude?.planAllowed&&<ClaudeBillingChoice settings={claude} onChanged={setClaude}/>}{claude?.billing==='plan'?<ClaudePlanConnection settings={claude} loadError={errors.claude} onChanged={setClaude}/>:<KeyConnection forceOpen provider="claude" label="Claude Code" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code as the project assistant, billed to your Claude API key. Choose Claude Code in the assistant's settings to use it." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{claude&&<><ClaudeModelChoice settings={claude} onChanged={setClaude}/><ClaudeWebSearchChoice settings={claude} onChanged={setClaude}/></>}</KeyConnection>}</>,
     codex:()=><CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>,
     openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Direct model API access, separate from Codex sign-in." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
     ...Object.fromEntries((['gemini','goose','opencode'] as const).map(id=>[id,()=><AcpAgentCard status={acp.find(item=>item.id===id)} onChanged={value=>setAcp(list=>list.map(item=>item.id===value.id?value:item))}/>])) as Record<'gemini'|'goose'|'opencode',()=>ReactNode>,
@@ -140,6 +140,7 @@ function ClaudePlanConnection({settings,loadError,onChanged}:{settings:ClaudeAge
   return <ConnectionCard label="Claude Code" icon={<BrandLogo id="claude"/>} subtitle={signedIn&&account?account:undefined} forceOpen connected={signedIn} status={plan.state==='unknown'?'Checking…':signedIn?'Signed in':plan.state==='unavailable'?'Unavailable':'Not signed in'}>
     <p>{signedIn?'Claude Code answers as the project assistant on your Claude plan. Choose Claude Code in the assistant’s settings to use it.':'Sign in with the Claude account that has your plan. If you already use Claude Code on this computer, that sign-in is used.'}</p>
     <ClaudeModelChoice settings={settings} onChanged={onChanged}/>
+    <p className="subtle">Claude Code searches the web and reads pages itself when it needs to. On your plan that costs nothing extra.</p>
     {plan.state==='unavailable'&&<p className="connection-limit">{plan.message}</p>}
     {plan.message&&plan.state==='signed-out'&&<p className="connection-limit">{plan.message}</p>}
     {!signedIn&&plan.state!=='unavailable'&&login?.state!=='waiting'&&<div className="connection-actions"><button className="primary small" disabled={busy} onClick={()=>void run(async()=>setLogin(await post<ClaudePlanLogin>('/api/agents/claude/plan-login',{})))}>Sign in with Claude</button><button className="text-button" disabled={busy} onClick={()=>void run(async()=>onChanged(await api<ClaudeAgentSettings>('/api/agents/claude')))}>Check again</button></div>}
@@ -147,6 +148,16 @@ function ClaudePlanConnection({settings,loadError,onChanged}:{settings:ClaudeAge
     <p className="subtle">Claude Code signs in on Anthropic’s own page and keeps its login itself. ros.ai never sees or stores it.</p>
     {(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
+}
+/** On an API key both ways of searching cost money, so the researcher picks one; on a plan Claude Code always uses its own. */
+function ClaudeWebSearchChoice({settings,onChanged}:{settings:ClaudeAgentSettings;onChanged:(value:ClaudeAgentSettings)=>void}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const choose=async(webSearch:ClaudeWebSearch)=>{setBusy(true);setError('');try{onChanged(await api<ClaudeAgentSettings>('/api/agents/claude',{method:'PUT',body:JSON.stringify({webSearch})}));}catch(cause){setError(message(cause));}finally{setBusy(false);}};
+  const choices:{id:ClaudeWebSearch;title:string;detail:string}[]=[
+    {id:'own',title:'Claude searches by itself',detail:'Simplest. Claude looks things up as it works, with no step to approve. About US$0.01 per search plus the pages it reads, billed to this API key.'},
+    {id:'ros',title:'ros.ai search plan',detail:'Claude first shows what it wants to search and the price, and you approve it. Uses the web search service you connect on the Plugins page (Tavily, Exa or Brave).'},
+  ];
+  return <div className="claude-model-choice"><span className="field-label">Web search</span><div className="claude-billing" role="radiogroup" aria-label="How Claude Code searches the web">{choices.map(choice=><label key={choice.id} className={settings.webSearch===choice.id?'selected':''}><input type="radio" name="claude-web-search" checked={settings.webSearch===choice.id} disabled={busy} onChange={()=>void choose(choice.id)}/><span><strong>{choice.title}</strong><small>{choice.detail}</small></span></label>)}</div>{error&&<p className="inline-error" role="alert">{error}</p>}</div>;
 }
 function ClaudeModelChoice({settings,onChanged}:{settings:ClaudeAgentSettings;onChanged:(value:ClaudeAgentSettings)=>void}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
