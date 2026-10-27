@@ -83,7 +83,7 @@ function trainingPart(metrics: string | undefined, saved: string | undefined): T
   const steps = after.filter(row => typeof row.step === 'number');
   return { pilot: Boolean(begin.pilot), step: Math.max(0, ...steps.map(row => Number(row.step) || 0)), maxSteps: Number(begin.max_steps) || 0, epoch: Math.max(0, ...after.map(row => Number(row.epoch) || 0)), epochs: Number(begin.epochs) || 0,
     loss: points('loss'), evalLoss: points('eval_loss'), seconds: Number(last.seconds) || 0, usdPerHour: Number(begin.usd_per_hour) || 0,
-    finished: after.some(row => row.event === 'end') && (Boolean(begin.pilot) || Boolean(summary.minutes)), base: String(begin.base ?? ''), rank: Number(begin.rank) || undefined, lr: Number(begin.lr) || undefined, samples: Number(begin.samples) || undefined };
+    finished: after.some(row => row.event === 'end') && (Boolean(begin.pilot) || Boolean(summary.minutes)), base: String(begin.base ?? ''), rank: Number(begin.rank) || undefined, ...(Array.isArray(begin.targets) ? { targets: begin.targets.map(String).slice(0, 20) } : {}), lr: Number(begin.lr) || undefined, samples: Number(begin.samples) || undefined };
 }
 
 export async function readTraining(view: TrainingView): Promise<TrainingRead> {

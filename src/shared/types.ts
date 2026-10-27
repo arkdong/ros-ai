@@ -43,7 +43,7 @@ export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
 export type TrainingRead = {
   stage:TrainingStage; running:boolean; fetchedAt:string; notice?:string;
   data:{ tasks:number; run:number; kept:number; seconds:number; families:{ family:string; run:number; kept:number; top?:string }[]; spentUsd:number; train?:number; val?:number; updatedAt?:string };
-  training?:{ pilot:boolean; step:number; maxSteps:number; epoch:number; epochs:number; loss:{ step:number; value:number }[]; evalLoss:{ step:number; value:number }[]; seconds:number; usdPerHour:number; finished:boolean; base?:string; rank?:number; lr?:number; samples?:number };
+  training?:{ pilot:boolean; step:number; maxSteps:number; epoch:number; epochs:number; loss:{ step:number; value:number }[]; evalLoss:{ step:number; value:number }[]; seconds:number; usdPerHour:number; finished:boolean; base?:string; rank?:number; targets?:string[]; lr?:number; samples?:number };
   evals:{ label:string; run:number; passed:number }[];
   model?:{ file:string; bytes:number };
 };

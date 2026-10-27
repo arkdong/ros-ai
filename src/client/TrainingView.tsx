@@ -95,7 +95,7 @@ function TrainingPane({ read, view }: { read: TrainingRead; view: TrainingView }
   return <>
     <Stats items={[['Step', `${number(run.step)} of ${number(run.maxSteps)}`], ['Loss now', run.loss.at(-1)?.value.toFixed(3) ?? '–'], [run.finished ? 'Took' : 'Time left', run.finished ? minutes(run.seconds) : left ? `about ${minutes(left)}` : '–'], ['GPU so far', `about ${usd(gpuUsd(read))}`]]}/>
     <LossChart train={run.loss} validation={run.evalLoss} maxSteps={run.maxSteps}/>
-    <p className="training-note">{run.pilot ? 'A pilot run of 40 steps, to measure speed and memory. ' : ''}LoRA rank {run.rank ?? '–'} on all linear layers · {run.epochs} epochs · learning rate {run.lr ?? '–'} · {number(run.samples ?? 0)} samples{run.base ? ` · ${run.base}` : ''}</p>
+    <p className="training-note">{run.pilot ? 'A pilot run of 40 steps, to measure speed and memory. ' : ''}LoRA rank {run.rank ?? '–'}{run.targets?.length ? ` on ${run.targets.join(', ')}` : ''} · {run.epochs} epochs · learning rate {run.lr ?? '–'} · {number(run.samples ?? 0)} samples{run.base ? ` · ${run.base}` : ''}</p>
   </>;
 }
 

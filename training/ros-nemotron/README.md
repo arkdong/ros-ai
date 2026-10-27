@@ -45,7 +45,7 @@ Training, on one Nebius AI Cloud H100 (copy `train/` and the two jsonl files to 
 ```sh
 bash setup-vm.sh
 python train_lora.py --train train.jsonl --val val.jsonl --pilot     # 40 steps: speed, memory, and the full run's cost
-python train_lora.py --train train.jsonl --val val.jsonl --out out   # LoRA r=32 on all linear layers, 2 epochs
+python train_lora.py --train train.jsonl --val val.jsonl --out out   # LoRA r=32 on attention, MLP and Mamba in_proj, 2 epochs
 bash to_gguf.sh out/merged out/gguf                                  # BF16 GGUF, Q4_K_M, and a tool-call check in llama-server
 ```
 
@@ -59,21 +59,23 @@ ROS_STUDENT_KEY=<local key> npx tsx training/ros-nemotron/run.ts eval --label=ro
 npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-usd=3
 ```
 
-## Costs (estimates until the pilot measures them)
+## Costs (measured on 27 October)
 
-| Part | Estimate | Paid by |
+| Part | Measured | Paid by |
 |---|---|---|
-| Projects and tasks | under US$1 | Token Factory credit |
-| Pilot, 40 rollouts | about US$1-2 | Token Factory credit |
-| Full rollouts | up to US$22 (hard cap) | Token Factory credit |
-| H100 pilot, training, GGUF | about 3-4 hours, US$10-13 | AI Cloud credit |
-| Evaluation | under US$3 | Token Factory credit |
+| Projects and tasks | US$0.34 | Token Factory credit |
+| Rollouts, two pilots and a retry of failed tasks | US$31.65 for 1,351 tasks (about US$0.02 each), 1,140 samples kept | Token Factory credit |
+| H100 pilot, 40 steps | 11 min, 43 GiB peak memory | AI Cloud credit |
+| H100 training, 2 epochs | about 37 min (pilot estimate), about US$2 | AI Cloud credit |
+| Evaluation | under US$3 (estimate) | Token Factory credit |
 
-Total about US$40, inside the US$55 ceiling. If research turns cost more than estimated, the cap holds and fewer research samples are made; quality counts more than reaching 2,000.
+The H100 VM bills by the hour from creation, so setup, the GGUF step and idle time count too; delete it once the GGUF is copied off.
+
+Three things the first run on the VM taught (already in the scripts): pin torch 2.10, whose prebuilt Mamba kernels avoid a source build that fails with CUDA 13; LoRA cannot target the Mamba-2 out_proj or conv1d, so the targets are listed; and Nemotron-H's remote code ignores the Trainer's num_items_in_batch, so `model_accepts_loss_kwargs` is turned off, or the loss is summed over the 16 accumulation steps.
 
 ## Known risks
 
-- **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns are refused before they reach the model. This needs fixing in Local Ros before the swap, whatever the model.
-- **Chat template.** `train_lora.py` labels each assistant turn by rendering the conversation turn by turn and stops if more than 5% of samples do not render that way. The pilot shows whether Nemotron's template does.
-- **Mamba kernels.** Nemotron 3 Nano 4B is a hybrid Mamba-2 model; `mamba-ssm` and `causal-conv1d` must build on the VM. `setup-vm.sh` checks this first.
+- **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns were refused before they reached the model. Fixed in #67: loopback servers now estimate input as bytes/3.
+- **Chat template.** `train_lora.py` labels each assistant turn by rendering the conversation turn by turn and stops if more than 5% of samples do not render that way. The 27 October pilot skipped none.
+- **Mamba kernels.** Nemotron 3 Nano 4B is a hybrid Mamba-2 model; `mamba-ssm` and `causal-conv1d` must install on the VM. `setup-vm.sh` pins versions with prebuilt wheels and checks the import first.
 - **A simulated web.** Facts in search results are plausible but written by the teacher. The student learns the method (quote what a tool returned, date it, name gaps), not the facts.

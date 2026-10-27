@@ -92,16 +92,17 @@ def collate(batch):
 model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map={"": 0})
 model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 model.enable_input_require_grads()
-# All linear layers: attention, MLP and the Mamba-2 in/out projections.
-model = get_peft_model(model, LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"))
+# Attention, MLP and the Mamba-2 in_proj; PEFT refuses LoRA on the Mamba-2 out_proj and conv1d, so "all-linear" fails on nemotron_h.
+TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "in_proj"]
+model = get_peft_model(model, LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05, target_modules=TARGETS, task_type="CAUSAL_LM"))
 model.print_trainable_parameters()
 
 steps_per_epoch = math.ceil(len(train) / 16)
 training = TrainingArguments(
     output_dir=args.out, per_device_train_batch_size=1, gradient_accumulation_steps=16, learning_rate=args.lr,
-    num_train_epochs=args.epochs, max_steps=40 if args.pilot else -1, lr_scheduler_type="cosine", warmup_ratio=0.03,
+    num_train_epochs=args.epochs, max_steps=40 if args.pilot else -1, lr_scheduler_type="cosine", warmup_steps=0.03,
     bf16=True, logging_steps=5, save_strategy="no" if args.pilot else "epoch", eval_strategy="epoch" if val and not args.pilot else "no",
-    report_to=[], remove_unused_columns=False, group_by_length=True, dataloader_num_workers=2,
+    report_to=[], remove_unused_columns=False, train_sampling_strategy="group_by_length", dataloader_num_workers=2,
 )
 
 
@@ -117,7 +118,7 @@ class Metrics(TrainerCallback):
 
     def on_train_begin(self, _args, state, _control, **_):
         self.write(event="begin", pilot=args.pilot, max_steps=state.max_steps, epochs=args.epochs, usd_per_hour=args.usd_per_hour,
-                   base=args.base, rank=args.rank, lr=args.lr, samples=len(train))
+                   base=args.base, rank=args.rank, targets=TARGETS, lr=args.lr, samples=len(train))
 
     def on_log(self, _args, state, _control, logs=None, **_):
         row = {key: logs[key] for key in ("loss", "eval_loss") if logs and key in logs}
@@ -129,7 +130,10 @@ class Metrics(TrainerCallback):
 
 
 started = time.time()
-Trainer(model=model, args=training, train_dataset=train, eval_dataset=val, data_collator=collate, callbacks=[Metrics()]).train()
+trainer = Trainer(model=model, args=training, train_dataset=train, eval_dataset=val, data_collator=collate, callbacks=[Metrics()])
+# Nemotron-H's remote code ignores num_items_in_batch, so let the Trainer average over gradient accumulation itself.
+trainer.model_accepts_loss_kwargs = False
+trainer.train()
 seconds = time.time() - started
 print(f"Trained in {seconds / 60:.1f} min; peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB.")
 if args.pilot:
