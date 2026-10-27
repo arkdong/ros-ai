@@ -19,6 +19,8 @@ import { AssistantStructurePreview, proposalStructurePreview } from './Assistant
 import { AssistantAnswerDialog, AssistantFollowUpQuestions, answerQuestionFingerprint, appendPreparedAnswers } from './AssistantAnswerDialog';
 import { useSmoothText } from './live-reply';
 import { useSkillMenu } from './SkillMenu';
+import type { PluginId } from '../shared/plugins';
+import { PluginSuggestionCard, usePluginChip } from './PluginSuggestion';
 import './assistant-compact.css';
 
 /** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
@@ -26,7 +28,7 @@ const devBuild = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } 
 
 type Props = {
   state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; loadError?:string;
-  onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
+  onSend: (message: string, suggest?: PluginId[]) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
   onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
   onDecision: (actionId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
@@ -36,9 +38,11 @@ type Props = {
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
   /** Opens the Skills page from the / menu. */
   onSkills?: () => void;
+  /** Opens a plugin's page, for the setup a chip or card cannot do in place. */
+  onOpenPlugin: (id: PluginId) => void;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills }: Props) {
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin }: Props) {
   const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, ''));
   const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
@@ -77,6 +81,8 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const modelBlocked = Boolean(state && !state.modelAvailable);
   const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !turns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
   const asking = answerTarget?.projectId === detail.project.id;
+  // A link or an app's name in the draft whose plugin agents cannot use yet shows as a chip above the composer.
+  const plugins = usePluginChip({ draft: message, projectId: detail.project.id, backend: state?.backend, hidden: skills.open || asking, onBackend: onRefresh, onOpenPlugin });
   // The composer grows with its text, then scrolls.
   useEffect(() => { const element = textarea.current; if (!element || asking) return; element.style.height = ''; if (element.scrollHeight > element.clientHeight) element.style.height = `${Math.min(element.scrollHeight, Math.round(window.innerHeight * 0.4))}px`; }, [message, asking, mode]);
   useEffect(() => { if (prefill) { setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
@@ -88,7 +94,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     event.preventDefault(); if (!message.trim() || running || modelBlocked || submission?.status==='pending') return;
     setPreparedNotice('');
     const attempt:Submission={message:message.trim(),at:new Date().toISOString(),status:'pending'};rememberSubmission(attempt);
-    try{if(await onSend(attempt.message)){setMessage('');rememberSubmission(null);}else rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}
+    try{if(await onSend(attempt.message,plugins.suggest)){setMessage('');rememberSubmission(null);}else rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}
     catch(cause){const error=cause instanceof Error?cause.message:String(cause);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
     textarea.current?.focus();
   };
@@ -118,7 +124,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
       {state && !turns.length && !messages.length && <div className="assistant-welcome"><div className="assistant-welcome-signal" aria-hidden="true"><ResearchRing/></div><h3>What are you exploring?</h3><p>Start with a question or a half-formed idea. Keep the conversation here while your notes and evidence take shape.</p><div className="assistant-starters"><button onClick={() => usePrompt('Help me frame the question I want to explore: ')}>Shape a research question <ArrowRight size={14}/></button>{detail.project.canvas.nodes.length > 0 && <button onClick={() => usePrompt('What do we know so far, and what is still missing?')}>Make sense of this project <ArrowRight size={14}/></button>}</div></div>}
       {messages.length > 0 && <details className="assistant-previous" open={previousOpen} onToggle={event=>setPreviousOpen(event.currentTarget.open)}><summary><HistoryLabel/> Earlier project conversation <span>{messages.length}</span></summary>{messages.map(item => <article key={item.id} data-message-id={item.id} className={`assistant-message ${item.role}`}><div className="message-meta"><span>{item.role === 'user' ? 'You' : item.role === 'system' ? 'Workspace update' : 'ros.ai'}</span><time>{time(item.createdAt)}</time></div>{item.role === 'assistant' ? <AssistantResponse content={item.content} detail={detail} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(`message:${item.id}`,questions)}/> : <RichText text={item.content}/>}</article>)}</details>}
-      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)}/>)}
+      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)} plugins={{latest:turn.id===lastTurn?.id,running,backend:state?.backend,onSend:text=>onSend(text),onRefresh,onOpenPlugin}}/>)}
       {pending.map(proposal => <ProposalReview key={proposal.id} proposal={proposal} title={proposal.summary} detail={detail} onProposal={onProposal} onOpen={() => onReference({kind:'proposal',id:proposal.id,label:proposal.summary})}/>)}
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
@@ -126,6 +132,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model'||blocker.action==='steps')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='steps'?'Answer without tools':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
+    {plugins.chip&&<div className="plugin-chip-row">{plugins.chip}</div>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
       {skills.menu}
@@ -166,7 +173,7 @@ function ReferenceLinks({ references, onReference }: { references: AssistantRefe
   return <div className="assistant-references">{references.map((reference, index) => <button key={`${reference.kind}:${reference.id}:${index}`} onClick={() => onReference(reference)} title={`Open ${reference.label}`}>{reference.kind === 'artifact' ? <FileText size={12}/> : reference.kind === 'proposal' ? <GitBranch size={12}/> : <BookOpen size={12}/>}<span>{textPreview(reference.label,48).text}</span><ArrowRight size={11}/></button>)}</div>;
 }
 
-function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectAction, onAnswer, person, onMemory }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void }) {
+function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectAction, onAnswer, person, onMemory, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
   const focus = detail.project.canvas.nodes.find(node => node.id === turn.focus.nodeId);
   // The person's own Claude Code or Codex, connected over MCP: there is no message from them here.
   const outside = turn.source === 'outside-agent';
@@ -190,6 +197,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onInspectActi
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
       {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
+      {turn.suggested && turn.status !== 'running' && <PluginSuggestionCard turn={turn} projectId={detail.project.id} {...plugins}/>}
       {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'Ros'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
     </article>
   </section>;

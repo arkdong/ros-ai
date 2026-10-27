@@ -14,7 +14,7 @@ import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
 import './plugins.css';
 
-function PluginMark({id,size}:{id:string;size?:number}) {
+export function PluginMark({id,size}:{id:string;size?:number}) {
   return hasBrandLogo(id)?<BrandLogo id={id} size={size}/>:id==='browser'?<Globe size={size||18}/>:<Plug size={size||18}/>;
 }
 
@@ -56,7 +56,7 @@ const groups: { title: string; ids: PluginId[] }[] = [
 const viaApp = (plugin: PluginDefinition) => plugin.signIn || plugin.connect === 'sign-in' || plugin.connect === 'desktop';
 
 /** Where each web search service hands out keys, and what its card says. */
-const searchKeys: Record<SearchProviderId, { link: string; description: string }> = {
+export const searchKeys: Record<SearchProviderId, { link: string; description: string }> = {
   tavily: { link: 'https://app.tavily.com/', description: 'Web search for research you start. Each search spends Tavily credits; spend shows in Settings › Usage.' },
   exa: { link: 'https://dashboard.exa.ai/api-keys', description: 'Web search for research you start. Exa charges for each search and each page an agent reads; spend shows in Settings › Usage.' },
   brave: { link: 'https://api-dashboard.search.brave.com/app/keys', description: 'Web search for research you start, from Brave’s own index of the web. Each search is charged on your Brave Search plan; spend shows in Settings › Usage.' },

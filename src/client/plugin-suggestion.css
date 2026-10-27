@@ -1,0 +1,64 @@
+/* Plugin suggestions: the chip above Ros's input before a message is sent, and the card under a reply.
+   Neutral throughout; green only as the dot of a plugin that is connected. */
+.plugin-chip {
+  align-self: flex-start; display: flex; align-items: center; gap: 10px; max-width: 100%; min-height: 42px; box-sizing: border-box;
+  padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 6px 18px rgba(0, 0, 0, .08);
+  font-size: var(--text-sm); color: var(--ink); animation: ros-rise .24s cubic-bezier(.2, .8, .2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) { .plugin-chip { animation: none; } }
+.plugin-chip > :first-child, .plugin-chip > .icon-button, .plugin-chip > .spin { flex-shrink: 0; }
+.plugin-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-chip.failed { padding-top: 6px; padding-bottom: 6px; }
+.plugin-chip.failed .plugin-chip-text { white-space: normal; line-height: 1.45; }
+.plugin-chip .primary.small, .single-canvas-shell .plugin-chip .primary.small { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; height: 30px; padding: 0 12px; border-radius: var(--radius-control); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
+.plugin-chip .icon-button { width: 30px; height: 30px; color: var(--muted); }
+.plugin-chip > .spin { color: var(--muted); }
+.plugin-chip-link { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; color: var(--body); white-space: nowrap; }
+.plugin-chip-link:hover { color: var(--ink); }
+.plugin-chip.open { align-items: flex-start; width: 100%; padding: 8px 6px 8px 12px; }
+.plugin-chip.open > :first-child { margin-top: 8px; }
+.plugin-chip.open .plugin-key { flex: 1; min-width: 0; }
+.plugin-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+/* In the panel the chip sits between the conversation and the composer, at the composer's edge. */
+.plugin-chip-row { display: flex; margin: 8px 12px 0; }
+
+/* A key or token pasted in place. */
+.plugin-key { display: flex; flex-direction: column; gap: 6px; }
+.plugin-key-row { display: flex; align-items: center; gap: 8px; }
+.plugin-key .plugin-key-row input { flex: 1; min-width: 0; width: auto; height: 32px; padding: 0 10px; font-size: var(--text-sm); }
+.plugin-key .plugin-key-row .primary.small { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: var(--text-sm); white-space: nowrap; }
+.plugin-key .plugin-key-row .text-button { font-size: var(--text-sm); white-space: nowrap; }
+.plugin-key-hint { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
+.plugin-key-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--text-xs); color: var(--body); }
+.plugin-key-link:hover { color: var(--ink); }
+
+/* The card under a reply, beside "Ros noticed". */
+.plugin-card .assistant-action-title { align-items: center; }
+.plugin-card .assistant-action-title .ros-mark, .plugin-card .assistant-action-title .ros-mark .research-ring { width: 16px; height: 16px; }
+.plugin-card .assistant-action-title > span:not(.ros-mark) { text-transform: none; }
+.plugin-card .assistant-action-title > .ros-mark { padding: 0; border: 0; }
+.plugin-suggestion { margin-top: 12px; }
+.plugin-suggestion + .plugin-suggestion { padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.plugin-suggestion-head { display: flex; align-items: flex-start; gap: 12px; }
+.plugin-suggestion-mark { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.plugin-suggestion-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
+.plugin-suggestion-name { display: flex; align-items: center; gap: 10px; }
+.plugin-suggestion-name strong { font-size: var(--text-md); font-weight: 500; color: var(--ink); }
+.plugin-suggestion-ok { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--ok); }
+.plugin-suggestion-text small { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--text-xs); color: var(--muted); }
+.plugin-suggestion-text small > svg { flex-shrink: 0; }
+.plugin-suggestion-wait { display: inline-flex; align-items: center; gap: 7px; }
+/* With several plugins, each one's button sits under its text, so a narrow panel never squeezes the words. */
+.plugin-suggestion-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.plugin-suggestion .plugin-key { margin-top: 10px; }
+.plugin-suggestion .inline-error { margin: 10px 0 0; font-size: var(--text-sm); }
+.plugin-card .assistant-action-buttons { flex-wrap: wrap; align-items: center; gap: 12px; }
+.plugin-card .assistant-action-buttons .primary.small, .plugin-card .secondary.small, .plugin-card .plugin-open-again { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: var(--radius-control); font-size: var(--text-sm); white-space: nowrap; text-decoration: none; }
+.plugin-card .plugin-open-again { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.plugin-card .plugin-open-again:hover { background: var(--canvas); }
+.plugin-card-note { margin: 12px 0 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
+.plugin-card-spacer { flex: 1; }
+.plugin-card-more { position: relative; display: flex; }
+.plugin-card-more .icon-button { width: 32px; height: 32px; color: var(--muted); }
+.ros-model-menu.plugin-card-menu { left: auto; right: 0; bottom: calc(100% + 6px); width: auto; min-width: 200px; }
+.ros-model-menu.plugin-card-menu button { justify-content: flex-start; text-align: left; white-space: nowrap; }

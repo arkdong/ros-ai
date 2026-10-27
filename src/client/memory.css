@@ -15,6 +15,7 @@
 .memory-page .settings-row-control code { white-space: normal; word-break: break-all; }
 .memory-card .assistant-action-title { align-items: center; }
 .memory-card .assistant-action-title .ros-mark, .memory-card .assistant-action-title .ros-mark .research-ring { width: 16px; height: 16px; }
+.memory-card .assistant-action-title > .ros-mark { padding: 0; border: 0; }
 .memory-card .settings-row { padding: 9px 0; gap: 12px; }
 .memory-card .settings-row + .settings-row { border-top: 1px solid var(--line-soft); }
 .memory-card .settings-row strong { font-weight: 400; }
