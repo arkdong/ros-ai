@@ -57,7 +57,9 @@ export function appUrl(id: AppId) {
 }
 
 type Saved = { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; redirectUri?: string; connectedAt?: string; account?: string };
-type Pending = { app: AppId; nonceHash: string; redirectUri: string; verifier?: string; expiresAt: number };
+/** nonceHash: the cookie the browser that started the sign-in holds, or null for the Mac app, whose sign-in finishes in the
+ * system browser. window: the sign-in opened in a window of its own, so its callback page tells ros.ai and closes. */
+type Pending = { app: AppId; nonceHash: string | null; redirectUri: string; verifier?: string; expiresAt: number; window?: boolean };
 /** proposes: the tool adds blocks to the canvas, which ros.ai proposes under the project's approval mode, instead of a
  * change in the app that always waits for the person (Papers' add_paper). */
 export type AppTool = { name: string; description: string; inputSchema: Record<string, unknown>; reads: boolean; proposes?: boolean };
@@ -134,12 +136,13 @@ export class RemoteApps {
   }
   statuses() { return appIds.map(id => this.status(id)); }
   connected() { return appIds.filter(id => this.status(id).connected); }
-  /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. */
-  async begin(id: AppId, redirectUri: string) {
+  /** Starts the app's sign-in: ros.ai registers itself if needed and returns the address to open. window: it opens in a
+   * window of its own. bound (the default): only the browser holding the returned nonce, as a cookie, can finish it. */
+  async begin(id: AppId, redirectUri: string, options: { window?: boolean; bound?: boolean } = {}) {
     if (entry(id).auth !== 'sign-in') throw new StoreError(`${appCatalogue[id].name} does not connect with a sign-in.`);
     for (const [state, item] of this.pending) if (item.expiresAt < Date.now()) this.pending.delete(state);
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
-    const pending: Pending = { app: id, nonceHash: digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL };
+    const pending: Pending = { app: id, nonceHash: options.bound === false ? null : digest(nonce), redirectUri, expiresAt: Date.now() + SIGN_IN_TTL, ...(options.window ? { window: true } : {}) };
     let opened: URL | undefined;
     let result: Awaited<ReturnType<typeof auth>>;
     try { result = await auth(this.provider(id, redirectUri, { state, pending, open: url => { opened = url; } }), { serverUrl: appUrl(id) }); }
@@ -148,11 +151,13 @@ export class RemoteApps {
     this.pending.set(state, pending);
     return { url: opened.href, nonce };
   }
+  /** The sign-in a callback belongs to, before it finishes: which app, and whether it opened in its own window. */
+  waiting(state: unknown) { const pending = typeof state === 'string' ? this.pending.get(state) : undefined; return pending && pending.expiresAt >= Date.now() ? { app: pending.app, window: pending.window === true } : undefined; }
   /** The app sent the browser back with a code: exchange it for tokens and remember them. */
   async finish(query: unknown, nonce: string) {
     const { state, code, error } = z.object({ state: z.string().max(400), code: z.string().max(4000).optional(), error: z.string().max(200).optional() }).passthrough().parse(query);
     const pending = this.pending.get(state);
-    if (!pending || pending.expiresAt < Date.now() || !nonce || !sameDigest(pending.nonceHash, digest(nonce))) throw new StoreError('This sign-in expired or was started in another browser. Start it again from Plugins.');
+    if (!pending || pending.expiresAt < Date.now() || (pending.nonceHash !== null && (!nonce || !sameDigest(pending.nonceHash, digest(nonce))))) throw new StoreError('This sign-in expired or was started in another browser. Start it again from Plugins.');
     this.pending.delete(state);
     const name = appCatalogue[pending.app].name;
     if (error || !code) throw new StoreError(error === 'access_denied' ? `${name} sign-in was cancelled.` : `${name} did not complete the sign-in.`);
@@ -257,20 +262,45 @@ export class RemoteApps {
 export const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
 const cookie = (res: Response, value: string, maxAge: number) => res.cookie(COOKIE, value, { httpOnly: true, sameSite: 'lax', path: CALLBACK, maxAge, secure: false });
 const nonceOf = (req: Request) => { const item = (req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${COOKIE}=`)); const value = item?.slice(COOKIE.length + 1) ?? ''; return /^[\w-]{43}$/u.test(value) ? value : ''; };
+const escapeHtml = (value: string) => value.replace(/[&<>"']/gu, character => `&#${character.charCodeAt(0)};`);
+/** Where a sign-in window ends: it tells the open ros.ai window over a BroadcastChannel and, once connected, closes itself. */
+function signInPage(id: AppId, error?: string) {
+  const name = appCatalogue[id].name, heading = error ? `Couldn’t connect ${name}` : `${name} connected`;
+  const lines = error ? [error, 'Close this window and try again in ros.ai.'] : ['You can close this window.'];
+  const message = JSON.stringify(error ? { failed: id, error } : { connected: id }).replace(/</gu, '\\u003c');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(heading)} · ros.ai</title>`
+    + '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fafafa;color:#171717;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:360px;padding:24px;text-align:center}h1{margin:0 0 6px;font-size:18px;font-weight:600}p{margin:0;color:#4a4a4a}</style></head>'
+    + `<body><main><h1>${escapeHtml(heading)}</h1>${lines.map(line => `<p>${escapeHtml(line)}</p>`).join('')}</main>`
+    + `<script>try{new BroadcastChannel('ros-ai-plugins').postMessage(${message})}catch{}${error ? '' : 'setTimeout(()=>window.close(),800)'}</script></body></html>`;
+}
 
 export function attachAppRoutes(app: Express, apps: RemoteApps) {
   app.get('/api/apps', (_req, res) => res.json({ apps: apps.statuses() }));
+  // window: the sign-in opens in a window of its own (a suggestion in the conversation), so the page and its draft stay put.
   app.post('/api/apps/:id/connect', async (req, res) => {
     const id = appIdSchema.parse(req.params.id);
+    const { window } = z.object({ window: z.boolean().optional() }).strict().parse(req.body ?? {});
     if (entry(id).auth === 'desktop') return res.json({ connected: true, app: await apps.connectDesktop(id) });
-    const started = await apps.begin(id, appRedirectUri(req.headers.host));
+    // The Mac app (ros.ai/<version> in its user agent) opens the sign-in in the system browser, which never holds the app
+    // window's cookie. Its state is still a single-use 256-bit secret only this server and the app's sign-in page see, and
+    // only ros.ai's own page can start a sign-in (app.ts refuses cross-site and non-JSON requests).
+    const desktop = / ros\.ai\/\S+$/u.test(req.headers['user-agent'] ?? '');
+    const started = await apps.begin(id, appRedirectUri(req.headers.host), { window, bound: !desktop });
     if ('alreadyConnected' in started) return res.json({ connected: true, app: apps.status(id) });
-    cookie(res, started.nonce, SIGN_IN_TTL);
+    if (!desktop) cookie(res, started.nonce, SIGN_IN_TTL);
     res.json({ authorizationUrl: started.url });
   });
   app.get(CALLBACK, async (req, res) => {
-    try { const id = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0); res.redirect(303, `/?app=${id}`); }
-    catch (error) { cookie(res, '', 0); res.status(400).type('text/plain').send(`${error instanceof Error ? error.message : 'The sign-in failed.'}\n\nClose this tab and try again from Plugins in ros.ai.`); }
+    const waiting = apps.waiting(req.query.state);
+    try {
+      const id = await apps.finish(req.query, nonceOf(req)); cookie(res, '', 0);
+      if (waiting?.window) res.type('html').send(signInPage(id)); else res.redirect(303, `/?app=${id}`);
+    } catch (error) {
+      cookie(res, '', 0);
+      const message = error instanceof Error ? error.message : 'The sign-in failed.';
+      if (waiting?.window) res.status(400).type('html').send(signInPage(waiting.app, message));
+      else res.status(400).type('text/plain').send(`${message}\n\nClose this tab and try again from Plugins in ros.ai.`);
+    }
   });
   app.delete('/api/apps/:id', (req, res) => res.json(apps.disconnect(appIdSchema.parse(req.params.id))));
   // Read-only tools for ros.ai's own scripts on this computer (the eval runner); writes go through an agent and Accept.

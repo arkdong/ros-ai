@@ -10,6 +10,9 @@ import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
 import { StopButton, useEscToStop } from './EscToStop';
+import type { PluginId } from '../shared/plugins';
+import { suggestionsWaiting, usePluginChip } from './PluginSuggestion';
+import { useSuggestions } from './plugin-suggestions';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -23,10 +26,13 @@ const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
 /** Ros folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input. */
-export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void }) {
+export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills, onOpenPlugin }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; onSend: (message: string, suggest?: PluginId[]) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void; onOpenPlugin: (id: PluginId) => void }) {
   // The bar and the opened panel share one saved draft per project, so text survives resizing Ros, switching projects and closing the window.
   const [draft, setDraft] = useDraft(`assistant-draft:${detail.project.id}`), [now, setNow] = useState(() => Date.now());
   const skills = useSkillMenu(draft, setDraft, onSkills);
+  // A link or an app's name in the draft whose plugin agents cannot use yet shows as a chip above the bar.
+  const plugins = usePluginChip({ draft, projectId: detail.project.id, backend: state?.backend, hidden: skills.open, onBackend: onRefresh, onOpenPlugin });
+  const suggestions = useSuggestions();
   const input = useRef<HTMLInputElement>(null);
   const [seenTurn, setSeenTurn] = useState(() => readSaved<string>(`ros-seen-turn:${detail.project.id}`, ''));
   const turns = [...(state?.turns || [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -38,8 +44,8 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
   const dismiss = () => { if (done) { setSeenTurn(done.id); saveLocal(`ros-seen-turn:${detail.project.id}`, done.id); } };
   const outcome = done ? done.status === 'completed' ? (done.reply ? textPreview(plain(done.reply), 140).text : done.question ? textPreview(plain(done.question), 140).text : 'Done') : done.status === 'failed' ? (done.error || 'Ros could not finish this request') : done.status === 'cancelled' ? 'Stopped' : 'Interrupted' : '';
   const proposed = new Set(turns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
-  // Suggestions waiting for a decision: open proposals, pending actions that carry no proposal of their own, and lines Ros noticed about the person.
-  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0);
+  // Suggestions waiting for a decision: open proposals, pending actions that carry no proposal of their own, lines Ros noticed about the person, and plugins a reply suggested.
+  const waiting = detail.proposals.filter(proposal => proposal.status === 'pending').length + turns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0) + suggestionsWaiting(turns, suggestions, detail.project.id);
   const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const blocks = detail.project.canvas.nodes.length;
@@ -50,13 +56,14 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
     if (!message || running) return;
     if (state && !state.modelAvailable) { onOpen('half'); return; }
     setDraft('');
-    if (!await onSend(message)) setDraft(message);
+    if (!await onSend(message, plugins.suggest)) setDraft(message);
     input.current?.focus();
   };
   // Stopping leaves the cursor in the box, ready for the next question.
   const stop = () => { if (active) void onCancel(active.id); input.current?.focus(); };
   const stopArmed = useEscToStop(active ? stop : null);
   return <div className="ros-dock" data-testid="ros-bar">
+    {plugins.chip}
     <form className={`ros-bar ${running || done ? 'running' : ''}`} onSubmit={submit}>
       {running && <button type="button" className="ros-progress" onClick={() => onOpen('half')} aria-label="Show what Ros is doing" data-testid="ros-progress">
         <LoaderCircle size={15} className="spin" aria-hidden="true"/>
