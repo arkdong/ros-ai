@@ -15,7 +15,7 @@ Credentials, `.ros-ai/` databases, local `evidence/`, generated `outputs/`, hist
 
 The right panel stays with the project. **Conversation** holds the continuing exchange. **Research outline** anchors the original question above collapsible research directions, with findings indented beneath a direction only when saved ownership or evidence references support that association. Actual nested notes form nested directions; shared findings appear under **Across directions**, and findings without a linked direction remain under **Other findings**. Decisions, hypotheses, gaps and question history remain available in their own disclosures. Short summaries help scanning; full text and references open the notes, artifacts, proposals or saved attempts. Earlier project messages remain accessible without being repeated as new turns.
 
-Selecting a note, group or artifact changes the assistant’s visible focus. Clear focus to return to the whole project. Focus changes attention, not the conversation or permissions. Existing node conversations remain separate and are available through **Discuss** or a node’s **Conversation** tab. Without authorized model access, the assistant labels its responses as saved-context summaries rather than presenting them as model research.
+Selecting a note, group or artifact changes the assistant’s visible focus. Clear focus to return to the whole project. Focus changes attention, not the conversation or permissions. Older block conversations stay readable in the block’s **Conversation** tab; new ones happen in the composer with the block selected. Without authorized model access, the assistant labels its responses as saved-context summaries rather than presenting them as model research.
 
 ## Explore the canvas
 
@@ -54,7 +54,7 @@ Pin an artifact as a highlight. Reuse it through the artifact menu or drag it in
 - **Approve for me:** an independent, conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away. Other imports, file or system access and anything unfamiliar escalate to a person, and so do blocks the assistant adds. This is an automatic policy reviewer, not a second reasoning model or a scientific-validity guarantee.
 - **Full access:** code runs straight away in the isolated sandbox and the assistant can add blocks without asking; every change stays undoable. Stop controls, the isolated runtime and connection permissions still apply.
 
-The project keeps running tallies of code runs, model requests, created Actions, runtime and spending. They are a record, not a limit: paid calls stay capped by each connection’s own allowance, which failures, retries, follow-ups and mode changes never replenish. **Stop all** stops project research, active experiments and provider requests; resume is explicit. Browser closure leaves the server working. Service/laptop shutdown interrupts work; reopening never blindly repeats a paid request.
+The project keeps running tallies of code runs, model requests, created Actions, runtime and spending. They are a record, not a limit: paid calls stay capped by each connection’s own allowance, which failures, retries, follow-ups and mode changes never replenish. **Stop** in the composer (or Esc) stops Ros and the agent it is running; a Code or Notebook block that runs on its own has its own Stop. A paused project resumes under Permissions and usage. Browser closure leaves the server working. Service/laptop shutdown interrupts work; reopening never blindly repeats a paid request.
 
 Use a project’s **… → Delete project** action to move it to local **Trash**, then **Restore** to recover it. Notes, conversations, artifacts and history remain stored. Active research and pending experiments must be stopped first; Trash is not a way to discard running work or reset its accounting.
 
@@ -75,9 +75,9 @@ The container has no external network, no original source/user folder mounts, re
 
 ## Use your own Claude Code, Codex or Cursor
 
-ros.ai is also an MCP server, so you can keep researching in your own Claude Code, Codex, Cursor or Gemini CLI, signed in with your own plan or key. ros.ai never sees or handles that login.
+ros.ai is also an MCP server, so you can keep researching in your own Claude Code, Codex, Cursor, Gemini CLI, Pi or Hermes Agent, signed in with your own plan or key. ros.ai never sees or handles that login.
 
-At first launch ros.ai looks at this computer (the Applications folder, your PATH, the names in those agents' settings and the model servers on `127.0.0.1`; nothing is sent anywhere, and no credential file is opened) and shows one **Connect your tools** screen with what it found: your agents, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go: for Claude Code and Codex it runs their own `mcp add`, for Cursor and Gemini CLI it adds one `ros-ai` entry to their settings file (with a one-time backup). Every link is one entry you can undo from the **Agents** page, which also shows when each agent was last seen in a project. Set `ROS_NO_DETECT=1` to skip the scan.
+At first launch ros.ai looks at this computer (the Applications folder, your PATH, the names in those agents' settings and the model servers on `127.0.0.1`; nothing is sent anywhere, and no credential file is opened) and shows one **Connect your tools** screen with what it found: your agents, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go: for Claude Code, Codex and Hermes Agent it runs their own `mcp add`, for Cursor, Gemini CLI and Pi it adds one `ros-ai` entry to their settings file (with a one-time backup). Every link is one entry you can undo from the **Agents** page, which also shows when each agent was last seen in a project. Set `ROS_NO_DETECT=1` to skip the scan.
 
 You can also paste the command yourself (the **Agents** page shows the exact path):
 

@@ -59,15 +59,21 @@ const instructions = `ros.ai is the person's local research workspace: each proj
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 type Sessions = Record<string, OutsideSession>;
 
-function clientLabel(info: unknown): string {
-  const value = info && typeof info === 'object' ? info as { name?: unknown; title?: unknown } : {};
-  const name = typeof value.name === 'string' ? value.name : '', title = typeof value.title === 'string' ? value.title : '';
-  const text = `${name} ${title}`;
+function known(text: string) {
   if (/claude/i.test(text)) return 'Claude Code';
   if (/codex/i.test(text)) return 'Codex';
   if (/cursor/i.test(text)) return 'Cursor';
   if (/gemini/i.test(text)) return 'Gemini CLI';
-  return clip((title || name || 'Your own agent').replace(/[^\p{L}\p{N} ._()-]/gu, ''), 40) || 'Your own agent';
+  if (/hermes/i.test(text)) return 'Hermes Agent';
+  if (/^pi\b/i.test(text.trim())) return 'Pi';
+  return null;
+}
+/** A session's agent: a known one from what its MCP client calls itself, or from the name its link hands the bridge
+ * (Hermes Agent's client calls itself "mcp"); otherwise the client's own name. */
+export function clientLabel(info: unknown, hint = ''): string {
+  const value = info && typeof info === 'object' ? info as { name?: unknown; title?: unknown } : {};
+  const name = typeof value.name === 'string' ? value.name : '', title = typeof value.title === 'string' ? value.title : '';
+  return known(`${name} ${title}`) ?? known(hint) ?? (clip((title || name || 'Your own agent').replace(/[^\p{L}\p{N} ._()-]/gu, ''), 40) || 'Your own agent');
 }
 const inside = (root: string, target: string) => { const rel = relative(root, target); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)); };
 
@@ -226,6 +232,7 @@ export class OutsideAgents {
     const header = req.headers['mcp-session-id'];
     const key = typeof header === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(header) ? header : undefined;
     const cwd = typeof req.headers['x-ros-cwd'] === 'string' ? decodeURIComponent(req.headers['x-ros-cwd']) : undefined;
+    const hint = typeof req.headers['x-ros-client'] === 'string' ? req.headers['x-ros-client'].slice(0, 40) : '';
     const messages: Rpc[] = Array.isArray(req.body) ? req.body : [req.body];
     const replies: unknown[] = [];
     let created: string | undefined;
@@ -238,7 +245,7 @@ export class OutsideAgents {
         if (message.method === 'initialize') {
           const requested = typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : PROTOCOLS[0]!;
           created = randomUUID();
-          const session: OutsideSession = { id: created, label: clientLabel(message.params?.clientInfo), startedAt: now(), lastAt: now(), ...(cwd && isAbsolute(cwd) ? { cwd } : {}) };
+          const session: OutsideSession = { id: created, label: clientLabel(message.params?.clientInfo, hint), startedAt: now(), lastAt: now(), ...(cwd && isAbsolute(cwd) ? { cwd } : {}) };
           this.touch(session);
           answer({ protocolVersion: PROTOCOLS.includes(requested) ? requested : PROTOCOLS[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'ros-ai', title: 'ros.ai', version: '0.1.0' }, instructions });
         } else if (message.method === 'ping') answer({});

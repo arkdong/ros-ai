@@ -64,7 +64,7 @@ Canvas history represents research content: note creation/edit/deletion, relatio
 
 ## Continuous project assistant
 
-The persistent right panel is the primary place to collaborate with ros.ai. Conversation and Research outline are two views of the same ongoing project investigation. Selecting a note, group or artifact changes visible focus; clearing it restores project context. Focus never starts a new conversation, grants authority or automatically imports related materials. Node conversations remain separate and accessible through Discuss/details.
+The persistent right panel is the primary place to collaborate with ros.ai. Conversation and Research outline are two views of the same ongoing project investigation. Selecting a note, group or artifact changes visible focus; clearing it restores project context. Focus never starts a new conversation, grants authority or automatically imports related materials. Older node conversations stay readable in the block view.
 
 Keep the original question visible as intent evolves. Preserve question changes, decisions, findings, hypotheses and gaps with references to notes, saved artifacts, proposals and attempts. The outline uses collapsible directions and actual parent ownership for indentation. Findings sit beneath a direction only when an explicit node or saved evidence reference supports that association; shared findings and unassigned findings remain separate. Short collapsed summaries preserve full-text disclosures and evidence navigation. Section expansion is a local presentation preference, not research state. A saved finding must remain distinguishable from a model hypothesis, source claim or unverified interpretation.
 

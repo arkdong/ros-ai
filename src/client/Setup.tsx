@@ -10,7 +10,7 @@ import './setup.css';
 /** First launch: what ros.ai found on this computer, as rows to connect in one go. Every link is one
  * entry in that tool's own settings; the person can undo each one from Agents. */
 
-const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli' };
+const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli', pi: 'pi', hermes: 'hermes' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
 export function AgentIcon({ id, size = 20 }: { id: AgentId; size?: number }) {
   const brand = brands[id];
@@ -21,6 +21,8 @@ export const agentWhy: Record<AgentId, string> = {
   codex: 'Adds ros.ai to Codex\'s tools. Your ChatGPT login stays yours.',
   cursor: 'Adds ros.ai to Cursor\'s MCP servers, in its settings file.',
   'gemini-cli': 'Adds ros.ai to Gemini CLI\'s MCP servers, in its settings file.',
+  pi: 'Adds ros.ai to Pi\'s MCP servers, in its settings file.',
+  hermes: 'Adds ros.ai to Hermes Agent\'s tools. Your model keys stay yours.',
 };
 const fail = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 const list = (items: string[]) => items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;

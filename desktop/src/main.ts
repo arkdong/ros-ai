@@ -13,6 +13,7 @@ import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { UpdateInstallMessage } from '../../src/shared/updates';
+import { watchMissionControl } from './mission-control';
 
 // dist/desktop/main.cjs → the repository root (a checkout) or the app folder inside ros.ai.app.
 const root = resolve(__dirname, '..', '..');
@@ -202,6 +203,8 @@ function openWindow() {
   const smoke = process.env.ROS_DESKTOP_SMOKE;
   if (smoke) window.webContents.once('did-finish-load', () => setTimeout(() => void window?.webContents.capturePage().then(image => { writeFileSync(smoke, image.toPNG()); console.log(`ros.ai window loaded ${url}; picture saved to ${smoke}`); app.quit(); }), 2500));
   void window.loadURL(url);
+  // ros.ai's look in Mission Control (desktop/src/mission-control.ts).
+  if (mac && !smoke) watchMissionControl(window);
 }
 
 /** Settings › General shows the Updates section and looks again. */

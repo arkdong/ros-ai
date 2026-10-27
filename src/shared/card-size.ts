@@ -16,12 +16,13 @@ export function cardWidth(node: { width?: number }) {
   return Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
 }
 
-/** The height the researcher gave a card by resizing it, or undefined while the card follows its content. */
-export function setCardHeight(node: { height?: number | null }) {
-  return node.height ? Math.min(CARD_MAX_SET_HEIGHT, Math.max(CARD_MIN_HEIGHT, node.height)) : undefined;
+/** The height the researcher gave a card by resizing it, or undefined while the card follows its content. A closed
+ * Group always fits what it lists: a height saved on it (an agent may send one) would only leave an empty frame. */
+export function setCardHeight(node: { height?: number | null; kind?: string }) {
+  return node.height && node.kind !== 'group' ? Math.min(CARD_MAX_SET_HEIGHT, Math.max(CARD_MIN_HEIGHT, node.height)) : undefined;
 }
 /** The most room a card can take below its top, for placing new blocks clear of it. */
-export function cardFootprintHeight(node: { height?: number | null }) {
+export function cardFootprintHeight(node: { height?: number | null; kind?: string }) {
   return Math.max(CARD_MAX_HEIGHT, setCardHeight(node) ?? 0);
 }
 
