@@ -12,8 +12,9 @@ export const CARD_MAX_HEIGHT = 420;
 /** A card the researcher made taller keeps that height; its content fills it instead of being measured. */
 export const CARD_MAX_SET_HEIGHT = 1200;
 
-export function cardWidth(node: { width?: number }) {
-  return Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
+/** A closed Group fits what it lists, so a width saved on it (an agent may send one) is not used. */
+export function cardWidth(node: { width?: number; kind?: string }) {
+  return node.kind === 'group' ? CARD_DEFAULT_WIDTH : Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
 }
 
 /** The height the researcher gave a card by resizing it, or undefined while the card follows its content. A closed

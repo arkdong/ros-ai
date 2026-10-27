@@ -213,8 +213,7 @@ export function App(){
       name=display;
       for(let suffix=2;titles.has(name.toLocaleLowerCase());suffix++)name=`${display} ${suffix}`;
     }
-    const canvas={...detail.project.canvas,nodes:detail.project.canvas.nodes.filter(n=>(n.parentId||null)===scope)};
-    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(file?{file}:{}),...emptyPosition(canvas)}}],`Add ${display}`)){
+    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
       setAddScope(undefined);
       if(notebookFile&&blockType==='notebook')await post(`/api/projects/${detail.project.id}/nodes/${id}/notebook/import`,{name:notebookFile.name,content:await notebookFile.text()}).catch(report);
       // Code and notebooks open straight into their editors once the block exists on the canvas; an App on its inputs.
@@ -230,9 +229,8 @@ export function App(){
    * A paper already on the canvas is shown instead of added twice. */
   const addPaper=async(scope:string|null,paper:string)=>{
     if(!detail)return;
-    const canvas={...detail.project.canvas,nodes:detail.project.canvas.nodes.filter(n=>(n.parentId||null)===scope)};
     let added:{nodeId:string;existing?:boolean}|undefined;
-    if(!await action(async()=>{added=await post<{nodeId:string;existing?:boolean}>(`/api/projects/${detail.project.id}/papers`,{paper,parentId:scope,...emptyPosition(canvas)});})||!added)return;
+    if(!await action(async()=>{added=await post<{nodeId:string;existing?:boolean}>(`/api/projects/${detail.project.id}/papers`,{paper,parentId:scope,...emptyPosition(detail.project.canvas,scope,expandedIds)});})||!added)return;
     setAddScope(undefined);
     setPreviewId(null);
     if(added.existing){revealNode(added.nodeId);return;}
@@ -269,8 +267,7 @@ export function App(){
     const dataset=detail.artifacts.find(item=>item.id===sourceId&&item.kind==='dataset')||run?.inputs.find(input=>input.artifact.kind==='dataset')?.artifact||detail.artifacts.find(item=>item.runId===value.runId&&item.kind==='dataset');
     if(!code||!dataset){report(new Error('This figure has no retained generating code and exact dataset for a new analysis. Its saved image, caption and provenance remain available.'));return;}
     const id=crypto.randomUUID(),parentId=detail.project.canvas.nodes.find(item=>item.id===value.nodeId)?.parentId??null;
-    const scopeCanvas={...detail.project.canvas,nodes:detail.project.canvas.nodes.filter(item=>(item.parentId??null)===parentId)};
-    const operations:Mutation[]=[{type:'addNode',node:{id,kind:'activity',parentId,title:`Refine ${value.title}`.slice(0,200),description:`Revise the retained generating code using exact figure ${value.id} and dataset ${dataset.id}. No new analysis has run.`,...emptyPosition(scopeCanvas)}}];
+    const operations:Mutation[]=[{type:'addNode',node:{id,kind:'activity',parentId,title:`Refine ${value.title}`.slice(0,200),description:`Revise the retained generating code using exact figure ${value.id} and dataset ${dataset.id}. No new analysis has run.`,...emptyPosition(detail.project.canvas,parentId,expandedIds)}}];
     if(detail.project.canvas.nodes.some(item=>item.id===value.nodeId))operations.push({type:'addConnection',connection:{id:crypto.randomUUID(),source:value.nodeId,target:id,label:'figure refinement'}});
     if(!await mutate(operations,'Prepare figure code refinement'))return;
     await action(async()=>{await post(`/api/projects/${projectId}/inputs`,{nodeId:id,artifactId:dataset.id});await post(`/api/projects/${projectId}/inputs`,{nodeId:id,artifactId:value.id});});

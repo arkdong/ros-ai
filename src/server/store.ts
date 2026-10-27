@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
-import { LAYOUT_GAP } from '../shared/layout.js';
+import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
@@ -320,6 +320,12 @@ export class Store {
     const overlaps = () => others.some(other => (other.parentId ?? null) === (placed.parentId ?? null)
       && placed.x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < placed.x + cardWidth(placed) + LAYOUT_GAP
       && (other.y <= placed.y ? placed.y < other.y + height(other) + LAYOUT_GAP : other.y < placed.y + height(placed) + LAYOUT_GAP));
+    if (placed.parentId && overlaps()) {
+      // Inside a Group, the first free spot beside or below its blocks keeps its frame as tight as it is.
+      const boxes = others.filter(other => other.parentId === placed.parentId).map(other => ({ x: other.x, y: other.y, width: cardWidth(other), height: height(other) }));
+      const spot = freeSpot(boxes, { width: cardWidth(placed), height: height(placed) }, { x: 0, y: 0 }, groupContentRight(boxes));
+      if (spot) { coordinate.parse(spot.x); coordinate.parse(spot.y); return { ...placed, ...spot }; }
+    }
     const originX = placed.x;
     const stepX = Math.ceil((cardWidth(placed) + LAYOUT_GAP) / GRID) * GRID;
     const stepY = Math.ceil((CARD_MAX_HEIGHT + LAYOUT_GAP) / GRID) * GRID;
