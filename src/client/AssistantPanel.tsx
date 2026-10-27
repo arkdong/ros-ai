@@ -1,7 +1,7 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, X } from 'lucide-react';
-import type { AssistantAction, AssistantBackend, AssistantFocus, AssistantReference, AssistantState, AssistantTurn } from '../shared/assistant';
+import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantFocus, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
@@ -162,18 +162,19 @@ function HistoryLabel() { return <BookOpen size={13}/>; }
 function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'|'steps'} {
   // An agent on this computer says itself what is missing (installed, signed in, locked down) and where to fix it.
   if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
-  if(backend==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
-  if(backend==='codex'&&/OpenAI API key on the Agents page/i.test(reason))return {summary:'Connect an OpenAI API key for Codex.',action:'connections'};
-  if(backend==='codex'&&/signed out/i.test(reason))return {summary:'Sign in to Codex with your ChatGPT subscription.',action:'connections'};
+  const agent=inAppAgent(backend)?.agent;
+  if(agent==='codex'&&/restricted read|isolation boundary|isolate reads|workspace isolation/i.test(reason))return {summary:'Codex needs a CLI with workspace read isolation.',action:'model'};
+  if(agent==='codex'&&/OpenAI API key on the Agents page/i.test(reason))return {summary:'Connect an OpenAI API key for Codex.',action:'connections'};
+  if(agent==='codex'&&/signed out/i.test(reason))return {summary:'Sign in to Codex with your ChatGPT subscription.',action:'connections'};
   // A local model that cannot work step by step: the reason names the model and what to change.
   if(backend==='agent'&&/cannot call tools/i.test(reason))return {summary:reason,action:'steps'};
   if(backend==='agent'&&/Local models/.test(reason))return {summary:reason,action:'connections'};
   if(/stopped|stop flag/i.test(reason))return {summary:'Work in this project is paused.',action:'permissions'};
-  if(backend==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
-  if(backend==='claude'&&/claude subscription/i.test(reason))return {summary:reason,action:'connections'};
-  if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:backend==='codex'?'Codex needs a usage allowance.':backend==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
+  if(agent==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
+  if(agent==='claude'&&/claude subscription/i.test(reason))return {summary:reason,action:'connections'};
+  if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:agent==='codex'?'Codex needs a usage allowance.':agent==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
   if(/credential|api key|configured/i.test(reason))return {summary:'Connect the selected model provider.',action:'connections'};
-  return {summary:backend==='codex'?'Codex cannot start. Check connection details.':backend==='claude'?'Claude Code cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};
+  return {summary:agent==='codex'?'Codex cannot start. Check connection details.':agent==='claude'?'Claude Code cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};
 }
 
 function ReferenceLinks({ references, onReference }: { references: AssistantReference[]; onReference: Props['onReference'] }) {

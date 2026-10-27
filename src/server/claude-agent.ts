@@ -93,8 +93,8 @@ async function* single(message: string): AsyncIterable<SDKUserMessage> {
   yield { type: 'user', message: { role: 'user', content: message }, parent_tool_use_id: null };
 }
 
-/** Claude Code through Anthropic's Agent SDK, paid for by either the Anthropic API key saved
- * on the Agents page or, in the local app, the person's own Claude plan (see claude-plan.ts). */
+/** Claude Code through Anthropic's Agent SDK, as two agents: on the Claude API key saved on the
+ * Agents page, or, in the local app, on the person's own Claude subscription (see claude-plan.ts). */
 export class ClaudeAgentService {
   private readonly active = new Map<string, { controller: AbortController; done: Promise<unknown> }>();
   private readonly configDir: string;
@@ -107,28 +107,37 @@ export class ClaudeAgentService {
       const session = store.record<Session>('claude-session', project.id);
       if (session) store.saveRecord('claude-session', project.id, project.id, { ...session, state: 'uncertain' });
     }
+    // One setting used to put every project's Claude Code on the subscription; those projects move to 'claude-plan', which keeps them there.
+    const legacy = store.globalRecord<{ billing?: ClaudeBilling }>('claude-agent-settings', 'settings');
+    if (legacy?.billing) {
+      if (legacy.billing === 'plan' && planAllowed) for (const project of store.listProjects()) if (store.record<{ backend: string }>('assistant-backend', project.id)?.backend === 'claude') store.saveRecord('assistant-backend', project.id, project.id, { backend: 'claude-plan' });
+      store.saveGlobalRecord('claude-agent-settings', 'settings', { ...legacy, billing: undefined });
+    }
   }
+  /** Each of the two agents keeps its own model; the subscription one starts from the model chosen before they split. */
   private saved() {
-    const saved = this.store.globalRecord<{ model: ClaudeModel; billing?: ClaudeBilling; webSearch?: ClaudeWebSearch }>('claude-agent-settings', 'settings');
-    return { model: saved?.model ?? 'sonnet', billing: planAllowed && saved?.billing === 'plan' ? 'plan' as const : 'api-key' as const, webSearch: saved?.webSearch === 'ros' ? 'ros' as const : 'own' as const };
+    const saved = this.store.globalRecord<{ model?: ClaudeModel; planModel?: ClaudeModel; webSearch?: ClaudeWebSearch }>('claude-agent-settings', 'settings');
+    const model = saved?.model ?? 'sonnet';
+    return { model, planModel: saved?.planModel ?? model, webSearch: saved?.webSearch === 'ros' ? 'ros' as const : 'own' as const };
   }
+  model(billing: ClaudeBilling) { const saved = this.saved(); return billing === 'plan' ? saved.planModel : saved.model; }
   settings(): ClaudeAgentSettings {
-    const { model, billing, webSearch } = this.saved();
+    const { model, planModel, webSearch } = this.saved();
     const budget = this.execution.connectionBudgets.status('claude');
-    return { model, models: CLAUDE_MODELS, billing, webSearch, planAllowed, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
+    return { model, planModel, models: CLAUDE_MODELS, webSearch, planAllowed, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
   }
   /** Settings with a fresh look at the Claude plan sign-in; still no model request. */
   async checkedSettings() { await this.plan.check(); return this.settings(); }
   async update(supplied: unknown) {
-    const value = z.object({ model: z.enum(CLAUDE_MODELS.map(item => item.id) as [ClaudeModel, ...ClaudeModel[]]).optional(), billing: z.enum(['api-key', 'plan']).optional(), webSearch: z.enum(['own', 'ros']).optional() }).strict().parse(supplied);
+    const model = z.enum(CLAUDE_MODELS.map(item => item.id) as [ClaudeModel, ...ClaudeModel[]]);
+    const value = z.object({ model: model.optional(), planModel: model.optional(), webSearch: z.enum(['own', 'ros']).optional() }).strict().parse(supplied);
     if (this.active.size) throw new StoreError('Wait for the current Claude Code turn to finish before changing its settings.', 409);
-    if (value.billing === 'plan' && !planAllowed) throw new StoreError('A Claude subscription can only be used in the local app.', 403);
     this.store.saveGlobalRecord('claude-agent-settings', 'settings', { ...this.saved(), ...value });
     return this.checkedSettings();
   }
   /** Cheap and local: no request is sent to Anthropic. */
-  readiness(projectId: string): { available: boolean; reason: string | null } {
-    if (this.saved().billing === 'plan') {
+  readiness(projectId: string, billing: ClaudeBilling): { available: boolean; reason: string | null } {
+    if (billing === 'plan') {
       // An unchecked sign-in is let through: Claude Code's own start-up check below decides.
       const plan = this.plan.current();
       if (plan.state === 'signed-out') return { available: false, reason: 'Sign in with your Claude subscription on the Agents page, then Claude Code can answer here.' };
@@ -146,10 +155,10 @@ export class ClaudeAgentService {
   async execute(request: AgentExecuteRequest): Promise<AgentResult> {
     if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
     if (this.active.has(request.projectId)) throw new StoreError('Claude Code is already working in this project.', 409);
-    const ready = this.readiness(request.projectId);
+    const billing = request.billing ?? 'api-key', ready = this.readiness(request.projectId, billing);
     if (!ready.available) throw new StoreError(ready.reason!, 503);
     const message = z.string().trim().min(1).max(12000).parse(request.message);
-    const { model, billing, webSearch } = this.saved(), onPlan = billing === 'plan';
+    const { webSearch } = this.saved(), model = this.model(billing), onPlan = billing === 'plan';
     // On a plan its own search costs nothing extra; on an API key the researcher chose.
     const ownSearch = onPlan || webSearch === 'own';
     const apiKey = onPlan ? '' : process.env.ANTHROPIC_API_KEY!.trim();
@@ -249,7 +258,7 @@ export class ClaudeAgentService {
       if (timedOut) throw new StoreError(`Claude Code reached the ${MAX_SECONDS / 60}-minute limit for one turn and was stopped.`, 503);
       if (stopped) throw new StoreError('Claude Code was stopped.', 409);
       const failedOnPlan = onPlan && (!result || result.subtype !== 'success');
-      if (failedOnPlan && apiError === 'rate_limit') throw new StoreError('Your Claude subscription’s usage limit is reached for now. Try again later, or switch Claude Code to your Claude API key on the Agents page.', 429);
+      if (failedOnPlan && apiError === 'rate_limit') throw new StoreError('Your Claude subscription’s usage limit is reached for now. Try again later, or pick Claude Code (API key) from the model name in the Ros bar.', 429);
       if (failedOnPlan && (apiError === 'authentication_failed' || apiError === 'oauth_org_not_allowed')) { this.plan.forget(); throw new StoreError('Claude Code’s sign-in to your Claude subscription stopped working. Sign in again on the Agents page.', 503); }
       if (!result) throw new StoreError('Claude Code ended without a result. The outcome is uncertain; nothing was repeated.', 503);
       if (result.subtype === 'error_max_budget_usd') throw new StoreError(`Claude Code reached this turn’s US$${reservedUsd.toFixed(2)} budget before finishing. Ask a narrower question or raise ROS_CLAUDE_TURN_USD.`, 503);
