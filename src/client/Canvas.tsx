@@ -40,7 +40,7 @@ import { FilePreview, type ShownFile } from './FileView';
 import { fileMediaType, fileUrl } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
 import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
-import { CodeView } from './code';
+import { CodeView, modKey } from './code';
 import { CanvasDock } from './CanvasDock';
 import { CanvasMinimap } from './CanvasMinimap';
 import { CanvasToolSwitch, useCanvasTool } from './CanvasTool';
@@ -612,6 +612,26 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, []);
   useEffect(() => { if (readonly) setPendingConnection(null); }, [readonly]);
+  // ⌘/Ctrl Z undoes the last canvas change and ⌘/Ctrl Shift Z (or Ctrl Y off a Mac) redoes it, like the toolbar
+  // buttons. Text fields, editors and dialogs keep their own undo.
+  const historyRef = useRef({ onUndo, onRedo, canUndo: detail.canUndo, canRedo: detail.canRedo, blocked: readonly || busy });
+  historyRef.current = { onUndo, onRedo, canUndo: detail.canUndo, canRedo: detail.canRedo, blocked: readonly || busy };
+  useEffect(() => {
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || !(mac ? event.metaKey : event.ctrlKey)) return;
+      const letter = event.code === 'KeyZ' || event.key.toLowerCase() === 'z' ? 'z' : event.code === 'KeyY' || event.key.toLowerCase() === 'y' ? 'y' : '';
+      if (!letter || letter === 'y' && (mac || event.shiftKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"], .cm-editor')) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const { onUndo, onRedo, canUndo, canRedo, blocked } = historyRef.current;
+      if (blocked) return;
+      if (letter === 'y' || event.shiftKey) { if (canRedo) onRedo?.(); } else if (canUndo) onUndo?.();
+    };
+    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+  }, []);
   // ⌘/Ctrl C copies the picked blocks and ⌘/Ctrl V pastes them as new blocks. Text being edited or
   // selected keeps the browser's own copy and paste.
   const copySelected = (event: ClipboardEvent) => {
@@ -1035,8 +1055,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
         <CanvasToolSwitch tool={canvasTool.tool} onChange={canvasTool.setTool}/>
         <button className="secondary small canvas-add-button" data-testid="add-node" aria-label={selectedGroup?`Add a block inside ${selectedGroup.title}`:"Add block to canvas"} disabled={readonly||busy} onClick={()=>onAdd(selectedGroup?.id??null)}><Plus size={15}/> {selectedGroup?"Add inside":"Add block"}</button>
-        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title="Undo canvas change" disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
-        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title="Redo canvas change" disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
+        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title={`Undo canvas change (${modKey}Z)`} disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
+        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title={`Redo canvas change (${modKey === '⌘' ? '⌘⇧Z' : 'Ctrl+Shift+Z'})`} disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
         {onHistory&&<button className={`icon-button ${historyOpen?'active':''}`} aria-label="Canvas history" title="Canvas content history" aria-expanded={historyOpen} aria-controls="canvas-content-history" onClick={onHistory}><History size={16}/></button>}
         {onDemo&&<button className="secondary small canvas-add-button" onClick={onDemo}><BookOpen size={14}/>{demoLabel}</button>}
         {onTour&&<button className="icon-button" title="Tour saved research" aria-label="Start guided demo" onClick={onTour}><BookOpen size={17}/></button>}
