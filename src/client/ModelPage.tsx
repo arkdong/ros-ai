@@ -26,20 +26,35 @@ export type AgentId = 'ros' | 'claude' | 'codex' | 'gemini' | 'goose' | 'opencod
 type AgentItem = { id: AgentId; name: string; summary: string; mark: ReactNode; uses: string[] };
 const agentItems: AgentItem[] = [
   { id: 'ros', name: 'Ros', summary: 'ros.ai’s own assistant, hosted for free or on this computer', mark: <RosMark/>, uses: ['Plans and runs research on the map with ros.ai’s tools', 'Hosted: free with a ros.ai account; nothing to install', 'On this computer: one 3 GB download, works offline', 'Switch between them from the model name in the Ros bar'] },
-  { id: 'claude', name: 'Claude Code', summary: 'Reads the project folder · your Anthropic key', mark: <BrandLogo id="claude"/>, uses: ['Works as Ros with your Anthropic API key', 'Reads the project folder and proposes changes', 'Code runs in ros.ai’s sandbox under your approval mode'] },
+  { id: 'claude', name: 'Claude Code', summary: 'Reads the project folder and proposes changes', mark: <BrandLogo id="claude"/>, uses: ['Works as Ros with your Anthropic API key', 'Reads the project folder and proposes changes', 'Code runs in ros.ai’s sandbox under your approval mode'] },
   { id: 'codex', name: 'Codex', summary: 'This computer’s Codex sign-in', mark: <BrandLogo id="codex"/>, uses: ['Works as Ros through the Codex CLI on this computer', 'Uses Codex’s own sign-in; ros.ai never sees it', 'Spend shows in Settings › Usage'] },
   { id: 'gemini', name: 'Gemini CLI', summary: ACP_AGENTS.gemini.summary, mark: <BrandLogo id="gemini-cli"/>, uses: ['Works as Ros through Gemini CLI on this computer', 'Reads the project folder; its other tools are off in ros.ai', 'Uses its own Google sign-in or key; ros.ai never sees it'] },
   { id: 'goose', name: 'Goose', summary: ACP_AGENTS.goose.summary, mark: <BrandLogo id="goose"/>, uses: ['Works as Ros through Goose on this computer', 'Only ros.ai’s tools run; ros.ai refuses every tool of its own', 'Uses the model Goose is set up with; ros.ai never sees its key'] },
   { id: 'opencode', name: 'OpenCode', summary: ACP_AGENTS.opencode.summary, mark: <BrandLogo id="opencode"/>, uses: ['Works as Ros through OpenCode on this computer', 'Reads the project folder; its other tools are off in ros.ai', 'Uses OpenCode’s own providers and keys; ros.ai never sees them'] },
-  { id: 'own-claude', name: 'Your own Claude Code', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="claude"/>, uses: ['Keep working in Claude Code the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
-  { id: 'own-codex', name: 'Your own Codex', summary: 'In your terminal, on your plan, working on the map', mark: <BrandLogo id="codex"/>, uses: ['Keep working in Codex the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
-  { id: 'own-cursor', name: 'Your own Cursor', summary: 'In Cursor, on your plan, working on the map', mark: <AgentIcon id="cursor"/>, uses: ['Keep working in Cursor the way you already do', 'Its agent reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
-  { id: 'own-gemini', name: 'Your own Gemini CLI', summary: 'In your terminal, on your plan, working on the map', mark: <AgentIcon id="gemini-cli"/>, uses: ['Keep working in Gemini CLI the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-claude', name: 'Your own Claude Code', summary: 'In your terminal, working on the map', mark: <BrandLogo id="claude"/>, uses: ['Keep working in Claude Code the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-codex', name: 'Your own Codex', summary: 'In your terminal, working on the map', mark: <BrandLogo id="codex"/>, uses: ['Keep working in Codex the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-cursor', name: 'Your own Cursor', summary: 'In Cursor, working on the map', mark: <AgentIcon id="cursor"/>, uses: ['Keep working in Cursor the way you already do', 'Its agent reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
+  { id: 'own-gemini', name: 'Your own Gemini CLI', summary: 'In your terminal, working on the map', mark: <AgentIcon id="gemini-cli"/>, uses: ['Keep working in Gemini CLI the way you already do', 'It reads the map and proposes blocks through ros.ai’s MCP server', 'Proposals follow your approval mode'] },
   { id: 'nebius', name: 'Nebius Token Factory', summary: 'Open models through your key', mark: <BrandLogo id="nebius"/>, uses: ['Nemotron, Kimi and other open models for Ros', 'Billed to your Token Factory key; spend shows in Settings › Usage'] },
   { id: 'openai', name: 'OpenAI API', summary: 'Direct model access, separate from Codex', mark: <BrandLogo id="openai"/>, uses: ['GPT models for Ros through your API key', 'Separate from the Codex sign-in'] },
   { id: 'local', name: 'Local models', summary: 'Ollama, LM Studio or any OpenAI-compatible server', mark: <BrandLogo id="ollama"/>, uses: ['Models running on this computer or your own server', 'Nothing leaves the machine'] },
 ];
-const agentGroups: { title: string; ids: AgentId[] }[] = [{ title: 'Agents', ids: ['ros', 'claude', 'codex', 'gemini', 'goose', 'opencode', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] }, { title: 'Models', ids: ['nebius', 'openai', 'local'] }];
+/** Who pays for a turn, from how ros.ai runs the agent: Claude Code here only takes an Anthropic key, Codex here
+ * only runs on a ChatGPT plan sign-in, and Gemini CLI, Goose and OpenCode bill however they were set up. */
+type Billing = 'plan' | 'key' | 'free' | 'own';
+const agentGroups: { billing: Billing; title: string; why?: string; ids: AgentId[] }[] = [
+  { billing: 'plan', title: 'On your subscription', why: 'Uses the plan you already pay for. No per-use charges.', ids: ['codex', 'own-claude', 'own-codex', 'own-cursor', 'own-gemini'] },
+  { billing: 'key', title: 'On your API keys', why: 'Pay per use, billed by the provider. Spend shows in Settings › Usage.', ids: ['claude', 'openai', 'nebius'] },
+  { billing: 'free', title: 'Free', ids: ['ros', 'local'] },
+  { billing: 'own', title: 'Their own setup', why: 'Billed however you set the agent up: its own plan or its own key.', ids: ['gemini', 'goose', 'opencode'] },
+];
+/** The billing line on an agent's own page. */
+const billingLine: Record<AgentId, string> = {
+  ros: 'Free: hosted with a ros.ai account, or on this computer', local: 'Free: runs on this computer or your own server',
+  codex: 'Runs on your ChatGPT plan; no API charges', 'own-claude': 'Runs on your own Claude plan or key, as in your terminal', 'own-codex': 'Runs on your own ChatGPT plan or key, as in your terminal', 'own-cursor': 'Runs on your Cursor plan', 'own-gemini': 'Runs on your own Google sign-in or key, as in your terminal',
+  claude: 'Billed per use to your Anthropic API key', openai: 'Billed per use to your OpenAI API key', nebius: 'Billed per use to your Token Factory key',
+  gemini: 'Billed through its own Google sign-in or key', goose: 'Billed through the provider Goose is set up with', opencode: 'Billed through OpenCode’s own providers, or free models',
+};
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
@@ -82,7 +97,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   };
   const current=selected?agentItems.find(item=>item.id===selected):undefined;
   if(current)return <div className="plugins-page plugin-detail">
-    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={current.summary} state={current.id==='local'&&!stateOf('local').label?undefined:stateOf(current.id)} uses={current.uses}/>
+    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={<>{current.summary}<span className="plugin-billing">{billingLine[current.id]}</span></>} state={current.id==='local'&&!stateOf('local').label?undefined:stateOf(current.id)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
     <h2 className="plugin-section">Connection</h2>
@@ -93,8 +108,8 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
-    {agentGroups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
-    <p className="plugins-footnote">What every agent and model spends shows in Settings › Usage. <button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
+    {agentGroups.map(group=><section key={group.billing} className="plugin-group"><h2>{group.title}</h2>{group.why&&<p className="plugin-group-why">{group.why}</p>}<div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
+    <p className="plugins-footnote"><button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
   </div>;
 }
 
