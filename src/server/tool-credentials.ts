@@ -86,7 +86,7 @@ export class ToolCredentials {
   }
   async checkClaude() {
     const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new StoreError('Connect an Anthropic API key first.');
+    if (!key) throw new StoreError('Connect a Claude API key first.');
     let verified = false, checkMessage = 'Could not reach Anthropic. The saved key has not been verified.';
     try {
       // Listing models authenticates the key without a model turn or charge.
