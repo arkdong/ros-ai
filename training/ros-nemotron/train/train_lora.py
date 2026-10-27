@@ -8,11 +8,11 @@ Each sample is rendered with the model's own chat template (tools included, thin
 Ros runs it with --reasoning-budget 0). Loss falls only on assistant turns marked train: true, so the
 model learns its tool calls and answers, never the tool results, and never a call ros.ai refused.
 """
-import argparse, json, math, time
+import argparse, json, math, os, time
 
 import torch
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainerCallback, TrainingArguments
 
 BASE = "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16"
 
@@ -26,6 +26,7 @@ parser.add_argument("--epochs", type=float, default=2)
 parser.add_argument("--lr", type=float, default=1e-4)
 parser.add_argument("--rank", type=int, default=32)
 parser.add_argument("--pilot", action="store_true")
+parser.add_argument("--usd-per-hour", type=float, default=3.0, help="the VM's price, so ros.ai's Training block can show the GPU spend")
 args = parser.parse_args()
 
 tokenizer = AutoTokenizer.from_pretrained(args.base, trust_remote_code=True)
@@ -102,8 +103,33 @@ training = TrainingArguments(
     bf16=True, logging_steps=5, save_strategy="no" if args.pilot else "epoch", eval_strategy="epoch" if val and not args.pilot else "no",
     report_to=[], remove_unused_columns=False, group_by_length=True, dataloader_num_workers=2,
 )
+
+
+class Metrics(TrainerCallback):
+    """One JSON line per log in out/metrics.jsonl, which ros.ai's Training block reads to draw the loss curve."""
+
+    def __init__(self):
+        os.makedirs(args.out, exist_ok=True)
+        self.file = open(f"{args.out}/metrics.jsonl", "w", buffering=1)
+
+    def write(self, **row):
+        self.file.write(json.dumps({"seconds": round(time.time() - started, 1), **row}) + "\n")
+
+    def on_train_begin(self, _args, state, _control, **_):
+        self.write(event="begin", pilot=args.pilot, max_steps=state.max_steps, epochs=args.epochs, usd_per_hour=args.usd_per_hour,
+                   base=args.base, rank=args.rank, lr=args.lr, samples=len(train))
+
+    def on_log(self, _args, state, _control, logs=None, **_):
+        row = {key: logs[key] for key in ("loss", "eval_loss") if logs and key in logs}
+        if row:
+            self.write(step=state.global_step, epoch=round(state.epoch or 0, 3), **row)
+
+    def on_train_end(self, _args, state, _control, **_):
+        self.write(event="end", step=state.global_step)
+
+
 started = time.time()
-Trainer(model=model, args=training, train_dataset=train, eval_dataset=val, data_collator=collate).train()
+Trainer(model=model, args=training, train_dataset=train, eval_dataset=val, data_collator=collate, callbacks=[Metrics()]).train()
 seconds = time.time() - started
 print(f"Trained in {seconds / 60:.1f} min; peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GiB.")
 if args.pilot:
