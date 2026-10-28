@@ -62,3 +62,10 @@ export type LinkResult = { agent: AgentId; ok: boolean; message: string; command
 export type ModelLinkResult = { id: LocalModelId; ok: boolean; message: string; connectionId?: string };
 export type SetupLinkRequest = { agents?: AgentId[]; models?: LocalModelId[] };
 export type SetupLinkResponse = { agents: LinkResult[]; models: ModelLinkResult[] };
+/** Reset onboarding, for testing the first run again: what each option would undo on this computer. links: the agents
+ * whose settings hold a link this ros.ai recorded; tokens: the plugins with a token saved here; cloud: signed in to
+ * hosted Ros; localRos: Ros downloaded to this computer, downloading, or left from a download that stopped. */
+export type SetupResetPlan = { links: string[]; tokens: string[]; cloud: boolean; localRos: boolean };
+export type SetupResetRequest = { links?: boolean; tokens?: boolean; cloud?: boolean; localRos?: boolean };
+/** What the reset did, in sentences, and what it could not do. The first run shows again either way. */
+export type SetupResetResponse = { done: string[]; failed: string[] };

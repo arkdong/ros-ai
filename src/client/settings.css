@@ -92,3 +92,20 @@
 .budget-track { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #f0f0f0; }
 .budget-track i { display: block; height: 100%; background: var(--ink); }
 .balance-note { margin: -4px 0 10px; }
+
+/* Reset onboarding: its options unfold under the row, in the card's own ground. */
+.settings-confirm { border-top: 1px solid var(--line-soft); background: var(--canvas); padding: 12px 18px 14px; border-radius: 0 0 12px 12px; }
+.settings-options { display: flex; flex-direction: column; gap: 9px; }
+.settings-option { display: flex; align-items: flex-start; gap: 10px; font-size: var(--text-sm); color: var(--ink); cursor: pointer; }
+.settings-option > span { display: flex; flex-direction: column; gap: 1px; }
+.settings-option small { font-size: var(--text-xs); color: var(--muted); }
+.settings-option input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin: 1px 0 0; flex-shrink: 0; border: 1.5px solid #c9c9c9; border-radius: 4px; background: #fff; display: grid; place-items: center; cursor: pointer; }
+.settings-option input:checked { background: var(--ink); border-color: var(--ink); }
+.settings-option input:checked::after { content: ''; width: 8px; height: 4px; border: 2px solid #fff; border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+.settings-option input:disabled { background: #a3a3a3; border-color: #a3a3a3; cursor: default; }
+.settings-option input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-option:has(input:disabled) { cursor: default; }
+.settings-confirm-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 12px; }
+.settings-confirm-actions .primary.small { display: inline-flex; align-items: center; gap: 5px; }
+.settings-confirm-note { margin: 0 0 6px; font-size: var(--text-sm); color: var(--ink); }
+.settings-confirm-list { margin: 0; padding-left: 18px; font-size: var(--text-xs); color: var(--body); line-height: 1.5; }
