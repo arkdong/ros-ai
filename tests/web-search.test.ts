@@ -10,7 +10,7 @@ import { Authority } from '../src/server/authority.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
 import type { ExperimentService } from '../src/server/experiments.js';
-import { BRAVE_SEARCH_SCHEMA, BRAVE_SEARCH_USD, BraveAdapter, EXA_CONTENTS_SCHEMA, EXA_PAGE_USD, EXA_SEARCH_SCHEMA, EXA_SEARCH_USD, ExaAdapter, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse } from '../src/server/providers.js';
+import { BRAVE_SEARCH_SCHEMA, BRAVE_SEARCH_USD, BraveAdapter, CHECK_SEARCH_SCHEMA, EXA_CONTENTS_SCHEMA, EXA_PAGE_USD, EXA_SEARCH_SCHEMA, EXA_SEARCH_USD, ExaAdapter, SWEEP_SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth, type SearchResponse, type SweepResponse } from '../src/server/providers.js';
 
 // Offline doubles of Exa's and Brave Search's own APIs on loopback ports. Nothing here reaches either service.
 const EXA_KEY = 'exa-fixture-key-0123456789', BRAVE_KEY = 'brave-fixture-key-0123456789';
@@ -66,15 +66,29 @@ class AnsweringModel implements ModelAdapter {
   async prepare() { return info; }
   async complete(request: ModelRequest): Promise<ModelResponse> { this.requests.push(request); return { content: 'It changed in October [S1].', model: info.id, modelVersion: null, usage: { inputTokens: 10, outputTokens: 5 }, metadata: { fixture: true } }; }
 }
-function workspace(t: TestContext, model?: ModelAdapter) {
+function workspace(t: TestContext, model?: ModelAdapter, search?: SearchAdapter) {
   const directory = mkdtempSync(join(tmpdir(), 'ros-web-search-')), store = new Store(directory), project = store.createProject('Web search');
   store.mutate(project.id, [{ type: 'addNode', node: { id: 'a', title: 'Question', description: 'What changed?', x: 0, y: 0 } }], 'Fixture note');
   new Authority(store).configure(project.id, { mode: 'ask' });
-  const execution = new ExecutionService(store, { model, includeSetupUsage: false });
+  const execution = new ExecutionService(store, { model, search, includeSetupUsage: false });
   t.after(async () => { await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); });
   return { store, project, execution };
 }
 const signal = () => new AbortController().signal;
+/** Tavily as the Web block and the claim check use it: each search's depth, and a sweep's relevance and site icon. */
+class TavilyDouble implements SearchAdapter {
+  readonly configured = true;
+  depths: (SearchDepth | undefined)[] = [];
+  async search(query: string, _signal: AbortSignal, depth?: SearchDepth): Promise<SearchResponse> {
+    this.depths.push(depth);
+    return { results: [{ title: 'Tavily page', url: `https://example.org/tavily/${encodeURIComponent(query)}`, content: 'A passage.', locator: 'Tavily search result 1' }], credits: depth === 'advanced' ? 2 : 1, requestId: 'tavily-search' };
+  }
+  async sweep(query: string): Promise<SweepResponse> {
+    return { results: [{ title: 'Swept page', url: `https://example.org/swept/${encodeURIComponent(query)}`, content: 'A swept passage.', locator: 'Tavily search result 1', score: 0.8, favicon: 'https://example.org/favicon.ico' }], credits: 1, requestId: 'tavily-sweep' };
+  }
+}
+const webBlock = { id: 'w', title: 'What changed?', description: '', x: 400, y: 0, blockType: 'web' as const, web: { question: 'What changed?', directions: [{ id: 'd1', title: 'Rules', why: 'Where it starts', queries: ['first', 'second'] }] } };
+const sweep = [{ direction: 'd1', query: 'first' }, { direction: 'd1', query: 'second' }];
 async function until(predicate: () => boolean) { for (let i = 0; i < 200; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 5)); } throw new Error('Fixture did not settle'); }
 
 test('Exa finds pages by meaning: matching passages become source excerpts, its cost is the one it reports, and it reads whole pages', async t => {
@@ -208,18 +222,80 @@ test('Agents keep the tool descriptions they were trained on with Tavily, and an
   const describe = () => {
     const tools = new AgentWorkspaceTools(store, execution, undefined as unknown as ExperimentService, { projectId: project.id, nodeIds: [], artifactIds: [] }, 'turn-tools', 'model', 'Test model');
     const text = (name: string) => tools.definitions.find(item => item.name === name)!.description;
-    return { fanOut: text('ros_fan_out_search'), read: text('ros_read_pages') };
+    return { fanOut: text('ros_fan_out_search'), read: text('ros_read_pages'), check: text('ros_check_claims') };
   };
   const tavily = describe();
-  assert.match(tavily.fanOut, /plan 1-7 search directions \(0-3 Tavily queries each, at most 14 in total;/u);
+  assert.match(tavily.fanOut, /plan 1-7 search directions \(0-5 Tavily queries each, at most 30 in total;/u);
+  assert.match(tavily.check, /one or two Tavily searches that would confirm or refute it \(at most 16 searches; advanced searches, which return passages of each page\)\. Skip/u);
   assert.match(tavily.read, /at most 15 pages in a turn \(Tavily charges 1 credit, US\$0\.008, for each 5 pages read together\)\. Returns/u);
   process.env.EXA_API_KEY = EXA_KEY;
   const exa = describe();
-  assert.match(exa.fanOut, /\(0-3 Exa queries each,/u);
+  assert.match(exa.fanOut, /\(0-5 Exa queries each, at most 30 in total;/u);
+  assert.match(exa.check, /one or two Exa searches that would confirm or refute it \(at most 16 searches, which return passages of each page\)\. Skip/u);
   assert.match(exa.read, /\(Exa charges US\$0\.001 for each page\)/u);
   delete process.env.EXA_API_KEY; process.env.BRAVE_API_KEY = BRAVE_KEY;
   const brave = describe();
-  assert.match(brave.fanOut, /\(0-3 Brave Search queries each,/u);
+  assert.match(brave.fanOut, /\(0-5 Brave Search queries each, at most 30 in total;/u);
   assert.match(brave.read, /\(Brave Search cannot read whole pages, so each comes back unread: quote its search excerpt instead\)/u);
   assert.deepEqual([BRAVE_SEARCH_SCHEMA.name, EXA_SEARCH_SCHEMA.name], ['brave_llm_context', 'exa_search']);
+});
+
+test('A Web block sweeps with the search service in use: Tavily keeps relevance and site icons, Exa runs its usual search at its price', async t => {
+  environment(t, {});
+  const tavily = new TavilyDouble(), first = workspace(t, undefined, tavily);
+  first.store.mutate(first.project.id, [{ type: 'addNode', node: webBlock }], 'Web block');
+  const swept = await first.execution.webSweep(first.project.id, 'w', sweep, signal(), 'turn-sweep');
+  assert.deepEqual([swept.status, swept.provider, swept.model, swept.configuration.search, swept.usage], ['completed', 'tavily', 'web-sweep', SWEEP_SEARCH_SCHEMA.configuration, { searches: 2, found: 2, credits: 2 }]);
+  assert.deepEqual(swept.cost, { reservedUsd: 2 * TAVILY_CREDIT_USD, estimatedUsd: 2 * TAVILY_CREDIT_USD });
+  assert.deepEqual(swept.artifactIds.map(id => first.store.getArtifact(id).metadata), [1, 2].map(search => ({ direction: 'd1', query: search === 1 ? 'first' : 'second', search, rank: 1, score: 0.8, favicon: 'https://example.org/favicon.ico' })));
+  assert.deepEqual(tavily.depths, [], 'A sweep never runs a plain search on Tavily');
+
+  const exa = await fakeExa(); t.after(exa.close);
+  process.env.EXA_API_KEY = EXA_KEY; process.env.EXA_BASE_URL = exa.base;
+  const { store, project, execution } = workspace(t);
+  store.mutate(project.id, [{ type: 'addNode', node: webBlock }], 'Web block');
+  const run = await execution.webSweep(project.id, 'w', sweep, signal(), 'turn-sweep');
+  assert.deepEqual([run.status, run.provider, run.model, run.tools[0]], ['completed', 'exa', 'web-sweep', EXA_SEARCH_SCHEMA]);
+  assert.deepEqual(exa.seen.map(request => [request.url.pathname, request.input.query]).sort(), [['/search', 'first'], ['/search', 'second']]);
+  const sources = run.artifactIds.map(id => store.getArtifact(id));
+  assert.equal(sources.length, 4);
+  assert.ok(sources.every(source => source.metadata?.direction === 'd1' && !('score' in source.metadata) && !('favicon' in source.metadata)), 'Exa gives no relevance score or site icon');
+  assert.deepEqual(run.cost, { reservedUsd: 2 * EXA_SEARCH_USD, estimatedUsd: 2 * EXA_SEARCH_USD });
+  assert.deepEqual(store.listUsage().map(row => [row.provider, row.purpose, row.status, row.estimatedUsd]), [['exa', 'Web block sweep', 'settled', EXA_SEARCH_USD], ['exa', 'Web block sweep', 'settled', EXA_SEARCH_USD]]);
+});
+
+test('A claim check searches Tavily in depth, and Exa with its usual search at its own price', async t => {
+  environment(t, {});
+  const tavily = new TavilyDouble(), first = workspace(t, undefined, tavily);
+  const checked = await first.execution.agentSearch(first.project.id, 'a', 'Is it true?', signal(), 'turn-check', 'advanced');
+  assert.deepEqual([checked.status, checked.provider, checked.model, checked.configuration.purpose, checked.tools[0]], ['completed', 'tavily', 'advanced-search', 'agent-claim-check', CHECK_SEARCH_SCHEMA]);
+  assert.deepEqual(tavily.depths, ['advanced']);
+  assert.deepEqual(first.store.listUsage().map(row => [row.provider, row.purpose, row.status, row.reservedUsd, row.estimatedUsd]), [['tavily', 'Agent claim check', 'settled', 2 * TAVILY_CREDIT_USD, 2 * TAVILY_CREDIT_USD]]);
+  assert.match(first.store.listUsage()[0].basis, /one advanced search, 2 credits/u);
+
+  const exa = await fakeExa(); t.after(exa.close);
+  process.env.EXA_API_KEY = EXA_KEY; process.env.EXA_BASE_URL = exa.base;
+  const { store, project, execution } = workspace(t);
+  const run = await execution.agentSearch(project.id, 'a', 'Is it true?', signal(), 'turn-check', 'advanced');
+  assert.deepEqual([run.status, run.provider, run.model, run.configuration.purpose, run.tools[0]], ['completed', 'exa', 'auto-search', 'agent-claim-check', EXA_SEARCH_SCHEMA]);
+  assert.deepEqual(exa.seen.map(request => request.input.type), ['auto']);
+  assert.deepEqual(store.listUsage().map(row => [row.provider, row.purpose, row.status, row.reservedUsd, row.estimatedUsd]), [['exa', 'Agent claim check', 'settled', EXA_SEARCH_USD, 0.007]]);
+});
+
+test('An agent\'s search plan fills a Web block through the search service in use', async t => {
+  const exa = await fakeExa(); t.after(exa.close);
+  environment(t, { EXA_API_KEY: EXA_KEY, EXA_BASE_URL: exa.base });
+  const { store, project, execution } = workspace(t);
+  const authority = new Authority(store);
+  authority.configure(project.id, { mode: 'full' });
+  const tools = new AgentWorkspaceTools(store, execution, { authority } as unknown as ExperimentService, { projectId: project.id, nodeIds: ['a'], artifactIds: [] }, 'turn-plan', 'model', 'Test model');
+  const plan = await tools.call('ros_fan_out_search', { goal: 'What changed?', rationale: 'To see what changed.', directions: [{ title: 'Rules', why: 'Where it starts', queries: ['first', 'second'] }, { title: 'News', why: 'What people noticed', queries: ['third'] }] }) as { status: string; action: { title: string }; webNodeId: string; directions: { found: number; sources: { n: number; url?: string }[] }[] };
+  assert.equal(plan.status, 'accepted');
+  assert.match(plan.action.title, /^Search the web in 2 directions \(3 Exa searches\) for: What changed\?\. The searches run together in a Web block/u);
+  const web = store.getProject(project.id).canvas.nodes.find(node => node.id === plan.webNodeId)!;
+  assert.deepEqual([web.blockType, web.web?.directions.map(direction => direction.queries)], ['web', [['first', 'second'], ['third']]]);
+  assert.deepEqual(plan.directions.map(direction => direction.found), [2, 2], 'Each direction keeps its sources once, by page');
+  const sweep = store.listRuns(project.id).find(run => run.model === 'web-sweep')!;
+  assert.deepEqual([sweep.status, sweep.provider, sweep.nodeId], ['completed', 'exa', plan.webNodeId]);
+  assert.equal(exa.seen.filter(request => request.url.pathname === '/search').length, 3);
 });

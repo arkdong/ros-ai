@@ -4,10 +4,10 @@ import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
-/** What a block is on screen: eight kinds plus Group. Storage keeps the older blockType and kind words as aliases
+/** What a block is on screen: nine kinds plus Group. Storage keeps the older blockType and kind words as aliases
  * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
- * An App is a page you use; a Code block whose language is html becomes one when it is saved. */
-export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Agent' | 'App' | 'Group' | 'Search';
+ * A Web block is External too, named for what it reads. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
+export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
   if (node.kind === 'group') return 'Group';
   switch (node.blockType) {
@@ -16,6 +16,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'dataset': return 'Data';
     case 'figure': case 'file': return 'File';
     case 'notion': case 'google': case 'training': return 'External';
+    case 'web': return 'Web';
     case 'agent': return 'Agent';
     case 'app': return 'App';
     case 'search': return 'Search';
@@ -56,8 +57,8 @@ export function labelPatch(node: Pick<CanvasNode, 'kind' | 'blockType'>, value: 
   return { label, ...(legacyTask ? { kind: 'topic' as const, ...(node.blockType === 'action' ? { blockType: 'note' as const } : {}) } : {}) };
 }
 
-/** The agent that made a block, for its provenance line: a Result note through its link from the Agent block,
- * a finding through its Result note. */
+/** The agent that made a block, for its provenance line: a Result note or Web block through its link from the
+ * Agent block, a finding through the note or Web block it came from. */
 export function blockOrigin(canvas: Pick<Canvas, 'nodes' | 'connections'>, id: string, depth = 0): string | undefined {
   if (depth > 3) return undefined;
   for (const edge of canvas.connections) {
@@ -65,7 +66,7 @@ export function blockOrigin(canvas: Pick<Canvas, 'nodes' | 'connections'>, id: s
     const source = canvas.nodes.find(node => node.id === edge.source);
     if (!source) continue;
     if (source.blockType === 'agent') return agentName(source.agent?.runtime);
-    const through = source.label === 'result' || source.blockType === 'search' || source.blockType === 'finding' ? blockOrigin(canvas, source.id, depth + 1) : undefined;
+    const through = source.label === 'result' || source.blockType === 'search' || source.blockType === 'web' || source.blockType === 'finding' ? blockOrigin(canvas, source.id, depth + 1) : undefined;
     if (through) return through;
   }
   return undefined;

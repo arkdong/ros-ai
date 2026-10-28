@@ -217,14 +217,14 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
 
 /** What an agent turn left on the canvas, so the answer below does not have to list it. */
 function AgentWorkSummary({ node, turn, detail, onReference }: { node: ProjectDetail['project']['canvas']['nodes'][number]; turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference'] }) {
-  const work = agentDirections(detail.project.canvas, detail.artifacts, node.id), running = turn.status === 'running';
+  const work = agentDirections(detail.project.canvas, detail.artifacts, node.id, detail.runs), running = turn.status === 'running';
   const waiting = turn.actions.filter(action => action.status === 'pending' && (!action.proposalId || detail.proposals.some(item => item.id === action.proposalId && item.status === 'pending' && item.baseRevision === detail.project.revision))).length;
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   if (!work.directions.length && !waiting) return null;
   return <div className="agent-work-summary">
     <ul>
       {work.directions.length > 0 && <li><Search size={13}/>{running && !work.sources ? `Searching ${plural(work.directions.length, 'direction')}…` : `Searched ${plural(work.directions.length, 'direction')} · ${plural(work.sources, 'source')}`}</li>}
-      {work.directions.length > 0 && <li><BookOpen size={13}/>{work.written === work.directions.length ? `Wrote ${plural(work.written, 'result note')}` : `Wrote ${work.written} of ${plural(work.directions.length, 'result note')}`}</li>}
+      {work.directions.length > 0 && <li><BookOpen size={13}/>{work.written === work.directions.length ? `Wrote up ${plural(work.written, 'direction')}` : `Wrote up ${work.written} of ${plural(work.directions.length, 'direction')}`}</li>}
       {work.pages.length + work.findings > 0 && <li><Quote size={13}/>Read {plural(work.pages.length, 'page')} · saved {plural(work.findings, 'finding')}</li>}
       {waiting > 0 && <li className="waiting"><GitBranch size={13}/>{plural(waiting, 'change')} waiting for your review</li>}
     </ul>

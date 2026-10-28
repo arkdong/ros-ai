@@ -1,6 +1,6 @@
 import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
@@ -52,6 +52,17 @@ export type PaperSource = 'openalex'|'arxiv'|'zotero';
 export type PaperRef = { source:PaperSource; id:string; doi?:string; link:string };
 /** An Agent block stands for one assistant turn run by Claude Code, Codex, a model or an ACP agent; its timeline lives with that turn. */
 export type AgentLink = {runtime:'claude'|'codex'|'model'|AcpAgentId; turnId:string};
+/** What an agent found when it checked a block's claims on the web: backed or contradicted by a quoted page,
+ * no source found, or not judged yet. `textHash` is the block text it checked, so a later edit shows. */
+export type ClaimVerdict = 'backed'|'contradicted'|'unsupported'|'open';
+export type CheckedClaim = { text:string; verdict:ClaimVerdict; note?:string; quote?:string; source?:{ title:string; url?:string } };
+export type SourceCheck = { checkedAt:string; agentNodeId:string; textHash:string; claims:CheckedClaim[] };
+/** One direction of a Web block: its searches and named links, why the agent took it, and what the agent wrote from
+ * its sources (citing them as [n]). `aside` says why the agent set a weak direction aside. */
+export type WebDirection = { id:string; title:string; why:string; queries:string[]; links?:string[]; summary?:string; aside?:string };
+/** A question searched on the web in several directions at once. The block keeps the plan and what the agent wrote;
+ * the sources are its search snippets and the pages read in full, saved as artifacts of the block's runs. */
+export type WebSearch = { question:string; directions:WebDirection[] };
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 /** An App block's page (one HTML document) and the blocks it reads, in order. A file edit or an agent's page never widens
  * `inputs`: adding one is the person's edit, or a proposal they accept. */
@@ -63,7 +74,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; notion?:NotionView; google?:GoogleView; training?:TrainingView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };

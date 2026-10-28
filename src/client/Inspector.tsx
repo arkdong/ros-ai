@@ -15,6 +15,8 @@ import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
 import { primaryArtifact } from '../shared/blocks';
 import { FileViewer, type ShownFile } from './FileView';
+import { SourceCheckView } from './SourceCheck';
+import { WebSources } from './WebBlock';
 import { SqlPanel } from './SqlPanel';
 
 type Props = {
@@ -28,13 +30,15 @@ type Props = {
   readOnlyNote?: string;
   /** The PDF or image a File block shows. */
   file?: ShownFile;
+  /** Asks Ros to check the block's claims on the web. */
+  onCheckSources?: () => void;
   /** Set where SQL runs, on this computer: reloads the project after a query result is saved. */
   sql?: { onChanged: () => Promise<unknown> };
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
   onGoogleCopy?: () => Promise<boolean>;
 };
 
-export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, sql, onGoogleCopy }: Props) {
+export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, onCheckSources, sql, onGoogleCopy }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
   const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
@@ -77,6 +81,8 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {node.training&&<section className="note-content"><TrainingBlock projectId={detail.project.id} nodeId={node.id} view={node.training} full/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
+      {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.app&&!node.web&&node.blockType!=='agent'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
+      {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
       {file&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}
       {primary&&!file&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><span className="note-content-actions">{sqlShown&&<button className="text-button small" aria-pressed={sqlOpen} onClick={()=>setSqlOpen(!sqlOpen)}>{sqlOpen?<><X size={12}/> Close SQL</>:<><Database size={12}/> Query with SQL</>}</button>}<button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></span></div>{sqlPanel||(['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>)}</section>}

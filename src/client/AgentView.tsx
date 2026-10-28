@@ -46,10 +46,12 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
   const count = (word: string) => step.size === undefined ? `${word}s` : plural(step.size, word);
   const searches = step.size ? plural(step.size, 'direction') : 'the planned directions';
   if (step.tool === 'ros_fan_out_search') return step.outcome === 'requested' ? `Planning searches in ${searches}` : step.outcome === 'waiting' ? `Planned searches in ${searches} · waiting for your approval` : step.outcome === 'declined' ? 'Search plan declined' : step.outcome === 'failed' ? 'Search plan failed' : `Searched ${searches}`;
-  if (step.tool === 'ros_write_result') return step.outcome === 'failed' ? 'Could not write a result note' : step.outcome === 'requested' ? 'Writing a result note' : 'Wrote a result note';
+  if (step.tool === 'ros_write_result') return step.outcome === 'failed' ? 'Could not write up a direction' : step.outcome === 'requested' ? 'Writing up a direction' : 'Wrote up a direction';
   if (step.tool === 'ros_read_pages') return step.outcome === 'failed' ? 'Could not read the pages' : step.outcome === 'requested' ? `Reading ${count('page')} in full` : `Read ${count('page')} in full`;
   if (step.tool === 'ros_write_findings') return step.outcome === 'failed' ? 'Could not save the findings' : step.outcome === 'requested' ? `Saving ${count('finding')}` : step.size === 0 ? 'Saved no findings' : `Saved ${count('finding')}`;
   if (step.tool === 'ros_propose_groups') return step.outcome === 'requested' ? 'Grouping the findings by theme' : step.outcome === 'waiting' ? `Proposed ${step.size ? plural(step.size, 'theme') : 'a grouping'} · waiting for your review` : step.outcome === 'declined' ? 'Grouping declined' : step.outcome === 'failed' ? 'Grouping failed' : step.size ? `Grouped the findings into ${plural(step.size, 'theme')}` : 'Set weak results aside';
+  if (step.tool === 'ros_check_claims') return step.outcome === 'requested' ? `Planning a check of ${count('claim')}` : step.outcome === 'waiting' ? `Planned a check of ${count('claim')} · waiting for your approval` : step.outcome === 'declined' ? 'Source check declined' : step.outcome === 'failed' ? 'Source check failed' : `Searched the web for ${count('claim')}`;
+  if (step.tool === 'ros_write_verdicts') return step.outcome === 'failed' ? 'Could not mark the claims' : step.outcome === 'requested' ? `Marking ${count('claim')}` : `Marked ${count('claim')}`;
   if (step.tool === 'ros_use_skill') {
     // The target is the skill's name, or "name/path" when the agent read one of the skill's files.
     const [name, ...path] = (step.target ?? '').split('/'), skill = name ? `the ${skillTitle(name)} skill` : '', file = path.join('/');
@@ -77,13 +79,13 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
   const labels: Record<string, string> = { ros_read_selected: 'Read the selected blocks', ros_propose_analysis: 'Proposed analysis code', ros_propose_report: 'Proposed a report', ros_propose_reuse: 'Proposed reusing a result' };
   return labels[step.tool] ?? title(step.target) ?? step.tool;
 }
-const icons: Record<string, ReactNode> = { ros_browser: <Globe size={13}/>, ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/>, ros_app_guide: <BookText size={13}/>, ros_check_app: <AppWindow size={13}/> };
+const icons: Record<string, ReactNode> = { ros_browser: <Globe size={13}/>, ros_fan_out_search: <SearchIcon size={13}/>, ros_write_result: <BookOpen size={13}/>, ros_read_pages: <BookOpenText size={13}/>, ros_write_findings: <Quote size={13}/>, ros_propose_groups: <LayoutGrid size={13}/>, ros_check_claims: <SearchIcon size={13}/>, ros_write_verdicts: <Quote size={13}/>, ros_propose_canvas: <GitBranch size={13}/>, ros_read_selected: <FileText size={13}/>, ros_propose_report: <FileText size={13}/>, ros_use_skill: <BookText size={13}/>, ros_app_guide: <BookText size={13}/>, ros_check_app: <AppWindow size={13}/> };
 
 type Props = { node: CanvasNode; turn?: AssistantTurn; detail: ProjectDetail; onOpenNode: (id: string) => void; onReveal: (id: string) => void; onOpenArtifact: (artifact: Artifact) => void; onReview: (proposalId: string) => void };
 /** One agent's turn: what it set out to do, each step with the agent's reason and what came of it, and its answer. */
 export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArtifact, onReview }: Props) {
   const canvas = detail.project.canvas, title = (id?: string) => canvas.nodes.find(item => item.id === id)?.title;
-  const work = agentDirections(canvas, detail.artifacts, node.id);
+  const work = agentDirections(canvas, detail.artifacts, node.id, detail.runs);
   const runtime = turn?.model ?? (node.agent?.runtime === 'model' ? 'Agent' : agentName(node.agent?.runtime ?? 'codex'));
   const running = turn?.status === 'running';
   // A proposal the agent left behind is decided after its turn ends, so its step shows the decision.
@@ -102,11 +104,13 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
     return { step, directions, at };
   });
   const unlisted = work.directions.slice(next);
+  // A write-up names its direction: a Result note, or a direction of a Web block.
+  const writtenUp = (id?: string) => work.directions.find(item => item.id === id) ?? (id && title(id) ? { title: title(id)!, open: id } : undefined);
   // A demo's agent block holds a run recorded while the demo was prepared, not a turn of this assistant.
-  const recorded = detail.artifacts.some(item => item.metadata?.tutorialOrigin === 'recorded' && (item.nodeId === node.id || work.directions.some(({ result, legacySearch }) => result.id === item.nodeId || legacySearch?.id === item.nodeId)));
-  const directionList = (list: AgentDirection[]) => <ul className="agent-items">{list.map(({ result, legacySearch, sources, written, findings }) => <li key={result.id}>
-    <button onClick={() => onOpenNode(result.id)}><SearchIcon size={13}/><span>{legacySearch?.title ?? result.title}</span></button>
-    <small>{plural(sources, 'source')}{findings.length ? ` · ${plural(findings.length, 'finding')}` : ''}{!written && !running ? ' · no note written' : ''}</small>
+  const recorded = detail.artifacts.some(item => item.metadata?.tutorialOrigin === 'recorded' && (item.nodeId === node.id || work.directions.some(({ open, legacySearch }) => open === item.nodeId || legacySearch?.id === item.nodeId)));
+  const directionList = (list: AgentDirection[]) => <ul className="agent-items">{list.map(({ id, title, open, web, sources, written, findings }) => <li key={id}>
+    <button onClick={() => onOpenNode(open)}>{web ? <Globe size={13}/> : <SearchIcon size={13}/>}<span>{title}</span></button>
+    <small>{plural(sources, 'source')}{findings.length ? ` · ${plural(findings.length, 'finding')}` : ''}{!written && !running ? ' · not written up' : ''}</small>
   </li>)}</ul>;
   // Pages read in full: their saved text, with the original page beside it.
   const pageList = (pages: Artifact[]) => pages.length > 0 && <ul className="agent-items">{pages.map(page => <li key={page.id}>
@@ -145,7 +149,7 @@ export function AgentView({ node, turn, detail, onOpenNode, onReveal, onOpenArti
       <ol className="agent-steps">{steps.map(({ step, directions, at }, index) => <li key={index} className={`agent-step ${step.outcome}`}>
         <span className="agent-step-icon">{step.outcome === 'requested' && running ? <LoaderCircle size={13} className="spin"/> : icons[step.tool] ?? <Wrench size={13}/>}</span>
         <div>
-          <div className="agent-step-label"><span>{stepLabel(step, title)}</span>{step.tool === 'ros_write_result' && title(step.target) && <button className="agent-step-target" onClick={() => onOpenNode(step.target!)}>{title(step.target)}</button>}{at && <time>{at}</time>}</div>
+          <div className="agent-step-label"><span>{stepLabel(step, title)}</span>{step.tool === 'ros_write_result' && (written => written && <button className="agent-step-target" onClick={() => onOpenNode(written.open)}>{written.title}</button>)(writtenUp(step.target))}{at && <time>{at}</time>}</div>
           {step.thought && <p className="agent-step-thought">{step.thought}</p>}
           {directions.length > 0 && directionList(directions)}
           {made(step)}

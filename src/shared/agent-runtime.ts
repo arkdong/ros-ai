@@ -18,13 +18,13 @@ export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'ap
 /** Shared by both agent transports, so Claude Code and Codex timelines read the same. */
 export function agentStep(call: number, tool: string, input: unknown, result?: { value?: unknown; failed?: boolean }): AgentStep {
   if (!result) {
-    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown; name?: unknown; file?: unknown; action?: unknown };
+    const args = (input && typeof input === 'object' ? input : {}) as { resultNodeId?: unknown; nodeId?: unknown; targetNodeId?: unknown; directions?: unknown; pages?: unknown; findings?: unknown; themes?: unknown; claims?: unknown; verdicts?: unknown; name?: unknown; file?: unknown; action?: unknown };
     // A skill read names the skill, and the file when it reads one of the skill's files: "name/path".
     const skill = tool === 'ros_use_skill' && typeof args.name === 'string' && args.name ? `${args.name.replace(/^[/$]/u, '')}${typeof args.file === 'string' && args.file ? `/${args.file}` : ''}` : undefined;
     // A browser step names its action: open, click, fill…
     const browser = tool === 'ros_browser' && typeof args.action === 'string' ? args.action : undefined;
     const target = skill ?? browser ?? [args.resultNodeId, args.nodeId, args.targetNodeId].find(value => typeof value === 'string') as string | undefined;
-    const list = [args.directions, args.pages, args.findings, args.themes].find(Array.isArray);
+    const list = [args.directions, args.pages, args.findings, args.themes, args.claims, args.verdicts].find(Array.isArray);
     return { call, tool, outcome: 'requested', ...(target ? { target } : {}), ...(list ? { size: list.length } : {}) };
   }
   const value = (result.value && typeof result.value === 'object' ? result.value : {}) as { status?: unknown; count?: unknown; items?: unknown; rejected?: unknown; step?: unknown; action?: { status?: unknown; proposalId?: unknown } };
