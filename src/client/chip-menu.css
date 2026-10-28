@@ -20,3 +20,12 @@
 .chip-menu button:disabled { color: #b3b3b3; cursor: default; }
 .chip-menu button:disabled:hover { background: transparent; }
 .chip-menu button:disabled .chip-menu-cap { color: #b3b3b3; }
+/* A settings row's chip: 30 px, 13 px, the row's own height; its menu opens below, right-aligned, 280 px, rows with a detail line. */
+.chip-button.lg { height: 30px; gap: 6px; padding: 0 10px 0 12px; border-radius: 15px; font-size: var(--text-sm); color: var(--ink); }
+.chip-button.lg > svg:last-child { color: var(--muted); }
+.chip-menu.right { left: auto; right: 0; }
+.chip-choice .chip-menu { width: 280px; }
+.chip-menu-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.chip-menu-text small { font-size: var(--text-xs); color: var(--muted); line-height: 1.35; white-space: normal; }
+.chip-menu button[aria-checked="true"] { background: var(--canvas); }
+.chip-menu button > svg { flex-shrink: 0; color: var(--body); }
