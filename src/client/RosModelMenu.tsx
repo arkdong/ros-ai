@@ -127,7 +127,7 @@ export function RosSizeIcon({ size: shape, px = 16 }: { size: 'bar' | 'half' | '
 }
 export const rosSizeLabel = { bar: 'Fold Ros to the bar', half: 'Open Ros as a half sheet', full: 'Open Ros as a side panel' } as const;
 
-const approvalModes: { mode: ApprovalMode; label: string; detail: string; icon: typeof Hand }[] = [
+export const approvalModes: { mode: ApprovalMode; label: string; detail: string; icon: typeof Hand }[] = [
   { mode: 'ask', label: 'Ask every time', detail: 'Every code run and every canvas change waits for your OK', icon: Hand },
   { mode: 'review', label: 'Approve for me', detail: 'Plain analysis, new blocks and moves go ahead; the rest waits for you', icon: ShieldCheck },
   { mode: 'full', label: 'Full access', detail: 'Code runs and canvas changes land at once; everything stays undoable', icon: Zap },

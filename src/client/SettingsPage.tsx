@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Brain, ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
-import { modeLabel } from './ResearchControls';
+import { ChipChoice } from './ChipChoice';
+import { approvalModes } from './RosModelMenu';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
 import type { SetupResetPlan, SetupResetResponse } from '../shared/setup';
@@ -82,8 +83,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
     {!publicDemo && <UpdateSettings/>}
     {projectId && <section><h2>This project</h2><div className="settings-card">
       <Row title="Permissions" detail={`${projectTitle ? `${projectTitle}: ` : ''}${approvalDetail[mode]}`}>
-        {busy && <LoaderCircle size={14} className="spin"/>}
-        <select aria-label="Project permissions" value={mode} disabled={busy} onChange={event => void choose(event.target.value as ApprovalMode)}>{(['ask', 'review', 'full'] as const).map(value => <option key={value} value={value}>{modeLabel(value)}</option>)}</select>
+        <ChipChoice label="Project permissions" caption="Agents may" value={mode} busy={busy} options={approvalModes.map(item => { const Icon = item.icon; return { id: item.mode, label: item.label, detail: item.detail, icon: <Icon size={13}/> }; })} onChange={value => void choose(value)}/>
       </Row>
     </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>}
     {!publicDemo && <SuggestionSettings/>}
@@ -93,7 +93,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
     </div></section>}
     {network && <section><h2>Python network</h2><div className="settings-card">
       <Row title="Sites" detail={network.mode === 'full' ? 'Python in Code and Notebook blocks can reach any website.' : `Python asks before reaching a new website. ${network.preset.join(' and ')} are always allowed for installing packages.`}>
-        <select aria-label="Python network" value={network.mode} onChange={event => void saveNetwork(event.target.value as 'ask' | 'full')}><option value="ask">Ask for each site</option><option value="full">Full network</option></select>
+        <ChipChoice label="Python network" value={network.mode} options={[{ id: 'ask', label: 'Ask for each site' }, { id: 'full', label: 'Full network' }]} onChange={value => void saveNetwork(value)}/>
       </Row>
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
@@ -279,7 +279,7 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
     <div className="usage-controls">
       <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
-      <select aria-label="Group usage" value={group} onChange={event => setGroup(event.target.value as Group)}><option value="model">By model</option><option value="task">By task</option></select>
+      <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
     </div>
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section className="settings-card usage-chart-card" aria-label="Spend over time">

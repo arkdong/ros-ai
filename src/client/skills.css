@@ -10,7 +10,7 @@
 .skill-sources button, .skill-tabs button { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; }
 .skill-sources button:hover, .skill-tabs button:hover { color: var(--ink); }
 .skill-sources button.active, .skill-tabs button.active { background: var(--paper); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
-.skill-search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--muted); }
+.skill-search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #e3e3e3; border-radius: 8px; background: var(--paper); color: var(--muted); }
 .skill-search input, .single-canvas-shell .skill-search input { flex: 1; min-width: 0; height: 30px; margin: 0; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; font: inherit; font-size: var(--text-sm); color: var(--ink); }
 .skill-browse-foot { display: flex; gap: 16px; margin-top: 8px; padding: 0 8px; }
 .skill-browse-foot .text-button { font-size: var(--text-sm); padding: 0; }

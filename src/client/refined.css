@@ -109,14 +109,17 @@
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
 .rail-section-title { font-size: 12px; letter-spacing: .07em; margin: 32px 4px 12px; color: var(--muted); }
-.rail-page .tool-connection { border: 1px solid var(--card-line); border-radius: var(--radius-card); margin-bottom: 10px; background: #fff; box-shadow: var(--card-shadow); }
-.rail-page .tool-connection-heading { padding: 16px 20px; min-height: 72px; gap: 16px; }
-.rail-page .tool-connection-heading:hover { background: #fafafa; border-radius: var(--radius-card); }
-.rail-page .tool-connection-name strong { font-size: 15px; letter-spacing: -.01em; }
-.rail-page .tool-connection-name small { font-size: 13px; color: var(--muted); margin-top: 3px; }
-.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #ebebeb; }
-.rail-page .connection-state { font-size: 13px; }
-.rail-page .resources-panel { border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
+.rail-page .tool-connection { border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; margin-bottom: 12px; background: #fff; box-shadow: 0 10px 32px rgba(0, 0, 0, .06); }
+.rail-page .tool-connection-name strong { font-size: 14px; font-weight: 500; }
+.rail-page .tool-connection-name small { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #eee; }
+.rail-page .connection-state { font-size: 12px; }
+.rail-page .resources-panel { border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; box-shadow: 0 10px 32px rgba(0, 0, 0, .06); }
+/* Buttons on these pages are the canvas's 30 px pills: black for the one action, white hairline for a second, text chips for the rest. */
+.rail-page .primary, .rail-page .secondary, .skill-modal .primary, .skill-modal .secondary { height: 30px; padding: 0 14px; border-radius: 15px; font-size: 13px; font-weight: 500; }
+.rail-page .text-button { font-size: 13px; }
+.rail-page .icon-button { width: 30px; height: 30px; border-radius: 8px; }
+.rail-page .inline-error { background: transparent; padding: 0; font-size: 13px; line-height: 1.5; color: var(--fail); }
 
 /* Scrollbars in sheets: thin, rounded and kept clear of the corners. */
 .modal::-webkit-scrollbar, .modal *::-webkit-scrollbar { width: 12px; height: 12px; }
