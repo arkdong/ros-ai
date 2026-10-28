@@ -1,4 +1,4 @@
-/* Skills: the list, browsing public sources, one skill's page, the Add dialog and the / menu of Ros's composers.
+/* Skills: the list, browsing public sources, one skill's page, the Add dialog and the / menu of ROS's composers.
    Rows, sections and the sidebar come from plugins.css. */
 .skills-intro { font-size: var(--text-sm); color: var(--muted); line-height: 1.5; margin: -2px 0 8px; }
 .skills-intro a { display: inline-flex; align-items: center; gap: 3px; color: var(--body); }
@@ -70,7 +70,7 @@
 .skill-source-text { max-height: 280px; overflow: auto; margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--canvas); color: var(--ink); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .skill-source-text.tall { max-height: 60vh; }
 
-/* The / menu above Ros's composer: the skills that are on, filtered as you type. */
+/* The / menu above ROS's composer: the skills that are on, filtered as you type. */
 .ros-bar, .assistant-panel.ros-panel .assistant-composer.ros-composer { position: relative; }
 .ros-model-menu.skill-menu { left: 0; right: 0; width: auto; max-height: 320px; bottom: calc(100% + 8px); }
 .ros-model-menu.skill-menu button.active { background: var(--canvas); }

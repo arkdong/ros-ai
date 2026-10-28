@@ -88,11 +88,11 @@
 .outside-command code { flex:1; min-width:0; font-size:11px; line-height:1.5; overflow-wrap:anywhere; user-select:all; }
 .cloud-waiting{display:grid;gap:10px;justify-items:start}.cloud-waiting p{margin:0}
 
-/* Ros on this computer: download progress */
+/* ROS on this computer: download progress */
 .local-ros-progress{height:6px;border-radius:3px;background:#eee;overflow:hidden;margin:2px 0 12px}
 .local-ros-progress span{display:block;height:100%;border-radius:3px;background:var(--ink,#171717);transition:width .4s ease}
 
-/* Agents › Local models: each server's models, with their context and whether Ros's agent can use them */
+/* Agents › Local models: each server's models, with their context and whether ROS's agent can use them */
 .local-models{list-style:none;margin:0 0 12px;padding:0;border:1px solid #eee;border-radius:8px}
 .local-models li{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid #f1f1f1}
 .local-models li:first-child{border-top:0}

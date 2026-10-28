@@ -13,7 +13,7 @@ const money = (value: number) => `US$${value.toFixed(2)}`;
 const localPresets = [{ name: 'Ollama', endpoint: 'http://127.0.0.1:11434/v1', logo: 'ollama' as const }, { name: 'LM Studio', endpoint: 'http://127.0.0.1:1234/v1', logo: 'lm-studio' as const }];
 const makers: ModelMaker[] = [{ id: 'unknown', label: 'Configured model', monogram: 'M' }, { id: 'nvidia', label: 'NVIDIA', monogram: 'NV' }, { id: 'moonshot', label: 'Moonshot', monogram: 'M' }, { id: 'openai', label: 'OpenAI', monogram: 'AI' }];
 
-/** Other OpenAI-compatible servers; hidden holds the connections other cards manage (Ollama, LM Studio, Ros on this computer). */
+/** Other OpenAI-compatible servers; hidden holds the connections other cards manage (Ollama, LM Studio, ROS on this computer). */
 export function InferenceConnections({ hidden = [], onChanged }: { hidden?: string[]; onChanged: () => Promise<unknown> }) {
   const [connections, setConnections] = useState<InferenceConnectionStatus[]>([]), [loading, setLoading] = useState(true), [adding, setAdding] = useState(false), [error, setError] = useState('');
   const load = useCallback(async () => { const value = await api<{ connections: InferenceConnectionStatus[] }>(path); setConnections(value.connections); }, []);

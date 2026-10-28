@@ -6,7 +6,7 @@
 // so a link survives moving or updating the code. It speaks MCP over stdio and forwards each
 // message to ros.ai on 127.0.0.1, with the token ros.ai wrote to its data folder. Your agent keeps
 // its own sign-in; ros.ai never sees it.
-// ros.ai also starts it for an agent it runs as Ros (Gemini CLI, Goose, OpenCode) when that agent has
+// ros.ai also starts it for an agent it runs as ROS (Gemini CLI, Goose, OpenCode) when that agent has
 // no HTTP MCP: ROS_AI_MCP_URL and ROS_AI_MCP_TOKEN then name that one turn's endpoint, and mcp.json is not read.
 // An agent whose MCP client gives no name of its own is named by its link: --client=hermes (Hermes Agent).
 import { existsSync, readFileSync } from 'node:fs';

@@ -4,7 +4,7 @@ import './chip-menu.css';
 
 export type ChipOption<T extends string> = { id: T; label: string; detail?: string; icon?: ReactNode };
 
-/** A setting with a few values: the chip names the current one, its menu lists the rest with a check, as in the Ros bar.
+/** A setting with a few values: the chip names the current one, its menu lists the rest with a check, as in the ROS bar.
  * Replaces the native select on the Settings and Memory pages. */
 export function ChipChoice<T extends string>({ label, value, options, caption, busy, disabled, onChange }: { label: string; value: T; options: ChipOption<T>[]; caption?: string; busy?: boolean; disabled?: boolean; onChange: (value: T) => void }) {
   const [open, setOpen] = useState(false);

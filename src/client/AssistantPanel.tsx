@@ -38,7 +38,7 @@ type Props = {
   /** Several proposals at once, in order: a turn's Accept all or Dismiss all. */
   onProposals: (proposalIds: string[], decision: 'accept' | 'dismiss') => Promise<unknown>;
   onInspectAction: (action: AssistantAction) => void;
-  /** Ros opens as a sheet over the map (half) or docked on the right (full). */
+  /** ROS opens as a sheet over the map (half) or docked on the right (full). */
   mode?: 'half' | 'full'; onMode?: (mode: 'half' | 'full') => void;
   /** Opens the Skills page from the / menu. */
   onSkills?: () => void;
@@ -122,8 +122,8 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     setTimeout(() => textarea.current?.focus(), 0);
     return null;
   };
-  return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="Ros" data-testid="assistant-panel">
-    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>Ros</h2><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close Ros" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
+  return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="ROS" data-testid="assistant-panel">
+    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>ROS</h2><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close ROS" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
@@ -139,19 +139,19 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     {plugins.chip&&<div className="plugin-chip-row">{plugins.chip}</div>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
-      <label className="sr-only" htmlFor="assistant-message">Message Ros</label>
+      <label className="sr-only" htmlFor="assistant-message">Message ROS</label>
       {skills.menu}
-      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask Ros, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
-        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what Ros runs with',at:new Date().toISOString(),status:'failed',error})}/>
+        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what ROS runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
         <span className="ros-footer-break" aria-hidden="true"/>
         {focusedNode || focusedArtifact
-          ? <span className="ros-context focused" title={`Ros is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show Ros the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
-          : <span className="ros-context" title="Select a block to point Ros at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
+          ? <span className="ros-context focused" title={`ROS is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show ROS the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
+          : <span className="ros-context" title="Select a block to point ROS at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
         {active ? <StopButton armed={stopArmed} onStop={stop}/>
-          : <button className="ros-send" data-testid="send-project-message" aria-label="Send to Ros" title={blocker?.summary||'Send to Ros'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
+          : <button className="ros-send" data-testid="send-project-message" aria-label="Send to ROS" title={blocker?.summary||'Send to ROS'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
   </aside>;
@@ -210,7 +210,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
       {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => grouped.has(action) ? action === changes[0] ? <TurnReview key="turn-review" actions={changes} detail={detail} onProposal={onProposal} onProposals={onProposals} onReference={onReference}/> : null : <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
       {turn.suggested && turn.status !== 'running' && <PluginSuggestionCard turn={turn} projectId={detail.project.id} {...plugins}/>}
-      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'Ros'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
+      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'ROS'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
     </article>
   </section>;
 }
@@ -274,7 +274,7 @@ function ProposalReview({ proposal, title, detail, onProposal, onOpen }: { propo
   return <section className="proposal-review" aria-label="Proposed canvas change">
     <header><GitBranch size={14} aria-hidden="true"/><strong title={title}>{title.split('\n')[0]}</strong></header>
     {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}
-    {stale && <p className="proposal-review-stale">The canvas changed since. Ask Ros to update this.</p>}
+    {stale && <p className="proposal-review-stale">The canvas changed since. Ask ROS to update this.</p>}
     <div className="proposal-review-actions"><button className="primary small" disabled={busy || stale} onClick={() => void decide('accept')}><Check size={13}/> Accept</button><button className="text-button small" disabled={busy} onClick={() => void decide('dismiss')}>Dismiss</button><button className="text-button small proposal-review-open" onClick={onOpen}>Show on canvas <ArrowRight size={12}/></button></div>
   </section>;
 }
@@ -322,7 +322,7 @@ function TurnReview({ actions, detail, onProposal, onProposals, onReference }: {
     })}</ul>
     {shown.length < rows.length && <button type="button" className="text-button small turn-review-more" onClick={() => setShowAll(true)}>{rows.length - shown.length} more</button>}
     {fresh.some(row => row.proposal.after?.some(id => pending.has(id))) && <p className="proposal-review-stale">Dismissing a change also drops the changes that go inside it.</p>}
-    {outdated > 0 && <p className="proposal-review-stale">{outdated === pending.size ? 'The canvas changed since, so these can only be dismissed. Ask Ros to propose them again.' : `${plural(outdated)} no longer fit the canvas and can only be dismissed.`}</p>}
+    {outdated > 0 && <p className="proposal-review-stale">{outdated === pending.size ? 'The canvas changed since, so these can only be dismissed. Ask ROS to propose them again.' : `${plural(outdated)} no longer fit the canvas and can only be dismissed.`}</p>}
     <div className="proposal-review-actions">{pending.size > 0 && <>{fresh.length > 0 && <button className="primary small" disabled={busy} onClick={() => void run(() => onProposals(freshIds, 'accept'))}><Check size={13}/> Accept all</button>}<button className="text-button small" disabled={busy} onClick={() => void run(() => onProposals(ids, 'dismiss'))}>Dismiss all</button></>}<button className="text-button small proposal-review-open" onClick={() => { const first = [...pending.values()][0]; const block = rows.flatMap(row => row.proposal.status === 'accepted' ? row.proposal.operations : []).flatMap(operation => operation.type === 'addNode' ? [operation.node.id] : operation.type === 'updateNode' ? [operation.id] : []).map(id => detail.project.canvas.nodes.find(node => node.id === id)).find(Boolean); if (first) onReference({ kind: 'proposal', id: first.proposal.id, label: first.action.title }); else if (block) onReference({ kind: 'node', id: block.id, label: block.title }); }}>Show on canvas <ArrowRight size={12}/></button></div>
   </section>;
 }

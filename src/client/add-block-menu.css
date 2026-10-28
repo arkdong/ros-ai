@@ -1,4 +1,4 @@
-/* Add block: a 280 px menu beside the tools card, in the Ros bar's menu language. */
+/* Add block: a 280 px menu beside the tools card, in the ROS bar's menu language. */
 .add-block-menu { position: absolute; z-index: 14; width: 280px; display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view); background: var(--paper); box-shadow: var(--shadow-view); }
 .add-block-search { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; padding: 4px 10px 8px; border-bottom: 1px solid var(--line-soft); color: var(--muted); }
 .add-block-search input, .single-canvas-shell .add-block-search input { flex: 1; min-width: 0; padding: 2px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; font: inherit; font-size: var(--text-sm); color: var(--ink); }

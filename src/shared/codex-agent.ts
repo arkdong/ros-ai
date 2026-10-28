@@ -1,7 +1,7 @@
 import type { AgentModel } from './agent-models.js';
 
 /** Who pays for a Codex turn inside ros.ai: the person's ChatGPT subscription, through Codex's own sign-in, or the OpenAI
- * API key on the Agents page. Each is its own agent, 'codex' and 'codex-key' (IN_APP_AGENTS in assistant.ts), picked per project in the Ros bar. */
+ * API key on the Agents page. Each is its own agent, 'codex' and 'codex-key' (IN_APP_AGENTS in assistant.ts), picked per project in the ROS bar. */
 export type CodexBilling = 'plan' | 'api-key';
 /** The models Codex runs on with an OpenAI API key. ros.ai knows their prices (openai-provider.ts), which keeps each turn within its cap.
  * On a ChatGPT subscription Codex offers its own list (model/list). */

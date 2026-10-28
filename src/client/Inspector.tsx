@@ -30,7 +30,7 @@ type Props = {
   readOnlyNote?: string;
   /** The PDF or image a File block shows. */
   file?: ShownFile;
-  /** Asks Ros to check the block's claims on the web. */
+  /** Asks ROS to check the block's claims on the web. */
   onCheckSources?: () => void;
   /** Set where SQL runs, on this computer: reloads the project after a query result is saved. */
   sql?: { onChanged: () => Promise<unknown> };
@@ -99,7 +99,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {side==='history'
         ? <div className="note-side-scroll runs-section">{!runs.length&&<div className="empty-small"><Clock3 size={22} strokeWidth={1.2}/><p>Each run of this node will appear here.</p></div>}{runs.map((run,index)=><RunDetails key={run.id} run={run} detail={detail} initialOpen={index===0} onAttach={onAttach} onCancel={onCancel} onRetry={onRetry} readOnly={readOnly}/>)}</div>
         : <div ref={thread} className="note-side-scroll conversation" data-testid="node-conversation">
-          {!messages.length&&<p className="note-side-welcome">No earlier conversation on this block. To talk about it, select it on the map and ask Ros from the composer.</p>}
+          {!messages.length&&<p className="note-side-welcome">No earlier conversation on this block. To talk about it, select it on the map and ask ROS from the composer.</p>}
           {messages.map(message => {
             const run = message.runId ? detail.runs.find(r => r.id === message.runId) : undefined;
             const sources = run ? evidenceForRun(run, detail) : [];

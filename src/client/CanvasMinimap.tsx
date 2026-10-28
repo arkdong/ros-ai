@@ -3,7 +3,7 @@ import { MiniMap, useReactFlow, useStore, type Node } from '@xyflow/react';
 import './canvas-minimap.css';
 
 const WIDTH = 168, HEIGHT = 112, IDLE_MS = 1400;
-// The Ros bar is centred and up to 620 px wide; below this map width it would run into the minimap, so the minimap moves to the right (see canvas-minimap.css).
+// The ROS bar is centred and up to 620 px wide; below this map width it would run into the minimap, so the minimap moves to the right (see canvas-minimap.css).
 const BESIDE_BAR = 620 + 2 * (16 + WIDTH + 12);
 // An open Group is drawn as its frame, so the blocks it holds show inside it instead of vanishing into one grey slab;
 // blocks and closed Groups are drawn solid (canvas-minimap.css).

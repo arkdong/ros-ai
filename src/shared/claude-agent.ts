@@ -11,7 +11,7 @@ export const CLAUDE_MODELS: AgentModel[] = [
 /** One of Claude Code's model aliases (CLAUDE_MODELS, or another its own list offers). */
 export type ClaudeModel = string;
 /** Who pays for a Claude Code turn: the Claude API key on the Agents page, or the person's own Claude subscription.
- * Each is its own agent, 'claude' and 'claude-plan' (IN_APP_AGENTS in assistant.ts), picked per project in the Ros bar. */
+ * Each is its own agent, 'claude' and 'claude-plan' (IN_APP_AGENTS in assistant.ts), picked per project in the ROS bar. */
 export type ClaudeBilling = 'api-key' | 'plan';
 /** Where Claude Code looks things up on the web: its own search and page reading, or ros.ai's search plan on the
  * search service from the Plugins page (Tavily, Exa or Brave), which starts at once as notes on the map.

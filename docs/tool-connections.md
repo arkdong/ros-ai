@@ -65,7 +65,7 @@ The session gets its own config folder inside ros.ai's data folder and only the 
 
 ## Model and effort for Claude Code and Codex
 
-Each of the four agents ros.ai runs (Claude Code and Codex, each on a subscription or on an API key) keeps one model and one effort for all projects. Pick them on the agent's card on the **Agents** page, or from the chip beside the agent in the Ros bar; both show the same choice. The chip shows the model with the effort as five bars, and its menu names the level.
+Each of the four agents ros.ai runs (Claude Code and Codex, each on a subscription or on an API key) keeps one model and one effort for all projects. Pick them on the agent's card on the **Agents** page, or from the chip beside the agent in the ROS bar; both show the same choice. The chip shows the model with the effort as five bars, and its menu names the level.
 
 - **Claude Code** offers the models its own Agent SDK lists (Opus, Fable, Sonnet and Haiku), read once from the bundled Claude Code with no key and no network, at Low, Medium, High, Extra high or Max. ros.ai passes them as Claude Code's `model` and `effort` options. Sonnet is the default.
 - **Codex** on the ChatGPT subscription offers the models the installed Codex CLI lists (`model/list`) and starts from the model and `model_reasoning_effort` in your own Codex settings until you pick one here. Each turn sends the choice with `turn/start`.

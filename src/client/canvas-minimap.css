@@ -12,7 +12,7 @@
    edge, so the blocks it holds show on top of it; the tints add up, so a group inside a group reads a shade deeper. */
 .canvas-minimap .react-flow__minimap-node { fill: #c4c4c4; stroke: none; }
 .canvas-minimap .react-flow__minimap-node.frame { fill: rgb(0 0 0 / .035); stroke: #d0d0d0; stroke-width: 1px; vector-effect: non-scaling-stroke; }
-/* On maps too narrow for it to sit beside the Ros bar, it moves over the zoom controls at the bottom right, which
+/* On maps too narrow for it to sit beside the ROS bar, it moves over the zoom controls at the bottom right, which
    already rise above the bar there; at the left it would run into the bar or the canvas tools. */
 .workspace:has(.ros-dock) .canvas-minimap.above-bar .react-flow__panel.react-flow__minimap {
   left: auto; right: calc(var(--zoom-right, 21px) - 7px); bottom: 72px; margin-bottom: var(--zoom-lift, 0px);

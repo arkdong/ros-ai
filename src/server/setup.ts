@@ -24,7 +24,7 @@ const agentLabels: Record<AgentId, string> = { 'claude-code': 'Claude Code', cod
 const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Claude API key', openai: 'OpenAI key', tavily: 'Tavily key', exa: 'Exa key', brave: 'Brave Search key' };
 const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor, Gemini CLI, Pi and Hermes Agent (names only)', 'model servers on 127.0.0.1'];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
-/** localRos: the Ros download on this computer, which Reset onboarding can remove. */
+/** localRos: the ROS download on this computer, which Reset onboarding can remove. */
 type Deps = { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; localRos?: Pick<LocalRos, 'status' | 'remove'> };
 
 export class Setup {
@@ -89,10 +89,10 @@ export class Setup {
     this.cache = null;
     return result;
   }
-  /** Ros on this computer is downloaded, downloading, or left a download that stopped. */
+  /** ROS on this computer is downloaded, downloading, or left a download that stopped. */
   private downloaded() { return Boolean(this.deps.localRos && this.deps.localRos.status().state !== 'not-downloaded'); }
   /** What Reset onboarding can undo on this computer, for its options: the links this ros.ai recorded (only those, so a
-   * test copy never removes the links another ros.ai made), saved plugin tokens, the hosted Ros sign-in and the download. */
+   * test copy never removes the links another ros.ai made), saved plugin tokens, the hosted ROS sign-in and the download. */
   resetPlan(): SetupResetPlan {
     return {
       links: this.links.records().map(record => agentLabels[record.agent] ?? record.agent),
@@ -117,8 +117,8 @@ export class Setup {
       }
     }
     if (input.tokens) for (const id of this.deps.plugins.saved()) await attempt(`Forgot the ${PLUGINS.find(plugin => plugin.id === id)?.name ?? id} token.`, () => this.deps.plugins.disconnect(id));
-    if (input.cloud && this.deps.cloud.signedIn) await attempt('Signed out of hosted Ros.', () => this.deps.cloud.signOut());
-    if (input.localRos && this.downloaded()) await attempt('Removed the Ros download.', () => this.deps.localRos!.remove());
+    if (input.cloud && this.deps.cloud.signedIn) await attempt('Signed out of hosted ROS.', () => this.deps.cloud.signOut());
+    if (input.localRos && this.downloaded()) await attempt('Removed the ROS download.', () => this.deps.localRos!.remove());
     this.seen(false);
     this.cache = null;
     return { done, failed };

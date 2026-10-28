@@ -15,7 +15,7 @@ import { findBinary, pretty } from './setup-detect.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { ACP_AGENTS, ACP_AGENT_IDS, isAcpAgent, type AcpAgentId, type AcpAgentStatus } from '../shared/acp-agents.js';
 
-/** Gemini CLI, Goose and OpenCode as Ros, through the Agent Client Protocol: ros.ai starts the agent for
+/** Gemini CLI, Goose and OpenCode as ROS, through the Agent Client Protocol: ros.ai starts the agent for
  * one turn, gives it ros.ai's tools over a per-turn MCP endpoint, and refuses everything else it asks
  * for. Each agent keeps its own sign-in and model; ros.ai never sees either.
  *

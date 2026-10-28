@@ -1,6 +1,6 @@
 /* The first run as a canvas, in a window of its own: no rail, no sidebar, the wordmark top left. The page is a node in
    the middle, the start screen's column with the card's frame around all of it. Around it a small project runs the
-   way one runs on the map: a group of three blocks, an agent reading them, a proposal from Ros to accept or keep out,
+   way one runs on the map: a group of three blocks, an agent reading them, a proposal from ROS to accept or keep out,
    and what was found on this computer; wires join them to the page as blocks are wired on the map. The lime stays in
    the ring, on keyboard focus and on the choices the person has made. */
 .first-run { position: relative; height: 100dvh; box-sizing: border-box; overflow: auto; color: var(--ink); background: var(--canvas) radial-gradient(circle, #d9d9d9 1px, transparent 1.2px) 0 0 / 14px 14px; }
@@ -88,7 +88,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-live i { width: 6px; height: 6px; border-radius: 50%; background: #b7bfba; flex-shrink: 0; }
 .fr-live.ok i { background: var(--ok); }
 .fr-live.fail i { background: var(--fail); }
-/* Ros's proposal: dashed until the person decides, as on the map; solid once accepted, faded once kept out. */
+/* ROS's proposal: dashed until the person decides, as on the map; solid once accepted, faded once kept out. */
 .fr-sat.proposal { border-style: dashed; border-color: #c9c9c9; box-shadow: none; background: rgba(255, 255, 255, .85); }
 .fr-sat.proposal.decided { border-style: solid; border-color: #e3e3e3; background: #fff; }
 .fr-sat.proposal.kept { opacity: .7; }
@@ -103,9 +103,9 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 @keyframes fr-breathe { 50% { opacity: .3; } }
 @keyframes fr-glow { from { background: rgba(183, 239, 50, .6); } }
 
-/* Set up Ros: two choices under their own captions. The account choice first and largest, washed lime with the lime
-   border once chosen and a lime Recommended tag; Continue without an account as one quiet row. Then Ros on this
-   computer as two tiles, Download Ros and Later, the chosen one with the lime border; one status row once it runs. */
+/* Set up ROS: two choices under their own captions. The account choice first and largest, washed lime with the lime
+   border once chosen and a lime Recommended tag; Continue without an account as one quiet row. Then ROS on this
+   computer as two tiles, Download ROS and Later, the chosen one with the lime border; one status row once it runs. */
 .fr-account { gap: 8px; }
 .fr-cap { margin: 2px 0 -2px; font-size: var(--text-xs); color: var(--muted); }
 .fr-cap.second { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }

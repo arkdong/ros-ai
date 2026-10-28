@@ -62,7 +62,7 @@
 .direct-canvas .block-table-preview td,.direct-canvas .block-table-preview th{max-width:96px;padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #e8ece9}
 .direct-canvas .block-table-preview small{display:block;font-size:10px;color:#7b857d;margin-top:8px}
 .direct-canvas .block-version{margin-left:auto;margin-right:10px}
-/* Picking blocks for a group: the card sits beside the tools, clear of the Ros bar at the bottom. */
+/* Picking blocks for a group: the card sits beside the tools, clear of the ROS bar at the bottom. */
 .canvas-group-toolbar{position:absolute;left:70px;top:16px;z-index:13;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border:1px solid #e3e3e3;background:#fff;border-radius:12px;box-shadow:var(--float-shadow,0 6px 20px #00000014);font-size:13px;color:#6b6b6b;max-width:calc(100% - 96px);flex-wrap:wrap}
 .canvas-group-toolbar input{width:170px;font-size:13px}
 .group-highlight-picker{display:flex;flex-direction:column;gap:7px}

@@ -40,7 +40,7 @@ function fixture() {
 }
 const into = (id: string, parentId: string): Mutation => ({ type: 'updateNode', id, patch: { parentId, x: 0, y: 480 } });
 
-test('Ros moves blocks into any group on the canvas, whatever is selected, and with full access the move lands at once', async () => {
+test('ROS moves blocks into any group on the canvas, whatever is selected, and with full access the move lands at once', async () => {
   // Nothing selected, one other group selected, or the block's own group selected: each is the same change.
   for (const selected of [[], ['group-b'], ['group-a']]) {
     const f = fixture();

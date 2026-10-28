@@ -12,11 +12,11 @@ import { api, post } from './api';
 import './first-run.css';
 
 /** The first run, in a window of its own with no rail or sidebar, drawn as a canvas with a small project running on
- * it. The page is a node in the middle: what ros.ai is; then an account or not and Ros downloaded to this computer
+ * it. The page is a node in the middle: what ros.ai is; then an account or not and ROS downloaded to this computer
  * or not; then the tools found here (SetupScreen). Around it, the way a project looks on the map: a group with a
- * trip's brief, its hotels and its flights, an agent reading them step by step, a proposal from Ros to accept or keep
- * out, and what was found on this computer. The agent is the person's own when one was found, Ros's node says where
- * Ros runs for the choices made so far, and the found node fills in as links are made. */
+ * trip's brief, its hotels and its flights, an agent reading them step by step, a proposal from ROS to accept or keep
+ * out, and what was found on this computer. The agent is the person's own when one was found, ROS's node says where
+ * ROS runs for the choices made so far, and the found node fills in as links are made. */
 
 type Step = 'welcome' | 'account' | 'tools';
 type Props = { status: SetupStatus; onDone: () => void; onAgents: () => void; onPlugins: () => void; onChanged: () => Promise<unknown> };
@@ -47,7 +47,7 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
   const local = useLocalRos();
   const sawWaiting = useRef(false), started = useRef(false);
   useEffect(() => { void api<CloudAccountStatus>('/api/cloud').then(setCloud, () => undefined); }, []);
-  // The example: the agent moves on every 1.8 s and its clock runs until it is done; then Ros's proposal appears and
+  // The example: the agent moves on every 1.8 s and its clock runs until it is done; then ROS's proposal appears and
   // waits for Accept or Keep mine.
   const [phase, setPhase] = useState(0), [decision, setDecision] = useState<'accepted' | 'kept' | null>(null), [seconds, setSeconds] = useState(0);
   const working = phase < WORK.length - 1;
@@ -62,7 +62,7 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
   const steps: Step[] = ['welcome', ...(hosted || offline ? ['account' as const] : []), ...(status.agents.some(agent => agent.found) || status.models.some(model => model.running) || status.apps.length ? ['tools' as const] : [])];
   const at = steps.indexOf(step);
 
-  /** Download Ros starts it when the page is left, so a change of mind costs nothing. */
+  /** Download ROS starts it when the page is left, so a change of mind costs nothing. */
   const startDownload = () => {
     const current = local.status;
     if (!download || !current?.supported || (current.state !== 'not-downloaded' && current.state !== 'failed') || started.current) return;
@@ -150,30 +150,30 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
   else if (step === 'account') {
     const current = local.status, waiting = opened && choice === 'account' && !signedIn, both = hosted && offline;
     const percent = current?.totalBytes ? Math.min(100, Math.round(((current.doneBytes ?? 0) / current.totalBytes) * 100)) : 0;
-    const [title, lead] = both ? ['Set up Ros', `Two choices, both free. Your projects stay on ${computer} either way.`]
+    const [title, lead] = both ? ['Set up ROS', `Two choices, both free. Your projects stay on ${computer} either way.`]
       : hosted ? ['Sign in or create an account', `Free while ros.ai is new. Your projects stay on ${computer} either way.`]
-      : [`Run Ros on ${computer}`, 'Free, and it works offline. Ros can also run on your own keys.'];
+      : [`Run ROS on ${computer}`, 'Free, and it works offline. ROS can also run on your own keys.'];
     const tick = (on: boolean) => <span className="setup-ck" aria-hidden="true">{on && <Check size={12} strokeWidth={2.5}/>}</span>;
-    // Ros on this computer: two tiles while nothing is downloaded, one status row once the download runs.
+    // ROS on this computer: two tiles while nothing is downloaded, one status row once the download runs.
     const ros = !offline ? null : !current || current.state === 'not-downloaded'
-      ? <div className="fr-tiles" role="radiogroup" aria-label={`Download Ros to ${computer}`}>
+      ? <div className="fr-tiles" role="radiogroup" aria-label={`Download ROS to ${computer}`}>
         <button type="button" role="radio" aria-checked={download} className={`fr-acc tile${download ? ' on' : ''}`} onClick={() => setDownload(true)}>
-          <span className="fr-acc-head"><RosMark/><b>Download Ros</b>{tick(download)}</span>
+          <span className="fr-acc-head"><RosMark/><b>Download ROS</b>{tick(download)}</span>
           <span className="fr-acc-why">3 GB in the background while you set up. Free, and it works offline on {computer}.</span>
         </button>
         <button type="button" role="radio" aria-checked={!download} className={`fr-acc tile${download ? '' : ' on'}`} onClick={() => setDownload(false)}>
           <span className="fr-acc-head"><b>Later</b>{tick(!download)}</span>
-          <span className="fr-acc-why">Any time from Agents › Ros. {hosted ? 'Hosted Ros and your own keys work meanwhile.' : 'Ros runs on your own keys meanwhile.'}</span>
+          <span className="fr-acc-why">Any time from Agents › ROS. {hosted ? 'Hosted ROS and your own keys work meanwhile.' : 'ROS runs on your own keys meanwhile.'}</span>
         </button>
       </div>
       : <div className="fr-dl">
         <span className="fr-dl-tile" aria-hidden="true"><RosMark working={current.state === 'downloading'}/></span>
         <span className="setup-text">
-          <span className="setup-name">{current.state === 'failed' ? `Download Ros to ${computer}` : `Ros on ${computer}`}</span>
-          <span className="setup-why">{current.state === 'failed' ? localError || current.error || 'The download stopped.' : current.state === 'downloading' ? 'Downloading in the background' : current.state === 'starting' ? 'Downloaded · getting Ros ready' : `Works offline. Nothing leaves ${computer}.`}</span>
+          <span className="setup-name">{current.state === 'failed' ? `Download ROS to ${computer}` : `ROS on ${computer}`}</span>
+          <span className="setup-why">{current.state === 'failed' ? localError || current.error || 'The download stopped.' : current.state === 'downloading' ? 'Downloading in the background' : current.state === 'starting' ? 'Downloaded · getting ROS ready' : `Works offline. Nothing leaves ${computer}.`}</span>
         </span>
         {current.state === 'failed' ? <button type="button" className="chip-button" onClick={retry}>Try again</button>
-          : current.state === 'downloading' ? <span className="setup-cap">{current.totalBytes ? `${gb(current.doneBytes)} of ${gb(current.totalBytes)}` : 'Finding the files'}<span className="setup-bar" role="progressbar" aria-label="Ros download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }}/></span></span>
+          : current.state === 'downloading' ? <span className="setup-cap">{current.totalBytes ? `${gb(current.doneBytes)} of ${gb(current.totalBytes)}` : 'Finding the files'}<span className="setup-bar" role="progressbar" aria-label="ROS download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }}/></span></span>
           : current.state === 'starting' ? <span className="setup-state"><LoaderCircle size={12} className="spin"/>Starting</span>
           : <span className="setup-state ok"><i/>Ready</span>}
       </div>;
@@ -186,17 +186,17 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
         {hosted && <div className="fr-choices" role="radiogroup" aria-label="How to use ros.ai">
           <button type="button" role="radio" aria-checked={choice === 'account'} className={`fr-acc main${choice === 'account' ? ' on' : ''}`} disabled={signedIn} onClick={() => setChoice('account')}>
             <span className="fr-acc-head"><RosMark/><b>Use a ros.ai account</b>{signedIn ? <span className="setup-state ok"><i/>Signed in</span> : <><span className="fr-rec">Recommended</span>{tick(choice === 'account')}</>}</span>
-            {signedIn ? <span className="fr-acc-pts one">{cloud?.email ? `Signed in as ${cloud.email}. ` : ''}Ros, hosted by ros.ai, now appears as a model.</span>
+            {signedIn ? <span className="fr-acc-pts one">{cloud?.email ? `Signed in as ${cloud.email}. ` : ''}ROS, hosted by ros.ai, now appears as a model.</span>
               : waiting ? <span className="fr-acc-pts one"><LoaderCircle size={13} className="spin"/>A ros.ai page opened in your browser. Sign in or create your account there; this page moves on by itself.</span>
-              : <ul className="fr-acc-pts"><li><Check size={13} strokeWidth={2.5}/>Ros, hosted by ros.ai, free while ros.ai is new</li><li><Check size={13} strokeWidth={2.5}/>Sign in with GitHub or an email code</li><li><Check size={13} strokeWidth={2.5}/>Only what you give Ros leaves {computer}</li></ul>}
+              : <ul className="fr-acc-pts"><li><Check size={13} strokeWidth={2.5}/>ROS, hosted by ros.ai, free while ros.ai is new</li><li><Check size={13} strokeWidth={2.5}/>Sign in with GitHub or an email code</li><li><Check size={13} strokeWidth={2.5}/>Only what you give ROS leaves {computer}</li></ul>}
           </button>
           {!signedIn && <button type="button" role="radio" aria-checked={choice === 'without'} className={`fr-acc alt${choice === 'without' ? ' on' : ''}`} onClick={() => setChoice('without')}>
-            <span className="setup-text"><span className="setup-name">Continue without an account</span><span className="setup-why">Ros runs on your own keys{offline ? ` or on ${computer}` : ''}. Your own agents work the same.</span></span>
+            <span className="setup-text"><span className="setup-name">Continue without an account</span><span className="setup-why">ROS runs on your own keys{offline ? ` or on ${computer}` : ''}. Your own agents work the same.</span></span>
             {tick(choice === 'without')}
           </button>}
         </div>}
         {error && <p className="inline-error" role="alert">{error}</p>}
-        {both && <p className="fr-cap second">Choice 2 of 2 · Ros on {computer}</p>}
+        {both && <p className="fr-cap second">Choice 2 of 2 · ROS on {computer}</p>}
         {ros}
         <footer className="setup-foot">
           <RosMark working={waiting}/>
@@ -213,12 +213,12 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
   } else page = <SetupScreen status={screenStatus} hostedOn={choice === 'account'} localRos={local.status} after={stepLine}
     onDone={onDone} onAgents={onAgents} onPlugins={onPlugins} onChanged={onChanged}/>;
 
-  // The nodes. Left: the steps, then the example's group. Right: its agent, Ros's proposal once the agent is done,
+  // The nodes. Left: the steps, then the example's group. Right: its agent, ROS's proposal once the agent is done,
   // and what was found on this computer.
   const found = status.agents.filter(agent => agent.found), running = status.models.filter(model => model.running);
   const example = found.find(agent => agent.id === 'claude-code') ?? found.find(agent => agent.id !== 'cursor');
   const agentId: AgentId = example?.id ?? 'claude-code', agentLabel = example?.label ?? 'Claude Code';
-  const stepLabel: Record<Step, string> = { welcome: 'Welcome', account: hosted ? 'Set up Ros' : `Ros on ${computer}`, tools: 'Your tools' };
+  const stepLabel: Record<Step, string> = { welcome: 'Welcome', account: hosted ? 'Set up ROS' : `ROS on ${computer}`, tools: 'Your tools' };
   const all = [
     ...found.map(agent => ({ key: agent.id, icon: <AgentIcon id={agent.id} size={14}/>, label: agent.label, note: agent.link ? 'linked' : agent.signedIn ? 'signed in' : agent.signals.includes('used recently') ? 'used recently' : 'found' })),
     ...running.map(model => ({ key: model.id, icon: <BrandLogo id={model.id} size={14}/>, label: model.label, note: model.models.length ? `${model.models.length} model${model.models.length === 1 ? '' : 's'}` : 'running' })),
@@ -227,7 +227,7 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
   const lines = all.slice(0, 6), more = all.length - lines.length;
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const dl = local.status;
-  // Where Ros runs for the choices made so far, under its proposal: the download while it runs, else the account choice.
+  // Where ROS runs for the choices made so far, under its proposal: the download while it runs, else the account choice.
   const where = signedIn ? `Hosted by ros.ai${cloud?.email ? ` · ${cloud.email}` : ''}`
     : hosted && step !== 'welcome' && choice === 'without' ? `On your keys${offline ? ` or on ${computer}` : ''}`
     : hosted ? 'Hosted by ros.ai · free while ros.ai is new'
@@ -250,13 +250,13 @@ export function FirstRun({ status, onDone, onAgents, onPlugins, onChanged }: Pro
     title: <span className="fr-swap" key={phase}>{WORK[phase].doing}</span>,
     body: <ol className={`fr-steps${working ? ' live' : ''}`}>{WORK.map((item, index) => { const done = index < phase || !working; return <li key={item.done} className={done ? 'done' : index === phase ? 'now' : ''}><i>{done && <Check size={9} strokeWidth={3}/>}</i>{done ? item.done : item.doing}</li>; })}</ol>,
     foot: <><span className="fr-logos">{AGENTS.map(id => <span key={id} className={found.some(agent => agent.id === id) ? 'on' : ''}><AgentIcon id={id} size={13}/></span>)}</span><span className="fr-cut">Any vendor</span></> };
-  const proposal: Node | null = working ? null : { id: 'proposal', stamp: `proposal-${decision}`, className: `proposal${decision ? ` decided ${decision}` : ''}`, kind: <><RosMark working={dl?.state === 'downloading'}/>Ros · proposal</>, foot: rosFoot,
+  const proposal: Node | null = working ? null : { id: 'proposal', stamp: `proposal-${decision}`, className: `proposal${decision ? ` decided ${decision}` : ''}`, kind: <><RosMark working={dl?.state === 'downloading'}/>ROS · proposal</>, foot: rosFoot,
     state: decision === 'accepted' ? <span className="fr-live ok"><i/>Accepted</span> : decision === 'kept' ? 'Kept out' : 'For you', title: 'Stay at Lis Blue',
     body: decision === 'accepted' ? <p>Added to the brief. Everything an agent makes lands this way: only after you accept it.</p>
       : decision === 'kept' ? <p>Nothing changed. Your brief stays as it was.</p>
       : <><p>€96 a night and eight minutes to the venue: €620 under budget. Add it to the brief?</p><span className="fr-chips"><button type="button" className="fr-chip" onClick={() => setDecision('accepted')}>Accept</button><button type="button" className="fr-chip lt" onClick={() => setDecision('kept')}>Keep mine</button></span></> };
   const mac: Node = { id: 'computer', stamp: `computer-${all.map(line => line.key + line.note).join()}`, kind: <><Laptop size={12}/>On {computer}</>, state: all.length ? `${all.length} found` : undefined,
-    body: lines.length ? <><ul className="fr-found">{lines.map(line => <li key={line.key}>{line.icon}<span>{line.label}</span><small>{line.note}</small></li>)}</ul>{more > 0 && <p className="fr-more">and {more} more</p>}</> : 'No agents, model servers or apps found yet. Ros works on its own.',
+    body: lines.length ? <><ul className="fr-found">{lines.map(line => <li key={line.key}>{line.icon}<span>{line.label}</span><small>{line.note}</small></li>)}</ul>{more > 0 && <p className="fr-more">and {more} more</p>}</> : 'No agents, model servers or apps found yet. ROS works on its own.',
     foot: <span className="fr-cut">{status.lookedAt.length} place{status.lookedAt.length === 1 ? '' : 's'} looked at · names and dates only</span> };
   const node = (item: Node, order: number) => <section key={item.id} data-id={item.id} className={`fr-sat${item.className ? ` ${item.className}` : ''}`} style={{ animationDelay: `${120 + order * 70}ms` }}>
     <div className="fr-sat-in" key={item.stamp}>

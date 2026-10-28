@@ -31,14 +31,14 @@ test('reset onboarding undoes the chosen parts and forgets that the first run wa
     // Only the ticked options run; the token the environment holds cannot be forgotten, and the reset says so.
     const answer = await setup.reset({ tokens: true, localRos: true });
     assert.deepEqual(calls, ['token:slack', 'local']);
-    assert.deepEqual(answer.done, ['Forgot the Slack token.', 'Removed the Ros download.']);
+    assert.deepEqual(answer.done, ['Forgot the Slack token.', 'Removed the ROS download.']);
     assert.deepEqual(answer.failed, ['This token comes from NOTION_TOKEN in your environment.']);
     assert.equal(signedIn, true, 'the sign-in stays when its box is not ticked');
     assert.equal((await setup.status()).seenAt, null, 'the first run shows again');
     assert.deepEqual(JSON.parse(readFileSync(join(dir, 'setup.json'), 'utf8')), { seenAt: null });
 
     const again = await setup.reset({ cloud: true });
-    assert.deepEqual(again, { done: ['Signed out of hosted Ros.'], failed: [] });
+    assert.deepEqual(again, { done: ['Signed out of hosted ROS.'], failed: [] });
     assert.deepEqual(setup.resetPlan(), { links: [], tokens: ['Slack', 'Notion'], cloud: false, localRos: false });
     await assert.rejects(setup.reset({ apps: true }), 'unknown options are refused');
   } finally {
