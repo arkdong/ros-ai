@@ -11,6 +11,7 @@ import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } fro
 import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
 import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
+import { readSavedList, saveLocal } from './persistence';
 import './plugins.css';
 
 export function PluginMark({id,size}:{id:string;size?:number}) {
@@ -66,9 +67,18 @@ export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId
   return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
 }
 
+/** What the page read last in this session: it opens with that at once while it reads again. */
+type PluginReads = { plugins?: PluginStatus[]; apps?: AppConnectionStatus[]; google?: GoogleDriveStatus | null; credentials?: CredentialStatus[]; budgets?: ConnectionBudgetStatus[]; search?: SearchServiceStatus | null; papers?: PaperSourceStatus[] | null; browser?: BrowserStatus | null };
+let lastReads: PluginReads = {};
+/** What was connected when the page last finished reading, saved on this computer, so the page and its sidebar open with it. */
+type Installed = { id: PluginId; label: string };
+const savedPlugins = () => readSavedList<Installed>('plugins-installed', item => PLUGINS.some(plugin => plugin.id === item?.id) && typeof item?.label === 'string');
+export const lastInstalledPlugins = () => savedPlugins().map(item => item.id);
+
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
-  const [plugins,setPlugins]=useState<PluginStatus[]>([]),[apps,setApps]=useState<AppConnectionStatus[]>([]),[google,setGoogle]=useState<GoogleDriveStatus|null>(null),[credentials,setCredentials]=useState<CredentialStatus[]>([]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[search,setSearch]=useState<SearchServiceStatus|null>(null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(null),[browser,setBrowser]=useState<BrowserStatus|null>(null);
-  const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
+  const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null);
+  const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedPlugins);
+  useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser};},[plugins,apps,google,credentials,budgets,search,papers,browser]);
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
@@ -82,7 +92,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(searching.status==='fulfilled')setSearch(searching.value);
     if(sources.status==='fulfilled')setPapers(sources.value.sources);
     if(browsing.status==='fulfilled')setBrowser(browsing.value);
-    setErrors(failures);setLoading(false);
+    setErrors(failures);setLoading(false);setRead(true);
   },[publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
   const changed=async()=>{await refresh();await onChanged();};
@@ -98,9 +108,11 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(token?.configured)return token.verified===false?{label:'Check failed',connected:false}:{label:'Token saved',connected:true};
     return {label:'Not connected',connected:false};
   };
-  const installed=PLUGINS.filter(plugin=>stateOf(plugin).connected).map(plugin=>plugin.id);
-  const installedKey=installed.join(',');
-  useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as PluginId[]:[]);},[installedKey,onInstalled]);
+  // Until this visit's reads are in, what was connected last time still shows, so the list never starts empty.
+  const shown=(plugin:PluginDefinition)=>{const state=stateOf(plugin),before=read?undefined:remembered.find(item=>item.id===plugin.id);return before&&!state.connected?{label:before.label,connected:true}:state;};
+  const installedKey=JSON.stringify(PLUGINS.filter(plugin=>shown(plugin).connected).map(plugin=>({id:plugin.id,label:shown(plugin).label})));
+  // Once they are in, what is connected is saved on this computer for the next time.
+  useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('plugins-installed',installed);},[installedKey,read,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect your tools. Launch the local workspace to connect them.</p>;
   const card=(plugin:PluginDefinition)=>{
     if(plugin.id==='google-drive')return <GoogleDriveConnectionCard key={plugin.id} projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>;
@@ -119,9 +131,9 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
   };
   const current=selected?PLUGINS.find(plugin=>plugin.id===selected):undefined;
-  const row=(plugin:PluginDefinition)=><CatalogueRow key={plugin.id} mark={<PluginMark id={plugin.id} size={22}/>} name={plugin.name} summary={plugin.summary} state={stateOf(plugin)} unavailable={plugin.connect==='unavailable'} onClick={()=>onSelect(plugin.id)}/>;
+  const row=(plugin:PluginDefinition)=><CatalogueRow key={plugin.id} mark={<PluginMark id={plugin.id} size={22}/>} name={plugin.name} summary={plugin.summary} state={shown(plugin)} unavailable={plugin.connect==='unavailable'} onClick={()=>onSelect(plugin.id)}/>;
   if(current){return <div className="plugins-page plugin-detail">
-    <CatalogueHero crumb="Plugins" onBack={()=>onSelect(null)} mark={<PluginMark id={current.id} size={34}/>} name={current.name} summary={current.summary} state={stateOf(current)} uses={current.uses}/>
+    <CatalogueHero crumb="Plugins" onBack={()=>onSelect(null)} mark={<PluginMark id={current.id} size={34}/>} name={current.name} summary={current.summary} state={shown(current)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
     <h2 className="plugin-section">Connection</h2>
