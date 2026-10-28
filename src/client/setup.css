@@ -15,6 +15,8 @@
 .setup-apps { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
 .setup-apps .setup-row { border-top: 1px solid var(--line-soft); }
 .setup-apps .setup-row:nth-child(-n + 2) { border-top: 0; }
+/* The one line under the apps found: where they get set up. Plain text in ink, so it is read, not skimmed past. */
+.setup-apps-note { margin: 0; padding: 12px 0 2px; font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
 .setup-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .setup-tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line-soft); background: #fff; flex-shrink: 0; color: var(--body); }
 .setup-tile img, .setup-tile svg, .setup-tile .ros-mark, .setup-tile .ros-mark .research-ring { width: 16px; height: 16px; display: block; }

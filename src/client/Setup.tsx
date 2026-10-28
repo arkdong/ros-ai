@@ -189,7 +189,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
   const outcome = (choice: Choice) => choice.kind === 'ros' ? rosOutcome() : outcomes[choice.key];
   const local = localRos && localRos.state !== 'not-downloaded' ? <LocalRosRow status={localRos} computer={status.computer}/> : null;
   // Under the apps: where they connect. Nothing on this screen asks for them.
-  const appsNote = choices.some(choice => choice.kind === 'app' && !choice.done) ? <p className="setup-note">Their plugins install on the Plugins page; nothing to do for them here.</p> : undefined;
+  const appsNote = choices.some(choice => choice.kind === 'app' && !choice.done) ? <p className="setup-apps-note">Configure in Plugins</p> : undefined;
   const frame = (lead: string, card: ReactNode) => <div className="setup-screen"><div className="setup-column">
     <span className="setup-ring"><RosMark/></span>
     <h1>Connect your tools</h1>
