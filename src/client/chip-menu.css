@@ -1,0 +1,15 @@
+/* A chip with a menu, as in the Ros bar: the chip names the choice, the menu lists the options with a check. */
+.chip-slot { position: relative; display: inline-flex; }
+.chip-button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--canvas); color: var(--body); font: inherit; font-size: var(--text-xs); white-space: nowrap; cursor: pointer; }
+.chip-button:hover, .chip-button[aria-expanded="true"], .chip-button[aria-pressed="true"] { background: var(--line-soft); color: var(--ink); }
+.chip-button.set { color: var(--ink); }
+.chip-button .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.chip-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 2; display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view); background: var(--paper); box-shadow: var(--shadow-view); }
+.chip-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-block); background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.chip-menu button:hover { background: #f2f2f2; }
+.chip-menu .chip-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-check { width: 13px; display: inline-flex; justify-content: center; flex-shrink: 0; }
+/* A chip that only tells, such as the runtime's state. */
+.chip-button.still { cursor: default; }
+.chip-button.still:hover { background: var(--canvas); color: var(--body); }
+.chip-button.still.set:hover { color: var(--ink); }

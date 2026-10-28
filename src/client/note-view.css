@@ -1,6 +1,5 @@
 /* Note view: the content on the left, the node's conversation on the right (like the Code view). */
-.node-modal:has(.note-view) { width: min(1180px, 94vw); }
-.node-modal .inspector.note-view { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); flex: 1; min-height: 0; color: #171717; font-size: 14px; }
+.block-view .inspector.note-view { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); flex: 1; min-height: 0; color: #171717; font-size: 14px; }
 .note-view .note-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 22px 28px 28px; }
 .note-view .note-title { width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 2px 0; border: 0; background: transparent; font-size: 22px; font-weight: 600; line-height: 1.35; color: #171717; }
 .note-view .note-title:focus { outline: none; box-shadow: 0 1px 0 #d2d6d3; }
@@ -37,12 +36,12 @@
 .note-view .model-picker-trigger img, .note-view .model-picker-trigger .model-maker-symbol { width: 18px; height: 18px; }
 .note-view .model-picker-popover { top: auto; bottom: calc(100% + 6px); right: auto; width: 320px; }
 @media (max-width: 850px) {
-  .node-modal .inspector.note-view { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); overflow-y: auto; }
+  .block-view .inspector.note-view { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); overflow-y: auto; }
   .note-view .note-main { overflow: visible; }
   .note-view .note-side { border-left: 0; border-top: 1px solid #e6e8e6; }
 }
-/* The conversation is hidden until opened from the top-right button. */
-.node-modal .inspector.note-view.chat-closed { grid-template-columns: minmax(0, 1fr); }
+/* The conversation is hidden until opened, from the chip in the block's footer. */
+.block-view .inspector.note-view.chat-closed { grid-template-columns: minmax(0, 1fr); }
 .note-view .note-main { position: relative; }
 .note-view .note-chat-toggle { position: absolute; top: 18px; right: 20px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line, #dedede); border-radius: 999px; background: #fff; color: #4a4a4a; font: inherit; font-size: 12px; cursor: pointer; }
 .note-view .note-chat-toggle:hover { border-color: #c9cdca; color: #171717; }
@@ -50,7 +49,7 @@
 .note-view.chat-closed .note-title { padding-right: 140px; }
 .note-view .note-side-spacer { flex: 1; }
 .note-view .note-side-heading .icon-button { margin: -4px -6px -4px 0; color: #6b6b6b; }
-@media (max-width: 850px) { .node-modal .inspector.note-view.chat-closed { grid-template-rows: auto; } }
+@media (max-width: 850px) { .block-view .inspector.note-view.chat-closed { grid-template-rows: auto; } }
 /* The text box fills the space under the title and scrolls inside itself. */
 .note-view .note-main { display: flex; flex-direction: column; }
 .note-view .note-main > * { flex-shrink: 0; }
