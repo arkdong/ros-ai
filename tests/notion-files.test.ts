@@ -29,6 +29,8 @@ function fixture() {
   let properties: Record<string, unknown> = { Name: 'Jane Doe', CV: [CV_URL], Letter: [DOCX_URL], Portfolio: 'https://example.com', Empty: [], Elsewhere: ['https://evil.example/cv.pdf'] };
   const apps = {
     connected: () => ['notion'],
+    agentApps: () => [{ name: 'notion', app: 'notion', label: 'Notion' }],
+    agentApp: (name: string) => name === 'notion' ? { name: 'notion', app: 'notion', label: 'Notion' } : undefined,
     tools: async () => [{ name: 'notion-fetch', description: 'Fetch', inputSchema: {}, reads: true }, { name: 'notion-update-page', description: 'Update', inputSchema: {}, reads: false }],
     call: async (_id: string, tool: string, args: Record<string, unknown>) => {
       calls.push({ tool, args });

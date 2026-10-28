@@ -22,7 +22,7 @@ import { LocalAgentOnboarding } from './local-agent-onboarding.js';
 type Tokens = { inputTokens: number; cachedInputTokens: number; outputTokens: number; totalTokens: number };
 type Session = { projectId: string; threadId: string; scopeHash: string; cwd: string; state: 'ready' | 'interrupted' | 'uncertain'; at: string; tokens?: Tokens };
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; threadId?: string; turnId?: string; grantId: string; billing?: CodexBilling; model?: CodexApiModel; usageId?: string | null; reservedUsd?: number; costUsd?: number; tokens?: Tokens; capture: unknown; request: unknown; events: AgentEvent[]; reply: string; error?: string };
-type Checked = { at: number; cli: ReturnType<typeof readCliStatus>; protocol: CodexProtocol; rpc: Awaited<ReturnType<CodexAppServer['inspectConnection']>> | null };
+type Checked = { at: number; cli: Awaited<ReturnType<typeof readCliStatus>>; protocol: CodexProtocol; rpc: Awaited<ReturnType<CodexAppServer['inspectConnection']>> | null };
 const now = () => new Date().toISOString();
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const noProtocol: CodexProtocol = { appServer: false, dynamicTools: false, interrupt: false, restrictedReadAccess: false, permissionProfiles: false };
@@ -63,6 +63,8 @@ export class CodexAgentService implements AgentRuntime {
   /** The last connection check of each of the two agents, on the subscription and on the key. */
   private readonly checked = new Map<CodexBilling, Checked>();
   private readonly checking = new Map<CodexBilling, Promise<void>>();
+  /** The installed CLI and what its protocol offers are the same for both agents, so checks running together share one look. */
+  private looking: Promise<Pick<Checked, 'cli' | 'protocol'>> | null = null;
   private active = new Map<string, { rpc: CodexAppServer; stop: () => void; done: Promise<unknown> }>();
   private readonly onboarding = new LocalAgentOnboarding(() => { this.checked.clear(); });
   private closed = false;
@@ -124,7 +126,8 @@ export class CodexAgentService implements AgentRuntime {
     const running = this.checking.get(billing);
     if (running) return running;
     const checking = (async () => {
-      const cli = readCliStatus(), protocol = cli.installed ? inspectCodexProtocol() : noProtocol;
+      this.looking ??= Promise.all([readCliStatus(), inspectCodexProtocol()]).then(([cli, protocol]) => ({ cli, protocol: cli.installed ? protocol : noProtocol })).finally(() => { this.looking = null; });
+      const { cli, protocol } = await this.looking;
       let rpc: Checked['rpc'] = null;
       if (protocol.appServer) {
         const cwd = mkdtempSync(join(tmpdir(), 'ros-ai-agent-probe-')), connection = new CodexAppServer(cwd, { isolation: codexIsolation(protocol), api: this.api(billing) });
@@ -417,7 +420,8 @@ export function attachCodexAgentRoutes(app: Express, service: CodexAgentService)
     z.object({}).strict().parse(req.body);
     res.json(service.pauseAllowance(String(req.params.id)));
   });
-  app.post('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex']).parse(req.params.agent), true, billing(req.query))));
+  // The Agents page reads the last check, at most a minute old; ?refresh=1 checks again.
+  app.post('/api/projects/:id/agents/setup/:agent', async (req, res) => res.json(await service.setup(String(req.params.id), z.enum(['codex']).parse(req.params.agent), req.query.refresh === '1', billing(req.query))));
   app.get('/api/projects/:id/agents/codex/login', (req, res) => res.json(service.currentLogin(String(req.params.id))));
   app.post('/api/projects/:id/agents/codex/login', async (req, res) => {
     if (!req.is('application/json')) throw new StoreError('Send native sign-in requests as JSON.', 415);
