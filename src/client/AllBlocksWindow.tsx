@@ -59,7 +59,7 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
           </div>
           <div className="ab-title"><b>{kind.name}</b><span>{kind.caption}</span></div>
           <p className="ab-line">{kind.line}</p>
-          <div className="ab-chips"><span className="ros-chip dark">{kind.needs === 'Nothing' && <span className="ab-dot"/>}{kind.needs}</span>{kind.facts.map(fact => <span key={fact} className="ros-chip">{fact}</span>)}</div>
+          <div className="ab-chips"><span className="ros-chip dark">{kind.needs === 'Nothing' && <span className="chip-dot"/>}{kind.needs}</span>{kind.facts.map(fact => <span key={fact} className="ros-chip">{fact}</span>)}</div>
           <div className="ab-fields">
             {papers ? <PaperSearch chosen={paper} onChoose={setPaper} disabled={busy}/> : <label className="ab-field"><span>Name <small>optional</small></span><input id="ab-title" value={title} maxLength={200} placeholder={file && (kind.id === 'notebook' || kind.id === 'file') ? file.name.replace(/\.[^.]+$/u, '') : text && label ? label[0].toUpperCase() + label.slice(1) : kind.name} disabled={busy} onChange={event => setTitle(event.target.value)}/></label>}
             {kind.id === 'notebook' && <label className="ab-field"><span>Start from a Jupyter notebook <small>optional .ipynb</small></span><input id="ab-notebook-file" type="file" accept=".ipynb,application/x-ipynb+json" disabled={busy} onChange={event => setFile(event.target.files?.[0] ?? null)}/></label>}
