@@ -146,7 +146,7 @@ export class ToolLoopAgentService {
         attempt.usageIds.push(usage.id); attempt.estimatedUsd += usage.estimatedUsd ?? usage.reservedUsd; save();
         const written = response.toolCalls?.length ? undefined : textToolCalls(response.content);
         const text = (written?.text ?? response.content).trim(), calls: ToolCall[] = response.toolCalls?.length ? response.toolCalls : written?.calls ?? [];
-        if (!calls.length) { reply = text; break; }
+        if (!calls.length) { reply = toolkit.nameBlocks(text); break; }
         if (text) event({ at: now(), type: 'thought', message: text.length > 600 ? `…${text.slice(-600)}` : text });
         messages.push({ role: 'assistant', content: text, toolCalls: calls });
         for (const call of calls) {

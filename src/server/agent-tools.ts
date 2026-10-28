@@ -46,7 +46,7 @@ const checkAppSchema = z.object({
 }).strict();
 const reuseSchema = z.object({ artifactId: id, targetNodeId: id, reason: z.string().trim().min(1).max(1000) }).strict();
 const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python', 'nebius-sandbox']) }).strict();
-const reportSchema = z.object({ nodeId: id, sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
+const reportSchema = z.object({ nodeId: id.optional(), sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
 const MAX_PAGES = 15, MAX_LINKS = 5, MAX_MAP_BLOCKS = 300, MAX_DIRECTIONS = 7, MAX_DIRECTION_QUERIES = 5, MAX_QUERIES = 30, PLAN_WAIT_MS = 8 * 60_000;
 /** The sources of each direction an agent sees after a sweep, most relevant first; the Web block shows them all. */
 const SOURCES_SHOWN = 8;
@@ -215,7 +215,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_propose_groups', description: 'Propose grouping the findings by theme rather than by search direction (for example what the rules say, what happens in classrooms, risks, open questions), and setting weak or off-topic directions or findings aside with a short reason. A direction set aside is dimmed in its Web block; findings set aside go into one folded "Set aside" group; nothing is deleted. The researcher reviews the whole rearrangement once; it waits for their approval.', inputSchema: z.toJSONSchema(groupsSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_check_claims', description: `Check what a block says against the web, for example an answer pasted from another assistant or a draft. Name the block in nodeId and list every checkable factual claim in it, up to ${MAX_CLAIMS}: dates, numbers, thresholds, names, who or what a rule covers, how something is classified. Include the claims that look doubtful or wrong, since finding those is the point. Give each in the block's own words, with one or two ${CHECK_TERMS}. Skip opinions, advice and claims about the researcher. The check starts at once; its searches run and their passages come back here, numbered per claim. Read the most promising pages with ros_read_pages (use the claim's claimId as resultNodeId), then mark every claim with ros_write_verdicts.`, inputSchema: z.toJSONSchema(checkSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_write_verdicts', description: 'Mark the claims of this turn\'s ros_check_claims as backed or contradicted by a source, quoting it word for word (copy the sentence from ros_read_pages, or from the search passage), or as unsupported when no source found settles it. Give each a one-line note: for a contradiction, what the source says instead. ros.ai checks every quote against the saved text and refuses verdicts it cannot find there; the marks appear on the block, and each contradiction is also saved as a Finding note. Send verdicts again for a claim to replace them.', inputSchema: z.toJSONSchema(verdictsSchema, { io: 'input' }) },
-    { type: 'function', name: 'ros_propose_report', description: 'Propose an immutable report revision for a selected block, or for a report block this turn added with ros_propose_canvas (addNode with blockType "report") when none is selected, using exact selected evidence versions (evidenceIds may be empty when the evidence is in blocks you name in the text). The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
+    { type: 'function', name: 'ros_propose_report', description: 'Propose a report: the title and the full Markdown text, as an immutable revision of a block. nodeId is the selected report or text block (or a block this turn added); leave it out when nothing is selected and ros.ai adds a report block for it. evidenceIds are exact selected artifact versions and may be empty when the evidence is in blocks you name in the text. The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
@@ -332,6 +332,8 @@ export class AgentWorkspaceTools {
     return opened;
   }
   private current() { if (this.store.getProject(this.scope.projectId).revision !== this.expectedRevision) throw new StoreError('The canvas changed after the agent capture. Review a new turn before proposing edits.', 409); }
+  /** The answer shown beside the canvas, with blocks cited by id in 【】 marks named by their titles. */
+  nameBlocks(text: string): string { return citeByTitle(text, this.store.getProject(this.scope.projectId).canvas.nodes); }
   async call(name: string, supplied: unknown): Promise<unknown> {
     if (this.experiments.authority.policy(this.scope.projectId).stopped) throw new StoreError('Project work is stopped; no agent tool effect was applied.', 409);
     this.settleWaiting();
@@ -395,14 +397,21 @@ export class AgentWorkspaceTools {
       action = { id: randomUUID(), type: 'reuse', title: value.reason, targetNodeId: value.targetNodeId, nodeId: value.targetNodeId, artifactId: artifact.id, status: 'pending' };
       this.store.saveRecord('agent-reuse', action.id, this.scope.projectId, { action, agent: this.agent, client: this.client, turnId: this.turnId, sourceVersion: { id: artifact.id, hash: artifact.hash }, captureHash: this.capture.hash });
     } else if (name === 'ros_propose_report') {
-      const value = lenient(reportSchema, supplied); this.node(value.nodeId); this.current();
-      value.text = citeByTitle(value.text, this.store.getProject(this.scope.projectId).canvas.nodes);
+      const value = lenient(reportSchema, supplied), canvas = this.store.getProject(this.scope.projectId).canvas;
+      // With nothing selected, or an id that names no block, ros.ai adds the report block itself under the approval mode;
+      // a block of this turn that still waits for Accept is named as such instead of doubled.
+      const onCanvas = value.nodeId !== undefined && canvas.nodes.some(n => n.id === value.nodeId);
+      if (value.nodeId !== undefined && !onCanvas && [...this.waiting.values()].some(change => change.nodes.has(value.nodeId!))) this.node(value.nodeId);
+      const nodeId = onCanvas ? value.nodeId! : this.addReportBlock(value.title);
+      if (onCanvas) this.node(nodeId);
+      this.current();
+      const text = citeByTitle(value.text, canvas.nodes);
       const source = value.sourceArtifactId ? this.artifact(value.sourceArtifactId) : undefined;
-      if (source && source.nodeId !== value.nodeId) throw new StoreError('Report revision must remain in the original selected block.');
+      if (source && source.nodeId !== nodeId) throw new StoreError('Report revision must remain in the original selected block.');
       const evidence = [...new Set(value.evidenceIds)].map(id => this.artifact(id));
-      const proposal: AgentReportProposal = { agent: this.agent, client: this.client, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.expectedRevision, draft: value, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId: value.nodeId };
+      const proposal: AgentReportProposal = { agent: this.agent, client: this.client, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.expectedRevision, draft: { ...value, nodeId, text }, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId };
       this.store.saveRecord('agent-report-proposal', proposal.id, this.scope.projectId, proposal);
-      action = { id: proposal.id, type: 'proposal', title: `Review report: ${value.title}`, nodeId: value.nodeId, reportProposalId: proposal.id, status: 'pending' } as AssistantAction;
+      action = { id: proposal.id, type: 'proposal', title: `Review report: ${value.title}`, nodeId, reportProposalId: proposal.id, status: 'pending' } as AssistantAction;
     } else if (name === 'ros_propose_analysis') {
       const value = lenient(experimentSchema, supplied); this.node(value.nodeId); const a = this.artifact(value.datasetArtifactId);
       if (a.kind !== 'dataset') throw new StoreError('Analysis requires an exact selected dataset artifact.');
@@ -842,6 +851,15 @@ export class AgentWorkspaceTools {
     else this.waiting.set(proposal.id, { action, nodes: new Map(proposal.operations.flatMap(op => op.type === 'addNode' ? [[op.node.id, op.node] as const] : [])) });
     return { action, status: proposal.status };
   }
+  /** The block a report needs when nothing is selected: added under the approval mode, clear of the blocks there. In
+   * Ask every time it waits for the person, and the report's Accept asks for that block's Accept first. */
+  private addReportBlock(title: string): string {
+    const id = randomUUID(), card = { title: title.slice(0, 200), description: '' };
+    const origin = this.layout([snapUp(CARD_DEFAULT_HEIGHT + LAYOUT_GAP)], CARD_DEFAULT_WIDTH, card);
+    const made = this.propose(`Add report block "${card.title}"\nWhy: the report needs a block of its own.`, [{ type: 'addNode', node: { id, ...card, kind: 'topic', blockType: 'report', x: origin.x + (this.agentNodeId ? COLUMN : 0), y: origin.tops[0] } }], { rationale: 'The report needs a block of its own.' });
+    if (made.status === 'dismissed') throw new StoreError('The approval policy refused the report block, so the report has nowhere to go.', 409);
+    return id;
+  }
   private adopt(ids: Iterable<string>) {
     for (const value of ids) this.own.add(value);
     this.expectedRevision = this.store.getProject(this.scope.projectId).revision;
@@ -1274,6 +1292,7 @@ export function decideAgentReport(store: Store, projectId: string, proposalId: s
     if (decision === 'accept') {
       const policy = store.record<{ stopped: boolean }>('policy', projectId);
       if (policy?.stopped) throw new StoreError('Project work is stopped. Resume before accepting this agent report.', 409);
+      if (!store.getProject(projectId).canvas.nodes.some(node => node.id === proposal.nodeId)) throw new StoreError('The report block is not on the canvas yet: accept the change that adds it first, or dismiss this report.', 409);
       for (const selected of proposal.evidence) if (store.getArtifact(selected.id).hash !== selected.hash) throw new StoreError('Selected report evidence differs from its captured version.', 409);
       if (proposal.draft.sourceArtifactId && store.getArtifact(proposal.draft.sourceArtifactId).hash !== proposal.sourceHash) throw new StoreError('Report source differs from the captured version.', 409);
       const { rationale: _rationale, ...draft } = proposal.draft;
