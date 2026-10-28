@@ -12,7 +12,7 @@ import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
-import type { Artifact, CanvasNode, Mutation, Project, Run } from '../shared/types.js';
+import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
@@ -224,6 +224,8 @@ const manifestSchema = z.object({
   connections: z.array(z.object({ id: z.string(), source: z.string(), target: z.string(), label: z.string().max(200), sourceHandle: z.enum(['top', 'right', 'bottom', 'left']).optional(), targetHandle: z.enum(['top', 'right', 'bottom', 'left']).optional() })).max(2000),
 });
 type Manifest = z.infer<typeof manifestSchema>;
+/** A Notion block as the folder keeps it: without the account it reads with, which names a sign-in on this computer only. */
+const shareable = ({ account: _account, ...view }: NotionView) => view;
 
 /**
  * Keeps each project's blocks as ordinary files in a folder the person chose. ros.ai writes a file after every saved
@@ -976,7 +978,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: node.notion } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.label ? { label: node.label } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
