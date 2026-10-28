@@ -25,6 +25,8 @@ Held out for evaluation: ten projects in domains the training data never sees, p
 
 By 27 October three tool descriptions had changed and no arguments (hash `105560b47f79` became `1e29538128f6`). A search plan now starts without asking (#95), so a `research-declined` turn no longer happens in the app, and later changes in one turn may build on changes that still wait (#96). The model learns from the 24 October contract and should read the new wording fine. Its evaluation runs on the snapshot commit, and `smoke` runs against the app as it is now.
 
+By 28 October the hash was `6aa44b801729` (main before it: `200eec7325e1`): Ros's research steps, the report two-step and the PDF line joined the prompt (2,766 to 4,083 characters), the `ros_read_selected` and `ros_propose_report` descriptions changed, and `ros_write_result` now answers with an `instruction` field. Tool names and arguments are still the 24 October ones, so the model reads the new wording as before; a next training round should snapshot again, because every such change moves the app further from what this round learned.
+
 ## Steps
 
 From the repository root, with Node 24 and `NEBIUS_API_KEY` set (on Adam's Mac: `set -a; source ~/.config/ros.ai/keys.env; set +a`). Data goes to `training/ros-nemotron/data/` (not in git). Every paid step has a hard `--max-usd` cap kept in `data/spend.jsonl`; a request that would pass it is never sent.
