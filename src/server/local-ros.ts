@@ -11,8 +11,9 @@ import type { InferenceConnections } from './inference-connections.js';
 import { StoreError } from './store.js';
 
 const run = promisify(execFile);
-// NVIDIA's own GGUF of Nemotron 3 Nano 4B until ros-nemotron replaces it.
-const MODEL_REPO = process.env.ROS_LOCAL_MODEL_REPO || 'nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF';
+// ros-nemotron: Nemotron 3 Nano 4B fine-tuned on ros.ai's own agent turns (training/ros-nemotron). A computer that already
+// downloaded NVIDIA's GGUF keeps it until Ros is removed and downloaded again.
+const MODEL_REPO = process.env.ROS_LOCAL_MODEL_REPO || 'arkdong/ros-nemotron-4b-GGUF';
 const ENGINE_REPO = 'ggml-org/llama.cpp';
 const PREFERRED_PORT = 4319, CONTEXT_TOKENS = 32_768;
 const assetPattern: Partial<Record<string, RegExp>> = {
