@@ -51,7 +51,7 @@ python train_lora.py --train train.jsonl --val val.jsonl --out out   # LoRA r=32
 bash to_gguf.sh out/merged out/gguf                                  # BF16 GGUF, Q4_K_M, and a tool-call check in llama-server
 ```
 
-Then publish `ros-nemotron-4b-Q4_K_M.gguf` with NVIDIA's Open Model License text to a Hugging Face model repo, and point Local Ros at it (`MODEL_REPO` in `src/server/local-ros.ts`, overridable today with `ROS_LOCAL_MODEL_REPO`). Delete the VM when done.
+The model is published at [arkdong/ros-nemotron-4b-GGUF](https://huggingface.co/arkdong/ros-nemotron-4b-GGUF): the Q4_K_M GGUF, the LoRA adapter, NVIDIA's licence and its notice. Local Ros downloads it (`MODEL_REPO` in `src/server/local-ros.ts`, overridable with `ROS_LOCAL_MODEL_REPO`). Delete the VM when done.
 
 Evaluation, from the snapshot commit, against any OpenAI-compatible server. Here that is llama-server with each model's GGUF in turn. `--max-usd` caps the total in `data/spend.jsonl`, so it is what was already spent plus the eval's budget. The only paid calls are the simulated pages and Super's own run.
 

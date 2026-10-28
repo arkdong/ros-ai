@@ -26,12 +26,12 @@ export function LocalRos({ onChanged }: { onChanged: () => Promise<unknown> }) {
   const { state } = status;
   const subtitle = state === 'downloading' ? (status.totalBytes ? `${gb(status.doneBytes)} of ${gb(status.totalBytes)}` : 'Finding the files…')
     : state === 'starting' ? 'Loading the model…'
-    : state === 'ready' ? `Nemotron 3 Nano 4B · ${gb(status.totalBytes)} on disk`
+    : state === 'ready' ? `${status.model?.startsWith('ros-nemotron') ? 'ros-nemotron 4B' : 'Nemotron 3 Nano 4B'} · ${gb(status.totalBytes)} on disk`
     : 'Works offline, free, nothing leaves this computer';
   const label = { 'not-downloaded': 'Not downloaded', downloading: 'Downloading', starting: 'Starting', ready: 'Ready', failed: 'Stopped' }[state];
   const percent = status.totalBytes ? Math.min(100, Math.round(((status.doneBytes ?? 0) / status.totalBytes) * 100)) : 0;
   return <ConnectionCard label="Ros on this computer" icon={<Monitor size={18}/>} subtitle={subtitle} connected={state === 'ready'} forceOpen={state !== 'ready'} status={label}>
-    {state === 'not-downloaded' && <p>Ros runs on NVIDIA Nemotron 3 Nano 4B. The download is about 3 GB and needs about 8 GB of memory. ros.ai runs it itself; there is nothing else to install.</p>}
+    {state === 'not-downloaded' && <p>Ros runs on ros-nemotron, NVIDIA Nemotron 3 Nano 4B trained for ros.ai. The download is about 3 GB and needs about 8 GB of memory. ros.ai runs it itself; there is nothing else to install.</p>}
     {state === 'downloading' && <>
       <div className="local-ros-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="Download progress"><span style={{ width: `${percent}%` }}/></div>
       <p>You can keep working; another model answers until the download is ready. If ros.ai closes, the download resumes where it stopped.</p>
