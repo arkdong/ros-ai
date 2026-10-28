@@ -3869,13 +3869,13 @@ a {
   background: #f7f7f7;
   color: #171717;
 }
-.single-canvas-shell button:focus-visible,.single-canvas-shell a:focus-visible,.single-canvas-shell input:focus-visible,.single-canvas-shell textarea:focus-visible,.single-canvas-shell select:focus-visible,.single-canvas-shell [tabindex]:focus-visible {
+.single-canvas-shell button:focus-visible,.single-canvas-shell a:focus-visible,.single-canvas-shell [tabindex]:focus-visible {
   outline: 2px solid #94c522;
   outline-offset: 3px;
 }
 .single-canvas-shell input:focus,.single-canvas-shell textarea:focus,.single-canvas-shell select:focus {
-  border-color: #a7d72c;
-  box-shadow: 0 0 0 2px #b7ef3220;
+  border-color: #c4c4c4;
+  box-shadow: none;
 }
 .single-canvas-shell input::placeholder,.single-canvas-shell textarea::placeholder {
   color: #6b6b6b;
@@ -3969,15 +3969,16 @@ a {
   padding-top: 27px;
 }
 .single-canvas-shell .sidebar-label {
-  font-size: 13px;
-  letter-spacing: .085em;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
   color: #6b6b6b;
   padding: 0 10px;
   margin-bottom: 9px;
 }
 .single-canvas-shell .sidebar-label span {
   font-family: ui-monospace,SFMono-Regular,monospace;
-  font-size: 13px;
+  font-size: 12px;
   color: #6b6b6b;
 }
 .single-canvas-shell .project-list {

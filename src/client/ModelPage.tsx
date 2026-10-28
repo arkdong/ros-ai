@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, ExternalLink, LoaderCircle, Plug, RefreshCw } from 'lucide-react';
+import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
@@ -174,15 +174,14 @@ function ClaudePlanConnection({settings,loadError,onChanged}:{settings:ClaudeAge
   },[login?.state]);
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const account=[plan.email,plan.plan&&`${plan.plan[0]!.toUpperCase()}${plan.plan.slice(1)} plan`].filter(Boolean).join(' · ');
-  return <ConnectionCard label="Claude subscription" icon={<BrandLogo id="claude"/>} subtitle={signedIn&&account?account:undefined} forceOpen connected={signedIn} status={plan.state==='unknown'?'Checking…':signedIn?'Signed in':plan.state==='unavailable'?'Unavailable':'Not signed in'}>
-    <p>{signedIn?'Claude Code answers in the Ros bar on your Claude subscription. Pick Claude Code from the model name in the Ros bar.':'Sign in with the Claude account that has your Pro or Max subscription. If you already use Claude Code on this computer, that sign-in is used.'}</p>
+  return <ConnectionCard label="Claude subscription" icon={<BrandLogo id="claude"/>} subtitle={signedIn&&account?account:undefined} forceOpen connected={signedIn} status={plan.state==='unknown'?'Checking…':signedIn?'Signed in':plan.state==='unavailable'?'Unavailable':'Not signed in'}
+    more={<><p>{signedIn?'Pick Claude Code from the model name in the Ros bar. Each turn counts toward your subscription’s usage limits.':'If you already use Claude Code on this computer, that sign-in is used.'}</p><p>Claude Code searches the web and reads pages itself when it needs to. On your subscription that costs nothing extra.</p><p>Claude Code signs in on Anthropic’s own page and keeps its login itself. ros.ai never sees or stores it.</p></>}
+    actions={!signedIn&&plan.state!=='unavailable'&&login?.state!=='waiting'?<><button className="text-button" disabled={busy} onClick={()=>void run(async()=>onChanged(await api<ClaudeAgentSettings>('/api/agents/claude')))}>Check again</button><button className="primary small" disabled={busy} onClick={()=>void run(async()=>setLogin(await post<ClaudePlanLogin>('/api/agents/claude/plan-login',{})))}>Sign in with Claude</button></>:undefined}>
+    <p>{signedIn?'Claude Code answers in the Ros bar on your Claude subscription.':'Sign in with the Claude account that has your Pro or Max subscription.'}</p>
     {signedIn&&<AgentModelChoice agent="claude-plan"/>}
-    <p className="subtle">Claude Code searches the web and reads pages itself when it needs to. On your subscription that costs nothing extra.</p>
     {plan.state==='unavailable'&&<p className="connection-limit">{plan.message}</p>}
     {plan.message&&plan.state==='signed-out'&&<p className="connection-limit">{plan.message}</p>}
-    {!signedIn&&plan.state!=='unavailable'&&login?.state!=='waiting'&&<div className="connection-actions"><button className="primary small" disabled={busy} onClick={()=>void run(async()=>setLogin(await post<ClaudePlanLogin>('/api/agents/claude/plan-login',{})))}>Sign in with Claude</button><button className="text-button" disabled={busy} onClick={()=>void run(async()=>onChanged(await api<ClaudeAgentSettings>('/api/agents/claude')))}>Check again</button></div>}
     {login&&!signedIn&&<div className="connection-login" role="status"><p>{login.message}</p>{login.state==='waiting'&&<button className="text-button" onClick={()=>void run(async()=>setLogin(await post<ClaudePlanLogin>('/api/agents/claude/plan-login/cancel',{})))}>Cancel sign-in</button>}{login.command&&login.state!=='completed'&&<details><summary>Browser didn’t open?</summary><p>Sign in from Terminal instead, then press Check again:</p><CommandBox command={login.command} label="Copy sign-in command"/></details>}</div>}
-    <p className="subtle">Claude Code signs in on Anthropic’s own page and keeps its login itself. ros.ai never sees or stores it.</p>
     {(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
 }
@@ -194,29 +193,44 @@ function ClaudeWebSearchChoice({settings,onChanged}:{settings:ClaudeAgentSetting
     {id:'own',title:'Claude searches by itself',detail:'Simplest. Claude looks things up as it works. About US$0.01 per search plus the pages it reads, billed to this API key.'},
     {id:'ros',title:'ros.ai search plan',detail:'Claude plans its searches on the map, one note per direction, and runs them on the web search service you connect on the Plugins page (Tavily, Exa or Brave).'},
   ];
-  return <div className="claude-model-choice"><span className="field-label">Web search</span><div className="claude-billing" role="radiogroup" aria-label="How Claude Code searches the web">{choices.map(choice=><label key={choice.id} className={settings.webSearch===choice.id?'selected':''}><input type="radio" name="claude-web-search" checked={settings.webSearch===choice.id} disabled={busy} onChange={()=>void choose(choice.id)}/><span><strong>{choice.title}</strong><small>{choice.detail}</small></span></label>)}</div>{error&&<p className="inline-error" role="alert">{error}</p>}</div>;
+  return <div className="claude-model-choice"><span className="connection-caption">Web search</span><div className="claude-billing" role="radiogroup" aria-label="How Claude Code searches the web">{choices.map(choice=><label key={choice.id} className={settings.webSearch===choice.id?'selected':''}><input type="radio" className="sr-only" name="claude-web-search" checked={settings.webSearch===choice.id} disabled={busy} onChange={()=>void choose(choice.id)}/><span><strong>{choice.title}</strong><small>{choice.detail}</small></span>{settings.webSearch===choice.id&&<Check size={14} aria-hidden="true"/>}</label>)}</div>{error&&<p className="inline-error" role="alert">{error}</p>}</div>;
 }
-export function ConnectionCard({label,icon,status,subtitle,connected,forceOpen,children}:{label:string;icon:ReactNode;status:string;subtitle?:string;connected?:boolean;forceOpen?:boolean;children:ReactNode}) {
-  const [expanded,setExpanded]=useState(false);
-  useEffect(()=>{if(forceOpen)setExpanded(true);},[forceOpen]);
-  return <section className="tool-connection" aria-label={`${label} connection`}><details open={expanded} onToggle={event=>setExpanded(event.currentTarget.open)}><summary className="tool-connection-heading"><span className="tool-connection-icon">{icon}</span><span className="tool-connection-name"><strong>{label}</strong>{subtitle&&<small>{subtitle}</small>}</span><span className={`connection-state ${connected?'connected':''}`}><i/>{status}</span><ChevronDown size={14} className="connection-chevron"/></summary><div className="tool-connection-body">{children}</div></details></section>;
+/** One card per connection, always open: a heading with the state, one line of body, and a footer line with the actions
+ * (grey text chips on the left, the one black pill on the right). What more there is to say unfolds behind More. */
+export function ConnectionCard({label,icon,status,subtitle,connected,more,actions,children}:{label:string;icon:ReactNode;status:string;subtitle?:string;connected?:boolean;forceOpen?:boolean;more?:ReactNode;actions?:ReactNode;children:ReactNode}) {
+  const [shown,setShown]=useState(false);
+  return <section className="tool-connection" aria-label={`${label} connection`}>
+    <header className="tool-connection-heading"><span className="tool-connection-icon">{icon}</span><span className="tool-connection-name"><strong>{label}</strong>{subtitle&&<small>{subtitle}</small>}</span><span className={`connection-state ${connected?'connected':''}`}><i/>{status}</span></header>
+    <div className="tool-connection-body">{children}{more&&shown&&<div className="connection-more">{more}</div>}</div>
+    {(actions||more)&&<div className="connection-actions tool-connection-foot">{more&&<button type="button" className="text-button" aria-expanded={shown} onClick={()=>setShown(!shown)}>{shown?'Less':'More'}</button>}{actions}</div>}
+  </section>;
 }
+/** The first sentence of a description, and the rest for More. */
+const firstSentence=(text:string):[string,string]=>{const match=/^(.*?[.!?])\s+(\S.*)$/s.exec(text);return match?[match[1]!,match[2]!]:[text,''];};
 export function KeyConnection({provider,label,icon,credential,budget,description,keyLink,loadError,forceOpen,onSave,onDisconnect,onCheck,primary,children}:{provider:CredentialProvider;label:string;icon:ReactNode;credential?:CredentialStatus;usage?:ConnectionStatus;budget?:ConnectionBudgetStatus;description:string;keyLink:string;loadError?:string;forceOpen?:boolean;children?:ReactNode;onSave:(provider:CredentialProvider,key:string)=>Promise<void>;onDisconnect:(provider:CredentialProvider)=>Promise<void>;onCheck?:()=>Promise<void>;/** The one action the card leads with, beside its key button. */primary?:{label:string;onClick:()=>Promise<void>}}) {
   const [open,setOpen]=useState(false),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const configured=credential?.configured??false;
   const ready=budget?.ready??false;
   const subtitle=!budget?'Checking…':budget.limited===false?(ready?undefined:budget.reason):budget.source==='app'?`US$${budget.limitUsd.toFixed(2)} budget · ${!budget.enabled?'paused':ready?'enabled':'limit reached'}`:ready?'Usage enabled':'Usage not enabled';
-  return <ConnectionCard label={label} icon={icon} subtitle={subtitle} forceOpen={forceOpen} connected={configured&&credential?.verified!==false} status={!credential?'Checking…':credential.verified===false?'Check failed':configured?'Key saved':'Not connected'}>
-    <p>{description}</p>
+  // With no key saved the field is there at once; with one, Manage key opens it to replace the key.
+  const editing=open||(credential!==undefined&&!configured),formId=`connection-key-form-${provider}`;
+  const [first,rest]=firstSentence(description);
+  const close=()=>{setOpen(false);setKey('');setError('');};
+  return <ConnectionCard label={label} icon={icon} subtitle={subtitle} forceOpen={forceOpen} connected={configured&&credential?.verified!==false} status={!credential?'Checking…':credential.verified===false?'Check failed':configured?'Key saved':'Not connected'} more={rest?<p>{rest}</p>:undefined} actions={<>
+      {editing&&<a className="text-button" href={keyLink} target="_blank" rel="noreferrer">Paste a key from {label}<ExternalLink size={11}/></a>}
+      {onCheck&&configured&&!editing&&<button className="text-button" disabled={busy} onClick={()=>void run(onCheck)}>{busy?'Checking…':'Check key'}</button>}
+      {editing&&credential?.canDisconnect&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>onDisconnect(provider))}>Remove saved key</button>}
+      {editing&&configured&&<button className="text-button" disabled={busy} onClick={close}>Cancel</button>}
+      {primary&&<button className="primary small" disabled={busy} onClick={()=>void run(primary.onClick)}>{primary.label}</button>}
+      {editing?<button className="primary small" type="submit" form={formId} disabled={busy||key.trim().length<12}>{busy&&<LoaderCircle size={13} className="spin"/>}Save key</button>
+        :<button className={primary?'secondary small':'primary small'} disabled={busy||!credential} aria-expanded={open} onClick={()=>{setOpen(true);setKey('');setError('');}}>Manage key</button>}
+    </>}>
+    <p>{first}</p>
     {children}
     {credential?.checkMessage&&<p className={credential.verified?'connection-check':'inline-error'} role="status">{credential.checkMessage}</p>}
-    <div className="connection-actions">{primary&&<button className="primary small" disabled={busy} onClick={()=>void run(primary.onClick)}>{primary.label}</button>}<button className="secondary small" disabled={busy||!credential} aria-expanded={open} onClick={()=>{setOpen(!open);setKey('');setError('');}}>{open?'Close setup':configured?'Manage key':'Connect'}</button>{onCheck&&configured&&<button className="text-button" disabled={busy} onClick={()=>void run(onCheck)}>{busy?'Checking…':'Check key'}</button>}</div>
-    {open&&<div className="connection-setup"><p>Paste a key from <a href={keyLink} target="_blank" rel="noreferrer">{label}<ExternalLink size={11}/></a>. It is saved privately on the local server.</p>{credential?.source==='environment'&&<p className="subtle">A key is already set in the server environment. A saved key will override it; removing the saved key restores that setting.</p>}
-      <form onSubmit={event=>{event.preventDefault();if(busy)return;void run(async()=>{await onSave(provider,key);setKey('');setOpen(false);});}}><label className="field-label" htmlFor={`connection-key-${provider}`}>API key</label><input id={`connection-key-${provider}`} type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)} placeholder="Paste your API key" required minLength={12} maxLength={4096}/><button className="primary small" type="submit" disabled={busy||key.trim().length<12}>{busy?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} Save connection</button></form>
-      {credential?.canDisconnect&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>onDisconnect(provider))}>Remove saved key</button>}
-
-    </div>}
+    {editing&&<form id={formId} className="connection-key" onSubmit={event=>{event.preventDefault();if(busy)return;void run(async()=>{await onSave(provider,key);setKey('');setOpen(false);});}}><label className="sr-only" htmlFor={`connection-key-${provider}`}>API key</label><input id={`connection-key-${provider}`} type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)} placeholder="Paste your API key" required minLength={12} maxLength={4096}/></form>}
+    {editing&&credential?.source==='environment'&&<p className="subtle">A key is already set in the server environment. A saved key will override it; removing the saved key restores that setting.</p>}
     {configured&&budget&&!ready&&<p className="connection-limit">{budget.reason||'Usage is not enabled yet.'}</p>}
     {(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
@@ -238,9 +252,8 @@ function CodexConnection({projectId,setup,error:loadError,onChanged}:{projectId:
   return <ConnectionCard label="ChatGPT subscription" icon={<BrandLogo id="openai"/>} forceOpen connected={setup?.chatgptSignedIn} status={!projectId?'Open a project':!setup?'Checking…':setup.chatgptSignedIn?'Signed in':'Not signed in'}>
     <p>{limitation}</p>
     {setup?.chatgptSignedIn&&<AgentModelChoice agent="codex"/>}
-    {projectId&&setup?.installed&&!setup.signedIn&&login?.state!=='waiting'&&<div className="connection-actions"><button className="primary small" disabled={busy} onClick={()=>void start('browser')}>Sign in with ChatGPT</button><button className="secondary small" disabled={busy} onClick={()=>void start('device')}>Use device code</button></div>}
     {login&&<div className="connection-login" role="status"><p>{login.message}</p>{login.state==='waiting'&&<>{login.authUrl&&<a className="primary small" href={login.authUrl} target="_blank" rel="noreferrer">Open Codex sign-in <ExternalLink size={12}/></a>}{login.userCode&&<p>Enter code <strong>{login.userCode}</strong> in the Codex sign-in page.</p>}<button className="text-button" onClick={async()=>{try{setLogin(await post<CodexLoginStatus>(`/api/projects/${projectId}/agents/codex/login/${login.id}/cancel`,{}));}catch(cause){setError(message(cause));}}}>Cancel sign-in</button></>}</div>}
-    {projectId&&<div className="connection-actions"><button className="text-button" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?'Hide details':'Connection details'}</button></div>}
+    {projectId&&<div className="connection-actions"><button className="text-button" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?'Hide details':'Connection details'}</button>{setup?.installed&&!setup.signedIn&&login?.state!=='waiting'&&<><button className="secondary small" disabled={busy} onClick={()=>void start('device')}>Use device code</button><button className="primary small" disabled={busy} onClick={()=>void start('browser')}>Sign in with ChatGPT</button></>}</div>}
     {open&&<div className="connection-setup"><p>{setup?.installed?`Installed: ${setup.version}.`:'Install Codex CLI, then refresh connection status.'} Sign-in is handled by Codex. ros.ai never copies its account credentials.</p>
       {setup&&<><dl className="connection-facts"><dt>Sign-in</dt><dd>{setup.signedIn?'Detected':'Required'}</dd><dt>Workspace isolation</dt><dd>{setup.isolationReady?'Supported':'Unavailable in installed CLI'}</dd><dt>Usage permission</dt><dd>{setup.authorized?'Bounded grant configured':'No fresh grant'}</dd><dt>Research turns</dt><dd>{setup.available?'Available':'Blocked'}</dd></dl><details><summary>Setup and enforcement details</summary>{setup.blockers.map((blocker,index)=><p key={index}>{blocker}</p>)}{setup.commands.map(item=><div key={item.command}><span>{item.label}</span><pre>{item.command}</pre></div>)}</details>{setup.links.map(link=><a className="connection-doc" key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label}<ExternalLink size={11}/></a>)}</>}
     </div>}{setup?.signedIn&&!setup.authorized&&<p className="connection-limit">Codex cannot start a turn in this project right now.</p>}{(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
