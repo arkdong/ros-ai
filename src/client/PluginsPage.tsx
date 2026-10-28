@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Check, ChevronRight, ExternalLink, Globe, LoaderCircle, MoreHorizontal, Plug, Plus, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, ChevronRight, ExternalLink, Globe, LoaderCircle, MoreHorizontal, Pencil, Plug, Plus, RefreshCw, RotateCw, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
-import { PLUGINS, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
+import { PLUGINS, type AppAccountStatus, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
 import type { PaperSourceStatus, PapersStatus } from '../shared/papers';
 import type { BrowserStatus } from '../shared/browser';
 import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
@@ -16,6 +16,10 @@ import './plugins.css';
 
 export function PluginMark({id,size}:{id:string;size?:number}) {
   return hasBrandLogo(id)?<BrandLogo id={id} size={size}/>:id==='browser'?<Globe size={size||18}/>:<Plug size={size||18}/>;
+}
+/** An account's tile: the first letter of its name, as Notion shows a workspace without an icon. */
+export function AccountTile({name,small}:{name:string;small?:boolean}) {
+  return <span className={`account-tile${small?' mini':''}`} aria-hidden="true">{(name.trim()[0]??'?').toUpperCase()}</span>;
 }
 
 /** Tools outside ros.ai, each connected with something the person already has. Using them from the canvas comes later.
@@ -104,7 +108,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.connect==='browser')return browser?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
     if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
     const token=plugins.find(item=>item.id===plugin.id),app=viaApp(plugin)?apps.find(item=>item.id===plugin.id):undefined;
-    if(app?.connected)return {label:'Connected',connected:true};
+    if(app?.connected)return {label:app.accounts&&app.accounts.length>1?`${app.accounts.length} accounts`:'Connected',connected:true};
     if(token?.configured)return token.verified===false?{label:'Check failed',connected:false}:{label:'Token saved',connected:true};
     return {label:'Not connected',connected:false};
   };
@@ -128,7 +132,9 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.connect==='browser')return <BrowserPlugin key={plugin.id} plugin={plugin} status={browser} onChanged={changed}/>;
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
     if(plugin.connect==='sign-in'||plugin.connect==='desktop')return <AppPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} app={apps.find(item=>item.id===plugin.id)} onChanged={changed}/>;
-    return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={plugin.signIn?apps.find(item=>item.id===plugin.id):undefined} onChanged={changed}/>;
+    const signIns=plugin.signIn?apps.find(item=>item.id===plugin.id):undefined;
+    if(signIns?.accounts)return <AppAccounts key={plugin.id} plugin={plugin} app={signIns} status={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
+    return <TokenPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} app={signIns} onChanged={changed}/>;
   };
   const current=selected?PLUGINS.find(plugin=>plugin.id===selected):undefined;
   const row=(plugin:PluginDefinition)=><CatalogueRow key={plugin.id} mark={<PluginMark id={plugin.id} size={22}/>} name={plugin.name} summary={plugin.summary} state={shown(plugin)} unavailable={plugin.connect==='unavailable'} onClick={()=>onSelect(plugin.id)}/>;
@@ -136,7 +142,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     <CatalogueHero crumb="Plugins" onBack={()=>onSelect(null)} mark={<PluginMark id={current.id} size={34}/>} name={current.name} summary={current.summary} state={shown(current)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
-    <h2 className="plugin-section">Connection</h2>
+    <h2 className="plugin-section">{current.signIn&&apps.find(item=>item.id===current.id)?.accounts?'Accounts':'Connection'}</h2>
     {card(current)}
   </div>;}
   return <div className="plugins-page">
@@ -234,4 +240,81 @@ function TokenPlugin({plugin,status,app,open:forceOpen,onChanged}:{plugin:Plugin
       <p className="subtle">Saved privately on this computer. Check makes one read-only request to confirm the token.</p></div>}
     {error&&<p className="inline-error" role="alert">{error}</p>}
   </ConnectionCard>;
+}
+
+/** The day an account signed in, as "28 October" (with the year when it is not this one). */
+const signedInOn = (at: string) => { const date = new Date(at); return date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) }); };
+
+/** An app the person signs in to once per workspace (Notion): one card with a row per account and more behind each
+ * row's ···, and one black action to add another. The integration token stays the fallback, offered while no account is
+ * signed in. */
+function AppAccounts({plugin,app,status,onChanged}:{plugin:PluginDefinition;app:AppConnectionStatus;status?:PluginStatus;onChanged:()=>Promise<void>}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[renaming,setRenaming]=useState<string|null>(null),[open,setOpen]=useState(false),[token,setToken]=useState('');
+  const id=plugin.id as TokenPluginId,accounts=app.accounts??[],configured=status?.configured??false,several=accounts.length>1;
+  const run=async(work:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await work();await onChanged();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
+  // Each sign-in opens Notion's own page, which asks which workspace to share, and comes back here.
+  const signIn=(body:{add?:boolean;account?:string})=>void run(async()=>{const started=await post<{authorizationUrl?:string}>(`/api/apps/${id}/connect`,body);if(started.authorizationUrl)window.location.assign(started.authorizationUrl);});
+  const change=(key:string,body:{default?:true;name?:string})=>run(()=>api(`/api/apps/${id}/accounts/${key}`,{method:'PATCH',body:JSON.stringify(body)}));
+  const tokenButton=<button className="text-button" disabled={busy||!status} aria-expanded={open} onClick={()=>{setOpen(!open);setToken('');setError('');}}>{open?'Close setup':configured?'Replace token':'Use an integration token instead'}</button>;
+  return <>
+    {app.notice&&<p className="connection-notice" role="status"><Check size={14}/>{app.notice}</p>}
+    {accounts.length?<section className="plugin-accounts" aria-label={`${plugin.name} accounts`}>
+      {accounts.map(account=><div key={account.key} className="plugin-account">
+        <AccountTile name={account.name}/>
+        {renaming===account.key
+          ?<RenameField account={account} onDone={value=>{setRenaming(null);if(value!==null&&value.trim()!==account.name)void change(account.key,{name:value.trim()});}}/>
+          :<span className="plugin-account-name"><strong>{account.name}</strong>{account.email&&<small>{account.email}</small>}</span>}
+        {account.default&&several&&<span className="plugin-account-tag">Default</span>}
+        <span className={`plugin-row-state ${account.connected?'':'off'}`}><i/>{account.connected?'Connected':'Signed out'}</span>
+        {!account.connected&&<button className="secondary small" disabled={busy} onClick={()=>signIn({account:account.key})}>Sign in again</button>}
+        <AccountMenu account={account} several={several} busy={busy} onDefault={()=>void change(account.key,{default:true})} onRename={()=>setRenaming(account.key)} onSignIn={()=>signIn({account:account.key})} onDisconnect={()=>void run(()=>api(`/api/apps/${id}/accounts/${account.key}`,{method:'DELETE'}))}/>
+      </div>)}
+      <footer className="plugin-accounts-foot"><span>Each sign-in links one workspace. {plugin.name} asks which.</span><button className="primary small" disabled={busy} onClick={()=>signIn({add:true})}>{busy?<LoaderCircle size={14} className="spin"/>:<Plus size={14}/>}Add account</button></footer>
+    </section>
+    :<section className="plugin-accounts" aria-label={`Connect ${plugin.name}`}>
+      <div className="plugin-accounts-empty"><span><strong>Bring your {plugin.name} onto the map</strong><small>Sign in once and pick a workspace. Add more workspaces any time.</small></span><button className="primary small" disabled={busy} onClick={()=>signIn({})}>{busy?<LoaderCircle size={14} className="spin"/>:<Plug size={14}/>}Connect</button></div>
+    </section>}
+    {status?.checkMessage&&<p className={status.verified?'connection-check':'inline-error'} role="status">{status.checkMessage}</p>}
+    {(configured||!app.connected)&&<div className="plugin-accounts-token">
+      {configured&&<span>Integration token saved</span>}{tokenButton}
+      {configured&&<button className="text-button" disabled={busy} onClick={()=>void run(()=>post(`/api/plugins/${id}/check`,{}))}>{busy?'Checking…':'Check'}</button>}{configured&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>api(`/api/plugins/${id}`,{method:'DELETE'}))}>Remove token</button>}
+    </div>}
+    {open&&<div className="connection-setup"><p>{plugin.tokenHint} {plugin.tokenLink&&<a href={plugin.tokenLink} target="_blank" rel="noreferrer">Open {plugin.name}<ExternalLink size={11}/></a>}</p>
+      <form onSubmit={event=>{event.preventDefault();if(busy)return;void run(async()=>{await api(`/api/plugins/${id}`,{method:'PUT',body:JSON.stringify({token})});setToken('');setOpen(false);});}}><label className="field-label" htmlFor={`plugin-token-${id}`}>{plugin.tokenLabel}</label><input id={`plugin-token-${id}`} type="password" autoComplete="off" value={token} onChange={event=>setToken(event.target.value)} placeholder="Paste it here" required minLength={8} maxLength={4096}/><button className="primary small" type="submit" disabled={busy||token.trim().length<8}>{busy?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} Save</button></form>
+      <p className="subtle">Saved privately on this computer. Check makes one read-only request to confirm the token.</p></div>}
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </>;
+}
+
+/** An account's name, edited in place: Enter or leaving the field keeps it, Escape leaves it as it was (null). An empty
+ * name shows the workspace's own name again. */
+function RenameField({account,onDone}:{account:AppAccountStatus;onDone:(name:string|null)=>void}) {
+  const [value,setValue]=useState(account.name),done=useRef(false);
+  const finish=(name:string|null)=>{if(done.current)return;done.current=true;onDone(name);};
+  return <form className="plugin-account-name" onSubmit={event=>{event.preventDefault();finish(value);}}><input aria-label={`Name for ${account.name}`} value={value} autoFocus maxLength={120} placeholder={account.name} onChange={event=>setValue(event.target.value)} onBlur={()=>finish(value)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();finish(null);}}}/></form>;
+}
+
+/** The ··· of one account: who signed in and since when, then make it the default, rename it, sign in again or disconnect it. */
+function AccountMenu({account,several,busy,onDefault,onRename,onSignIn,onDisconnect}:{account:AppAccountStatus;several:boolean;busy:boolean;onDefault:()=>void;onRename:()=>void;onSignIn:()=>void;onDisconnect:()=>void}) {
+  const [open,setOpen]=useState(false);
+  const menuRef=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
+  useEffect(()=>{
+    if(!open)return;
+    const outside=(event:PointerEvent)=>{if(!menuRef.current?.contains(event.target as Node)&&!trigger.current?.contains(event.target as Node))setOpen(false);};
+    const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus();}};
+    document.addEventListener('pointerdown',outside);document.addEventListener('keydown',key);
+    return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',key);};
+  },[open]);
+  const pick=(action:()=>void)=>()=>{setOpen(false);action();};
+  return <div className="plugin-account-more">
+    <button ref={trigger} type="button" className="icon-button" aria-label={`More for ${account.name}`} aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={16}/></button>
+    {open&&<div ref={menuRef} className="ros-model-menu plugin-account-menu" role="menu" aria-label={account.name}>
+      <p>{account.connected?`Signed in${account.email?` as ${account.email}`:''}${account.connectedAt?` since ${signedInOn(account.connectedAt)}`:''}.`:'Signed out. Sign in again to use it.'}</p>
+      {several&&!account.default&&<button type="button" role="menuitem" onClick={pick(onDefault)}><Check size={15}/>Make default</button>}
+      <button type="button" role="menuitem" onClick={pick(onRename)}><Pencil size={15}/>Rename</button>
+      <button type="button" role="menuitem" onClick={pick(onSignIn)}><RotateCw size={15}/>Sign in again</button>
+      <hr/>
+      <button type="button" role="menuitem" className="danger" onClick={pick(onDisconnect)}><X size={15}/>Disconnect</button>
+    </div>}
+  </div>;
 }
