@@ -144,7 +144,6 @@
 .ros-dock button:focus-visible, .ros-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Keep the map's own floating controls clear of the bar. */
-.canvas-stage:has(.ros-dock) .canvas-hint { display: none; }
 /* On maps too narrow for the bar to clear the bottom-right corner (under 986 px), the zoom controls rise
    above it: higher under 472 px, where the bar's footer wraps to a second row. Each clamp is 0 on wider maps. The lift is a margin, so the 100% in it counts
    from the map's width; the minimap above the zoom controls reads it too (canvas-minimap.css). */
@@ -152,9 +151,7 @@
 .workspace:has(.ros-bar.running) { --zoom-lift: max(clamp(0px, (986px - 100%) * 1000, 154px), clamp(0px, (472px - 100%) * 1000, 194px)); }
 .workspace:has(.ros-dock) .unified-canvas .canvas-tools { margin-bottom: var(--zoom-lift); }
 /* Ros's side panel covers the corner, so on maps with room beside it (620 px and up) the zoom controls
-   move to its left, where the map's hint line would run under them. On narrower maps the panel covers
-   them until it closes. */
-.workspace:has(.ros-full) .canvas-hint { display: none; }
+   move to its left. On narrower maps the panel covers them until it closes. */
 .workspace:has(.ros-full) { --zoom-right: calc(21px + clamp(0px, (100% - 620px) * 1000, min(420px, 100% - 36px) + 9px)); }
 .workspace:has(.ros-full) .unified-canvas .canvas-tools { right: var(--zoom-right); }
 

@@ -46,9 +46,7 @@
 .single-canvas-shell .icon-button { border-radius: 8px; }
 
 /* Things that float over the map. */
-.single-canvas-shell .canvas-edit-controls,
-.single-canvas-shell .unified-canvas .canvas-tools,
-.single-canvas-shell .canvas-dock .canvas-dock-item { border-radius: 10px; border: 1px solid var(--card-line); background: #fff; box-shadow: var(--float-shadow); }
+.single-canvas-shell .unified-canvas .canvas-tools { border-radius: 10px; border: 1px solid var(--card-line); background: #fff; box-shadow: var(--float-shadow); }
 
 /* Blocks on the map. */
 .single-canvas-shell .research-card.research-block { border-radius: 12px; border-color: #e3e3e3; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); }
@@ -99,7 +97,8 @@
 .code-results .result-actions { margin-top: 14px; }
 
 /* Notices sit in a soft panel aligned with the editor, not behind a side bar. */
-.runtime-blocker, .code-error-hint { margin: 0 0 12px; padding: 10px 14px; border: 1px solid #f0e3c4; border-left: 1px solid #f0e3c4; border-radius: 10px; background: #fcf8ee; color: #6d5214; font-size: 13px; line-height: 1.5; }
+/* A limit of the runtime is a quiet grey note; only a failed line gets a tint. */
+.runtime-blocker, .code-error-hint { margin: 0 0 12px; padding: 10px 14px; border: 1px solid #ececec; border-radius: 10px; background: #f7f7f7; color: #4a4a4a; font-size: 13px; line-height: 1.5; }
 .code-error-hint { border-color: #f1d4cd; background: #fdf4f2; color: #7a2a1d; }
 
 /* Tags read as labels: filled, borderless pills, so they never look like buttons. */

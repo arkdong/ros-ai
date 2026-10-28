@@ -1,15 +1,3 @@
-/* Move / Hand tool button at the start of the canvas toolbar, with its menu below. */
-.canvas-tool-switch { position: relative; display: flex; align-items: center; gap: 1px; padding-right: 4px; margin-right: 1px; border-right: 1px solid #ececec; }
-.direct-canvas .canvas-edit-controls .canvas-tool-switch .icon-button { width: 32px; }
-.canvas-tool-more { width: 18px; height: 34px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #6b6b6b; }
-.canvas-tool-more:hover, .canvas-tool-more.open { background: #f2f2f2; color: var(--ink); }
-.canvas-tool-menu { position: absolute; top: calc(100% + 8px); left: -4px; z-index: 20; min-width: 196px; padding: 5px; border: 1px solid var(--card-line, #e3e3e3); border-radius: 12px; background: #fff; box-shadow: var(--float-shadow, 0 6px 20px #00000014); }
-.canvas-tool-menu button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 9px 7px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-size: 14px; font-weight: 400; text-align: left; }
-.canvas-tool-menu button:hover, .canvas-tool-menu button:focus-visible { background: #f2f2f2; }
-.canvas-tool-check { width: 14px; display: grid; place-items: center; }
-.canvas-tool-label { flex: 1; }
-.canvas-tool-menu kbd { font: inherit; font-size: 13px; color: #8a8a8a; }
-
 /* Hand tool: a drag on empty canvas moves the canvas; blocks drag, open and connect as they do with Move. */
 .canvas-hand-tool .react-flow__pane, .canvas-hand-tool .react-flow__pane.draggable { cursor: grab; }
 .canvas-hand-tool .react-flow__pane.dragging { cursor: grabbing; }

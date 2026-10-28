@@ -21,7 +21,6 @@
 .nb-banners { display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
 .nb-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; line-height: 1.5; padding: 7px 10px; border-radius: 6px; background: #f4f4f4; }
 .nb-banner > span { flex: 1; min-width: 200px; }
-.nb-banner.warning { background: #fbf4e2; }
 .nb-banner.error { background: #fbeceb; color: #7a2a1d; }
 .nb-loading { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; color: var(--muted); font-size: 14px; }
 .nb-scroll { flex: 1; min-height: 0; overflow: auto; }
