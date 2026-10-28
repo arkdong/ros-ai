@@ -4,11 +4,15 @@ export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'re
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
- * the content stays in Notion. `kind` is learnt at the first read; an older block without it is a database. */
-export type NotionView = { url:string; filter?:string; columns?:string[]; kind?:'database'|'page' };
+ * the content stays in Notion. `kind` is learnt at the first read; an older block without it is a database.
+ * `account`: the Notion account the person chose to read it with, when they have several; without it the block
+ * reads with the account that can open it. */
+export type NotionView = { url:string; filter?:string; columns?:string[]; kind?:'database'|'page'; account?:string };
+/** Which of the person's Notion accounts read a block, when they have several: its key and name. */
+export type NotionAccount = { key:string; name:string };
 /** What a Notion database block shows, read live: the rows are never saved by ros.ai. `titleColumn` names the
  * column that holds each row's title, so one block per row can be made from the rows. */
-export type NotionTable = { kind?:'database'; title:string; url:string; link:string|null; columns:string[]; titleColumn?:string|null; rows:Record<string,string>[]; truncated:boolean; fetchedAt:string; notice?:string };
+export type NotionTable = { kind?:'database'; title:string; url:string; link:string|null; columns:string[]; titleColumn?:string|null; rows:Record<string,string>[]; truncated:boolean; fetchedAt:string; notice?:string; account?:NotionAccount };
 /** The kinds of property a page can carry, from its database's schema. Those a person can set from ros.ai are
  * `editable`; people, relations, files and values Notion computes are shown only. */
 export type NotionPropertyType = 'title'|'text'|'select'|'multi_select'|'checkbox'|'date'|'number'|'people'|'relation'|'files'|'computed';
@@ -20,7 +24,7 @@ export type NotionProperty = { name:string; value:string; type:NotionPropertyTyp
 export type NotionUnit = { markdown:string; source?:string; labels?:Record<string,string> };
 /** What a Notion page block shows, read live: its properties, its content as Markdown (`units` block by block)
  * and where it lives. `titleProperty` names the database column that holds the title. */
-export type NotionPage = { kind:'page'; title:string; icon?:string; url:string; link:string|null; properties:NotionProperty[]; titleProperty?:string; content:string; units:NotionUnit[]; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string };
+export type NotionPage = { kind:'page'; title:string; icon?:string; url:string; link:string|null; properties:NotionProperty[]; titleProperty?:string; content:string; units:NotionUnit[]; parent?:{ title:string; link:string|null; kind:'database'|'page' }; editedAt?:string; fetchedAt:string; notice?:string; account?:NotionAccount };
 /** A field's new value; `end` the end of a date range. */
 export type NotionFieldValue = { value:string|number|boolean|string[]|null; end?:string|null };
 /** The changes a person saves to a page in one go: a new title, fields, lines of text replaced (an empty `new`
