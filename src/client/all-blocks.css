@@ -26,7 +26,6 @@
 .ab-line { margin: -6px 0 0; font-size: 15px; line-height: 1.5; color: var(--ink); }
 .ab-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -2px; }
 .ab-chips .ros-chip.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
-.ab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .ab-fields { display: grid; gap: 10px; max-width: 520px; margin-top: 2px; }
 .ab-field { display: grid; gap: 5px; }
 .ab-field > span { font-size: var(--text-sm); font-weight: 500; color: var(--ink); }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, LayoutGrid, Search } from 'lucide-react';
 import { BLOCK_KINDS, mostUsedKinds, searchKinds, type BlockKind, type KindId } from './block-kinds';
 import { KindPreview } from './KindPreview';
+import './chip-menu.css';
 import './add-block-menu.css';
 
 const REST = 300;
@@ -44,7 +45,7 @@ export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { 
         {shown && row.id === shown.id && <div className="add-block-pop">
           <KindPreview kind={shown.id}/>
           <div className="add-block-line">{shown.line}</div>
-          <div className="add-block-foot"><span className="ros-chip">{shown.needs === 'Nothing' && <span className="add-block-dot"/>}{shown.needs}</span><span className="sp"/><span>{shown.asks ? 'Enter opens it' : 'Enter to add'}</span></div>
+          <div className="add-block-foot"><span className="ros-chip">{shown.needs === 'Nothing' && <span className="chip-dot"/>}{shown.needs}</span><span className="sp"/><span>{shown.asks ? 'Enter opens it' : 'Enter to add'}</span></div>
         </div>}
       </span>)}
     </div>
