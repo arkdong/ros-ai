@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CodexRateLimit, CodexRateLimits } from '../shared/budget-report.js';
+import { EFFORT_LEVELS, isEffortLevel, type AgentModel } from '../shared/agent-models.js';
 
 const rateLimit = (value: unknown): CodexRateLimit | null => {
   const item = value && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -19,6 +20,21 @@ function parseRateLimits(value: unknown): CodexRateLimits | null {
   return parsed.primary || parsed.secondary ? parsed : null;
 }
 import { StoreError } from './store.js';
+
+/** Codex's own models (model/list), with the effort levels ros.ai offers; the one it marks as its default is named apart. */
+export type CodexModels = { models: AgentModel[]; defaultModel: string | null };
+export function parseCodexModels(value: unknown): CodexModels {
+  const data = value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data) ? (value as { data: Record<string, unknown>[] }).data : [];
+  let defaultModel: string | null = null;
+  const models = data.flatMap((item): AgentModel[] => {
+    if (!item || typeof item !== 'object' || item.hidden === true || typeof item.model !== 'string' || !item.model) return [];
+    const offered = Array.isArray(item.supportedReasoningEfforts) ? item.supportedReasoningEfforts.map(entry => entry && typeof entry === 'object' ? (entry as { reasoningEffort?: unknown }).reasoningEffort : null) : [];
+    const efforts = EFFORT_LEVELS.filter(level => offered.includes(level));
+    if (item.isDefault === true) defaultModel = item.model;
+    return [{ id: item.model, label: typeof item.displayName === 'string' && item.displayName ? item.displayName : item.model, detail: typeof item.description === 'string' ? item.description.replace(/\.$/u, '') : '', efforts, defaultEffort: isEffortLevel(item.defaultReasoningEffort) && efforts.includes(item.defaultReasoningEffort) ? item.defaultReasoningEffort : efforts[0] ?? null }];
+  });
+  return { models, defaultModel };
+}
 
 type Rpc = { id?: string | number; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { code?: number; message?: string } };
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
@@ -157,7 +173,7 @@ export class CodexAppServer {
   async inspectConnection() {
     await this.initialize();
     const account = await this.request<{ account?: { type?: string } | null; requiresOpenaiAuth?: boolean }>('account/read', { refreshToken: false });
-    const value = await this.request<{ config?: { features?: Record<string, unknown>; mcp_servers?: Record<string, { enabled?: boolean }>; model_provider?: string; model_providers?: Record<string, { requires_openai_auth?: boolean; request_max_retries?: number; stream_max_retries?: number; env_key?: string | null; base_url?: string | null }>; default_permissions?: string | null; sandbox_mode?: string | null; permissions?: Record<string, { filesystem?: Record<string, unknown> | null; network?: { enabled?: boolean | null } | null }> } }>('config/read', { includeLayers: false });
+    const value = await this.request<{ config?: { features?: Record<string, unknown>; mcp_servers?: Record<string, { enabled?: boolean }>; model?: string | null; model_reasoning_effort?: string | null; model_provider?: string; model_providers?: Record<string, { requires_openai_auth?: boolean; request_max_retries?: number; stream_max_retries?: number; env_key?: string | null; base_url?: string | null }>; default_permissions?: string | null; sandbox_mode?: string | null; permissions?: Record<string, { filesystem?: Record<string, unknown> | null; network?: { enabled?: boolean | null } | null }> } }>('config/read', { includeLayers: false });
     const config = value.config ?? {}, mcpNames = Object.entries(config.mcp_servers ?? {}).filter(([, v]) => v.enabled !== false).map(([key]) => key);
     const api = this.options.api ?? null, name = codexProvider(Boolean(api)), provider = config.model_providers?.[name];
     // Managed/local layers may supersede overrides; inspect the effective config
@@ -169,7 +185,11 @@ export class CodexAppServer {
     // Plan limits are best effort: older Codex versions do not answer this request.
     let rateLimits: CodexRateLimits | null = null;
     if (account.account) try { rateLimits = parseRateLimits(await this.request('account/rateLimits/read', {}, 5000)); } catch { rateLimits = null; }
-    return { rateLimits, signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced };
+    // The models it offers and the model and effort the person's own Codex settings pick, so ros.ai starts where Codex would. Best effort too.
+    let models: CodexModels = { models: [], defaultModel: null };
+    try { models = parseCodexModels(await this.request('model/list', { includeHidden: false, limit: 100 }, 5000)); } catch { /* An older Codex keeps choosing its own model. */ }
+    const configured = { model: typeof config.model === 'string' ? config.model : null, effort: isEffortLevel(config.model_reasoning_effort) ? config.model_reasoning_effort : null };
+    return { rateLimits, signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced, ...models, configured };
   }
   /** Under a permission profile, the effective one must be ros.ai's: the session folder and the minimal platform files to read, and no network. */
   private isolated(config: { default_permissions?: string | null; sandbox_mode?: string | null; permissions?: Record<string, { filesystem?: Record<string, unknown> | null; network?: { enabled?: boolean | null } | null }> }) {

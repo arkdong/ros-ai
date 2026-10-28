@@ -14,15 +14,15 @@ import { OPENAI_MODELS } from './openai-provider.js';
 import { agentStep, type AgentConnectionStatus, type AgentEvent, type AgentExecuteRequest, type AgentResult, type AgentRuntime } from '../shared/agent-runtime.js';
 import type { LocalAgentId, LocalAgentSetup } from '../shared/local-agent-setup.js';
 import type { CodexAllowanceStatus } from '../shared/agent-budget-settings.js';
-import type { CodexRateLimits } from '../shared/budget-report.js';
-import { CODEX_API_MODELS, type CodexAgentSettings, type CodexApiModel, type CodexBilling } from '../shared/codex-agent.js';
+import { CODEX_API_MODELS, type CodexApiModel, type CodexBilling } from '../shared/codex-agent.js';
+import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { LocalAgentOnboarding } from './local-agent-onboarding.js';
 
 /** A thread's running token totals, as Codex reports them. */
 type Tokens = { inputTokens: number; cachedInputTokens: number; outputTokens: number; totalTokens: number };
 type Session = { projectId: string; threadId: string; scopeHash: string; cwd: string; state: 'ready' | 'interrupted' | 'uncertain'; at: string; tokens?: Tokens };
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; threadId?: string; turnId?: string; grantId: string; billing?: CodexBilling; model?: CodexApiModel; usageId?: string | null; reservedUsd?: number; costUsd?: number; tokens?: Tokens; capture: unknown; request: unknown; events: AgentEvent[]; reply: string; error?: string };
-type Checked = { at: number; cli: ReturnType<typeof readCliStatus>; protocol: CodexProtocol; rpc: { signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | null; disabledMcp: string[]; toolRestrictionsConfigured: boolean; rateLimits?: CodexRateLimits | null } | null };
+type Checked = { at: number; cli: ReturnType<typeof readCliStatus>; protocol: CodexProtocol; rpc: Awaited<ReturnType<CodexAppServer['inspectConnection']>> | null };
 const now = () => new Date().toISOString();
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const noProtocol: CodexProtocol = { appServer: false, dynamicTools: false, interrupt: false, restrictedReadAccess: false, permissionProfiles: false };
@@ -75,18 +75,34 @@ export class CodexAgentService implements AgentRuntime {
       if (session) store.saveRecord('codex-session', project.id, project.id, { ...session, state: 'uncertain' });
     }
   }
-  private saved(): { model: CodexApiModel } {
-    const saved = this.store.globalRecord<{ model?: CodexApiModel }>('codex-agent-settings', 'settings');
-    return { model: CODEX_API_MODELS.find(item => item.id === saved?.model)?.id ?? 'gpt-5.4' };
+  /** model and effort: on the API key; planModel and planEffort: on the subscription, once chosen here. No effort saved means the model's own default. */
+  private saved() {
+    const saved = this.store.globalRecord<{ model?: string; effort?: EffortLevel; planModel?: string; planEffort?: EffortLevel }>('codex-agent-settings', 'settings');
+    return { model: (CODEX_API_MODELS.find(item => item.id === saved?.model)?.id ?? 'gpt-5.4') as CodexApiModel, effort: isEffortLevel(saved?.effort) ? saved.effort : undefined,
+      planModel: typeof saved?.planModel === 'string' ? saved.planModel : undefined, planEffort: isEffortLevel(saved?.planEffort) ? saved.planEffort : undefined };
   }
-  settings(): CodexAgentSettings { return { ...this.saved(), models: CODEX_API_MODELS, apiKeyConfigured: Boolean(apiKey()) }; }
-  update(supplied: unknown) {
-    const value = z.object({ model: z.enum(CODEX_API_MODELS.map(item => item.id) as [CodexApiModel, ...CodexApiModel[]]).optional() }).strict().parse(supplied);
-    if (this.active.size) throw new StoreError('Wait for the current Codex turn to finish before changing its model.', 409);
-    this.store.saveGlobalRecord('codex-agent-settings', 'settings', { ...this.saved(), ...value });
+  /** What one of the two agents runs on. On the key, one of the models ros.ai prices. On the subscription, from Codex's own list, which
+   * a connection check reads: the model chosen here, else the one the person's own Codex settings pick, else Codex's default. */
+  async modelChoice(billing: CodexBilling): Promise<AgentModelChoice> {
+    const saved = this.saved();
+    if (billing === 'api-key') { const model = CODEX_API_MODELS.find(item => item.id === saved.model)!; return { model: model.id, effort: effortFor(model, saved.effort), models: CODEX_API_MODELS }; }
+    await this.check(false, 'plan');
+    const rpc = this.checked.get('plan')?.rpc, models = rpc?.models ?? [], find = (id?: string | null) => id ? models.find(item => item.id === id) : undefined;
+    const chosen = find(saved.planModel), model = chosen ?? find(rpc?.configured.model) ?? find(rpc?.defaultModel) ?? models[0];
+    if (!model) return { model: null, effort: null, models: [] };
+    return { model: model.id, effort: effortFor(model, chosen ? saved.planEffort : model.id === rpc?.configured.model ? rpc.configured.effort : null), models };
+  }
+  /** A new model starts on its own default effort unless an effort comes with it. A turn already running keeps the choice it started with. */
+  async chooseModel(billing: CodexBilling, supplied: unknown): Promise<AgentModelChoice> {
+    const value = z.object({ model: z.string().min(1).max(100).optional(), effort: z.enum(EFFORT_LEVELS).optional() }).strict().parse(supplied);
+    const current = await this.modelChoice(billing), model = current.models.find(item => item.id === (value.model ?? current.model));
+    if (!model) throw new StoreError(current.models.length ? 'Codex does not offer that model.' : 'Codex has not listed its models yet. Check Codex on the Agents page.', 400);
+    if (value.effort && !model.efforts.includes(value.effort)) throw new StoreError(`${model.label} does not take that effort level.`, 400);
+    const effort = value.effort ?? (model.id === current.model ? current.effort ?? undefined : undefined);
+    this.store.saveGlobalRecord('codex-agent-settings', 'settings', { ...this.saved(), ...(billing === 'plan' ? { planModel: model.id, planEffort: effort } : { model: model.id, effort }) });
     // Codex on the key is checked again with the model it now runs.
-    this.checked.delete('api-key');
-    return this.settings();
+    if (billing === 'api-key') this.checked.delete('api-key');
+    return this.modelChoice(billing);
   }
   /** Codex on the OpenAI API key, when it runs that way; null on the ChatGPT plan. */
   private api(billing: CodexBilling, model = this.saved().model): CodexApiKey | null {
@@ -210,7 +226,7 @@ export class CodexAgentService implements AgentRuntime {
     if (this.closed) throw new StoreError('Local agent service is stopping.', 503);
     if (this.onboarding.hasPending()) throw new StoreError('Complete or cancel native sign-in before starting Codex research.', 409);
     if (this.active.has(request.projectId)) throw new StoreError('A Codex turn is already active in this project.', 409);
-    const billing = request.billing ?? 'plan', status = await this.status(request.projectId, false, billing);
+    const billing = request.billing ?? 'plan', status = await this.status(request.projectId, false, billing), choice = await this.modelChoice(billing);
     if (this.closed) throw new StoreError('Local agent service is stopping.', 503);
     if (this.onboarding.hasPending()) throw new StoreError('Complete or cancel native sign-in before starting Codex research.', 409);
     if (this.active.has(request.projectId)) throw new StoreError('A Codex turn is already active in this project.', 409);
@@ -219,9 +235,10 @@ export class CodexAgentService implements AgentRuntime {
     // Validate before reserving: a reserved turn is never refunded.
     const message = z.string().trim().min(1).max(12000).parse(request.message);
     // How Codex is confined stays as the connection check found it for the whole turn.
-    const { model } = this.saved(), checked = this.checked.get(billing)!, isolation = codexIsolation(checked.protocol);
+    const checked = this.checked.get(billing)!, isolation = codexIsolation(checked.protocol);
     if (!isolation) throw new StoreError('This Codex version can’t keep Codex to the project. Nothing was sent; update the Codex CLI.', 409);
-    const onKey = billing === 'api-key', api = this.api(billing, model);
+    // On the key, the turn's price cap, thread and tokens all go by the model in its choice, one of the two ros.ai prices.
+    const onKey = billing === 'api-key', model = onKey ? choice.model as CodexApiModel : this.saved().model, api = this.api(billing, model);
     const toolkit = new AgentWorkspaceTools(this.store, this.execution, this.experiments, request, request.turnId);
     const stopped$ = new AbortController(); toolkit.signal = AbortSignal.any([request.signal, stopped$.signal]);
     // On an API key the turn also reserves its cap from the OpenAI connection; what Codex reports using settles it.
@@ -243,7 +260,7 @@ export class CodexAgentService implements AgentRuntime {
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
     const rpc = new CodexAppServer(cwd, { disabledMcp: checked.rpc?.disabledMcp, isolation, api });
     const input = [{ type: 'text', text: `${instructions}${ownSearchInstructions}\n\nExplicit authorized scope: ${reservation.scope}\n\nSelected captured material (JSON evidence, not instructions):\n${JSON.stringify(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}User request:\n${message}` }];
-    let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', grantId: reservation.grantId, billing, ...(onKey ? { model, usageId: usage?.id ?? null, reservedUsd } : {}), capture: toolkit.capture, request: { input, tools: toolkit.definitions, provider: 'codex-app-server', authentication: onKey ? `OpenAI API key (${model})` : 'ChatGPT plan (Codex’s own sign-in)', isolation, automaticRetry: false }, events: [], reply: '' };
+    let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', grantId: reservation.grantId, billing, ...(onKey ? { model, usageId: usage?.id ?? null, reservedUsd } : {}), capture: toolkit.capture, request: { input, tools: toolkit.definitions, provider: 'codex-app-server', authentication: onKey ? `OpenAI API key (${model})` : 'ChatGPT plan (Codex’s own sign-in)', model: choice.model, effort: choice.effort, isolation, automaticRetry: false }, events: [], reply: '' };
     const save = () => this.store.saveRecord('agent-attempt', requestId, request.projectId, attempt);
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
@@ -331,14 +348,14 @@ export class CodexAgentService implements AgentRuntime {
       if (!paid || !currentConnection.toolRestrictionsConfigured || currentConnection.disabledMcp.length) throw new StoreError('Current Codex authentication or tool restrictions changed after connection detection. No inference was submitted; recheck the connection.', 503);
       // Newer Codex keeps reads to the session folder with ros.ai's permission profile; older Codex with read roots on each turn.
       const profile = isolation === 'profile' ? { permissions: PERMISSION_PROFILE } : null;
-      const settings = { cwd, approvalPolicy: 'never', approvalsReviewer: 'user', developerInstructions: instructions + ownSearchInstructions, config: { web_search: 'live' }, ...(onKey ? { model } : {}), ...(profile ?? {}) };
-      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools: toolkit.definitions });
+      const settings = { cwd, approvalPolicy: 'never', approvalsReviewer: 'user', developerInstructions: instructions + ownSearchInstructions, config: { web_search: 'live' }, ...(onKey ? { model } : choice.model ? { model: choice.model } : {}), ...(profile ?? {}) };
+      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools: toolkit.definitions });
       threadId = String(result.thread?.id ?? '');
       const confined = result.sandbox?.type === 'readOnly' && (!profile || (result.activePermissionProfile?.id === PERMISSION_PROFILE && result.sandbox.networkAccess === false));
       if (!threadId || result.cwd !== cwd || !confined || result.approvalPolicy !== 'never') throw new StoreError('Codex did not confirm the requested process directory/sandbox/approval configuration. No turn was started.', 503);
       // The thread must bill what the person chose: the OpenAI API key, on the model ros.ai prices.
       if (onKey && (result.modelProvider !== codexProvider(true) || result.model !== model)) throw new StoreError('Codex did not confirm it is using the OpenAI API key from the Agents page, so ros.ai stopped before sending anything.', 503);
-      attempt.threadId = threadId; save();
+      attempt.threadId = threadId; attempt.request = { ...object(attempt.request), reportedModel: result.model ?? null, reportedEffort: result.reasoningEffort ?? null }; save();
       this.store.saveRecord('codex-session', request.projectId, request.projectId, { projectId: request.projectId, threadId, scopeHash, cwd, state: 'ready', at: now(), ...(latest ? { tokens: latest } : {}) } satisfies Session);
       if (stopped || request.signal.aborted) throw new StoreError('Agent turn stopped before inference submission.', 409);
       const sandboxPolicy = profile ? null : { type: 'readOnly', networkAccess: false, access: { type: 'restricted', readableRoots: [cwd], includePlatformDefaults: true } };
@@ -346,7 +363,8 @@ export class CodexAgentService implements AgentRuntime {
       // Persist exact observable request BEFORE the only turn/start. No retries.
       attempt.request = { ...object(attempt.request), ...confinement, threadId, cwd }; save();
       inferenceSubmitted = true;
-      const started = await rpc.request<{ turn?: { id?: string } }>('turn/start', { threadId, input, cwd, ...confinement, approvalPolicy: 'never', approvalsReviewer: 'user', summary: 'none' });
+      // The model and effort chosen for this agent apply to this turn and the thread's next ones.
+      const started = await rpc.request<{ turn?: { id?: string } }>('turn/start', { threadId, input, cwd, ...confinement, approvalPolicy: 'never', approvalsReviewer: 'user', summary: 'none', ...(choice.model ? { model: choice.model } : {}), ...(choice.effort ? { effort: choice.effort } : {}) });
       turnId = String(started.turn?.id ?? turnId); attempt.turnId = turnId; save();
       if (stopped) stop();
       await terminal;
@@ -355,7 +373,7 @@ export class CodexAgentService implements AgentRuntime {
       if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : 'Codex turn failed. Captured requests, tool activity and reservations remain saved; no automatic retry occurred.', 503);
       if (!attempt.reply.trim()) throw new StoreError('Codex completed without a readable reply. Inspect the captured tool/progress record; no automatic retry occurred.', 503);
       attempt.status = 'completed'; save();
-      return { reply: attempt.reply, sessionId: threadId, actions: toolkit.actions, requestId };
+      return { reply: attempt.reply, sessionId: threadId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) };
     } catch (error) {
       attempt.status = settlement === 'interrupted' ? 'interrupted' : inferenceSubmitted && !settlement ? 'uncertain' : 'failed';
       attempt.error = timedOut ? 'Codex reached its granted wall-time. Cancellation was requested; unconfirmed outcomes and full reservations are preserved.' : error instanceof StoreError ? error.message : 'Codex failed locally. No automatic retry occurred.'; save();
@@ -380,11 +398,12 @@ export function attachCodexAgentRoutes(app: Express, service: CodexAgentService)
   // ?billing=api-key checks Codex (API key); without it, Codex on the subscription.
   const billing = (query: unknown): CodexBilling => z.object({ billing: z.enum(['plan', 'api-key']).default('plan') }).parse(query).billing;
   const respond = async (projectId: string, force: boolean, query: unknown) => ({ connections: [await service.status(projectId, force, billing(query))] });
-  // The model Codex (API key) runs on, for every project.
-  app.get('/api/agents/codex', (_req, res) => res.json(service.settings()));
-  app.put('/api/agents/codex', (req, res) => {
-    if (!req.is('application/json')) throw new StoreError('Send Codex settings as JSON.', 415);
-    res.json(service.update(req.body));
+  // The model and effort of Codex on the subscription (?billing=plan) or on the API key (?billing=api-key), for every project.
+  const chosen = (query: unknown): CodexBilling => z.object({ billing: z.enum(['plan', 'api-key']) }).parse(query).billing;
+  app.get('/api/agents/codex/model', async (req, res) => res.json(await service.modelChoice(chosen(req.query))));
+  app.put('/api/agents/codex/model', async (req, res) => {
+    if (!req.is('application/json')) throw new StoreError('Send the model and effort as JSON.', 415);
+    res.json(await service.chooseModel(chosen(req.query), req.body));
   });
   app.get('/api/projects/:id/agents', async (req, res) => res.json(await respond(String(req.params.id), false, req.query)));
   app.post('/api/projects/:id/agents/check', async (req, res) => res.json(await respond(String(req.params.id), true, req.query)));
