@@ -135,6 +135,9 @@ function FirstRunSettings() {
     ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the Ros download', detail: 'Ros on this computer, about 3 GB' }] : []),
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
+    <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
+      <button type="button" className="secondary small" onClick={show}>Show</button>
+    </Row>
     <Row title="Reset onboarding" detail="Start again from the welcome page, as on a new computer.">
       <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>Reset…</button>
     </Row>
