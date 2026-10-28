@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Express } from 'express';
 import { z } from 'zod';
-import { createSdkMcpServer, query, tool, type AnyZodRawShape, type HookCallback, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool, type AnyZodRawShape, type HookCallback, type ModelInfo, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
@@ -14,6 +14,7 @@ import { CLAUDE_CODE_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import { projectFolderRoot } from './project-folders.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type ClaudeModel, type ClaudeWebSearch } from '../shared/claude-agent.js';
+import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { ClaudePlan, planAllowed, planEnvironment } from './claude-plan.js';
 import { privateAddress } from './private-address.js';
 
@@ -92,12 +93,42 @@ function webStep(name: string, input: unknown) {
 async function* single(message: string): AsyncIterable<SDKUserMessage> {
   yield { type: 'user', message: { role: 'user', content: message }, parent_tool_use_id: null };
 }
+async function* idle(signal: AbortSignal): AsyncIterable<SDKUserMessage> {
+  await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+}
+/** Claude Code's own starting effort for the full model name it resolved an alias to, as its documentation gives it. */
+const claudeDefaultEffort = (resolved: string): EffortLevel => /^claude-(opus|sonnet|haiku)-5-5\b/u.test(resolved) ? 'medium' : resolved.startsWith('claude-opus-4-7') ? 'xhigh' : 'high';
+/** The models Claude Code lists for ros.ai's aliases, named as it names them: "Opus 5.5 · Best for everyday, complex tasks". */
+export function claudeModels(listed: ModelInfo[]): AgentModel[] {
+  return CLAUDE_MODELS.flatMap(known => {
+    const item = listed.find(entry => entry.value === known.id);
+    if (!item) return [];
+    // The description leads with the full name when it has one; prices ("$5/$25 per Mtok") are left out.
+    const parts = item.description.split(' · ').filter(part => !part.startsWith('$')), named = parts[0]?.startsWith(item.displayName) ?? false;
+    const efforts = item.supportsEffort === false ? [] : EFFORT_LEVELS.filter(level => (item.supportedEffortLevels ?? known.efforts).includes(level));
+    const resolved = item.resolvedModel ?? '';
+    return [{ id: known.id, label: named ? parts[0]! : item.displayName, detail: (named ? parts[1] : parts[0]) || known.detail, efforts, defaultEffort: efforts.length ? effortFor({ ...known, efforts }, resolved ? claudeDefaultEffort(resolved) : known.defaultEffort) : null }];
+  });
+}
+/** Asks the Claude Code that ships with ros.ai which models it offers. It gets no key, no login and only an address on this
+ * computer that answers nothing, so nothing leaves the machine; it answers in about a third of a second. */
+async function readClaudeModels(configDir: string): Promise<AgentModel[]> {
+  const env: Record<string, string> = {};
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'USERPROFILE']) if (process.env[key]) env[key] = process.env[key]!;
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20_000);
+  const stream = query({ prompt: idle(controller.signal), options: { abortController: controller, env: { ...env, CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_BASE_URL: 'http://127.0.0.1:9', CLAUDE_AGENT_SDK_CLIENT_APP: 'ros-ai/0.1.0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1' }, settingSources: [], skills: [], tools: [], stderr: () => {} } });
+  try { const models = claudeModels(await stream.supportedModels()); if (!models.length) throw new Error('Claude Code listed none of the models ros.ai offers.'); return models; }
+  finally { clearTimeout(timer); controller.abort(); }
+}
 
 /** Claude Code through Anthropic's Agent SDK, as two agents: on the Claude API key saved on the
  * Agents page, or, in the local app, on the person's own Claude subscription (see claude-plan.ts). */
 export class ClaudeAgentService {
   private readonly active = new Map<string, { controller: AbortController; done: Promise<unknown> }>();
   private readonly configDir: string;
+  /** Claude Code's model list, read once; after a failed read ros.ai's own list stands in for a minute before it asks again. */
+  private catalog: { models: Promise<AgentModel[]>; failedAt?: number } | null = null;
   private closed = false;
   readonly plan = new ClaudePlan();
   constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, dataDir: string) {
@@ -114,23 +145,50 @@ export class ClaudeAgentService {
       store.saveGlobalRecord('claude-agent-settings', 'settings', { ...legacy, billing: undefined });
     }
   }
-  /** Each of the two agents keeps its own model; the subscription one starts from the model chosen before they split. */
+  /** Each of the two agents keeps its own model and effort; the subscription one starts from the model chosen before they split.
+   * No effort saved means the model's own default. */
   private saved() {
-    const saved = this.store.globalRecord<{ model?: ClaudeModel; planModel?: ClaudeModel; webSearch?: ClaudeWebSearch }>('claude-agent-settings', 'settings');
-    const model = saved?.model ?? 'sonnet';
-    return { model, planModel: saved?.planModel ?? model, webSearch: saved?.webSearch === 'ros' ? 'ros' as const : 'own' as const };
+    const saved = this.store.globalRecord<{ model?: ClaudeModel; planModel?: ClaudeModel; effort?: EffortLevel; planEffort?: EffortLevel; webSearch?: ClaudeWebSearch }>('claude-agent-settings', 'settings');
+    const model = saved?.model ?? 'sonnet', effort = isEffortLevel(saved?.effort) ? saved.effort : undefined;
+    return { model, planModel: saved?.planModel ?? model, effort, planEffort: isEffortLevel(saved?.planEffort) ? saved.planEffort : undefined, webSearch: saved?.webSearch === 'ros' ? 'ros' as const : 'own' as const };
   }
   model(billing: ClaudeBilling) { const saved = this.saved(); return billing === 'plan' ? saved.planModel : saved.model; }
+  /** The models Claude Code offers, from its own list, or ros.ai's when Claude Code cannot say. */
+  models(): Promise<AgentModel[]> {
+    if (!this.catalog || (this.catalog.failedAt && Date.now() - this.catalog.failedAt > 60_000)) {
+      const catalog: { models: Promise<AgentModel[]>; failedAt?: number } = { models: Promise.resolve(CLAUDE_MODELS) };
+      catalog.models = readClaudeModels(this.configDir).catch(() => { catalog.failedAt = Date.now(); return CLAUDE_MODELS; });
+      this.catalog = catalog;
+    }
+    return this.catalog.models;
+  }
+  /** What one of the two agents runs on: its model, or Sonnet when that model is no longer offered, at the effort chosen for it. */
+  async modelChoice(billing: ClaudeBilling): Promise<AgentModelChoice> {
+    const saved = this.saved(), models = await this.models(), wanted = billing === 'plan' ? saved.planModel : saved.model;
+    const model = models.find(item => item.id === wanted) ?? models.find(item => item.id === 'sonnet') ?? models[0]!;
+    return { model: model.id, effort: effortFor(model, billing === 'plan' ? saved.planEffort : saved.effort), models };
+  }
+  /** A new model starts on its own default effort unless an effort comes with it. A turn already running keeps the choice it started with. */
+  async chooseModel(billing: ClaudeBilling, supplied: unknown): Promise<AgentModelChoice> {
+    const value = z.object({ model: z.string().min(1).max(100).optional(), effort: z.enum(EFFORT_LEVELS).optional() }).strict().parse(supplied);
+    const current = await this.modelChoice(billing), models = await this.models();
+    const model = models.find(item => item.id === (value.model ?? current.model));
+    if (!model) throw new StoreError('Claude Code does not offer that model.', 400);
+    if (value.effort && !model.efforts.includes(value.effort)) throw new StoreError(`${model.label} does not take that effort level.`, 400);
+    const effort = value.effort ?? (model.id === current.model ? (billing === 'plan' ? this.saved().planEffort : this.saved().effort) : undefined);
+    this.store.saveGlobalRecord('claude-agent-settings', 'settings', { ...this.saved(), ...(billing === 'plan' ? { planModel: model.id, planEffort: effort } : { model: model.id, effort }) });
+    return this.modelChoice(billing);
+  }
   settings(): ClaudeAgentSettings {
     const { model, planModel, webSearch } = this.saved();
     const budget = this.execution.connectionBudgets.status('claude');
-    return { model, planModel, models: CLAUDE_MODELS, webSearch, planAllowed, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
+    return { model, planModel, webSearch, planAllowed, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
   }
   /** Settings with a fresh look at the Claude plan sign-in; still no model request. */
   async checkedSettings() { await this.plan.check(); return this.settings(); }
+  /** How Claude Code (API key) searches the web; each agent's model and effort change through chooseModel. */
   async update(supplied: unknown) {
-    const model = z.enum(CLAUDE_MODELS.map(item => item.id) as [ClaudeModel, ...ClaudeModel[]]);
-    const value = z.object({ model: model.optional(), planModel: model.optional(), webSearch: z.enum(['own', 'ros']).optional() }).strict().parse(supplied);
+    const value = z.object({ webSearch: z.enum(['own', 'ros']) }).strict().parse(supplied);
     if (this.active.size) throw new StoreError('Wait for the current Claude Code turn to finish before changing its settings.', 409);
     this.store.saveGlobalRecord('claude-agent-settings', 'settings', { ...this.saved(), ...value });
     return this.checkedSettings();
@@ -158,7 +216,9 @@ export class ClaudeAgentService {
     const billing = request.billing ?? 'api-key', ready = this.readiness(request.projectId, billing);
     if (!ready.available) throw new StoreError(ready.reason!, 503);
     const message = z.string().trim().min(1).max(12000).parse(request.message);
-    const { webSearch } = this.saved(), model = this.model(billing), onPlan = billing === 'plan';
+    const { webSearch } = this.saved(), choice = await this.modelChoice(billing), model = choice.model!, effort = choice.effort, onPlan = billing === 'plan';
+    if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
+    if (this.active.has(request.projectId)) throw new StoreError('Claude Code is already working in this project.', 409);
     // On a plan its own search costs nothing extra; on an API key the researcher chose.
     const ownSearch = onPlan || webSearch === 'own';
     const apiKey = onPlan ? '' : process.env.ANTHROPIC_API_KEY!.trim();
@@ -186,7 +246,7 @@ export class ClaudeAgentService {
     const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
     const allowedTools = [...builtIn, ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
-    let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, billing, usageId: usage?.id ?? null, reservedUsd, request: { prompt, model, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, webSearch: ownSearch ? 'own' : 'ros', maxBudgetUsd: onPlan ? null : reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: onPlan ? 'Claude plan (Claude Code’s own sign-in)' : 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
+    let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, billing, usageId: usage?.id ?? null, reservedUsd, request: { prompt, model, effort, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, webSearch: ownSearch ? 'own' : 'ros', maxBudgetUsd: onPlan ? null : reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: onPlan ? 'Claude plan (Claude Code’s own sign-in)' : 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
     const save = () => this.store.saveRecord('claude-attempt', requestId, request.projectId, attempt);
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
@@ -211,7 +271,7 @@ export class ClaudeAgentService {
     let finished: { cost: number; subtype: string; text: string; sessionId: string } | null = null;
     const done = (async () => {
       const stream = query({ prompt: single(prompt), options: {
-        abortController: controller, cwd, model, env: onPlan ? planEnvironment() : childEnvironment(apiKey, this.configDir),
+        abortController: controller, cwd, model, ...(effort ? { effort } : {}), env: onPlan ? planEnvironment() : childEnvironment(apiKey, this.configDir),
         tools: builtIn, allowedTools, disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent', ...(ownSearch ? [] : WEB_TOOLS)],
         permissionMode: 'dontAsk', settingSources: [], skills: [], strictMcpConfig: true,
         mcpServers: { [SERVER]: createSdkMcpServer({ name: SERVER, version: '0.1.0', tools, alwaysLoad: true }) },
@@ -267,7 +327,7 @@ export class ClaudeAgentService {
       const reply = (result.text || attempt.reply).trim();
       if (!reply) throw new StoreError('Claude Code finished without a readable answer.', 503);
       attempt = { ...attempt, status: 'completed', reply }; save();
-      return { reply, sessionId: result.sessionId, actions: toolkit.actions, requestId };
+      return { reply, sessionId: result.sessionId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) ?? model };
     } catch (error) {
       let settled = attempt.costUsd !== undefined;
       // Claude Code reports its session before any model request, so without it nothing was sent.
@@ -286,6 +346,13 @@ export function attachClaudeAgentRoutes(app: Express, service: ClaudeAgentServic
   app.put('/api/agents/claude', async (req, res) => {
     if (!req.is('application/json')) throw new StoreError('Send Claude Code settings as JSON.', 415);
     res.json(await service.update(req.body));
+  });
+  // The model and effort of Claude Code on the subscription (?billing=plan) or on the API key (?billing=api-key), for every project.
+  const billing = (query: unknown): ClaudeBilling => z.object({ billing: z.enum(['plan', 'api-key']) }).parse(query).billing;
+  app.get('/api/agents/claude/model', async (req, res) => { res.json(await service.modelChoice(billing(req.query))); });
+  app.put('/api/agents/claude/model', async (req, res) => {
+    if (!req.is('application/json')) throw new StoreError('Send the model and effort as JSON.', 415);
+    res.json(await service.chooseModel(billing(req.query), req.body));
   });
   // Claude Code's own sign-in to the person's Claude plan; ros.ai never sees the token.
   app.post('/api/agents/claude/plan-login', (_req, res) => { res.json(service.plan.startLogin()); });

@@ -50,7 +50,7 @@ Codex owns its credentials; ros.ai does not copy its auth cache or treat its sub
 Claude Code can be the project assistant. It runs through Anthropic's [Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), which ships with ros.ai (`npm ci` installs it), so no separate `claude` install is needed.
 
 1. Save an [Anthropic API key](https://platform.claude.com/settings/keys) on the **Model** page under **Claude Code**. API billing is separate from a Claude subscription.
-2. Save a usage allowance (total USD and requests) on the same card, and pick the model (Sonnet by default, Opus or Haiku).
+2. Save a usage allowance (total USD and requests) on the same card. Its model and effort are under [Model and effort](#model-and-effort-for-claude-code-and-codex).
 3. In the assistant, open settings and choose **Claude Code**.
 
 Each turn reserves up to US$5.00 of the allowance (`ROS_CLAUDE_TURN_USD` changes it, up to 20) and passes that amount to Claude Code as the turn's budget. A turn that finishes is then counted at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice. A stopped, failed or uncertain turn keeps its full reservation.
@@ -62,6 +62,16 @@ What it can do, enforced by ros.ai rather than by instructions:
 - No shell, file writes, web access, subagents, skills or MCP servers from your own Claude Code setup.
 
 The session gets its own config folder inside ros.ai's data folder and only the saved API key. ros.ai stops the turn if Claude Code reports any other credential source. Claude subscription sign-in is deliberately not offered: Anthropic requires API authentication for third-party applications unless subscription-login use has prior approval. Each turn's prompt, tools, model, reported cost and events are saved with the turn. Follow-up turns in the same project resume the same Claude Code session.
+
+## Model and effort for Claude Code and Codex
+
+Each of the four agents ros.ai runs (Claude Code and Codex, each on a subscription or on an API key) keeps one model and one effort for all projects. Pick them on the agent's card on the **Agents** page, or from the chip beside the agent in the Ros bar; both show the same choice. The chip shows the model with the effort as five bars, and its menu names the level.
+
+- **Claude Code** offers the models its own Agent SDK lists (Opus, Fable, Sonnet and Haiku), read once from the bundled Claude Code with no key and no network, at Low, Medium, High, Extra high or Max. ros.ai passes them as Claude Code's `model` and `effort` options. Sonnet is the default.
+- **Codex** on the ChatGPT subscription offers the models the installed Codex CLI lists (`model/list`) and starts from the model and `model_reasoning_effort` in your own Codex settings until you pick one here. Each turn sends the choice with `turn/start`.
+- **Codex (API key)** stays on the models ros.ai prices, GPT-5.4 and GPT-5.4 mini, at Low, Medium or High.
+
+A new model starts on its own default effort. Higher effort thinks longer, so a turn is slower and uses more of a plan's limits or costs more on a key. A finished turn names what it ran with, for example "Claude Code · Opus 5.5 · High".
 
 ## Google Drive
 

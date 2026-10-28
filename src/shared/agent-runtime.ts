@@ -32,7 +32,8 @@ export function agentStep(call: number, tool: string, input: unknown, result?: {
   return { call, tool, outcome: result.failed ? 'failed' : status === 'dismissed' ? 'declined' : status === 'pending' ? 'waiting' : 'done',
     ...(typeof value.count === 'number' ? { size: value.count } : {}), ...(items.length ? { items } : {}), ...(Array.isArray(value.rejected) && value.rejected.length ? { skipped: value.rejected.length } : {}), ...(typeof value.action?.proposalId === 'string' ? { proposalId: value.action.proposalId } : {}), ...(typeof value.step === 'string' ? { detail: value.step.slice(0, 400) } : {}) };
 }
-export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
+/** model: what the turn ran on, in words ("Opus 5.5 · High"), when the agent says. */
+export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string; model?: string | null };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };
 /** preferences: the person's kept memory lines as one paragraph, labelled as their own notes, then the skills
  * they keep (names and descriptions, and in full any they called with /name); left out when there are none.
