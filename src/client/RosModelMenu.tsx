@@ -7,6 +7,7 @@ import type { ProjectDetail } from '../shared/types';
 import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
 import type { ClaudeAgentSettings } from '../shared/claude-agent';
 import { acpLogo } from './AcpAgents';
+import { AgentModelChip, useAgentModel } from './AgentModelPicker';
 import { BrandLogo } from './brand-logos';
 import { ModelMakerSymbol } from './ModelMakerSymbol';
 import { api, post } from './api';
@@ -37,7 +38,8 @@ export function useProjectModels(projectId: string, revision: number) {
   return { choices, current, fallback: selection?.model, choose };
 }
 
-/** What Ros runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel. */
+/** What Ros runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel.
+ * Claude Code and Codex show as their logo, followed by a chip with the model and effort they run on. */
 export function RosModelMenu({ state, detail, running, onRefresh, onConnections, onPermissions, onError }: {
   state: AssistantState | null; detail: ProjectDetail; running: boolean; onRefresh: () => unknown;
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
@@ -46,7 +48,8 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const [planAllowed, setPlanAllowed] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
-  const backend = state?.backend, inApp = inAppAgent(backend);
+  const backend = state?.backend, inApp = inAppAgent(backend), inAppId = inApp ? backend as InAppAgent : null;
+  const agentModel = useAgentModel(inAppId), compact = Boolean(agentModel.choice?.models.some(item => item.id === agentModel.choice?.model));
   const agentLabel = inApp ? inApp.label : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
   // Gemini CLI, Goose and OpenCode are offered once they are installed on this computer.
   useEffect(() => {
@@ -93,10 +96,10 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
     return list;
   }, []);
   const link = (action: () => void) => () => { setMenu(false); action(); };
-  return <div className="ros-model">
-    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} disabled={running || switching} title={running ? 'Ros is working' : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
+  return <><div className={`ros-model${compact ? ' compact' : ''}`}>
+    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} aria-label={compact ? label : undefined} disabled={running || switching} title={running ? 'Ros is working' : compact ? `${label}: choose what Ros runs with` : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
       {inApp ? <BrandLogo id={inApp.agent} size={14}/> : isAcpAgent(backend) ? <BrandLogo id={acpLogo[backend]} size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
-      <span>{label}</span>{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
+      {!compact && <span>{label}</span>}{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
       {groups.map(group => <div key={group.provider} className="ros-menu-group">
@@ -113,7 +116,8 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
       <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Models &amp; keys</span></button>
       <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permission details</span></button>
     </div>}
-  </div>;
+  </div>
+  {inAppId && <AgentModelChip agent={inAppId} state={agentModel} running={running} onError={onError}/>}</>;
 }
 
 /** Icons for the three sizes of Ros: each shows the shape you get. */
