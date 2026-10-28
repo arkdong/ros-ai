@@ -15,15 +15,15 @@ import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel }
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardWidth, initialCardSize, setCardHeight } from '../shared/card-size';
+import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardFootprintHeight, cardWidth, initialCardSize, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
-import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
+import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
 import { aggregateTopLevelRelationships, relationshipBadgeText, type AggregateRelationship } from '../shared/aggregate-relationships';
 import { routeRelationship, type RelationshipRoute, type RouteNode } from '../shared/routing';
 import { relationshipLabelSize } from '../shared/relationship-label';
 import { readSaved, saveLocal } from './persistence';
-import { arrangeCanvas, numberedStageOrder, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
+import { arrangeCanvas, freeSpot, groupContentRight, numberedStageOrder, openGroupSize, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
 import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
 import type { NotebookSummary } from '../shared/notebooks';
 import { textPreview } from '../shared/presentation';
@@ -139,10 +139,9 @@ function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
 type ResearchNode = Node<CardData, 'research'>;
 /** A card being resized: its new size, and how far its top left corner moved when it was pulled from the left or top. */
 export type CardResize = { width: number; height?: number; dx: number; dy: number };
-/** The edges and corners a card is resized from. A closed Group fits what it lists, so only its sides move. */
+/** The edges and corners a card is resized from. A closed Group fits what it lists and is not resized. */
 const RESIZE_EDGES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 type ResizeEdge = typeof RESIZE_EDGES[number];
-const GROUP_RESIZE_EDGES: readonly ResizeEdge[] = ['e', 'w'];
 const RESIZE_GRID = 24;
 /** The card's size while one of its edges or corners is dragged. Pulled from the left or top, the opposite edge stays
  * put and the move keeps to the canvas grid, as every saved position does. */
@@ -249,8 +248,8 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const workState=data.awaitingApproval?'Awaiting approval':active?(data.label==='result'?'Searching':data.status):data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
   const [appErrors,setAppErrors]=useState<string[]>([]);
-  // The edge that takes keyboard focus and arrow keys: a Group's right side, another card's corner.
-  const edges=group?GROUP_RESIZE_EDGES:RESIZE_EDGES, handle:ResizeEdge=group?'e':'se';
+  // The corner that takes keyboard focus and arrow keys.
+  const handle:ResizeEdge='se';
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
@@ -277,8 +276,8 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
     </div>
-    {!data.expanded&&!data.readonly&&edges.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
-      {...edge===handle?{role:'button',tabIndex:0,'aria-label':group?`Resize ${data.title}, now ${data.width} wide. Arrow keys resize`:`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:group?'Drag to resize':'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
+    {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
+      {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()};data.onActivate();}}
       onPointerMove={event=>{if(resizing.current)data.onResize(resized(event));}}
       onPointerUp={event=>{const start=resizing.current;if(!start)return;const size=resized(event);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);
@@ -287,7 +286,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
       onPointerCancel={()=>{resizing.current=null;data.onResize(null);}}
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
-      onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending||group&&arrow[0]==='s')return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
+      onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
     {data.expanded&&<div className="group-actions nodrag"><span>Mixed research blocks · relationships do not run work</span><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
@@ -354,12 +353,25 @@ export function placeCanvasRelationshipLabels(items: { route: RelationshipRoute;
     if (chosen) { route.label = chosen.point; route.labelWidth = chosen.area.width; route.labelHeight = height; occupied.push(chosen.area); }
   }
 }
-export function emptyPosition(canvas: Canvas): { x: number; y: number } {
-  for (let row = 0; row < 100; row++) for (let column = 0; column < 5; column++) {
-    const x = column * (CARD_SIZE.width + LAYOUT_GAP), y = row * (CARD_MAX_HEIGHT + LAYOUT_GAP);
-    if (canvas.nodes.every(node => x >= node.x + cardWidth(node) + 24 || x + CARD_SIZE.width + 24 <= node.x || y >= node.y + CARD_MAX_HEIGHT + 24 || y + CARD_MAX_HEIGHT + 24 <= node.y)) return { x, y };
-  }
-  return { x: 0, y: Math.max(0, ...canvas.nodes.map(n => n.y)) + CARD_MAX_HEIGHT + LAYOUT_GAP };
+/** Where a new block goes among the blocks directly in `parentId` (the canvas or a Group): the first free spot in
+ * reading order beside or below them, within the width they already take, so an open Group's frame stays as
+ * narrow as it is; otherwise below them all. Each block counts with the tallest card it can show, as the server
+ * checks it, and an open Group with its frame. */
+export function emptyPosition(canvas: Canvas, parentId: string | null = null, expandedIds: readonly string[] = []): { x: number; y: number } {
+  const open = new Set(expandedIds), seen = new Set<string>();
+  const footprint = (node: CanvasNode): CanvasSize => {
+    const card = { width: cardWidth(node), height: cardFootprintHeight(node) }, inside = canvas.nodes.filter(item => item.parentId === node.id);
+    if (!open.has(node.id) || !inside.length || seen.has(node.id)) return card;
+    seen.add(node.id);
+    const frame = openGroupSize({ width: Math.max(...inside.map(item => Math.max(0, item.x) + footprint(item).width)), height: Math.max(...inside.map(item => Math.max(0, item.y) + footprint(item).height)) });
+    return { width: Math.max(card.width, frame.width), height: Math.max(card.height, frame.height) };
+  };
+  const boxes = canvas.nodes.filter(node => (node.parentId || null) === parentId).map(node => ({ x: node.x, y: node.y, ...footprint(node) }));
+  if (!boxes.length) return { x: 0, y: 0 };
+  const origin = parentId ? { x: 0, y: 0 } : { x: Math.min(...boxes.map(box => box.x)), y: Math.min(...boxes.map(box => box.y)) };
+  const right = parentId ? groupContentRight(boxes) : Math.max(origin.x + 5 * (CARD_SIZE.width + LAYOUT_GAP) - LAYOUT_GAP, ...boxes.map(box => box.x + box.width));
+  return freeSpot(boxes, { width: CARD_SIZE.width, height: CARD_MAX_HEIGHT }, origin, right)
+    ?? { x: origin.x, y: Math.ceil((Math.max(...boxes.map(box => box.y + box.height)) + LAYOUT_GAP) / 24) * 24 };
 }
 export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   const result = structuredClone(canvas); const marks = new Map<string, CardData['preview']>();
@@ -424,7 +436,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const live = useRef(new Set<string>()), dragFrom = useRef(new Map<string, XYPosition>()), settling = useRef<{ frame: number; targets: Map<string, XYPosition> } | null>(null);
   const saving = useRef(new Map<string, { parentId: string | null; position: XYPosition }>()), missedLayout = useRef(false), boxSelecting = useRef(false);
   const [layoutRetry, setLayoutRetry] = useState(0);
-  const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean } | null>(null);
+  // `settled`: the plan has been checked against the layout it was made from; `expanded`: the Groups open at the last reflow.
+  const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean; settled: boolean; expanded: string[] } | null>(null);
   const reflowWriting = useRef(false);
   const [cardMeasurements, setCardMeasurements] = useState<Record<string, CanvasSize>>({}), [draftSizes, setDraftSizes] = useState<Record<string, CardResize>>({});
   const resizeCommits = useRef(new Set<string>());
@@ -707,8 +720,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       const built: (ResearchNode | ArtifactNode)[] = []; let right = 0, bottom = 0;
       for (const node of siblings) {
         const expanded = isGroup(node) && expandedIds.includes(node.id); const child = expanded ? build(node.id, depth + 1) : { nodes: [], width: 0, height: 0 };
-        const width = expanded ? Math.ceil(Math.max(768, child.width + GROUP_INSET.x * 2) / 24) * 24 : cardSizes[node.id].width;
-        const height = expanded ? Math.ceil(Math.max(408, child.height + GROUP_INSET.y + GROUP_FOOTER) / 24) * 24 : cardSizes[node.id].height;
+        const { width, height } = expanded ? openGroupSize(child) : cardSizes[node.id];
         const draft = expanded ? undefined : draftSizes[node.id], nodeX = node.x + (draft?.dx ?? 0), nodeY = node.y + (draft?.dy ?? 0);
         const box: Box = { x: parentId ? Math.max(0, nodeX) : nodeX, y: parentId ? Math.max(0, nodeY) : nodeY, width, height };
         right = Math.max(right, box.x + width); bottom = Math.max(bottom, box.y + height);
@@ -749,7 +761,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const shape = JSON.stringify([structure, [...expandedIds].sort()]);
     let state = reflowState.current;
     if (!state) {
-      state = { plan: createCanvasReflowPlan(source, actualSizes), canvas: source, sizes: actualSizes, positions, dimensions, structure, shape, ready: false };
+      state = { plan: createCanvasReflowPlan(source, actualSizes, cardSizes), canvas: source, sizes: actualSizes, positions, dimensions, structure, shape, ready: false, settled: false, expanded: [] };
       reflowState.current = state;
     }
     const shapeChanged = state.shape !== shape, sizeChanged = state.dimensions !== dimensions;
@@ -761,27 +773,32 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (state.positions !== positions && moved) {
       // A user's move or an explicit Arrange establishes a new spatial plan.
       // Newly generated notes alone retain the spacing of existing neighbours.
-      state.plan = createCanvasReflowPlan(source, actualSizes);
+      state.plan = createCanvasReflowPlan(source, actualSizes, cardSizes); state.settled = false;
     } else if (state.structure !== structure) {
-      state.plan = extendCanvasReflowPlan(source, { ...actualSizes, ...state.sizes }, state.plan);
+      state.plan = extendCanvasReflowPlan(source, { ...actualSizes, ...state.sizes }, state.plan, cardSizes); state.settled = false;
     }
     state.positions = positions; state.canvas = source; state.structure = structure;
     if (!state.ready && !shapeChanged) {
       // Initial font/card measurements establish the baseline. Reopening a
       // project never becomes an implicit Arrange or a layout persistence loop.
-      state.plan = createCanvasReflowPlan(source, actualSizes); state.dimensions = dimensions; state.sizes = actualSizes;
-      const timer = setTimeout(() => { if (reflowState.current === state) state.ready = true; }, 180);
+      state.plan = createCanvasReflowPlan(source, actualSizes, cardSizes); state.dimensions = dimensions; state.sizes = actualSizes; state.settled = false;
+      const timer = setTimeout(() => { if (reflowState.current === state) { state.ready = true; setReflowRevision(revision => revision + 1); } }, 180);
       return () => clearTimeout(timer);
     }
-    if (!shapeChanged && !sizeChanged) return;
+    // Blocks moved onto each other (by another browser, an agent or a drop) or an open Group with room before its
+    // content settle once, without waiting for a block to change size.
+    const unsettledLayout = !state.settled && unsettled(source, actualSizes, expandedIds);
+    if (!shapeChanged && !sizeChanged && !unsettledLayout) { state.settled = true; state.expanded = [...expandedIds]; return; }
     const timer = setTimeout(() => {
       if (dragging.current || reflowWriting.current || reflowState.current !== state) return;
-      const result = reflowCanvas(source, state.plan, { expandedIds, extraContent, nodeSizes: cardSizes });
+      const opening = expandedIds.filter(id => !state.expanded.includes(id));
+      const result = reflowCanvas(source, state.plan, { expandedIds, extraContent, nodeSizes: cardSizes, opening });
       const operations: Mutation[] = result.canvas.nodes.flatMap(node => {
         const before = source.nodes.find(candidate => candidate.id === node.id)!;
         return before.x === node.x && before.y === node.y ? [] : [{ type: 'updateNode' as const, id: node.id, patch: { x: node.x, y: node.y } }];
       });
-      state.ready = true; state.shape = shape; state.dimensions = sizeKey(result.sizes); state.positions = positionKey(result.canvas);
+      state.ready = true; state.settled = true; state.plan = result.plan; state.expanded = [...expandedIds];
+      state.shape = shape; state.dimensions = sizeKey(result.sizes); state.positions = positionKey(result.canvas);
       state.canvas = result.canvas; state.sizes = result.sizes;
       if (!operations.length) return;
       reflowWriting.current = true;

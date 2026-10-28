@@ -27,7 +27,7 @@ test('an arranged canvas reflows through expand, 2/4/All, page size, measured re
     { expandedIds: [], nodeSizes: { analysis: { width: 720, height: 410 } } },
     { expandedIds: [], nodeSizes: arranged.sizes },
   ];
-  let expandedFollowupY = 0;
+  let expandedFollowupX = 0;
   for (const [index, options] of steps.entries()) {
     const next = reflowCanvas(current, plan, options);
     separated(next.canvas, next.sizes);
@@ -35,9 +35,9 @@ test('an arranged canvas reflows through expand, 2/4/All, page size, measured re
     assert.equal(next.canvas.nodes.find(node => node.id === 'source')!.x, -192);
     assert.equal(next.canvas.nodes.find(node => node.id === 'source')!.y, -48);
     const a = next.canvas.nodes.find(node => node.id === 'analysis')!, followup = next.canvas.nodes.find(node => node.id === 'followup')!;
-    assert.ok(followup.y >= a.y + next.sizes.analysis.height + 32, 'Downstream direction remains below source');
-    if (index === 2) expandedFollowupY = followup.y;
-    if (index === 5) assert.ok(followup.y < expandedFollowupY, 'Collapse closes the expansion gap');
+    assert.ok(followup.x >= a.x + next.sizes.analysis.width + 32, 'Downstream direction remains right of its source');
+    if (index === 2) expandedFollowupX = followup.x;
+    if (index === 5) assert.ok(followup.x < expandedFollowupX, 'Collapse closes the expansion gap');
     current = next.canvas;
   }
   assert.deepEqual(current, original, 'A round trip returns to the arranged reading order and anchor');
@@ -89,12 +89,14 @@ test('a plan captured while expanded compacts transitive spacing after collapse'
   const expanded = arrangeCanvas(graph, { expandedIds: ['analysis'], extraContent: { analysis: { width: 768, height: 2000 } } });
   const plan = createCanvasReflowPlan(expanded.canvas, expanded.sizes);
   const collapsed = reflowCanvas(expanded.canvas, plan);
-  const source = collapsed.canvas.nodes.find(node => node.id === 'source')!, analysis = collapsed.canvas.nodes.find(node => node.id === 'analysis')!, followup = collapsed.canvas.nodes.find(node => node.id === 'followup')!;
-  assert.equal(analysis.y, source.y + collapsed.sizes.source.height + 72);
-  assert.equal(followup.y, analysis.y + collapsed.sizes.analysis.height + 72, 'A source-to-followup constraint must not retain space occupied by the expanded middle frame');
+  const at = (canvas: Canvas, id: string) => canvas.nodes.find(node => node.id === id)!;
+  const gap = (canvas: Canvas, sizes: Record<string, CanvasSize>, before: string, after: string) => at(canvas, after).x - at(canvas, before).x - sizes[before].width;
+  assert.equal(gap(collapsed.canvas, collapsed.sizes, 'source', 'analysis'), gap(expanded.canvas, expanded.sizes, 'source', 'analysis'));
+  assert.equal(gap(collapsed.canvas, collapsed.sizes, 'analysis', 'followup'), gap(expanded.canvas, expanded.sizes, 'analysis', 'followup'), 'A source-to-followup constraint must not retain space occupied by the expanded middle frame');
+  assert.ok(at(collapsed.canvas, 'followup').x < at(expanded.canvas, 'followup').x);
 });
 
-test('a shorter parallel branch does not freeze a row height reserved for an expanded neighbour', () => {
+test('a shorter parallel branch does not freeze a column width reserved for an expanded neighbour', () => {
   const graph: Canvas = { nodes: [note('source'), note('analysis'), note('parallel'), note('followup')], connections: [
     { id: 'input', source: 'source', target: 'analysis', label: 'provides data to' },
     { id: 'parallel-input', source: 'source', target: 'parallel', label: 'provides data to' },
@@ -103,9 +105,11 @@ test('a shorter parallel branch does not freeze a row height reserved for an exp
   const expanded = arrangeCanvas(graph, { expandedIds: ['analysis'], extraContent: { analysis: { width: 768, height: 2000 } } });
   const plan = createCanvasReflowPlan(expanded.canvas, expanded.sizes);
   const collapsed = reflowCanvas(expanded.canvas, plan);
-  const analysis = collapsed.canvas.nodes.find(node => node.id === 'analysis')!, parallel = collapsed.canvas.nodes.find(node => node.id === 'parallel')!, followup = collapsed.canvas.nodes.find(node => node.id === 'followup')!;
-  assert.equal(analysis.y, parallel.y);
-  assert.equal(followup.y, analysis.y + Math.max(collapsed.sizes.analysis.height, collapsed.sizes.parallel.height) + 72);
+  const at = (canvas: Canvas, id: string) => canvas.nodes.find(node => node.id === id)!;
+  const analysis = at(collapsed.canvas, 'analysis'), parallel = at(collapsed.canvas, 'parallel'), followup = at(collapsed.canvas, 'followup');
+  const gap = at(expanded.canvas, 'followup').x - at(expanded.canvas, 'analysis').x - expanded.sizes.analysis.width;
+  assert.equal(analysis.x, parallel.x);
+  assert.equal(followup.x, analysis.x + Math.max(collapsed.sizes.analysis.width, collapsed.sizes.parallel.width) + gap, 'The column keeps the gap after its widest closed block');
   separated(collapsed.canvas, collapsed.sizes);
 });
 
@@ -119,5 +123,5 @@ test('cyclic relationships remain stable, malformed parent ownership rejects, an
   assert.deepEqual(reflowCanvas(result.canvas, plan, { nodeSizes: { a: { width: 720, height: 400 } } }), result);
   assert.throws(() => reflowCanvas({ nodes: [note('a', 0, 0, 'b'), note('b', 0, 0, 'a')], connections: [] }, {}), /cyclic/);
   assert.throws(() => reflowCanvas({ nodes: [note('a', 0, 0, 'missing')], connections: [] }, {}), /missing/);
-  assert.deepEqual(reflowCanvas({ nodes: [], connections: [] }, {}), { canvas: { nodes: [], connections: [] }, sizes: {} });
+  assert.deepEqual(reflowCanvas({ nodes: [], connections: [] }, {}), { canvas: { nodes: [], connections: [] }, sizes: {}, plan: {} });
 });
