@@ -2,9 +2,10 @@ import OpenAI from 'openai';
 import type { ModelAdapter, ModelInfo, ModelRequest, ModelResponse } from './providers.js';
 import {captureChatCompletion} from './response-normalization.js';
 
+// Cached input is a tenth of the input price; Codex reports it, so its turns are priced with it.
 export const OPENAI_MODELS = [
-  { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini', inputUsdPerToken: 0.75 / 1_000_000, outputUsdPerToken: 4.5 / 1_000_000 },
-  { id: 'gpt-5.4', label: 'GPT-5.4', inputUsdPerToken: 2.5 / 1_000_000, outputUsdPerToken: 15 / 1_000_000 },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini', inputUsdPerToken: 0.75 / 1_000_000, cachedInputUsdPerToken: 0.075 / 1_000_000, outputUsdPerToken: 4.5 / 1_000_000 },
+  { id: 'gpt-5.4', label: 'GPT-5.4', inputUsdPerToken: 2.5 / 1_000_000, cachedInputUsdPerToken: 0.25 / 1_000_000, outputUsdPerToken: 15 / 1_000_000 },
 ];
 
 /** Direct inference SDK only; no hosted agent workflow or executable tools. */

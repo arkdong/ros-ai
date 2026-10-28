@@ -6,7 +6,7 @@ export type AgentConnectionStatus = {
   signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | 'unknown' | null;
   configured: boolean; authorized: boolean; available: boolean;
   detail: string; blockers: string[];
-  features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean };
+  features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean; permissionProfiles: boolean };
   enforcement: string[]; limitations: string[];
   grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
 };
@@ -35,8 +35,9 @@ export function agentStep(call: number, tool: string, input: unknown, result?: {
 export type AgentResult = { reply: string; sessionId: string; actions: AssistantAction[]; requestId: string };
 export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: string[] };
 /** preferences: the person's kept memory lines as one paragraph, labelled as their own notes, then the skills
- * they keep (names and descriptions, and in full any they called with /name); left out when there are none. */
-export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; preferences?: string; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
+ * they keep (names and descriptions, and in full any they called with /name); left out when there are none.
+ * billing: for Claude Code and Codex, which of their two agents the project picked (IN_APP_AGENTS in assistant.ts). */
+export type AgentExecuteRequest = AgentScope & { turnId: string; message: string; preferences?: string; billing?: 'plan' | 'api-key'; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
 export interface AgentRuntime {
   status(projectId: string): Promise<AgentConnectionStatus>;
   execute(request: AgentExecuteRequest): Promise<AgentResult>;

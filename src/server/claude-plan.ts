@@ -52,7 +52,7 @@ export class ClaudePlan {
     if (this.checking) return this.checking;
     const binary = claudeBinary();
     if (!planAllowed || !binary) {
-      this.status = { state: 'unavailable', message: planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude plan can only be used in the local app.' };
+      this.status = { state: 'unavailable', message: planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude subscription can only be used in the local app.' };
       this.checkedAt = Date.now();
       return Promise.resolve(this.status);
     }
@@ -68,7 +68,7 @@ export class ClaudePlan {
         // 'claude.ai' is a Claude account sign-in; 'oauth_token' is a token the person made with `claude setup-token`.
         const plan = value.loggedIn && (value.authMethod === 'claude.ai' || value.authMethod === 'oauth_token');
         resolve(plan ? { state: 'signed-in', email: value.email ?? null, plan: value.subscriptionType ?? null }
-          : { state: 'signed-out', message: value.loggedIn ? 'Claude Code is signed in with an API key, not a Claude plan.' : null });
+          : { state: 'signed-out', message: value.loggedIn ? 'Claude Code is signed in with an API key, not a Claude subscription.' : null });
       };
       child.on('error', finish);
       child.on('close', finish);
@@ -87,7 +87,7 @@ export class ClaudePlan {
   startLogin(): ClaudePlanLogin {
     if (this.login?.state === 'waiting') return this.loginState()!;
     const binary = claudeBinary();
-    if (!planAllowed || !binary) return this.fail(planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude plan can only be used in the local app.');
+    if (!planAllowed || !binary) return this.fail(planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude subscription can only be used in the local app.');
     // Its input stays open so it waits for the browser instead of giving up.
     const child = spawn(binary, ['auth', 'login', '--claudeai'], { env: planEnvironment(), stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
     const login: ClaudePlanLogin & { child?: ChildProcess } = { state: 'waiting', message: 'Finish signing in on the Claude page that opened in your browser.', command: terminalCommand(binary), child };
@@ -100,8 +100,8 @@ export class ClaudePlan {
       this.forget();
       if (login.state !== 'waiting') return;
       void this.check(true).then(status => {
-        if (status.state === 'signed-in') { login.state = 'completed'; login.message = 'Signed in with your Claude plan.'; }
-        else { login.state = 'failed'; login.message = code === 0 ? 'Claude Code finished without a Claude plan sign-in.' : 'Sign-in did not finish. Try again, or sign in from Terminal.'; }
+        if (status.state === 'signed-in') { login.state = 'completed'; login.message = 'Signed in with your Claude subscription.'; }
+        else { login.state = 'failed'; login.message = code === 0 ? 'Claude Code finished without signing in to a Claude subscription.' : 'Sign-in did not finish. Try again, or sign in from Terminal.'; }
       });
     });
     return this.loginState()!;

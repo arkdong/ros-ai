@@ -94,7 +94,7 @@
 .local-model-facts{font-size:11px;color:#777e7a;white-space:nowrap}
 .local-model-tag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;background:#f1f1f1;color:#4b524e;white-space:nowrap}
 
-/* Claude Code: who pays, the person's Claude plan or their API key */
+/* Claude Code's choices, such as how it searches the web on an API key */
 .claude-billing { display:grid; gap:8px; margin:0 0 12px; }
 .claude-billing > label { display:flex; align-items:center; gap:11px; padding:10px 12px; border:1px solid #dedede; border-radius:8px; background:#fff; cursor:pointer; }
 .claude-billing > label.selected { border-color:#171717; box-shadow:0 0 0 1px #171717; }

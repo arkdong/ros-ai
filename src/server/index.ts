@@ -146,7 +146,7 @@ try {
     const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
     research=new ResearchService(store,execution,experiments);
-    agent=new CodexAgentService(store,execution,experiments);
+    agent=new CodexAgentService(store,execution,experiments,dataDir);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
     // Gemini CLI, Goose and OpenCode on this computer, started for a turn over ACP with only ros.ai's tools.
