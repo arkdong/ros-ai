@@ -2,31 +2,53 @@
  * ros.ai's look in Mission Control: while Mission Control is open, the ros.ai window shows the ring over a blurred
  * view of its own workspace.
  * macOS tells an app nothing when Mission Control opens, so a small script asks the window server a few times a
- * second whether the Dock is showing a full-screen window (Mission Control, App Exposé or Launchpad) and the
- * window covers itself only then. Mission Control's pictures of windows are live, so the cover appears in them.
- * ROS_MISSION_CONTROL_DEBUG=1 prints the Dock's windows on each change, to tune the check on a new macOS.
+ * second. The Dock draws Mission Control (and App Exposé) in a window over the whole screen, but that same window is
+ * on screen whenever the Dock itself shows, see-through apart from the Dock. So the script also asks where a click
+ * would land at a few points across the screen: only in Mission Control does the Dock's window take every one of
+ * them, and the window covers itself only then. Mission Control's pictures of windows are live, so the cover
+ * appears in them.
+ * ROS_MISSION_CONTROL_DEBUG=1 prints the Dock's windows and those hit tests on each change, to tune the check on a new macOS.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { BrowserWindow } from 'electron';
 
-// JXA (JavaScript for Automation). Window owners, layers and bounds need no Screen Recording permission.
+// JXA (JavaScript for Automation). Window owners, layers, bounds and hit tests need no Screen Recording permission.
 const WATCH = `
 ObjC.import('CoreGraphics'); ObjC.import('AppKit');
 const debug = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('ROS_MISSION_CONTROL_DEBUG')) === '1';
 const out = $.NSFileHandle.fileHandleWithStandardOutput;
 const say = text => out.writeData($(text + '\\n').dataUsingEncoding($.NSUTF8StringEncoding));
-let last = '';
+// Points inside a screen, as fractions from its bottom left: clear of the menu bar, a notch and the Dock on any edge.
+const points = [[0.5, 0.5], [0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]];
+// The window a click at a point of screen s would land on.
+const under = (s, [x, y]) => Number($.NSWindow.windowNumberAtPointBelowWindowWithWindowNumber({ x: s.origin.x + x * s.size.width, y: s.origin.y + y * s.size.height }, 0));
+let last = '', note = '', dock = -1, looked = 0;
 for (;;) {
+  // The Dock by its bundle id, as its window owner name is translated (程序坞 in Chinese); a restarted Dock has a new pid.
+  if (Date.now() - looked > 5000) {
+    const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.dock');
+    dock = apps.count ? Number(apps.objectAtIndex(0).processIdentifier) : -1;
+    looked = Date.now();
+  }
   const all = $.NSScreen.screens, screens = [];
   for (let i = 0; i < all.count; i++) screens.push(all.objectAtIndex(i).frame);
   const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1 /* on screen only */, 0))) || [];
-  const dock = list.filter(w => w.kCGWindowOwnerName === 'Dock');
-  const open = dock.some(w => w.kCGWindowLayer > 0 && screens.some(s =>
-    w.kCGWindowBounds.Width >= s.size.width * 0.9 && w.kCGWindowBounds.Height >= s.size.height * 0.9));
+  // The Dock's windows above app windows that span a screen.
+  const covers = list.filter(w => (w.kCGWindowOwnerPID === dock || w.kCGWindowOwnerName === 'Dock') && w.kCGWindowLayer > 0 && screens.some(s =>
+    w.kCGWindowBounds.Width >= s.size.width * 0.9 && w.kCGWindowBounds.Height >= s.size.height * 0.9)).map(w => w.kCGWindowNumber);
+  let open = false, failed = '';
+  try { open = covers.length > 0 && screens.some(s => points.every(p => covers.includes(under(s, p)))); } catch (error) { failed = String(error); }
   const state = open ? 'open' : 'closed';
-  if (state !== last) {
-    last = state; say(state);
-    if (debug) say('debug ' + JSON.stringify({ screens, dock: dock.map(w => [w.kCGWindowLayer, w.kCGWindowBounds]) }));
+  if (state !== last) { last = state; say(state); }
+  if (debug) {
+    let hits = [];
+    try { hits = covers.length ? screens.map(s => points.map(p => under(s, p))) : []; } catch {}
+    const now = JSON.stringify({ covers, hits, failed });
+    if (now !== note) {
+      note = now;
+      const windows = list.filter(w => w.kCGWindowOwnerPID === dock || w.kCGWindowOwnerName === 'Dock').map(w => [w.kCGWindowNumber, w.kCGWindowLayer, w.kCGWindowBounds]);
+      say('debug ' + JSON.stringify({ state, screens, dock: windows, covers, hits, failed }));
+    }
   }
   delay(0.08);
 }`;
