@@ -175,7 +175,7 @@ try {
     // App blocks: pages agents write, run sealed on a second local server; checked in the same browser.
     appFrames = new AppFrames(store, new AppKit(root), { browser });
     AgentWorkspaceTools.appFrames = appFrames;
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,localRos});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.

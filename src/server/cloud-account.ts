@@ -103,6 +103,8 @@ export class CloudAccount {
 
   /** Whether this copy of ros.ai has a ros.ai cloud at all (ROS_CLOUD_URL is not off). */
   get available() { return Boolean(this.url); }
+  /** Signed in on this computer, read from the saved account without asking ros.ai cloud. */
+  get signedIn() { return Boolean(this.url && this.account()); }
   /** The signed-in email, read from this computer without asking ros.ai cloud. */
   signedInEmail() { return this.url ? this.account()?.email || undefined : undefined; }
   /** Passes one feedback note on to ros.ai cloud, as the signed-in person when there is one, so a
