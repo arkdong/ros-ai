@@ -10,6 +10,28 @@ export const GROUP_FOOTER = 64;
 export const LAYOUT_GAP = 72;
 export type CanvasSize = { width: number; height: number };
 export type LayoutOptions = { expandedIds?: readonly string[]; extraContent?: Record<string, CanvasSize & { minY?: number }>; nodeSizes?: Record<string, CanvasSize> };
+/** An open Group's frame around content of this size: its heading above, its footer below, never smaller than 768 by 408. */
+export function openGroupSize(content: CanvasSize): CanvasSize {
+  return { width: Math.ceil(Math.max(768, content.width + GROUP_INSET.x * 2) / 24) * 24, height: Math.ceil(Math.max(408, content.height + GROUP_INSET.y + GROUP_FOOTER) / 24) * 24 };
+}
+
+type Box = { x: number; y: number } & CanvasSize;
+/** The first free spot for a block of `size`, in reading order: `origin`, or beside or below one of `boxes`, no
+ * further right than `right` and `LAYOUT_GAP` clear of every box. Undefined when none of these is free. */
+export function freeSpot(boxes: readonly Box[], size: CanvasSize, origin: { x: number; y: number }, right: number) {
+  const up = (value: number) => Math.ceil(value / 24) * 24;
+  const free = (spot: { x: number; y: number }) => boxes.every(box => spot.x >= box.x + box.width + LAYOUT_GAP || spot.x + size.width + LAYOUT_GAP <= box.x
+    || spot.y >= box.y + box.height + LAYOUT_GAP || spot.y + size.height + LAYOUT_GAP <= box.y);
+  return [origin, ...boxes.flatMap(box => [{ x: up(box.x + box.width + LAYOUT_GAP), y: box.y }, { x: box.x, y: up(box.y + box.height + LAYOUT_GAP) }])]
+    .filter(spot => spot.x >= origin.x && spot.y >= origin.y && spot.x + size.width <= right)
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .find(free);
+}
+/** How far right blocks inside a Group may go before its frame grows wider: the width its content takes, or as
+ * much as it is tall, so a Group fills out into columns rather than one long line. */
+export function groupContentRight(boxes: readonly Box[]) {
+  return Math.max(openGroupSize({ width: 0, height: 0 }).width - GROUP_INSET.x * 2, ...boxes.map(box => box.x + box.width), ...boxes.map(box => box.y + box.height));
+}
 
 /** A user-written numbered sequence remains readable after dragging/Arrange.
  * This is presentation order only, never scheduling or automatic reuse. */
@@ -27,8 +49,9 @@ export function numberedStageOrder(nodes: readonly Pick<CanvasNode, 'id' | 'titl
  * out as trees read left to right, each block centred beside the blocks it
  * points to, so an agent's searches and their results line up in rows. A
  * relationship never schedules research or imports evidence. Unconnected
- * blocks keep the reading-order grid, and a numbered sequence of stages keeps
- * its order. Spatial order is kept among siblings.
+ * blocks keep the reading-order grid (inside a Group, columns packed without
+ * gaps), and a numbered sequence of stages keeps its order. Spatial order is
+ * kept among siblings.
  */
 export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { canvas: Canvas; sizes: Record<string, CanvasSize> } {
   const canvas = structuredClone(source);
@@ -162,6 +185,19 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
     cells.forEach(({ node, row, column }) => { node.x = xs[column]; node.y = ys[row]; });
     return { right: Math.max(...cells.map(({ node }) => node.x + sizes[node.id].width)), bottom: ys.at(-1)! + heights.at(-1)! };
   };
+  /** Inside a Group, blocks without relationships are packed into columns: each next block, in reading order,
+   * goes under the column that ends highest, so a short block leaves no gap below it as a row of taller ones would. */
+  const columns = (members: CanvasNode[], origin: { x: number; y: number }) => {
+    const stacks = Array.from({ length: Math.ceil(Math.sqrt(members.length)) }, () => ({ nodes: [] as CanvasNode[], bottom: origin.y, width: 0 }));
+    for (const node of members) {
+      const stack = stacks.reduce((best, item) => item.bottom < best.bottom ? item : best);
+      node.y = stack.bottom; stack.bottom = snap(node.y + sizes[node.id].height + LAYOUT_GAP);
+      stack.width = Math.max(stack.width, sizes[node.id].width); stack.nodes.push(node);
+    }
+    let x = origin.x;
+    for (const stack of stacks) { for (const node of stack.nodes) node.x = x; x = snap(x + stack.width + LAYOUT_GAP); }
+    return { right: Math.max(...members.map(node => node.x + sizes[node.id].width)), bottom: Math.max(...members.map(node => node.y + sizes[node.id].height)) };
+  };
   const visiting = new Set<string | null>();
   const place = (parentId: string | null): CanvasSize => {
     if (visiting.has(parentId)) throw new Error('Cannot arrange a cyclic canvas');
@@ -177,7 +213,7 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
       const contentHeight = extra ? extraTop + extra.height : content.height;
       const measured = options.nodeSizes?.[node.id];
       sizes[node.id] = expanded.has(node.id)
-        ? { width: snap(Math.max(768, contentWidth + GROUP_INSET.x * 2)), height: snap(Math.max(408, contentHeight + GROUP_INSET.y + GROUP_FOOTER)) }
+        ? openGroupSize({ width: contentWidth, height: contentHeight })
         : { width: measured?.width ?? cardWidth(node), height: setCardHeight(node) ?? Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured?.height ?? CARD_SIZE.height)) };
     }
     if (!siblings.length) { visiting.delete(parentId); return { width: 0, height: 0 }; }
@@ -217,7 +253,8 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
     });
     const loose = siblings.filter(node => !linked.has(node.id));
     if (loose.length) {
-      const placed = grid(loose, { x: origin.x, y: groups.length ? snap(bottom + LAYOUT_GAP * 2) : origin.y }, stages, parentId);
+      const start = { x: origin.x, y: groups.length ? snap(bottom + LAYOUT_GAP * 2) : origin.y };
+      const placed = parentId === null ? grid(loose, start, stages, parentId) : columns(loose, start);
       bottom = placed.bottom; right = Math.max(right, placed.right);
     }
     visiting.delete(parentId);
