@@ -52,12 +52,9 @@
 .single-canvas-shell .research-card.research-block { border-radius: 12px; border-color: #e3e3e3; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); }
 .single-canvas-shell .research-card.organizational-group { border-radius: 18px; background: rgba(255, 255, 255, .45); border-color: #e1e1e1; box-shadow: none; }
 
-/* Sheets: dialogs and opened blocks. */
+/* Dialogs. */
 .modal-backdrop { background: rgba(244, 244, 242, .72); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .modal { border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); }
-.node-modal { padding: 0; }
-.node-modal > .modal-heading { padding: 24px 28px 20px; background: #fff; border-bottom: 1px solid var(--card-divider); }
-.node-modal > .modal-heading h2 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
 .note-view .note-main { padding: 32px 48px 40px; }
 .note-view .note-side { border-left: 1px solid var(--card-divider); background: #fcfcfc; }
 .note-view .note-side-heading { padding: 16px 20px; }
@@ -74,16 +71,6 @@
 .file-bar .open-in { margin-left: auto; }
 .file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: 13px; }
 .modal > .modal-heading:has(+ .file-bar) { border-bottom: 0; }
-.node-modal > .modal-heading:has(+ .file-bar) { padding-bottom: 6px; }
-.node-modal > .file-bar { margin: 0; padding: 0 28px 18px; background: #fff; }
-
-/* Code view. */
-.code-modal { padding: 24px 28px 12px; }
-.code-modal > .modal-heading { margin-bottom: 14px; }
-.code-modal > .modal-heading h2 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
-.code-block { gap: 32px; padding: 0 0 16px; }
-.code-results { padding-left: 28px; border-left-color: var(--card-divider); }
-.code-section { border-top-color: var(--card-divider); }
 .code-section h4, .code-results-head h4 { font-size: 11px; letter-spacing: .08em; color: var(--muted); }
 .code-results-head { margin-bottom: 4px; }
 .code-results > p.subtle { margin: 0 0 4px; color: var(--muted); }
@@ -128,11 +115,6 @@
 .rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #ebebeb; }
 .rail-page .connection-state { font-size: 13px; }
 .rail-page .resources-panel { border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
-
-/* Code view: the scrollbar sits on the sheet's edge and both columns keep the same 28px margin. */
-.code-modal { padding-right: 0; }
-.code-modal > .modal-heading, .code-modal > .file-bar { margin-right: 28px; }
-.code-block { padding-right: 28px; }
 
 /* Scrollbars in sheets: thin, rounded and kept clear of the corners. */
 .modal::-webkit-scrollbar, .modal *::-webkit-scrollbar { width: 12px; height: 12px; }

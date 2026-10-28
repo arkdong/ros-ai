@@ -36,15 +36,6 @@
 .ab-foot { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 54px; padding: 0 16px 0 14px; border-top: 1px solid var(--line-soft); }
 .ab-foot .sp { flex: 1; }
 .ab-enter { margin-right: 8px; font-size: var(--text-xs); color: var(--muted); }
-.ab-chip-slot { position: relative; display: inline-flex; }
-.ab-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--canvas); color: var(--body); font: inherit; font-size: var(--text-xs); white-space: nowrap; cursor: pointer; }
-.ab-chip:hover, .ab-chip[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
-.ab-chip.set { color: var(--ink); }
-.ab-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 2; display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view); background: var(--paper); box-shadow: var(--shadow-view); }
-.ab-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-block); background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
-.ab-menu button:hover { background: #f2f2f2; }
-.ab-menu .ab-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ab-check { width: 13px; display: inline-flex; justify-content: center; flex-shrink: 0; }
 .ab-add { height: 30px; padding: 0 14px; border: 0; border-radius: 15px; background: var(--ink); color: #fff; font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 .ab-add:disabled { background: #e3e3e3; color: #8a8a8a; cursor: default; }
 .single-canvas-shell .ab-add:disabled { opacity: 1; }

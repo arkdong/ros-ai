@@ -1,0 +1,51 @@
+/* An open block: a 920 × 590 sheet over the map with the Ros bar still below it, or a 480 px panel beside the map.
+   The header holds the kind, the title and the view switch; the footer one line of chips. */
+.block-scrim { position: absolute; inset: 0; z-index: 18; background: rgba(250, 250, 250, .55); }
+.block-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0; background: #fff; overflow: hidden; }
+.block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); animation: block-sheet-rise .22s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes block-sheet-rise { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; border-left: 1px solid var(--card-line); }
+/* Ros in full view keeps the right edge; the panel moves in beside it. */
+.workspace-body:has(.ros-full) > .block-panel { margin-right: min(438px, 50%); }
+@media (prefers-reduced-motion: reduce) { .block-sheet { animation: none; transform: translateX(-50%); } }
+
+.bv-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--card-divider); }
+.bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--canvas); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
+.bv-title { flex: 1 1 auto; min-width: 0; margin: 0; padding: 2px 6px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+input.bv-title, .single-canvas-shell input.bv-title { width: auto; box-shadow: none; }
+input.bv-title:hover { background: #f7f7f7; }
+input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; border: 0; background: #f2f2f2; box-shadow: none; }
+.bv-views { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--card-divider); }
+.bv-head .icon-button { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
+.bv-head .icon-button:hover:not(:disabled) { background: #f2f2f2; color: var(--ink); }
+.bv-head .icon-button.active { background: #ececec; color: var(--ink); }
+.bv-head .primary, .bv-head .secondary { height: 30px; padding: 0 12px; border-radius: 15px; font-size: var(--text-sm); white-space: nowrap; }
+.bv-head .primary { display: inline-flex; align-items: center; gap: 6px; }
+.bv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; container-type: inline-size; }
+.bv-body > .file-bar { flex-shrink: 0; margin: 0; padding: 12px 28px 10px; }
+.bv-body > :last-child { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Code's two columns scroll on their own; in a narrow frame they stack and the frame scrolls. */
+.bv-body > .code-block { overflow: hidden; }
+@container (max-width: 700px) { .bv-body > .code-block { overflow-y: auto; } }
+.bv-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 44px; padding: 0 16px 0 14px; border-top: 1px solid var(--card-divider); font-size: var(--text-xs); color: var(--muted); }
+.bv-sp { flex: 1; }
+.bv-status { white-space: nowrap; }
+
+/* The note view inside the frame: the title lives in the header, the text fills the sheet with no box of its own. */
+.block-view .note-view .note-title { display: none; }
+.block-view .note-view .markdown-editor { min-height: 0; border: 0; border-radius: 0; }
+.block-view .note-view .note-main { padding: 22px 32px 30px; }
+.block-panel .note-view .note-main { padding: 18px 22px 24px; }
+.block-panel .inspector.note-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(220px, 45%); }
+.block-panel .inspector.note-view.chat-closed { grid-template-rows: minmax(0, 1fr); }
+.block-panel .note-view .note-side { border-left: 0; border-top: 1px solid var(--card-divider); }
+
+/* Code: the main editor on white, with no frame of its own inside the sheet; the parameters box keeps its own. */
+.block-view .code-authoring > .code-editor { border: 0; border-radius: 0; background: #fff; }
+.block-view .code-authoring > .code-editor:focus-within { border: 0; box-shadow: none; }
+.block-view .code-authoring > .code-editor .cm-editor { height: auto; min-height: 220px; }
+.block-view .code-authoring > .code-editor .cm-gutters { background: #fff; border-right: 0; color: #b3b3b3; }
+.block-view .code-authoring > .code-editor .cm-activeLine { background: #f7f7f7; }
+.block-view .code-authoring > .code-editor .cm-activeLineGutter { background: transparent; color: var(--ink); }
+.block-view .code-authoring > .code-editor .cm-content { padding: 6px 0 14px; }
+@media (max-width: 760px) { .block-sheet { max-width: calc(100% - 16px); top: 8px; } .block-panel { max-width: 100%; } }

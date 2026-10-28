@@ -4,9 +4,10 @@ import { Modal } from './Modal';
 import { PaperSearch } from './PaperSearch';
 import { KindPreview, PREVIEW_FRAMES, usePreviewLoop } from './KindPreview';
 import { KIND_GROUPS, blockKind, searchKinds, type BlockKind, type KindId } from './block-kinds';
-import { TEXT_LABELS } from '../shared/vocabulary';
+import { TEXT_LABELS, sentence } from '../shared/vocabulary';
 import type { NotionView, TrainingView } from '../shared/types';
 import type { PaperSummary } from '../shared/papers';
+import './chip-menu.css';
 import './all-blocks.css';
 
 export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView };
@@ -14,8 +15,6 @@ type Props = { initial?: KindId; scope: string | null; groups: { id: string; tit
 
 /** All blocks: every kind in three groups, a search over them, and the chosen kind shown as it looks on the map with
  *  what it does and what it needs. A kind that needs a file, a link or a paper asks for it here. Enter adds. */
-const sentence = (word: string) => word[0].toUpperCase() + word.slice(1);
-
 export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose, onCreate, onPaper }: Props) {
   const [query, setQuery] = useState(''), [selected, setSelected] = useState<KindId>(initial ?? 'text'), [busy, setBusy] = useState(false), [menu, setMenu] = useState<'label' | 'where' | null>(null);
   const [title, setTitle] = useState(''), [label, setLabel] = useState(''), [where, setWhere] = useState<string | null>(scope);
@@ -74,13 +73,13 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
         </div>
       </div>
       <div className="ab-foot" ref={foot}>
-        {text && <span className="ab-chip-slot">
-          <button type="button" className={`ab-chip ${label ? 'set' : ''}`} aria-haspopup="menu" aria-expanded={menu === 'label'} onClick={() => setMenu(menu === 'label' ? null : 'label')}>{label ? sentence(label) : '+ label'}{label && <ChevronDown size={12}/>}</button>
-          {menu === 'label' && <div className="ab-menu" role="menu" aria-label="Label">{['', ...TEXT_LABELS].map(word => <button key={word || 'none'} type="button" role="menuitemradio" aria-checked={label === word} onClick={() => { setLabel(word); setMenu(null); }}><span className="ab-check">{label === word && <Check size={13}/>}</span>{word ? sentence(word) : 'No label'}</button>)}</div>}
+        {text && <span className="chip-slot">
+          <button type="button" className={`chip-button${label ? ' set' : ''}`} aria-haspopup="menu" aria-expanded={menu === 'label'} onClick={() => setMenu(menu === 'label' ? null : 'label')}>{label ? sentence(label) : '+ label'}{label && <ChevronDown size={12}/>}</button>
+          {menu === 'label' && <div className="chip-menu" role="menu" aria-label="Label">{['', ...TEXT_LABELS].map(word => <button key={word || 'none'} type="button" role="menuitemradio" aria-checked={label === word} onClick={() => { setLabel(word); setMenu(null); }}><span className="chip-check">{label === word && <Check size={13}/>}</span>{word ? sentence(word) : 'No label'}</button>)}</div>}
         </span>}
-        <span className="ab-chip-slot">
-          <button type="button" className="ab-chip" aria-haspopup="menu" aria-expanded={menu === 'where'} onClick={() => setMenu(menu === 'where' ? null : 'where')}>Where · {whereTitle}<ChevronDown size={12}/></button>
-          {menu === 'where' && <div className="ab-menu" role="menu" aria-label="Where the block goes">{[{ id: null as string | null, title: 'Nearest free spot' }, ...groups.map(group => ({ id: group.id as string | null, title: `Inside ${group.title}` }))].map(option => <button key={option.id ?? 'free'} type="button" role="menuitemradio" aria-checked={where === option.id} onClick={() => { setWhere(option.id); setMenu(null); }}><span className="ab-check">{where === option.id && <Check size={13}/>}</span><span className="ab-menu-label">{option.title}</span></button>)}</div>}
+        <span className="chip-slot">
+          <button type="button" className="chip-button" aria-haspopup="menu" aria-expanded={menu === 'where'} onClick={() => setMenu(menu === 'where' ? null : 'where')}>Where · {whereTitle}<ChevronDown size={12}/></button>
+          {menu === 'where' && <div className="chip-menu" role="menu" aria-label="Where the block goes">{[{ id: null as string | null, title: 'Nearest free spot' }, ...groups.map(group => ({ id: group.id as string | null, title: `Inside ${group.title}` }))].map(option => <button key={option.id ?? 'free'} type="button" role="menuitemradio" aria-checked={where === option.id} onClick={() => { setWhere(option.id); setMenu(null); }}><span className="chip-check">{where === option.id && <Check size={13}/>}</span><span className="chip-menu-label">{option.title}</span></button>)}</div>}
         </span>
         <span className="sp"/>
         <span className="ab-enter">Enter</span>
