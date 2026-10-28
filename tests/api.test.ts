@@ -21,6 +21,17 @@ async function fixture() {
   return { store, base, async close() { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); store.close(); rmSync(dir, { recursive:true, force:true }); } };
 }
 
+test('a project created without a name is Untitled, numbered past existing ones', async () => {
+  const f = await fixture();
+  try {
+    const create = async (body: object) => (await (await fetch(`${f.base}/api/projects`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })).json()).title;
+    assert.equal(await create({ title:'' }), 'Untitled');
+    assert.equal(await create({}), 'Untitled 2');
+    assert.equal(await create({ title:'   ' }), 'Untitled 3');
+    assert.equal(await create({ title:'Named' }), 'Named');
+  } finally { await f.close(); }
+});
+
 test('HTTP API enforces local host/origin and validates direct edits without credentials', async () => {
   const f = await fixture();
   try {
@@ -30,7 +41,7 @@ test('HTTP API enforces local host/origin and validates direct edits without cre
     });
     assert.equal(forgedHostStatus, 403);
     assert.equal((await fetch(`${f.base}/api/projects`, { headers: { Origin: 'https://attacker.example' } })).status, 403);
-    const invalid = await fetch(`${f.base}/api/projects`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:''}) });
+    const invalid = await fetch(`${f.base}/api/projects`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:'x'.repeat(161)}) });
     assert.equal(invalid.status, 400);
     const response = await fetch(`${f.base}/api/projects`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:'HTTP investigation'}) });
     assert.equal(response.status, 201);
