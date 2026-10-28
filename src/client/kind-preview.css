@@ -1,0 +1,31 @@
+/* A block as it looks on the map, at the map's own size, with sample content. */
+.kind-preview { width: 252px; box-sizing: border-box; padding: 11px 13px 12px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); color: var(--ink); font-size: 12px; line-height: 1.45; text-align: left; }
+.kind-preview .bp-kind { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; font-size: 11px; color: var(--muted); }
+.kind-preview .bp-kind b { height: 16px; padding: 0 6px; border-radius: 8px; background: #f2f2f2; font-size: 10px; font-weight: 500; line-height: 16px; color: #4a4a4a; }
+.kind-preview h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+.kind-preview p { margin: 0; font-size: 11.5px; line-height: 1.45; color: #4a4a4a; }
+.kind-preview p b { color: var(--ink); }
+.kind-preview .bp-mono, .kind-preview .bp-cell { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; line-height: 1.5; white-space: pre; overflow: hidden; }
+.kind-preview .bp-mono { color: #4a4a4a; }
+.kind-preview .bp-cell { margin-top: 4px; padding: 5px 7px; border: 1px solid #ececec; border-radius: 6px; color: var(--ink); }
+.kind-preview .bp-cell.out { border-style: dashed; color: #4a4a4a; }
+.kind-preview .bp-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 10.5px; color: var(--muted); }
+.kind-preview .bp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.kind-preview .bp-run { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--ink); color: #fff; font-size: 10px; }
+.kind-preview .bp-ring { width: 12px; height: 12px; border: 2px solid #e3e3e3; border-top-color: var(--ink); border-radius: 50%; animation: bp-spin 1s linear infinite; }
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+.kind-preview table { width: 100%; margin-top: 2px; border-collapse: collapse; font-size: 10.5px; }
+.kind-preview th, .kind-preview td { padding: 2px 5px; border-bottom: 1px solid #f0f0f0; text-align: left; font-weight: 400; color: var(--ink); }
+.kind-preview th { color: var(--muted); }
+.kind-preview th.n, .kind-preview td.n { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+.kind-preview .bp-drop { display: flex; align-items: center; justify-content: center; gap: 6px; height: 62px; border: 1px dashed #c9c9c9; border-radius: 8px; color: var(--muted); }
+.kind-preview .bp-bars, .kind-preview .bp-loss { display: block; max-width: 100%; }
+.kind-preview .bp-page { float: left; width: 54px; height: 68px; margin: 2px 10px 2px 0; padding: 8px 7px; box-sizing: border-box; border: 1px solid #e3e3e3; border-radius: 4px; background: repeating-linear-gradient(#fff 0 6px, #ececec 6px 7px) content-box; }
+.kind-preview .bp-beside { padding-top: 4px; }
+.kind-preview .bp-beside::after { content: ''; display: block; clear: both; }
+.kind-preview .bp-slider { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; font-size: 10.5px; color: var(--muted); }
+.kind-preview .bp-track { position: relative; flex: 1; height: 3px; border-radius: 2px; background: #ececec; }
+.kind-preview .bp-knob { position: absolute; left: 38%; top: -5px; width: 13px; height: 13px; border: 1px solid #9a9a9a; border-radius: 50%; background: #fff; }
+.kind-preview .bp-frame { display: flex; gap: 6px; padding: 8px; border: 1px dashed #c9c9c9; border-radius: 8px; }
+.kind-preview .bp-frame span { flex: 1; height: 34px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; }
+@media (prefers-reduced-motion: reduce) { .kind-preview .bp-ring { animation: none; } }

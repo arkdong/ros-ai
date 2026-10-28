@@ -1,0 +1,23 @@
+/* Add block: a 280 px menu beside the tools card, in the Ros bar's menu language. */
+.add-block-menu { position: absolute; z-index: 14; width: 280px; display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view); background: var(--paper); box-shadow: var(--shadow-view); }
+.add-block-search { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; padding: 4px 10px 8px; border-bottom: 1px solid var(--line-soft); color: var(--muted); }
+.add-block-search input, .single-canvas-shell .add-block-search input { flex: 1; min-width: 0; padding: 2px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; font: inherit; font-size: var(--text-sm); color: var(--ink); }
+.add-block-search input:focus { border: 0; box-shadow: none; outline: 0; }
+.add-block-menu p { margin: 0; padding: 6px 10px 4px; font-size: var(--text-xs); color: var(--muted); }
+.add-block-menu .add-block-none { padding: 8px 10px 10px; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); }
+.add-block-rows { display: flex; flex-direction: column; gap: 2px; }
+.add-block-slot { position: relative; display: block; }
+.add-block-menu hr { border: 0; height: 1px; margin: 4px 6px 6px; background: var(--line-soft); }
+.add-block-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-block); background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.add-block-row > :first-child { flex-shrink: 0; display: inline-flex; }
+.add-block-row.active { background: #f2f2f2; }
+.single-canvas-shell .add-block-row:focus-visible { outline: 0; }
+.add-block-cap { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; font-size: var(--text-xs); color: var(--muted); }
+/* The preview beside the row the pointer rests on, never over the menu. */
+.add-block-pop { position: absolute; left: calc(100% + 14px); top: -12px; z-index: 1; width: 300px; box-sizing: border-box; padding: 12px 12px 10px; border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow-float); }
+.add-block-pop .kind-preview { width: 274px; }
+.add-block-line { margin: 10px 2px 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
+.add-block-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 2px; font-size: var(--text-xs); color: var(--muted); }
+.add-block-foot .sp { flex: 1; }
+.add-block-foot .ros-chip { background: var(--ink); border-color: var(--ink); color: #fff; }
+.add-block-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
