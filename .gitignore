@@ -33,3 +33,8 @@ test-results/
 !/examples/demo-market-risk/research-v2/*.py
 /examples/tutorial-results/market.json
 /examples/model-comparison-*/
+
+# ros-nemotron generated data, training outputs and the llama.cpp checkout (reproducible from training/ros-nemotron)
+/training/ros-nemotron/data/
+/training/ros-nemotron/train/out/
+/training/ros-nemotron/train/llama.cpp/

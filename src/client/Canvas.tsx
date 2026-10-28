@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps, type Viewport } from '@xyflow/react';
-import { ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
+import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
+import { TrainingBlock } from './TrainingView';
 import { rowBlockOperations } from '../shared/notion-rows';
 import { ArtifactContent } from './Experiment';
 import { MarkdownPreview } from './Content';
@@ -14,7 +15,6 @@ import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel }
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { resolveModelSetting, type ModelSettingsResponse } from '../shared/model-settings';
 import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardWidth, initialCardSize, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
@@ -24,7 +24,7 @@ import { routeRelationship, type RelationshipRoute, type RouteNode } from '../sh
 import { relationshipLabelSize } from '../shared/relationship-label';
 import { readSaved, saveLocal } from './persistence';
 import { arrangeCanvas, numberedStageOrder, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
-import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
+import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
 import type { NotebookSummary } from '../shared/notebooks';
 import { textPreview } from '../shared/presentation';
 import './canvas-interactions.css';
@@ -34,13 +34,16 @@ import './groups.css';
 import './aggregate-relationships.css';
 import './agent-view.css';
 import './source-check.css';
-import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
+import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
+import { AppFrame } from './AppFrame';
+import { appFlags, appVersion, type AppFlag } from '../shared/apps';
 import { FilePreview, type ShownFile } from './FileView';
 import { fileMediaType, fileUrl } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
-import { CodeView } from './code';
+import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
+import { CodeView, modKey } from './code';
 import { CanvasDock } from './CanvasDock';
 import { CanvasMinimap } from './CanvasMinimap';
 import { CanvasToolSwitch, useCanvasTool } from './CanvasTool';
@@ -57,8 +60,9 @@ export function shownFile(projectId: string, node: CanvasNode, entry?: FolderFil
 /** One icon per kind of block; a Text block's label says what it means. A Google block shows its app's mark. */
 export function KindIcon({ kind, blockType, google, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; size?: number }) {
   if (blockType === 'notion') return <BrandLogo id="notion" size={size}/>;
+  if (blockType === 'training') return <BrandLogo id="nebius" size={size}/>;
   if (blockType === 'google') return <BrandLogo id={google === 'sheet' ? 'google-sheets' : google === 'doc' ? 'google-docs' : 'google-drive'} size={size}/>;
-  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
+  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
   return <Icon size={size}/>;
 }
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -75,19 +79,24 @@ type CardData = {
   notion?: { projectId: string; view: NotionView; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null> };
   /** A Google Sheet or Doc the card reads live; `onCopy` copies a sheet's tab into a new Data block. */
   google?: { projectId: string; view: GoogleView; onCopy?: () => Promise<boolean> };
+  /** A model training run the card reads live from its folder and GPU machine. */
+  training?: { projectId: string; view: TrainingView };
   /** The PDF or image a File block shows, read from the project folder. */
   file?: ShownFile;
   /** The blocks a collapsed Group lists on its card. */
   listed?: { id: string; title: string; kind?: string; blockType?: string; google?: GoogleView['kind'] }[];
   /** A Code block's source, shown on the card. */
   code?: string;
+  /** An App block's page, running on the card: `proposalId` while a proposal previews it, `still` instead of the page
+   * on a saved canvas from the past; `leaves` are lines a preview flags for trying to leave the frame. */
+  app?: { projectId: string; version: string; inputs: number; proposalId?: string; still?: string; watchKey: string; leaves?: AppFlag[]; onFocus: (blockId: string) => void };
   /** A Notebook block's cells and last run; `notebookFigure` is the address of its newest figure. */
   notebook?: NotebookSummary; notebookFigure?: string; chosen: Artifact[]; origins:Record<string,string>; onHighlightOpen: (artifact: Artifact) => void;
   inputCount: number; resultCount: number; expanded: boolean; preview?: 'added' | 'changed' | 'removed';
   onExpand: () => void; onInspect: () => void; onActivate: () => void; onAdd: () => void; onHandle: (side: Side) => void;
   onSave: (title: string, description: string) => Promise<unknown>; readonly: boolean;
   outcome: CardOutcome; width: number; height: number; heightSet: boolean; resizePending: boolean;
-  modelLabel?: string; modelTitle?: string; fileMissing?: boolean;
+  fileMissing?: boolean;
   results?: ResultPageChoice & { pageCount: number; total: number; start: number };
   onResultChoice: (choice: ResultPageChoice) => void;
   onResize: (size: CardResize | null, commit?: boolean) => void; onAutoHeight: () => void; onMeasure: (width: number, height: number) => void;
@@ -111,9 +120,15 @@ type CardData = {
 export type AgentTurnSummary = { status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; runtime: string; thought?: string; pending: number };
 const agentState = { running: 'Working', completed: 'Finished', failed: 'Stopped with an error', cancelled: 'Stopped', interrupted: 'Interrupted' } as const;
 /** The quiet last line of a card: which agent made the block and what it rests on (sources, results, the saved version). */
-function Provenance({data}:{data:CardData}){
+function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
   const parts:ReactNode[]=[];
   if(data.origin)parts.push(<small key="origin">{data.origin}</small>);
+  if(data.app){
+    parts.push(<small key="reads">{data.app.inputs?`reads ${data.app.inputs} block${data.app.inputs===1?'':'s'}`:'reads no blocks'}</small>);
+    if(appErrors?.length)parts.push(<small key="errors" className="app-error" title={appErrors.join('\n')}>{appErrors.length} error{appErrors.length===1?'':'s'}</small>);
+    parts.push(<small key="version" className="block-version">Version {data.app.version}</small>);
+    return <div className="outcome-footer provenance">{parts}</div>;
+  }
   const searching=data.blockType==='search'||(data.label==='result'&&data.description===RESULT_PLACEHOLDER);
   if(searching){if(data.sources?.length)parts.push(<small key="found">{data.sources.length} source{data.sources.length===1?'':'s'} found</small>);}
   else if(!data.primary&&data.blockType!=='agent'){const {sources,hosts}=splitSources(data.description);if(sources>0)parts.push(<small key="cited">{data.blockType==='finding'&&hosts.length?`From ${hosts.join(', ')}`:`${sources} source${sources===1?'':'s'} cited`}</small>);}
@@ -124,9 +139,10 @@ function Provenance({data}:{data:CardData}){
 type ResearchNode = Node<CardData, 'research'>;
 /** A card being resized: its new size, and how far its top left corner moved when it was pulled from the left or top. */
 export type CardResize = { width: number; height?: number; dx: number; dy: number };
-/** The edges and corners a card is resized from. */
+/** The edges and corners a card is resized from. A closed Group fits what it lists, so only its sides move. */
 const RESIZE_EDGES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 type ResizeEdge = typeof RESIZE_EDGES[number];
+const GROUP_RESIZE_EDGES: readonly ResizeEdge[] = ['e', 'w'];
 const RESIZE_GRID = 24;
 /** The card's size while one of its edges or corners is dragged. Pulled from the left or top, the opposite edge stays
  * put and the move keeps to the canvas grid, as every saved position does. */
@@ -149,10 +165,36 @@ const ShownCode = memo(CodeView);
 const ShownArtifact = memo(BlockPreview, (a, b) => a.artifact.id === b.artifact.id && a.artifact.hash === b.artifact.hash && a.compact === b.compact);
 const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes);
 const ShownNotion = memo(NotionBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onRows) === Boolean(b.onRows) && JSON.stringify(a.view) === JSON.stringify(b.view));
+const ShownTraining = memo(TrainingBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownGoogle = memo(GoogleBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onCopy) === Boolean(b.onCopy) && JSON.stringify(a.view) === JSON.stringify(b.view));
 /** A checked block's marks, worst first: how many claims a source contradicts, how many none backs, how many hold. */
 function CheckTally({ tally }: { tally: Record<ClaimVerdict, number> }) {
   return <div className="check-tally" aria-label="Sources checked">{VERDICT_ORDER.filter(verdict => tally[verdict] > 0).map(verdict => <span key={verdict} className={`claim-mark ${verdict}`}>{tally[verdict]} {VERDICT_WORDS[verdict].toLowerCase()}</span>)}</div>;
+}
+/** An App on its card: the page is live, but takes clicks only after a click into it, so the map still drags and
+ * zooms over it; Escape or a click outside hands the map back. */
+function AppFace({ id, data, onErrors }: { id: string; data: CardData; onErrors: (errors: string[]) => void }) {
+  const app = data.app!, shell = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  // The cover stays a moment after the click that starts the page, so a double-click still opens the block view.
+  const [lingering, setLingering] = useState(false);
+  useEffect(() => { if (!lingering) return; const timer = window.setTimeout(() => setLingering(false), 350); return () => window.clearTimeout(timer); }, [lingering]);
+  useEffect(() => {
+    if (!active) return;
+    // A click elsewhere, or Escape outside the page (inside it, the kit sends Escape), hands the map back.
+    const away = (event: PointerEvent) => { if (!shell.current?.contains(event.target as globalThis.Node)) setActive(false); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setActive(false); };
+    document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key); };
+  }, [active]);
+  if (app.still) return <div className="app-face"><p className="app-face-still">{app.still}</p></div>;
+  return <>
+    <div ref={shell} className={`app-face${active ? ' active nodrag nopan nowheel' : ''}`}>
+      <AppFrame projectId={app.projectId} nodeId={id} title={data.title} version={app.version} proposalId={app.proposalId} watchKey={app.watchKey} onFocus={app.onFocus} onErrors={onErrors} onEscape={() => setActive(false)}/>
+      {(!active || lingering) && <button type="button" className={`app-face-use${active ? ' lingering' : ''}`} aria-label={`Use ${data.title}`} onClick={event => { event.stopPropagation(); if (active) return; data.onActivate(); setActive(true); setLingering(true); }} onDoubleClick={event => { event.stopPropagation(); setActive(false); data.onInspect(); }}><span>Click to use</span></button>}
+    </div>
+    {app.leaves?.length ? <p className="app-leaves" title={app.leaves.map(flag => `Line ${flag.line}: ${flag.reason}`).join('\n')}>Tries to leave its frame: line {app.leaves[0].line} {app.leaves[0].reason}{app.leaves.length > 1 ? `, and ${app.leaves.length - 1} more` : ''}. The frame blocks it.</p> : null}
+  </>;
 }
 /** What an agent has done so far, in the words of its tool calls. */
 function AgentFace({ data }: { data: CardData }) {
@@ -192,7 +234,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const group=data.kind==='group';
   useEffect(() => {
     if (data.expanded || data.heightSet || !heading.current) return;
-    const element=heading.current, update=()=>measure.current(data.width,Math.min(CARD_MAX_HEIGHT,Math.max(CARD_MIN_HEIGHT,(data.notion||data.google?element.scrollHeight:element.offsetHeight)+2)));
+    const element=heading.current, update=()=>measure.current(data.width,Math.min(CARD_MAX_HEIGHT,Math.max(CARD_MIN_HEIGHT,(data.notion||data.google||data.training||data.app?element.scrollHeight:element.offsetHeight)+2)));
     const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();
   },[data.expanded,data.heightSet,data.width,data.primary,data.chosen,data.notebookFigure,data.file]);
   // The Notion preview keeps one row callback, which always reaches the latest canvas.
@@ -206,35 +248,37 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   // Only states that need attention get a line; an idle block shows its content.
   const workState=data.awaitingApproval?'Awaiting approval':active?(data.label==='result'?'Searching':data.status):data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
+  const [appErrors,setAppErrors]=useState<string[]>([]);
+  // The edge that takes keyboard focus and arrow keys: a Group's right side, another card's corner.
+  const edges=group?GROUP_RESIZE_EDGES:RESIZE_EDGES, handle:ResizeEdge=group?'e':'se';
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
       <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
-        <button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>
+        <button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>
         {group&&<button className="icon-button group-expand-control" aria-label={`${data.expanded?'Collapse':'Expand'} ${data.title}`} title={data.expanded?'Collapse group':'Expand group'} onClick={event=>{event.stopPropagation();data.onExpand();}}>{data.expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</button>}
       </span></div>
       <div className="card-title" title={data.title}>{data.title||'Untitled'}</div>
       {group ? <>
         {data.workLabel&&<span className="group-contained-work">{data.workLabel}</span>}
         {data.description&&<p className="group-overview-excerpt">{data.description.slice(0,140)}{data.description.length>140?'…':''}</p>}
-        {!data.expanded&&<div className="group-chosen-highlights nodrag nopan">{data.chosen.length?data.chosen.map(artifact=><button key={artifact.id} className="group-highlight-preview" aria-label={`Open highlight: ${artifact.title}`} title={`From ${data.origins[artifact.nodeId]??'a saved block'} · exact version ${artifact.hash}`} onClick={event=>{event.stopPropagation();data.onHighlightOpen(artifact);}}><ShownArtifact artifact={artifact} compact/><span><strong>{artifact.title}</strong><small>{data.origins[artifact.nodeId]??'Saved block'} · {artifact.hash.slice(0,8)}</small></span></button>)
+        {!data.expanded&&<div className="group-chosen-highlights">{data.chosen.length?data.chosen.map(artifact=><button key={artifact.id} className="group-highlight-preview" aria-label={`Open highlight: ${artifact.title}`} title={`From ${data.origins[artifact.nodeId]??'a saved block'} · exact version ${artifact.hash}`} onClick={event=>{event.stopPropagation();data.onHighlightOpen(artifact);}}><ShownArtifact artifact={artifact} compact/><span><strong>{artifact.title}</strong><small>{data.origins[artifact.nodeId]??'Saved block'} · {artifact.hash.slice(0,8)}</small></span></button>)
           :data.listed?.length?<ul className="group-member-list">{data.listed.slice(0,GROUP_PREVIEW_MEMBERS).map(member=><li key={member.id} title={member.title}><KindIcon kind={member.kind} blockType={member.blockType} google={member.google} size={12}/><span>{member.title}</span></li>)}{data.members>Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)&&<li className="more">{data.members-Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)} more</li>}</ul>
           :<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
       </> : <>
         {notebook?data.notebook?.cells?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
         :data.blockType==='agent'?<div className={`block-work-state ${data.agent?.status==='running'?'running':data.agent&&data.agent.status!=='completed'?'failed':''}`}>{data.agent?.status==='running'&&<LoaderCircle size={12} className="spin"/>}{data.agent?`${agentState[data.agent.status]} · ${data.agent.runtime}`:'Agent'}</div>
         :workState&&!data.web&&<div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{workState}</div>}
-        <div className="block-primary-preview nodrag nopan" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
+        <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
           :data.blockType==='search'?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}<ul className="search-queries">{data.description.split('\n').filter(Boolean).slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul></div>
           :data.label==='result'&&data.description===RESULT_PLACEHOLDER?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}{data.queries?.length?<ul className="search-queries">{data.queries.slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul>:<p className="block-empty-hint">{data.description}</p>}</div>
-          :data.web?<WebFace data={data.web}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
-        {selected&&data.modelLabel&&!data.notion&&!data.google&&<span className="node-model-indicator" title={data.modelTitle}>{data.modelLabel}</span>}
       </>}
-      {!data.expanded&&!group&&!data.web&&<Provenance data={data}/>}
+      {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
     </div>
-    {!data.expanded&&!data.readonly&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
-      {...edge==='se'?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
+    {!data.expanded&&!data.readonly&&edges.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
+      {...edge===handle?{role:'button',tabIndex:0,'aria-label':group?`Resize ${data.title}, now ${data.width} wide. Arrow keys resize`:`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:group?'Drag to resize':'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()};data.onActivate();}}
       onPointerMove={event=>{if(resizing.current)data.onResize(resized(event));}}
       onPointerUp={event=>{const start=resizing.current;if(!start)return;const size=resized(event);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);
@@ -243,7 +287,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
       onPointerCancel={()=>{resizing.current=null;data.onResize(null);}}
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
-      onKeyDown={edge==='se'?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
+      onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending||group&&arrow[0]==='s')return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
     {data.expanded&&<div className="group-actions nodrag"><span>Mixed research blocks · relationships do not run work</span><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
@@ -253,7 +297,11 @@ function ArtifactCard({ data }: NodeProps<ArtifactNode>) {
   const { artifact } = data;
   return <article className={`canvas-artifact ${data.highlighted ? 'highlighted' : ''}`}><div className="card-top"><span className="card-type">{data.highlighted ? <Pin size={13}/> : null}{data.reused ? 'Selected input' : artifact.kind}</span><div className="row nodrag"><button className="icon-button" aria-label={`${data.highlighted ? 'Unpin' : 'Pin'} ${artifact.title}`} disabled={data.readonly} title={data.highlighted ? 'Unpin highlight' : 'Pin as highlight'} onClick={data.onPin}><Pin size={15} fill={data.highlighted ? 'currentColor' : 'none'}/></button><button className="icon-button" aria-label={`Inspect ${artifact.title}`} title="Inspect result" onClick={data.onOpen}><ArrowUpRight size={15}/></button></div></div><h3>{artifact.title}</h3>{data.originLabel&&<span className="artifact-origin">{data.originLabel}</span>}<div className="artifact-preview nodrag nowheel" onDoubleClick={data.onOpen}><BlockPreview artifact={artifact}/></div><div className="artifact-footer"><span title={`Immutable version ${artifact.hash}`}>{data.reused ? 'Exact selected version' : 'Saved result'} · {artifact.hash.slice(0, 8)}{data.producer&&<small className="artifact-producer"> · Produced by {data.producer}</small>}</span><button className="text-button small nodrag" disabled={data.readonly} onClick={data.onReuse}>Reuse <ArrowUpRight size={13}/></button></div></article>;
 }
-const nodeTypes = { research: ResearchCard, artifact: ArtifactCard };
+// While a block moves, React Flow moves its frame; the card inside draws again only when its content, size or
+// selection changes, and a line only when its route does (the route comes with its data, not from the endpoints).
+const PLACEMENT_PROPS = new Set(['positionAbsoluteX', 'positionAbsoluteY', 'dragging', 'sourceX', 'sourceY', 'targetX', 'targetY', 'sourcePosition', 'targetPosition']);
+function samePlacedProps<P extends object>(a: P, b: P) { return (Object.keys(b) as (keyof P & string)[]).every(key => PLACEMENT_PROPS.has(key) || a[key] === b[key]); }
+const nodeTypes = { research: memo(ResearchCard, samePlacedProps), artifact: memo(ArtifactCard, samePlacedProps) };
 type RoutedEdge = Edge<{ route: RelationshipRoute; label: string; tooltip: string; showLabel: boolean; onSelect: () => void }, 'relationship'>;
 function CanvasRelationshipEdge({ id, data, selected, style, markerStart, markerEnd, interactionWidth }: EdgeProps<RoutedEdge>) {
   if (!data) return null;
@@ -264,7 +312,7 @@ function CanvasRelationshipEdge({ id, data, selected, style, markerStart, marker
     <EdgeLabelRenderer>{data.showLabel && <button type="button" className={`relationship-edge-label on-route-relationship-label nodrag nopan ${selected ? 'selected' : ''}`} style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${route.label.x}px, ${route.label.y}px)`, width: route.labelWidth, pointerEvents: 'all' }} title={tooltip} aria-label={`Inspect relationship: ${tooltip}`} onClick={event => { event.stopPropagation(); data.onSelect(); }}><span>{label}</span><ChevronRight size={12} aria-hidden="true"/></button>}</EdgeLabelRenderer>
   </g>;
 }
-const edgeTypes = { relationship: CanvasRelationshipEdge };
+const edgeTypes = { relationship: memo(CanvasRelationshipEdge, samePlacedProps) };
 function relationshipBadge(group: AggregateRelationship, canvas: Canvas) {
   const normalize = (text: string) => text.replace(/\s+/gu, ' ').trim();
   const label = relationshipBadgeText(group, id => canvas.nodes.find(node => node.id === id));
@@ -319,7 +367,8 @@ export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
     if (op.type === 'addNode') { result.nodes.push(op.node); marks.set(op.node.id, 'added'); }
     // Blocks a proposal only moves, such as a tree laid out again around new groups, are not marked as changed.
     if (op.type === 'updateNode') { const n = result.nodes.find(n => n.id === op.id); if (n) Object.assign(n, op.patch); if (!layoutOnly(op.patch)) marks.set(op.id, 'changed'); }
-    if (op.type === 'removeNode') marks.set(op.id, 'removed');
+    // Removing a block takes the blocks inside it too, so each of them shows as removed.
+    if (op.type === 'removeNode') for (const id of [op.id, ...groupMembers(result, op.id).map(n => n.id)]) marks.set(id, 'removed');
     if (op.type === 'addConnection') result.connections.push(op.connection);
     if (op.type === 'removeConnection') result.connections = result.connections.filter(c => c.id !== op.id);
   }
@@ -350,8 +399,16 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
   });
   return { items, width, height, minY };
 }
+/** The last blocks copied in this window, for browsers that hand a paste only its plain text. */
+let lastCopy: { text: string; plain: string } | null = null;
+type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMoveEnd';
+type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode | ArtifactNode, RoutedEdge>, FlowHandlerName>>;
+/** Handlers that keep their identity across renders and always run the latest code. */
+function useStableHandlers<T extends Record<string, (...args: never[]) => unknown>>(handlers: T): T {
+  const latest = useRef(handlers); latest.current = handlers;
+  return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
+}
 function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns }: Props) {
-  const expandedIds = useMemo(()=>{const canvas=historyCanvas||detail.project.canvas;return requestedExpandedIds.filter(id=>canvas.nodes.some(node=>node.id===id&&(isGroup(node)||canvas.nodes.some(child=>child.parentId===id))));},[requestedExpandedIds,historyCanvas,detail.project.canvas]);
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The open label menu, and the Group a dragged block would join (outlined while the drag lasts).
   const [labelMenu, setLabelMenu] = useState<{ nodeId: string; left: number; top: number } | null>(null); const closeLabelMenu = useCallback(() => setLabelMenu(null), []);
@@ -361,13 +418,12 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
   const [animatingLayout, setAnimatingLayout] = useState(false), [artifactPlacementRevision, setArtifactPlacementRevision] = useState(0);
   const [reflowRevision, setReflowRevision] = useState(0);
-  const [modelSettings, setModelSettings] = useState<ModelSettingsResponse|null>(null);
-  useEffect(() => {
-    let active=true;
-    const load=()=>{void api<ModelSettingsResponse>(`/api/projects/${detail.project.id}/models`).then(value=>{if(active)setModelSettings(value);}).catch(()=>{if(active)setModelSettings(null);});};
-    load();window.addEventListener('ros-ai-model-settings',load);
-    return()=>{active=false;window.removeEventListener('ros-ai-model-settings',load);};
-  },[detail.project.id,detail.project.revision]);
+  // Blocks being dragged, or settling after a drop, are drawn from React Flow's own store until they come to rest
+  // (see followDrag); `saving` keeps a dropped block where it settled until the saved canvas arrives.
+  const flowStore = useStoreApi<ResearchNode | ArtifactNode, RoutedEdge>();
+  const live = useRef(new Set<string>()), dragFrom = useRef(new Map<string, XYPosition>()), settling = useRef<{ frame: number; targets: Map<string, XYPosition> } | null>(null);
+  const saving = useRef(new Map<string, { parentId: string | null; position: XYPosition }>()), missedLayout = useRef(false), boxSelecting = useRef(false);
+  const [layoutRetry, setLayoutRetry] = useState(0);
   const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean } | null>(null);
   const reflowWriting = useRef(false);
   const [cardMeasurements, setCardMeasurements] = useState<Record<string, CanvasSize>>({}), [draftSizes, setDraftSizes] = useState<Record<string, CardResize>>({});
@@ -388,7 +444,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }, [detail.project.id, runRevision]);
   const measureCard = useCallback((id: string, width: number, height: number) => setCardMeasurements(current => current[id]?.width === width && current[id]?.height === height ? current : { ...current, [id]: { width, height } }), []);
   const animateNextLayout = useRef<Map<string, { x: number; y: number }> | null>(null), animationFrame = useRef<number | null>(null);
-  const routeHistory = useRef(new Map<string, RelationshipRoute>());
+  const routeHistory = useRef(new Map<string, RelationshipRoute>()), shownEdges = useRef(new Map<string, { key: string; edge: RoutedEdge }>());
   const connectionCommittedAt = useRef(0); const connectionBusy = useRef(false);
   const viewKey = `canvas-view:${detail.project.id}`;
   const viewport = useRef(readSaved<Viewport>(viewKey, readSaved(`viewport:${detail.project.id}:project`, { x: 48, y: 216, zoom: 1 })));
@@ -400,7 +456,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const overlay = element.getBoundingClientRect();
         if (overlay.height) top = Math.max(top, overlay.bottom - bounds.top + 22);
       }
-      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .selection-toolbar, .project-floating-actions, .edge-selection, .ros-dock') || []) {
+      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .edge-selection, .ros-dock') || []) {
         const overlay = element.getBoundingClientRect();
         if (overlay.height && overlay.top > bounds.top + bounds.height / 2) bottom = Math.max(bottom, bounds.bottom - overlay.top + 22);
       }
@@ -460,6 +516,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   };
   const readonly = Boolean(historyCanvas || proposal);
   const displayed = useMemo(() => previewCanvas(historyCanvas || detail.project.canvas, historyCanvas ? undefined : proposal), [historyCanvas, detail.project.canvas, proposal]);
+  // Read from the canvas as shown, so a group a proposal adds opens while the proposal is reviewed.
+  const expandedIds = useMemo(()=>requestedExpandedIds.filter(id=>displayed.canvas.nodes.some(node=>node.id===id&&(isGroup(node)||displayed.canvas.nodes.some(child=>child.parentId===id)))),[requestedExpandedIds,displayed]);
   // A proposal is shown where it changes the canvas: its blocks in view, its card beside them.
   const proposalIds = useMemo(() => proposal && !historyCanvas ? [...displayed.marks.keys()] : [], [proposal, historyCanvas, displayed]);
   const proposalFrame = useRef(false);
@@ -530,14 +588,16 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // Delete the picked blocks, or the selected one; a block inside another picked group goes with it.
   // A Text block's label is picked from a menu under its caption; a Report or Finding keeps the label its type implies.
   const labelMenuOpener = (node: CanvasNode) => !readonly && kindName(node) === 'Text' && !labelFixed(node) ? (anchor: DOMRect) => { const box = area.current?.getBoundingClientRect(); setLabelMenu({ nodeId: node.id, left: anchor.left - (box?.left ?? 0), top: anchor.bottom - (box?.top ?? 0) + 6 }); } : undefined;
-  // The expanded Group under a point, for a block being dragged: never the block itself or a Group inside it.
-  const groupAt = (point: { x: number; y: number }, nodeId: string) => {
-    const excluded = new Set([nodeId, ...(descendantIds[nodeId] ?? [])]);
+  // The expanded Group under a point, for blocks being dragged: never one of them or a Group inside one.
+  const groupAt = (point: { x: number; y: number }, nodeIds: string[]) => {
+    const excluded = new Set(nodeIds.flatMap(id => [id, ...(descendantIds[id] ?? [])]));
     const inside = flow.getNodes().filter(item => item.type === 'research' && expandedIds.includes(item.id) && !excluded.has(item.id)).flatMap(item => { const absolute = flow.getInternalNode(item.id)?.internals.positionAbsolute; return absolute ? [{ id: item.id, absolute, width: item.width || 0, height: item.height || 0 }] : []; }).filter(item => point.x >= item.absolute.x && point.x <= item.absolute.x + item.width && point.y >= item.absolute.y && point.y <= item.absolute.y + item.height);
     return inside.at(-1) ?? null;
   };
   const selectedGroup = !readonly && !selecting && selectedId ? displayed.canvas.nodes.find(node => node.id === selectedId && isGroup(node)) : undefined;
-  const deletable = readonly || busy ? [] : (selecting ? groupSelection : selectedId ? [selectedId] : []).filter(id => displayed.canvas.nodes.some(node => node.id === id));
+  // The picked blocks: those chosen with the Group picker, a selection box or Shift/⌘-clicks, or else the selected one.
+  const picked = selecting || groupSelection.length ? groupSelection : selectedId ? [selectedId] : [];
+  const deletable = readonly || busy ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
   const removeSelected = () => {
     const parents = new Map(displayed.canvas.nodes.map(node => [node.id, node.parentId]));
     const inPicked = (id: string) => { for (let parent = parents.get(id); parent; parent = parents.get(parent)) if (deletable.includes(parent)) return true; return false; };
@@ -561,6 +621,66 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, []);
   useEffect(() => { if (readonly) setPendingConnection(null); }, [readonly]);
+  // ⌘/Ctrl Z undoes the last canvas change and ⌘/Ctrl Shift Z (or Ctrl Y off a Mac) redoes it, like the toolbar
+  // buttons. Text fields, editors and dialogs keep their own undo.
+  const historyRef = useRef({ onUndo, onRedo, canUndo: detail.canUndo, canRedo: detail.canRedo, blocked: readonly || busy });
+  historyRef.current = { onUndo, onRedo, canUndo: detail.canUndo, canRedo: detail.canRedo, blocked: readonly || busy };
+  useEffect(() => {
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || !(mac ? event.metaKey : event.ctrlKey)) return;
+      const letter = event.code === 'KeyZ' || event.key.toLowerCase() === 'z' ? 'z' : event.code === 'KeyY' || event.key.toLowerCase() === 'y' ? 'y' : '';
+      if (!letter || letter === 'y' && (mac || event.shiftKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"], .cm-editor')) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const { onUndo, onRedo, canUndo, canRedo, blocked } = historyRef.current;
+      if (blocked) return;
+      if (letter === 'y' || event.shiftKey) { if (canRedo) onRedo?.(); } else if (canUndo) onUndo?.();
+    };
+    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+  }, []);
+  // ⌘/Ctrl C copies the picked blocks and ⌘/Ctrl V pastes them as new blocks. Text being edited or
+  // selected keeps the browser's own copy and paste.
+  const copySelected = (event: ClipboardEvent) => {
+    const copy = copyBlocks(displayed.canvas, picked, detail.project.id);
+    if (!copy || !event.clipboardData) return;
+    const roots = copy.nodes.filter(node => !copy.nodes.some(item => item.id === node.parentId));
+    const text = JSON.stringify(copy), plain = roots.map(node => node.title).join('\n');
+    event.clipboardData.setData(BLOCKS_MIME, text); event.clipboardData.setData('text/plain', plain); event.preventDefault();
+    lastCopy = { text, plain };
+    setMessage(roots.length === 1 ? `Copied ${roots[0].title}.` : `Copied ${roots.length} blocks.`);
+  };
+  const pasteCopied = (event: ClipboardEvent) => {
+    const data = event.clipboardData, plain = data?.getData('text/plain') ?? '';
+    // Some browsers keep only plain text, so the last copy made here stands in when the text still matches it.
+    const text = data?.getData(BLOCKS_MIME) || (lastCopy && plain === lastCopy.plain ? lastCopy.text : '');
+    const copy = text ? readCopiedBlocks(text) : null;
+    if (!copy) return;
+    event.preventDefault();
+    if (readonly || busy) { setMessage(readonly ? 'This canvas is read only. Go back to the current canvas to paste.' : 'Still saving. Paste again in a moment.'); return; }
+    const { operations, ids } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
+    const title = copy.nodes.find(node => !copy.nodes.some(item => item.id === node.parentId))?.title;
+    void mutate(operations, ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`).then(saved => {
+      if (saved === false) return;
+      // Several pasted blocks stay picked, so they can be dragged on together.
+      setGroupSelection(selecting || ids.length > 1 ? ids : []); onSelect(selecting || ids.length !== 1 ? null : ids[0]);
+      // The nearest free spot can be off screen on a full canvas; then the view moves to the pasted blocks.
+      const first = operations.find(op => op.type === 'addNode' && op.node.id === ids[0]), box = area.current?.getBoundingClientRect();
+      const at = first?.type === 'addNode' && !first.node.parentId ? flow.flowToScreenPosition({ x: first.node.x, y: first.node.y }) : null;
+      if (!at || !box || at.x < box.left || at.y < box.top || at.x > box.right - 120 || at.y > box.bottom - 120) setFrameRequest(ids);
+      setMessage(`${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}. Undo takes it away.`);
+    });
+  };
+  const clipboardRef = useRef({ copy: copySelected, paste: pasteCopied }); clipboardRef.current = { copy: copySelected, paste: pasteCopied };
+  useEffect(() => {
+    const typing = (event: ClipboardEvent) => Boolean((event.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]'));
+    const copy = (event: ClipboardEvent) => { if (!typing(event) && !window.getSelection()?.toString()) clipboardRef.current.copy(event); };
+    const paste = (event: ClipboardEvent) => { if (!typing(event)) clipboardRef.current.paste(event); };
+    document.addEventListener('copy', copy); document.addEventListener('paste', paste);
+    return () => { document.removeEventListener('copy', copy); document.removeEventListener('paste', paste); };
+  }, []);
   const resultPages = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const parentId = node.id;
         const runs = detail.runs.filter(r => r.nodeId === parentId && r.status === 'completed');
@@ -579,6 +699,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     return { search: node.web!, state, onOpen: source => { if (source.artifacts[0]) onArtifact(source.artifacts[0], node.id); else window.open(source.url, '_blank', 'noopener,noreferrer'); },
       onStop: readonly || !state.sweepId ? undefined : () => { void api(`/api/runs/${encodeURIComponent(state.sweepId!)}/cancel`, { method: 'POST' }).then(() => setMessage('Stopped the searches. The pages found so far stay on the block.')).catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Could not stop the searches.')); } };
   };
+  // Apps on the canvas read their watched blocks again when the project changes.
+  const appWatch = `${detail.project.revision}:${detail.artifacts.length}:${detail.artifacts[0]?.id ?? ''}`;
   const computedNodes = useMemo<(ResearchNode | ArtifactNode)[]>(() => {
     const build = (parentId: string | null, depth = 0): { nodes: (ResearchNode | ArtifactNode)[]; width: number; height: number } => {
       const siblings = displayed.canvas.nodes.filter(n => (n.parentId || null) === parentId).sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
@@ -600,19 +722,15 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const failed=containedAttempts.filter(run=>['failed','interrupted'].includes(run.status)).length;
         const stopped=containedAttempts.filter(run=>run.status==='cancelled').length;
         const workLabel=[working?`${working} block${working===1?'':'s'} working`:'',pending?`${pending} approval${pending===1?'':'s'} pending`:'',failed?`${failed} block${failed===1?' needs':'s need'} attention`:'',stopped?`${stopped} stopped attempt${stopped===1?'':'s'}`:''].filter(Boolean).join(' · ');
-        const effective=modelSettings&&!['code','notebook'].includes(nodeBlockType(node))?resolveModelSetting(modelSettings,displayed.canvas.nodes,node.id):null;
-        const selectedProvider=modelSettings?.providers.find(item=>item.id===effective?.selection.provider);
-        const selectedModel=selectedProvider?.models.find(item=>item.id===effective?.selection.model);
-        const modelTitle=effective?`Selected model: ${selectedProvider?.label??effective.selection.provider} · ${selectedModel?.label??effective.selection.model}${effective.inheritedFrom===node.id?' · task override':effective.inheritedFrom?' · inherited from '+displayed.canvas.nodes.find(item=>item.id===effective.inheritedFrom)?.title:' · project default'}. Saved results retain their original producing model.`:undefined;
         const direction = node.blockType === 'search' || node.label === 'result';
         // A block an agent made says so on its provenance line: a Result note through its link from the Agent block, a finding through its Result note.
         const origin=blockOrigin(displayed.canvas,node.id);
-        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id)) : undefined, origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google})=>({id,title,kind,blockType,google:google?.kind})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), modelLabel:selectedModel?.label??effective?.selection.model, modelTitle, results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, height: cardSizes[node.id].height, heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, check: node.check ? checkTally(node.check) : node.blockType === 'agent' ? (checked => checked?.check ? checkTally(checked.check) : undefined)(displayed.canvas.nodes.find(item => item.check?.agentNodeId === node.id)) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id, detail.runs)) : undefined, web: node.blockType === 'web' && node.web ? webFace(node) : undefined } }, ...child.nodes);
+        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, training: node.training ? { projectId: detail.project.id, view: node.training } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id)) : undefined, origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, app:node.blockType==='app'?{ projectId: detail.project.id, version: appVersion(node.app?.source ?? ''), inputs: node.app?.inputs.length ?? 0, watchKey: appWatch, onFocus: blockId => { onSelect(blockId); setFocusRequest(blockId); }, ...(historyCanvas ? { still: 'An App from a saved canvas. It runs on the current canvas.' } : proposal && ['added','changed'].includes(displayed.marks.get(node.id) ?? '') ? { proposalId: proposal.id, leaves: appFlags(node.app?.source ?? '') } : {}) }:undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google})=>({id,title,kind,blockType,google:google?.kind})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, height: cardSizes[node.id].height, heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, check: node.check ? checkTally(node.check) : node.blockType === 'agent' ? (checked => checked?.check ? checkTally(checked.check) : undefined)(displayed.canvas.nodes.find(item => item.check?.agentNodeId === node.id)) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id, detail.runs)) : undefined, web: node.blockType === 'web' && node.web ? webFace(node) : undefined } }, ...child.nodes);
       }
       return { nodes: built, width: right, height: bottom };
     };
     return build(null).nodes;
-  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, draftSizes, cardOutcomes, resizingCards, resultPages, modelSettings, descendantIds, groupSelection, missingFiles, agentTurns]);
+  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, draftSizes, cardOutcomes, resizingCards, resultPages, descendantIds, groupSelection, missingFiles, agentTurns, appWatch]);
   const [nodes, setNodes] = useState(computedNodes);
   const liveNodes = useRef(nodes); liveNodes.current = nodes;
   const extraContent = useMemo(() => ({}), []);
@@ -679,15 +797,19 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     return () => clearTimeout(timer);
   }, [computedNodes, displayed, expandedIds, extraContent, cardSizes, readonly, arranging, animatingLayout, draftSizes, resizingCards, reflowRevision]);
   useEffect(() => {
-    if (dragging.current) return;
+    // Blocks being dragged or settling keep their place; the canvas catches up once they come to rest.
+    if (dragging.current) { missedLayout.current = true; return; }
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+    // A dropped block stays where it settled until the saved canvas that puts it there arrives.
+    const shown = saving.current.size ? computedNodes.map(node => { const pending = saving.current.get(node.id); return pending && pending.parentId === (node.parentId ?? null) ? { ...node, position: pending.position } : node; }) : computedNodes;
     const expected = animateNextLayout.current;
     const hasArrived = expected && expected.size === displayed.canvas.nodes.length && displayed.canvas.nodes.every(node => expected.get(node.id)?.x === node.x && expected.get(node.id)?.y === node.y);
     const shouldAnimate = hasArrived && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!shouldAnimate) {
       if (hasArrived) animateNextLayout.current = null;
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setAnimatingLayout(false); setNodes(computedNodes.map(node => ({ ...node, measured: measurements.get(node.id) }))); return;
+      // React Flow's measurements are read as the update applies, so a size it reported since the last render (a group
+      // that just closed) is kept; an older one would stay, since the block does not resize again to correct it.
+      setAnimatingLayout(false); setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => ({ ...node, measured: measurements.get(node.id) })); }); return;
     }
     const before = new Map(liveNodes.current.map(node => [node.id, node]));
     const started = performance.now(), duration = 420;
@@ -696,20 +818,19 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       const progress = Math.min(1, (time - started) / duration), eased = 1 - (1 - progress) ** 3;
       // React Flow invalidates handle bounds if a controlled update drops measured.
       // Keep its latest measurements while ResizeObserver follows changing group sizes.
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setNodes(computedNodes.map(node => {
+      setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => {
         const measured = measurements.get(node.id);
         const original = before.get(node.id); if (!original || progress === 1) return { ...node, measured };
         const width = (original.width || 0) + ((node.width || 0) - (original.width || 0)) * eased;
         const height = (original.height || 0) + ((node.height || 0) - (original.height || 0)) * eased;
         return { ...node, measured, position: { x: original.position.x + (node.position.x - original.position.x) * eased, y: original.position.y + (node.position.y - original.position.y) * eased }, width, height, style: { ...node.style, width, height } };
-      }));
+      }); });
       if (progress < 1) animationFrame.current = requestAnimationFrame(frame);
       else { animationFrame.current = null; animateNextLayout.current = null; setAnimatingLayout(false); }
     };
     animationFrame.current = requestAnimationFrame(frame);
     return () => { if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current); };
-  }, [computedNodes]);
+  }, [computedNodes, layoutRetry]);
   useEffect(() => {
     if (!focusRequest) return;
     const timer = setTimeout(() => {
@@ -745,13 +866,10 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     while (node && !nodes.some(item => item.id === node!.id)) node = node.parentId ? displayed.canvas.nodes.find(item => item.id === node!.parentId) : undefined;
     return node ? [node.id] : [];
   }))];
-  const edges = useMemo<RoutedEdge[]>(() => {
-    // Original endpoints remain visible in expanded frames; collapsed ancestors
-    // aggregate only their hidden contributions.
-    const byId=new Map(nodes.map(node=>[node.id,node]));
-    const absolute=(id:string):{x:number;y:number}=>{const node=byId.get(id)!;const parent=node.parentId?absolute(node.parentId):{x:0,y:0};return {x:node.position.x+parent.x,y:node.position.y+parent.y};};
-    const geometry: RouteNode[] = nodes.filter(node=>node.type==='research').map(node=>({id:node.id,parentId:node.parentId,...absolute(node.id),width:node.width||CARD_SIZE.width,height:node.height||CARD_SIZE.height}));
-    const items = aggregatedRelationships.flatMap(group => {
+  // The lines of these relationships, routed around the research blocks in `geometry` (their boxes on the canvas).
+  // Original endpoints remain visible in expanded frames; collapsed ancestors aggregate only their hidden contributions.
+  const relationshipEdges = (groups: AggregateRelationship[], geometry: RouteNode[]): RoutedEdge[] => {
+    const items = groups.flatMap(group => {
       const badge = relationshipBadge(group, displayed.canvas), size = relationshipLabelSize(badge.label);
       const route = routeRelationship({ source: group.source, target: group.target, nodes: geometry.filter(item=>item.id===group.source||item.id===group.target||!expandedIds.includes(item.id)), previous: routeHistory.current.get(group.id), labelSize: badge.label ? { width: size.width + 14, height: 28 } : { width: 0, height: 0 } });
       if (!route) return [];
@@ -762,9 +880,60 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     return items.map(({ group, route, label, tooltip, showLabel }) => {
       const selected = group.id === selectedEdge, color = selected ? '#536f69' : '#99a5a2';
       const marker = { type: MarkerType.ArrowClosed, width: 17, height: 17, color };
-      return { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+      const edge: RoutedEdge = { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+      // An unchanged edge keeps its object, so dragging one block redraws only the lines that move with it.
+      const key = JSON.stringify(edge), shown = shownEdges.current.get(group.id);
+      if (shown?.key === key) return shown.edge;
+      shownEdges.current.set(group.id, { key, edge });
+      return edge;
     });
+  };
+  const edges = useMemo<RoutedEdge[]>(() => {
+    const byId=new Map(nodes.map(node=>[node.id,node]));
+    const absolute=(id:string):{x:number;y:number}=>{const node=byId.get(id)!;const parent=node.parentId?absolute(node.parentId):{x:0,y:0};return {x:node.position.x+parent.x,y:node.position.y+parent.y};};
+    return relationshipEdges(aggregatedRelationships, nodes.filter(node=>node.type==='research').map(node=>({id:node.id,parentId:node.parentId,...absolute(node.id),width:node.width||CARD_SIZE.width,height:node.height||CARD_SIZE.height})));
   }, [aggregatedRelationships, nodes, selectedEdge, expandedIds, displayed.canvas]);
+  // A dragged block moves in React Flow's own store, in the same frame as the pointer, and the canvas around it is
+  // not drawn again: only the lines that end on a moving block are routed again. The canvas takes the blocks back
+  // once they come to rest (`settled`).
+  const followDrag = (changes: NodePositionChange[]) => {
+    const state = flowStore.getState();
+    state.setNodes(applyNodeChanges(changes, state.nodes));
+    const moved = new Set(changes.map(change => change.id)), { nodeLookup } = state;
+    const moving = (id: string) => { for (let node = nodeLookup.get(id); node; node = node.parentId ? nodeLookup.get(node.parentId) : undefined) if (moved.has(node.id)) return true; return false; };
+    const groups = aggregatedRelationships.filter(group => moving(group.source) || moving(group.target));
+    if (!groups.length) return;
+    const geometry: RouteNode[] = [...nodeLookup.values()].filter(node => node.type === 'research').map(node => ({ id: node.id, parentId: node.parentId, ...node.internals.positionAbsolute, width: node.width || CARD_SIZE.width, height: node.height || CARD_SIZE.height }));
+    const routed = new Map(relationshipEdges(groups, geometry).map(edge => [edge.id, edge]));
+    state.setEdges(state.edges.map(edge => routed.get(edge.id) ?? edge));
+  };
+  // Anything else React Flow reports while blocks move (a measured size, a box being drawn) keeps them where they are shown.
+  const keepLive = (current: (ResearchNode | ArtifactNode)[]) => {
+    if (!live.current.size) return current;
+    const { nodeLookup } = flowStore.getState();
+    return current.map(node => { const shown = live.current.has(node.id) ? nodeLookup.get(node.id) : undefined; return shown ? { ...node, position: shown.position, dragging: true } : node; });
+  };
+  // Dropped blocks glide the last few pixels onto the canvas grid, where they are saved, then the canvas takes them back.
+  const settle = (targets: Map<string, XYPosition>) => {
+    const { nodeLookup } = flowStore.getState(), from = new Map([...targets].map(([id, to]) => [id, nodeLookup.get(id)?.position ?? to]));
+    const started = performance.now(), duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 140;
+    const step = (time: number) => {
+      const progress = duration ? Math.min(1, (time - started) / duration) : 1, eased = 1 - (1 - progress) ** 3;
+      followDrag([...targets].map(([id, to]) => { const start = from.get(id)!; return { id, type: 'position' as const, position: { x: start.x + (to.x - start.x) * eased, y: start.y + (to.y - start.y) * eased }, dragging: true }; }));
+      if (progress < 1) settling.current = { frame: requestAnimationFrame(step), targets }; else settled(targets);
+    };
+    settling.current = { frame: requestAnimationFrame(step), targets };
+  };
+  const settled = (targets: Map<string, XYPosition>) => {
+    if (settling.current) cancelAnimationFrame(settling.current.frame);
+    settling.current = null; live.current.clear(); dragging.current = false;
+    if (targets.size) {
+      setNodes(current => keepLive(current.map(node => { const position = targets.get(node.id); return position ? { ...node, position, dragging: false } : node; })));
+      setReflowRevision(revision => revision + 1);
+    }
+    if (missedLayout.current) { missedLayout.current = false; setLayoutRetry(retry => retry + 1); }
+  };
+  useEffect(() => () => { if (settling.current) cancelAnimationFrame(settling.current.frame); }, []);
   const broader = () => { const selected = displayed.canvas.nodes.find(n => n.id === selectedId); if (selected?.parentId) { onSelect(selected.parentId); setFocusRequest(selected.parentId); } else void fitCanvas(450); };
   const arrange = async () => {
     if (readonly || arranging || animatingLayout) return;
@@ -789,58 +958,116 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!onDropFiles || readonly || !Array.from(event.dataTransfer.types).includes('Files')) return false;
     event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return true;
   };
-  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}`} data-testid="canvas"
+  // React Flow redraws every block when a handler it is given changes, so it gets handlers that
+  // keep their identity and call the latest code; a drag then redraws only the block that moves.
+  const flowHandlers = useStableHandlers<FlowHandlers>({
+    onNodesChange: changes => {
+      // The canvas keeps its own selection (a click, the Group picker, a selection box); React Flow's is followed only while a box is drawn.
+      const kept = changes.filter(change => change.type !== 'select' || boxSelecting.current);
+      if (!kept.length) return;
+      if (kept.every(change => change.type === 'position' && (change.dragging || live.current.has(change.id)))) { followDrag(kept.map(change => ({ ...change as NodePositionChange, dragging: true }))); return; }
+      setNodes(current => keepLive(applyNodeChanges(kept, current)));
+    },
+    onNodeClick: (event, node) => {
+      if ((event.target as HTMLElement).closest('.relationship-handle')) return;
+      if (node.type === 'research') {
+        if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side);
+        else if (selecting) setGroupSelection(ids => ids.includes(node.id) ? ids.filter(id => id !== node.id) : [...ids, node.id]);
+        // Shift or ⌘ adds a block to the picked ones, or takes it out again.
+        else if (event.shiftKey || event.metaKey || event.ctrlKey) { const next = picked.includes(node.id) ? picked.filter(id => id !== node.id) : [...picked, node.id]; setGroupSelection(next.length > 1 ? next : []); onSelect(next.length === 1 ? next[0] : null); }
+        else { if (groupSelection.length) setGroupSelection([]); onSelect(node.id); }
+      }
+      setSelectedEdge(null);
+    },
+    onNodeDoubleClick: (event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook','file'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); },
+    onPaneClick: () => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); closeLabelMenu(); },
+    onEdgeClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
+    onEdgeDoubleClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
+    onSelectionStart: () => { boxSelecting.current = true; },
+    onSelectionEnd: () => {
+      boxSelecting.current = false;
+      const boxed = [...flowStore.getState().nodeLookup.values()].filter(item => item.selected && item.type === 'research').map(item => item.id);
+      if (selecting) { setGroupSelection(ids => [...new Set([...ids, ...boxed])]); return; }
+      setGroupSelection(boxed.length > 1 ? boxed : []); onSelect(boxed.length === 1 ? boxed[0] : null); setSelectedEdge(null);
+    },
+    onNodeDragStart: (_, __, dragged) => {
+      // A block grabbed again while it settles stops gliding where it is.
+      if (settling.current) settled(settling.current.targets);
+      dragging.current = true; dragFrom.current = new Map(dragged.map(item => [item.id, item.position]));
+      for (const item of dragged) live.current.add(item.id);
+      setReflowRevision(revision => revision + 1);
+    },
+    onNodeDrag: (event, node, dragged) => {
+      if (readonly || node.type !== 'research') return;
+      const blocks = dragged.filter(item => item.type === 'research'), parents = new Set(blocks.map(item => item.parentId ?? null));
+      const pointer = 'changedTouches' in event ? event.changedTouches[0] : event;
+      const target = parents.size === 1 ? groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), blocks.map(item => item.id)) : null;
+      const nextId = target && !parents.has(target.id) ? target.id : null;
+      if (nextId === dropTargetId.current) return;
+      dropTargetId.current = nextId;
+      if (!target || !nextId) { setDropTarget(null); return; }
+      const box = area.current?.getBoundingClientRect(), origin = flow.flowToScreenPosition(target.absolute), corner = flow.flowToScreenPosition({ x: target.absolute.x + target.width, y: target.absolute.y + target.height });
+      setDropTarget({ id: nextId, left: origin.x - (box?.left ?? 0), top: origin.y - (box?.top ?? 0), width: corner.x - origin.x, height: corner.y - origin.y });
+    },
+    onNodeDragStop: (event, node, dragged) => {
+      dropTargetId.current = null; setDropTarget(null);
+      const pointer = 'changedTouches' in event ? event.changedTouches[0] : event, point = flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+      if (node.type === 'artifact') {
+        settled(new Map());
+        const from = dragFrom.current.get(node.id);
+        if (from && from.x === node.position.x && from.y === node.position.y) return;
+        const targets = flow.getNodes().filter(n => n.type === 'research' && expandedIds.includes(n.id) && n.id !== node.parentId).map(n => ({ node: n, absolute: flow.getInternalNode(n.id)?.internals.positionAbsolute })).filter(({ node: n, absolute: p }) => p && point.x >= p.x && point.x <= p.x + (n.width || 0) && point.y >= p.y && point.y <= p.y + (n.height || 0)); const target = targets.at(-1)?.node;
+        if (target) { onReuse(node.data.artifact, target.id); setNodes(computedNodes); }
+        else if (resultPages[node.data.destinationId]?.size !== 'all') { setNodes(computedNodes); }
+        else { const position = { x: Math.max(GROUP_INSET.x, node.position.x), y: Math.max(GROUP_INSET.y, node.position.y) }; saveLocal(`artifact-group-position:${node.data.destinationId}:${node.data.artifact.id}`, position); setArtifactPlacementRevision(revision => revision + 1); const highlight = highlights.find(h => h.nodeId === node.data.destinationId && h.artifactId === node.data.artifact.id); if (highlight) onMoveHighlight(highlight.id, node.data.destinationId, position); setNodes(current => current.map(n => n.id === node.id ? { ...n, position } : n)); }
+        return;
+      }
+      // A drag starts as the button goes down, so the block stays exactly under the pointer; a click moves nothing.
+      const blocks = dragged.filter(item => item.type === 'research'), moved = blocks.some(item => { const from = dragFrom.current.get(item.id); return !from || from.x !== item.position.x || from.y !== item.position.y; });
+      if (readonly || !moved) { settled(new Map()); return; }
+      // Dropped together on an expanded Group, the blocks join it; dragged out past its edge, they leave. Otherwise they only move.
+      const { nodeLookup } = flowStore.getState(), at = (id?: string | null) => (id ? nodeLookup.get(id)?.internals.positionAbsolute : undefined) ?? { x: 0, y: 0 };
+      const parents = new Set(blocks.map(item => item.parentId ?? null)), target = parents.size === 1 ? groupAt(point, blocks.map(item => item.id)) : null;
+      const regroup = parents.size === 1 && !parents.has(target?.id ?? null);
+      const targets = new Map<string, XYPosition>(), operations: Mutation[] = [];
+      for (const item of blocks) {
+        const absolute = at(item.id), parentId = regroup ? target?.id ?? null : item.parentId ?? null, parent = at(parentId);
+        const saved = savedCanvasPosition({ x: absolute.x - parent.x, y: absolute.y - parent.y }, Boolean(parentId));
+        // Where the block comes to rest on the grid, in the frame it is drawn in until the saved canvas arrives.
+        const rest = parentId ? { x: parent.x + GROUP_INSET.x + saved.x, y: parent.y + GROUP_INSET.y + saved.y } : saved, frame = at(item.parentId);
+        const position = { x: rest.x - frame.x, y: rest.y - frame.y };
+        targets.set(item.id, position); saving.current.set(item.id, { parentId: item.parentId ?? null, position });
+        operations.push({ type: 'updateNode', id: item.id, patch: regroup ? { parentId, ...saved } : saved });
+      }
+      settle(targets);
+      const label = regroup ? (target ? 'Move into a group' : 'Move out of its group') : blocks.length === 1 ? 'Move note' : `Move ${blocks.length} blocks`;
+      void mutate(operations, label).finally(() => {
+        for (const [id, position] of targets) if (saving.current.get(id)?.position === position) saving.current.delete(id);
+        setReflowRevision(revision => revision + 1);
+      });
+    },
+    onConnect: c => { if (c.source && c.target) connect(c.source, c.target, c.sourceHandle as Side | undefined, c.targetHandle as Side | undefined); },
+    onConnectEnd: (event, state) => {
+      if (state.isValid || !state.fromNode || readonly) return;
+      const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
+      if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
+    },
+    onMoveStart: closeLabelMenu,
+    onMoveEnd: (_, view) => saveLocal(viewKey, view),
+  });
+  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
-    <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={changes => setNodes(current => applyNodeChanges(changes, current))}
-      onNodeClick={(event, node) => { if ((event.target as HTMLElement).closest('.relationship-handle')) return; if (node.type === 'research') { if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side); else if(selecting){setGroupSelection(ids=>ids.includes(node.id)?ids.filter(id=>id!==node.id):[...ids,node.id]);} else onSelect(node.id); } setSelectedEdge(null); }}
-      onNodeDoubleClick={(event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook','file'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); }}
-      onPaneClick={() => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); closeLabelMenu(); }} onEdgeClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }} onEdgeDoubleClick={(_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); }}
-      onNodeDragStart={() => { dragging.current = true; setReflowRevision(revision => revision + 1); }} onNodeDrag={(event, node) => {
-        if (readonly || node.type !== 'research') return;
-        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
-        const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null, nextId = target && target.id !== parentId ? target.id : null;
-        if (nextId === dropTargetId.current) return;
-        dropTargetId.current = nextId;
-        if (!target || !nextId) { setDropTarget(null); return; }
-        const box = area.current?.getBoundingClientRect(), origin = flow.flowToScreenPosition(target.absolute), corner = flow.flowToScreenPosition({ x: target.absolute.x + target.width, y: target.absolute.y + target.height });
-        setDropTarget({ id: nextId, left: origin.x - (box?.left ?? 0), top: origin.y - (box?.top ?? 0), width: corner.x - origin.x, height: corner.y - origin.y });
-      }} onNodeDragStop={(event, node) => {
-        dragging.current = false; dropTargetId.current = null; setDropTarget(null);
-        if (node.type === 'artifact') {
-          const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const point = flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
-          const targets = flow.getNodes().filter(n => n.type === 'research' && expandedIds.includes(n.id) && n.id !== node.parentId).map(n => ({ node: n, absolute: flow.getInternalNode(n.id)?.internals.positionAbsolute })).filter(({ node: n, absolute: p }) => p && point.x >= p.x && point.x <= p.x + (n.width || 0) && point.y >= p.y && point.y <= p.y + (n.height || 0)); const target = targets.at(-1)?.node;
-          if (target) { onReuse(node.data.artifact, target.id); setNodes(computedNodes); }
-          else if (resultPages[node.data.destinationId]?.size !== 'all') { setNodes(computedNodes); }
-          else { const position = { x: Math.max(GROUP_INSET.x, node.position.x), y: Math.max(GROUP_INSET.y, node.position.y) }; saveLocal(`artifact-group-position:${node.data.destinationId}:${node.data.artifact.id}`, position); setArtifactPlacementRevision(revision => revision + 1); const highlight = highlights.find(h => h.nodeId === node.data.destinationId && h.artifactId === node.data.artifact.id); if (highlight) onMoveHighlight(highlight.id, node.data.destinationId, position); setNodes(current => current.map(n => n.id === node.id ? { ...n, position } : n)); }
-          return;
-        }
-        if (readonly) return;
-        // Dropped on an expanded Group, the block joins it; dragged out past its edge, it leaves. Otherwise only its position is saved.
-        const pointer = 'changedTouches' in event ? event.changedTouches[0] : event; const target = groupAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY }), node.id);
-        const parentId = displayed.canvas.nodes.find(item => item.id === node.id)?.parentId ?? null;
-        if ((target?.id ?? null) !== parentId) {
-          const absolute = flow.getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
-          const position = target ? savedCanvasPosition({ x: absolute.x - target.absolute.x, y: absolute.y - target.absolute.y }, true) : savedCanvasPosition(absolute, false);
-          void mutate([{ type: 'updateNode', id: node.id, patch: { parentId: target?.id ?? null, ...position } }], target ? 'Move into a group' : 'Move out of its group').finally(() => setReflowRevision(revision => revision + 1));
-          return;
-        }
-        void mutate([{ type: 'updateNode', id: node.id, patch: savedCanvasPosition(node.position, Boolean(node.parentId)) }], 'Move note').finally(() => setReflowRevision(revision => revision + 1));
-      }}
-      onConnect={c => { if (c.source && c.target) connect(c.source, c.target, c.sourceHandle as Side | undefined, c.targetHandle as Side | undefined); }}
-      onConnectEnd={(event, state) => {
-        if (state.isValid || !state.fromNode || readonly) return;
-        const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
-        if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
-      }}
-      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout && !hand} nodesConnectable={!readonly && !hand} elementsSelectable={!hand} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} snapToGrid snapGrid={[24, 24]} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} onMoveStart={closeLabelMenu} onMoveEnd={(_, view) => saveLocal(viewKey, view)} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
+    <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} {...flowHandlers}
+      connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodeDragThreshold={0} nodesConnectable={!readonly} selectNodesOnDrag={false}
+      panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
       <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.filter(node=>!isGroup(node)).length} blocks · {displayed.canvas.nodes.filter(isGroup).length} groups</span></div>
       <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
         <CanvasToolSwitch tool={canvasTool.tool} onChange={canvasTool.setTool}/>
-        <button className="secondary small canvas-add-button" data-testid="add-node" aria-label="Add block to canvas" disabled={readonly||busy} onClick={()=>onAdd(null)}><Plus size={15}/> Add block</button>
-        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title="Undo canvas change" disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
-        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title="Redo canvas change" disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
+        <button className="secondary small canvas-add-button" data-testid="add-node" aria-label={selectedGroup?`Add a block inside ${selectedGroup.title}`:"Add block to canvas"} disabled={readonly||busy} onClick={()=>onAdd(selectedGroup?.id??null)}><Plus size={15}/> {selectedGroup?"Add inside":"Add block"}</button>
+        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title={`Undo canvas change (${modKey}Z)`} disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
+        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title={`Redo canvas change (${modKey === '⌘' ? '⌘⇧Z' : 'Ctrl+Shift+Z'})`} disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
         {onHistory&&<button className={`icon-button ${historyOpen?'active':''}`} aria-label="Canvas history" title="Canvas content history" aria-expanded={historyOpen} aria-controls="canvas-content-history" onClick={onHistory}><History size={16}/></button>}
         {onDemo&&<button className="secondary small canvas-add-button" onClick={onDemo}><BookOpen size={14}/>{demoLabel}</button>}
         {onTour&&<button className="icon-button" title="Tour saved research" aria-label="Start guided demo" onClick={onTour}><BookOpen size={17}/></button>}

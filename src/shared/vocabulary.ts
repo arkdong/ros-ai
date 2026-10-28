@@ -4,10 +4,10 @@ import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
-/** What a block is on screen: seven kinds plus Group. Storage keeps the older blockType and kind words as aliases
- * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion and google are External).
- * A Web block is External too, named for what it reads. */
-export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'Group' | 'Search';
+/** What a block is on screen: nine kinds plus Group. Storage keeps the older blockType and kind words as aliases
+ * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
+ * A Web block is External too, named for what it reads. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
+export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
   if (node.kind === 'group') return 'Group';
   switch (node.blockType) {
@@ -15,9 +15,10 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'notebook': return 'Notebook';
     case 'dataset': return 'Data';
     case 'figure': case 'file': return 'File';
-    case 'notion': case 'google': return 'External';
+    case 'notion': case 'google': case 'training': return 'External';
     case 'web': return 'Web';
     case 'agent': return 'Agent';
+    case 'app': return 'App';
     case 'search': return 'Search';
     default: return 'Text';
   }

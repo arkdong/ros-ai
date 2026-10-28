@@ -133,7 +133,7 @@ export function WebFace({ data }: { data: WebFaceData }) {
         {state.pagesRead > 0 && <span><b>{state.pagesRead}</b> read</span>}{state.credits !== null && <span title="Tavily credits: one per search, one per five pages read">{plural(state.credits, 'credit')}</span>}</span>
       {data.onStop && state.phase === 'searching' && <button type="button" className="secondary web-stop nodrag" onClick={event => { event.stopPropagation(); data.onStop!(); }}><Square size={10}/> Stop</button>}
     </div>
-    <div ref={box} className="web-map nodrag nopan">
+    <div ref={box} className="web-map">
       {layout && <>
         <svg className="web-lines" width={size!.width} height={size!.height} aria-hidden="true">
           {layout.pills.map(pill => <line key={pill.id} className={`web-spoke${pill.aside ? ' aside' : ''}`} x1={layout.centre.x} y1={layout.centre.y} x2={pill.x} y2={pill.y}/>)}

@@ -12,7 +12,8 @@ import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
 import type {ModelMessage,Mutation,Run} from '../shared/types.js';
-import type {AssistantBackend,AssistantAction,AssistantFocus,AssistantLive,AssistantMemoryEntry,AssistantReference,AssistantState,AssistantTurn,OutlineEntry,ResearchMemory} from '../shared/assistant.js';
+import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantTurn,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
+import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
 import {memoryLineSchema,type PersonalMemory} from './personal-memory.js';
 import type {SkillLibrary} from './skills.js';
@@ -24,6 +25,8 @@ import {ASSISTANT_CLARIFICATION_LIMITS,readAssistantClarifications} from '../sha
 import {presentAssistantResponse} from '../shared/assistant-presentation.js';
 import {LAYOUT_GAP} from '../shared/layout.js';
 import {CARD_MAX_HEIGHT,cardWidth} from '../shared/card-size.js';
+import {PLUGINS,type PluginId} from '../shared/plugins.js';
+import {pluginMatches} from '../shared/plugin-hints.js';
 
 const now=()=>new Date().toISOString();
 const id=z.string().min(1).max(128);
@@ -42,7 +45,7 @@ const replySchema=z.object({reply:z.string().min(1).max(16000),question:z.string
 const responseSchema=z.toJSONSchema(replySchema);
 type Tool=z.infer<typeof toolSchema>;
 type Trace={provider?:string;at:string;messages:ModelMessage[];schema:Record<string,unknown>;response:string;usageId:string;model:string;modelVersion:string|null;responseMetadata:Record<string,unknown>};
-type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsideSession?:string;acp?:AcpAgentId};
+type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsideSession?:string;acp?:AcpAgentId;billing?:'plan'|'api-key'};
 const emptyMemory=():ResearchMemory=>({originalQuestion:null,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]});
 const clip=(value:string,length:number)=>value.length>length?value.slice(0,length)+'\n[Capture preview truncated; saved artifact is complete.]':value;
 
@@ -60,6 +63,8 @@ export class AssistantService {
   private readonly listeners=new Map<string,Set<(live:AssistantLive)=>void>>();
   private readonly pending=new Map<string,ReturnType<typeof setTimeout>>();
   private save(turn:SavedTurn){const saved=this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});this.publish(turn);return saved;}
+  /** Changes what a turn offers (its plugin card) without touching when its work last changed. */
+  private amend(turn:SavedTurn){this.store.saveRecord('assistant-turn',turn.id,turn.projectId,turn);}
   /** Running turns are sent at most every 40 ms (the newest text wins); a turn that ends is sent at once. */
   private publish(turn:SavedTurn){
     if(!this.listeners.get(turn.projectId)?.size)return;
@@ -89,7 +94,7 @@ export class AssistantService {
     });
   }
   setBackend(projectId:string,input:unknown){
-    const {backend}=z.object({backend:z.enum(['provider','codex','claude','agent',...ACP_AGENT_IDS])}).strict().parse(input);
+    const {backend}=z.object({backend:z.enum(['provider','agent','claude','claude-plan','codex','codex-key',...ACP_AGENT_IDS])}).strict().parse(input);
     this.store.getProject(projectId);
     if(this.turns(projectId).some(turn=>turn.status==='running'))throw new StoreError('Stop or finish the current assistant turn before changing its connection.',409);
     this.store.saveRecord('assistant-backend',projectId,projectId,{backend});return this.state(projectId);
@@ -122,13 +127,16 @@ export class AssistantService {
       })};
     });
     const backend=this.store.record<{backend:AssistantBackend}>('assistant-backend',projectId)?.backend??'provider';
-    const agentStatus=this.store.record<import('../shared/agent-runtime.js').AgentConnectionStatus>('agent-connection-status',projectId);
-    const claude=backend==='claude'?this.claude?.readiness(projectId)??{available:false,reason:'Claude Code is not available in this service.'}:backend==='agent'?this.loop?.readiness(projectId,this.execution.modelSelection(projectId,focus.nodeId))??{available:false,reason:'The agent loop is not available in this service.'}:isAcpAgent(backend)?this.acp?.readiness(projectId,backend)??{available:false,reason:`${ACP_AGENTS[backend].label} is not available in this service.`}:null;
-    const capabilities=claude?{modelAvailable:claude.available,searchAvailable:false,modelBlocker:claude.reason}:backend==='codex'?{modelAvailable:Boolean(agentStatus?.available),searchAvailable:false,modelBlocker:agentStatus?.available?null:agentStatus?.detail??'Open Model to check local Codex authentication, protocol and the separate bounded grant. No agent inference has been verified.'}:this.execution.assistantCapabilities(projectId,focus.nodeId);
+    const way=inAppAgent(backend);
+    const agentStatus=way?.agent==='codex'?this.store.record<import('../shared/agent-runtime.js').AgentConnectionStatus>('agent-connection-status',codexStatusRecord(projectId,way.billing)):undefined;
+    const claude=way?.agent==='claude'?this.claude?.readiness(projectId,way.billing)??{available:false,reason:'Claude Code is not available in this service.'}:backend==='agent'?this.loop?.readiness(projectId,this.execution.modelSelection(projectId,focus.nodeId))??{available:false,reason:'The agent loop is not available in this service.'}:isAcpAgent(backend)?this.acp?.readiness(projectId,backend)??{available:false,reason:`${ACP_AGENTS[backend].label} is not available in this service.`}:null;
+    const capabilities=claude?{modelAvailable:claude.available,searchAvailable:false,modelBlocker:claude.reason}:way?.agent==='codex'?{modelAvailable:Boolean(agentStatus?.available),searchAvailable:false,modelBlocker:agentStatus?.available?null:agentStatus?.detail??'Open Model to check local Codex authentication, protocol and the separate bounded grant. No agent inference has been verified.'}:this.execution.assistantCapabilities(projectId,focus.nodeId);
     return {projectId,backend,focus,memory,outline,turns,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
   }
-  start(projectId:string,supplied:{message:string;focus?:AssistantFocus}):AssistantState{
-    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional()}).strict().parse(supplied);
+  /** suggest: plugins the person's app noticed in the message (a link or a name) and found unconnected; the reply carries
+   * a card for those the message really names. */
+  start(projectId:string,supplied:{message:string;focus?:AssistantFocus;suggest?:PluginId[]}):AssistantState{
+    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional(),suggest:z.array(z.enum(PLUGINS.map(plugin=>plugin.id) as [PluginId,...PluginId[]])).max(3).optional()}).strict().parse(supplied);
     if(this.closed)throw new StoreError('Assistant is stopping.',503);
     if(this.turns(projectId).some(t=>t.status==='running'))throw new StoreError('The project assistant is already working.',409);
     const stopped=this.experiments.authority.policy(projectId).stopped;
@@ -137,8 +145,15 @@ export class AssistantService {
     const message=this.store.addMessage(projectId,null,'user',body.message),memory=this.memory(projectId);
     if(!memory.originalQuestion){memory.originalQuestion=body.message;memory.questionHistory.push({id:message.id,text:body.message,at:message.createdAt});}
     this.store.saveRecord('research-memory',projectId,projectId,memory);
-    const backend=this.state(projectId).backend;
-    const turn:SavedTurn={id:randomUUID(),projectId,createdAt:now(),updatedAt:now(),focus,userMessage:body.message,reply:'',status:'running',source:backend==='codex'?'codex-agent':backend==='claude'?'claude-agent':backend==='agent'?'model-agent':isAcpAgent(backend)?'acp-agent':this.execution.assistantCapabilities(projectId,focus.nodeId).modelAvailable?'model':'local-records',...(isAcpAgent(backend)?{acp:backend,model:ACP_AGENTS[backend].label}:{}),references:[],actions:[],events:[],steps:[],modelSelection:this.execution.modelSelection(projectId,focus.nodeId)};this.save(turn);
+    const backend=this.state(projectId).backend,way=inAppAgent(backend);
+    const turn:SavedTurn={id:randomUUID(),projectId,createdAt:now(),updatedAt:now(),focus,userMessage:body.message,reply:'',status:'running',source:way?.agent==='codex'?'codex-agent':way?.agent==='claude'?'claude-agent':backend==='agent'?'model-agent':isAcpAgent(backend)?'acp-agent':this.execution.assistantCapabilities(projectId,focus.nodeId).modelAvailable?'model':'local-records',...(isAcpAgent(backend)?{acp:backend,model:ACP_AGENTS[backend].label}:{}),...(way?{billing:way.billing}:{}),references:[],actions:[],events:[],steps:[],modelSelection:this.execution.modelSelection(projectId,focus.nodeId)};
+    const suggested=body.suggest?.length?pluginMatches(body.message).filter(match=>body.suggest!.includes(match.id)):[];
+    if(suggested.length){
+      // One open card per plugin: a newer request that needs the same plugin takes the card over.
+      for(const earlier of this.turns(projectId))if(earlier.suggested?.status==='open'&&earlier.suggested.plugins.some(item=>suggested.some(match=>match.id===item.id)))this.amend({...earlier,suggested:{...earlier.suggested,status:'moved'}});
+      turn.suggested={by:'ros.ai',plugins:suggested,status:'open'};
+    }
+    this.save(turn);
     if(stopped){this.save({...turn,status:'failed',reply:'Project research is stopped. Open Permissions and resume deliberately before continuing.',error:'Project research is stopped. No model or tool was called.'});return this.state(projectId);}
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
     active.done=Promise.resolve().then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.active.delete(turn.id));
@@ -265,12 +280,12 @@ export class AssistantService {
         if(!runtime)throw new StoreError(`The ${claude?'Claude Code':loop?'agent loop':turn.source==='acp-agent'?acpLabel:'local Codex'} adapter is unavailable in this service. No inference was sent.`,503);
         const detail=this.store.detail(projectId),nodeIds=turn.focus.nodeId?[turn.focus.nodeId]:[];
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
-        this.event(projectId,turnId,claude?'Starting Claude Code with the API key from the Model page.':loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
+        this.event(projectId,turnId,claude?(turn.billing==='plan'?'Starting Claude Code on your Claude subscription.':'Starting Claude Code with your Claude API key.'):loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
         this.followSkills(projectId,turnId,turn.userMessage);
-        const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
+        const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.store.addMessage(projectId,null,'assistant',result.reply);
-        this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${this.claude!.settings().model}`,destination:'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});return;
+        this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});return;
       }
       if(turn.source==='local-records'){
         const local=this.groundedLocal(turn);this.store.addMessage(projectId,null,'assistant',local.reply);this.save({...turn,...local,status:'completed'});return;
@@ -415,6 +430,14 @@ export class AssistantService {
     if(entry.note)turn.reply=[turn.reply,entry.note].filter(Boolean).join('\n\n').slice(-16000);
     turn.actions.push(...entry.actions??[]);
     this.save(turn);
+  }
+  suggestion(projectId:string,turnId:string){return this.getTurn(projectId,turnId).suggested;}
+  /** Closes the plugin card under a reply: the person put it off, declined it, or carried on after connecting. */
+  closeSuggestion(projectId:string,turnId:string,status:Exclude<TurnSuggestion['status'],'open'|'moved'>){
+    const turn=this.getTurn(projectId,turnId);
+    if(!turn.suggested)throw new StoreError('This reply has no plugin suggestion.',404);
+    if(turn.suggested.status==='open')this.amend({...turn,suggested:{...turn.suggested,status}});
+    return this.state(projectId);
   }
   decide(projectId:string,actionId:string,decision:'accept'|'dismiss'){
     const turn=this.turns(projectId).find(t=>t.actions.some(a=>a.id===actionId));if(!turn)throw new StoreError('Assistant action not found.',404);

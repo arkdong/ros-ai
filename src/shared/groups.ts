@@ -11,6 +11,16 @@ export function convertLegacyGroups(canvas: Canvas): Canvas {
     : node) };
 }
 
+/** The group ros_propose_groups puts weak or off-topic blocks in. It stays folded when it arrives. */
+export const SET_ASIDE = { title: 'Set aside', description: 'Weak or off-topic for this question. Nothing is deleted; drag a block out to use it.' };
+/** A group opens when it first appears on the canvas, or in a proposal under review, so the blocks put in it show;
+ * only a Set aside group stays folded. */
+export const opensWhenAdded = (node: CanvasNode) => isGroup(node) && !(node.title === SET_ASIDE.title && node.description.startsWith(SET_ASIDE.description));
+/** The groups a proposal adds that open while it is reviewed. */
+export const proposedGroups = (operations: readonly Mutation[]) => operations.flatMap(op => op.type === 'addNode' && opensWhenAdded(op.node) ? [op.node.id] : []);
+/** The groups on the canvas that were not among the known ones, and open now. */
+export const arrivedGroups = (known: ReadonlySet<string>, canvas: Canvas) => canvas.nodes.filter(node => opensWhenAdded(node) && !known.has(node.id)).map(node => node.id);
+
 export function groupMembers(canvas: Canvas, groupId: string): CanvasNode[] {
   const result: CanvasNode[] = [], seen = new Set([groupId]);
   const visit = (parentId: string) => {

@@ -16,12 +16,13 @@ export function cardWidth(node: { width?: number }) {
   return Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
 }
 
-/** The height the researcher gave a card by resizing it, or undefined while the card follows its content. */
-export function setCardHeight(node: { height?: number | null }) {
-  return node.height ? Math.min(CARD_MAX_SET_HEIGHT, Math.max(CARD_MIN_HEIGHT, node.height)) : undefined;
+/** The height the researcher gave a card by resizing it, or undefined while the card follows its content. A closed
+ * Group always fits what it lists: a height saved on it (an agent may send one) would only leave an empty frame. */
+export function setCardHeight(node: { height?: number | null; kind?: string }) {
+  return node.height && node.kind !== 'group' ? Math.min(CARD_MAX_SET_HEIGHT, Math.max(CARD_MIN_HEIGHT, node.height)) : undefined;
 }
 /** The most room a card can take below its top, for placing new blocks clear of it. */
-export function cardFootprintHeight(node: { height?: number | null }) {
+export function cardFootprintHeight(node: { height?: number | null; kind?: string }) {
   return Math.max(CARD_MAX_HEIGHT, setCardHeight(node) ?? 0);
 }
 
@@ -33,8 +34,8 @@ export function initialCardSize(node: { width?: number; title: string }, text: s
   return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
 }
 
-/** Cards that preview code, a figure, a table or a report can grow to the maximum height. */
-const PREVIEW_BLOCKS = ['code', 'notebook', 'figure', 'file', 'dataset', 'report'];
+/** Cards that preview code, a figure, a table, a report or a running App can grow to the maximum height. */
+const PREVIEW_BLOCKS = ['code', 'notebook', 'figure', 'file', 'dataset', 'report', 'app'];
 /** A card face shows at most this much of a block's text (.block-primary-preview). */
 const TEXT_PREVIEW_HEIGHT = 195;
 /** A height guess for a new block's card before the browser measures it. A text card keeps the height its first

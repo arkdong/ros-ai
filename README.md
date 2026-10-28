@@ -4,7 +4,7 @@
 
 ros.ai is an open workspace where AI agents from any vendor and your own tools work on the same project. They collaborate through one shared context, a canvas of blocks, where you can inspect, evaluate and direct their work instead of each agent keeping its own. It runs on your computer: projects, keys and the Python sandbox stay there, and model requests go only to the providers you connect.
 
-A project is a canvas of Text, Code, Notebook, Data, File, External, Web and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
+A project is a canvas of Text, Code, Notebook, Data, File, External, Web, App and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
 
 ## Install
 
@@ -23,7 +23,7 @@ The service binds to loopback only. ros.ai keeps its own records in the computer
 
 ## First run
 
-1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go. You can come back to this on the **Agents** page.
+1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go. You can come back to this on the **Agents** page.
 2. **Pick a model for Ros.** Sign in for the free hosted Ros (Nemotron on Nebius, no key), paste your own key on the **Model** page, download Ros to run on this computer (Agents › Ros, about 3 GB), or point ros.ai at a local server.
 3. **Start a project.** New project opens a blank canvas; the book icon opens the bundled examples.
 
@@ -51,12 +51,15 @@ ros.ai reads it at each start (`ROS_KEYS_FILE` names another file, `ROS_KEYS_FIL
 
 ## Your own agents
 
-ros.ai is also an MCP server, so you can keep working in your own Claude Code, Codex, Cursor or Gemini CLI, signed in with your own plan or key; ros.ai never sees that login. The first-run screen links them, or paste the command yourself (the **Agents** page shows the exact path):
+ros.ai is also an MCP server, so you can keep working in your own Claude Code, Codex, Cursor, Gemini CLI, Pi or Hermes Agent, signed in with your own plan or key; ros.ai never sees that login. The first-run screen links them, or paste the command yourself (the **Agents** page shows the exact path):
 
 ```sh
 claude mcp add --scope user ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
 codex mcp add ros-ai -- node "/path/to/ros.ai data/bin/ros-ai-mcp.mjs"
+hermes mcp add ros-ai --command node --args "/path/to/ros.ai data/bin/ros-ai-mcp.mjs" --client=hermes
 ```
+
+Cursor, Gemini CLI and Pi take one `ros-ai` entry under `mcpServers` in their settings file instead; Pi's has `"exposure": "direct"`, so its model calls ros.ai's tools directly.
 
 Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`, so no separate Node is needed. The agent can read the canvas, artifacts and your saved preferences and propose blocks, report revisions, analysis code and reuse. Proposals follow the project's approval mode, run code only in ros.ai's sandbox, and appear in the assistant panel under the agent's name. Started inside a project's folder, the agent works in that project.
 
@@ -68,13 +71,15 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 **A browser for agents.** Turn on Plugins › Browser and agents can open public websites, click through them, fill in forms and take screenshots. It runs the Google Chrome or Microsoft Edge on this computer without a window (or Chromium, downloaded once into the data folder, about 100 MB), in an empty profile for each turn, so it never sees your cookies, logins or saved passwords. A proxy keeps it on public websites, never this computer or your network, and it keeps no downloads. An agent's first page in a turn follows the project's approval mode; a Browser block on the canvas then lists every step, and screenshots land beside it as File blocks in the project folder. `ROS_BROWSER_PATH` names another Chromium-based browser.
 
+**Apps on the canvas.** An App block is one HTML page that runs on its card: a table you can filter, a chart you can explore, a what-if calculator. It reads only the blocks named as its inputs, through ros.ai's kit (with Observable Plot, Preact and KaTeX served from this computer), and runs in a sealed frame on a second local port: no network, no forms or pop-ups, and no way into ros.ai's API. Add one with Add block › App. Settings › General › Apps lets agents build them too, with a guide and a check that opens the page in a hidden browser; it is off until you turn it on. Each page is also an `.html` file in the project folder's `apps/` folder. In the Mac app the window also stops an App frame from navigating away.
+
 **Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 
 ## Three approval modes
 
-- **Ask every time:** review each experiment and additional block.
-- **Approve for me:** a conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away; anything else escalates to you.
-- **Full access:** code runs straight away in the sandbox and the assistant can add blocks without asking; every change stays undoable.
+- **Ask every time:** review each experiment and each change to the canvas.
+- **Approve for me:** a conservative rule reviewer runs plain data-analysis code (pandas, NumPy, SciPy, Matplotlib and the standard maths modules) straight away, and the assistant's new blocks, moves and regrouping land at once; other code, edits and removals escalate to you.
+- **Full access:** code runs straight away in the sandbox and every canvas change the assistant makes lands without asking; every change stays undoable.
 
 [Working in ros.ai](docs/guide.md) covers the canvas, blocks, labels, Groups, history, resources, the Python boundary and spending in detail.
 

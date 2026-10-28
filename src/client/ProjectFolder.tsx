@@ -76,7 +76,7 @@ export function FolderChip({ status, onClick }: { status: ProjectFolderStatus; o
   </button>;
 }
 
-const kindNames: Record<UnplacedFile['kind'], string> = { note: 'Note', code: 'Code', notebook: 'Notebook', dataset: 'Dataset', pdf: 'PDF', image: 'Image' };
+const kindNames: Record<UnplacedFile['kind'], string> = { note: 'Note', code: 'Code', notebook: 'Notebook', dataset: 'Dataset', app: 'App', pdf: 'PDF', image: 'Image' };
 const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 export function FolderPanel({ projectId, projectTitle, status, nodes, onStatus, onChanged, onOpenFolder, onRemoveBlock }: {
