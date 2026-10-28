@@ -13,6 +13,7 @@ import platform
 import resource
 import sys
 import traceback
+import weakref
 from datetime import date, datetime
 
 INPUT = os.environ.get("ROS_SANDBOX_INPUT", "/input")
@@ -23,6 +24,7 @@ if os.environ.get("ROS_SANDBOX_PACKAGES"):
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
 import scipy
@@ -31,6 +33,8 @@ MAX_OUTPUTS = 20
 MAX_CONTENT = 500_000
 MAX_CAPTURE = 100_000
 outputs = []
+# Figures already kept as plot outputs, by plot(), by savefig() or at the end of the run.
+captured = weakref.WeakSet()
 
 
 class CapturedText(io.TextIOBase):
@@ -86,12 +90,53 @@ def metric(title, value):
     add("metric", title, json.dumps({"value": value}, default=json_default, allow_nan=False), "application/json")
 
 
+def figure_svg(figure):
+    stream = io.StringIO()
+    original_savefig(figure, stream, format="svg", bbox_inches="tight", metadata={"Date": None})
+    return stream.getvalue()
+
+
+def figure_title(figure, fallback):
+    suptitle = getattr(figure, "_suptitle", None)
+    if suptitle is not None and suptitle.get_text().strip():
+        return suptitle.get_text().strip()[:200]
+    for axes in figure.get_axes():
+        if axes.get_title().strip():
+            return axes.get_title().strip()[:200]
+    return fallback[:200]
+
+
 def plot(title, figure=None):
     figure = plt.gcf() if figure is None else figure
-    stream = io.StringIO()
-    figure.savefig(stream, format="svg", bbox_inches="tight", metadata={"Date": None})
-    add("plot", title, stream.getvalue(), "image/svg+xml")
+    add("plot", title, figure_svg(figure), "image/svg+xml")
+    captured.add(figure)
     plt.close(figure)
+
+
+original_savefig = Figure.savefig
+
+
+def savefig(figure, fname, *args, **kwargs):
+    """A figure saved to a file is kept as a plot output too, so a script written for files still lands its chart."""
+    result = original_savefig(figure, fname, *args, **kwargs)
+    if isinstance(fname, (str, os.PathLike)) and figure not in captured and len(outputs) < MAX_OUTPUTS:
+        name = os.path.splitext(os.path.basename(os.fspath(fname)))[0].replace("_", " ").replace("-", " ").strip() or "Figure"
+        add("plot", figure_title(figure, name[:1].upper() + name[1:]), figure_svg(figure), "image/svg+xml")
+        captured.add(figure)
+    return result
+
+
+Figure.savefig = savefig
+
+
+def keep_open_figures():
+    """Figures still open when the program ends are kept as plot outputs, titled from the figure when it has one."""
+    for number in plt.get_fignums():
+        figure = plt.figure(number)
+        if figure in captured or not figure.get_axes() or len(outputs) >= MAX_OUTPUTS:
+            continue
+        add("plot", figure_title(figure, f"Figure {number}"), figure_svg(figure), "image/svg+xml")
+        captured.add(figure)
 
 
 def export_csv(title, frame):
@@ -131,6 +176,7 @@ def main():
             scope["df"] = frame
         with contextlib.redirect_stdout(captured_out), contextlib.redirect_stderr(captured_err):
             exec(compile(code, "/input/program.py", "exec"), scope, scope)
+            keep_open_figures()
     except BaseException as failure:
         error = f"{type(failure).__name__}: {failure}"[:2000]
         detail = "".join(traceback.format_exception(type(failure), failure, failure.__traceback__))[-15_000:]

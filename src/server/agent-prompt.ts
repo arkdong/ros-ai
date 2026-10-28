@@ -22,7 +22,7 @@ const shared = [
 ];
 
 /** Claude Code reads the project folder with its own file tools. */
-const projectFolder = 'When the project has a folder, your working directory is that folder: every block is a plain file there (.md notes and reports, .py code, .ipynb notebooks, .csv data). Read them with Read, Glob and Grep. Nothing outside the folder is available. A Code block (.py) runs in ros.ai\'s Python sandbox when the person presses Run, and it keeps only what the code hands to the helpers plot("Title", fig) for a Matplotlib figure, table("Title", df) and metric("Name", value): print and savefig put nothing on the canvas.';
+const projectFolder = 'When the project has a folder, your working directory is that folder: every block is a plain file there (.md notes and reports, .py code, .ipynb notebooks, .csv data). Read them with Read, Glob and Grep. Nothing outside the folder is available. A Code block (.py) runs in ros.ai\'s Python sandbox when the person presses Run. The run keeps what the code hands to plot("Title", fig) for a Matplotlib figure, table("Title", df) and metric("Name", value), and any figure saved with savefig or left open at the end; print shows only in the log.';
 
 /** Chat models in ros.ai's own loop call tools by name with JSON arguments. */
 const toolLoop = 'Call one or more tools by name with JSON arguments that match their schemas. A tool result that starts with "Error:" means nothing was applied; fix the arguments or explain the problem. When you are done, answer without calling a tool.';
