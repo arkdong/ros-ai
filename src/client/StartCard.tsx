@@ -65,7 +65,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
     finally { setChoosing(false); }
   };
   const openFolderMode = () => { onFrom({ kind: 'folder' }); setMenu(null); if (picker) void choose(setPath); };
-  const ready = from.kind === 'folder' ? Boolean(path.trim()) : Boolean(demo || name.trim());
+  const ready = from.kind === 'folder' ? Boolean(path.trim()) : true;
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (busy || !ready) return;
@@ -86,7 +86,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
     {caption && <div className="pc-caption">{caption}</div>}
     {from.kind === 'folder'
       ? <input ref={field} className="pc-name mono" data-testid="project-folder" value={path} onChange={event => setPath(event.target.value)} placeholder="~/Documents/My research" aria-label="Folder to open" spellCheck={false} autoComplete="off" autoFocus/>
-      : <input ref={field} className="pc-name" data-testid="project-name" value={demo ? demo.projectTitle : name} onChange={event => setName(event.target.value)} readOnly={Boolean(demo)} placeholder="Project name" aria-label="Project name" maxLength={160} autoFocus/>}
+      : <input ref={field} className="pc-name" data-testid="project-name" value={demo ? demo.projectTitle : name} onChange={event => setName(event.target.value)} readOnly={Boolean(demo)} placeholder="Untitled" aria-label="Project name" maxLength={160} autoFocus/>}
     <div className="pc-foot" ref={foot}>
       {folders && from.kind !== 'folder' && <span className="chip-slot">
         <button type="button" className={`chip-button${folder ? ' set' : ''}`} aria-expanded={menu === 'folder'} aria-haspopup="dialog" title={folder || undefined} onClick={() => setMenu(menu === 'folder' ? null : 'folder')}><Folder size={12}/><span className="chip-label">{!folder ? 'Folder' : !demo && !name.trim() && !folderEdited ? shortPath(parentOf(folder)) : shortPath(folder)}</span><ChevronDown size={12}/></button>

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronRight, LayoutGrid, Search } from 'lucide-react';
 import { BLOCK_KINDS, mostUsedKinds, searchKinds, type BlockKind, type KindId } from './block-kinds';
 import { KindPreview } from './KindPreview';
+import './chip-menu.css';
 import './add-block-menu.css';
 
 const REST = 300;
@@ -11,11 +12,19 @@ type Row = { id: string; kind?: BlockKind; label: string; caption: string };
  *  Resting on a row shows the block as it looks on the map, one line on what it does, and what it needs. */
 export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { left: number; top: number; local: boolean; onPick: (kind: BlockKind) => void; onBrowse: (kind?: BlockKind) => void; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null), rest = useRef<number | null>(null);
-  const [query, setQuery] = useState(''), [active, setActive] = useState(0), [preview, setPreview] = useState<KindId | null>(null);
+  const [query, setQuery] = useState(''), [active, setActive] = useState(0), [preview, setPreview] = useState<KindId | null>(null), [lift, setLift] = useState(0);
   const searching = Boolean(query.trim());
   const kinds = searching ? searchKinds(query, local) : mostUsedKinds(local);
   const rows: Row[] = [...kinds.map(kind => ({ id: kind.id, kind, label: kind.name, caption: kind.caption })), ...(searching ? [] : [{ id: 'all', label: 'All blocks', caption: String(BLOCK_KINDS.filter(kind => local || !kind.localOnly).length) }])];
   const current = rows[Math.min(active, rows.length - 1)];
+  // The menu stays above the Ros bar and inside the map: when it would run under either, it moves up by the overlap.
+  useLayoutEffect(() => {
+    const menu = box.current;
+    if (!menu) return;
+    const bar = (menu.closest('.canvas-stage') ?? document).querySelector('.ros-dock'), area = menu.parentElement?.getBoundingClientRect();
+    const floor = Math.min(bar?.getBoundingClientRect().top ?? Infinity, area?.bottom ?? Infinity) - 12;
+    setLift(Math.max(0, menu.getBoundingClientRect().bottom + lift - floor));
+  }, [rows.length]);
   useEffect(() => {
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) onClose(); };
     document.addEventListener('pointerdown', away);
@@ -25,7 +34,7 @@ export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { 
   const restOn = (row: Row, index: number) => { setActive(index); if (rest.current) clearTimeout(rest.current); if (!row.kind) { setPreview(null); return; } rest.current = window.setTimeout(() => setPreview(row.kind!.id), REST); };
   const leaveRows = () => { if (rest.current) clearTimeout(rest.current); setPreview(null); };
   const shown = preview && rows.find(row => row.id === preview)?.kind;
-  return <div ref={box} className="add-block-menu nodrag nopan nowheel" role="dialog" aria-label="Add block" style={{ left, top }}
+  return <div ref={box} className="add-block-menu nodrag nopan nowheel" role="dialog" aria-label="Add block" style={{ left, top: Math.max(8, top - lift) }}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
       else if (event.key === 'ArrowDown') { event.preventDefault(); setActive(index => Math.min(index + 1, rows.length - 1)); setPreview(null); }
@@ -44,7 +53,7 @@ export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { 
         {shown && row.id === shown.id && <div className="add-block-pop">
           <KindPreview kind={shown.id}/>
           <div className="add-block-line">{shown.line}</div>
-          <div className="add-block-foot"><span className="ros-chip">{shown.needs === 'Nothing' && <span className="add-block-dot"/>}{shown.needs}</span><span className="sp"/><span>{shown.asks ? 'Enter opens it' : 'Enter to add'}</span></div>
+          <div className="add-block-foot"><span className="ros-chip">{shown.needs === 'Nothing' && <span className="chip-dot"/>}{shown.needs}</span><span className="sp"/><span>{shown.asks ? 'Enter opens it' : 'Enter to add'}</span></div>
         </div>}
       </span>)}
     </div>
