@@ -17,7 +17,7 @@ export async function providerBalances(sources: { usage: ProviderUsage; budget: 
   const codex = sources.codex?.();
   if (codex) {
     const limits = [codex.limits.primary, codex.limits.secondary].filter((item): item is CodexRateLimit => Boolean(item));
-    rows.push({ id: 'codex', name: 'Codex', left: limits.length ? `${Math.round(100 - limits[0].usedPercent)}% of ${window(limits[0])} limit left` : null, detail: limits.length ? limits.map(item => `${Math.round(100 - item.usedPercent)}% of the ${window(item)} limit left${resets(item)}`).join('. ') + '. From your ChatGPT plan.' : 'Codex did not report plan limits.', link: null, checkedAt: codex.checkedAt });
+    rows.push({ id: 'codex', name: 'Codex', left: limits.length ? `${Math.round(100 - limits[0].usedPercent)}% of ${window(limits[0])} limit left` : null, detail: limits.length ? limits.map(item => `${Math.round(100 - item.usedPercent)}% of the ${window(item)} limit left${resets(item)}`).join('. ') + '. From your ChatGPT subscription.' : 'Codex did not report plan limits.', link: null, checkedAt: codex.checkedAt });
   }
   if (key('TAVILY_API_KEY')) {
     const tavily = (await sources.usage.read()).tavily, account = tavily.account;

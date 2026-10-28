@@ -805,8 +805,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const shouldAnimate = hasArrived && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!shouldAnimate) {
       if (hasArrived) animateNextLayout.current = null;
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setAnimatingLayout(false); setNodes(shown.map(node => ({ ...node, measured: measurements.get(node.id) }))); return;
+      // React Flow's measurements are read as the update applies, so a size it reported since the last render (a group
+      // that just closed) is kept; an older one would stay, since the block does not resize again to correct it.
+      setAnimatingLayout(false); setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => ({ ...node, measured: measurements.get(node.id) })); }); return;
     }
     const before = new Map(liveNodes.current.map(node => [node.id, node]));
     const started = performance.now(), duration = 420;
@@ -815,14 +816,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       const progress = Math.min(1, (time - started) / duration), eased = 1 - (1 - progress) ** 3;
       // React Flow invalidates handle bounds if a controlled update drops measured.
       // Keep its latest measurements while ResizeObserver follows changing group sizes.
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setNodes(shown.map(node => {
+      setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => {
         const measured = measurements.get(node.id);
         const original = before.get(node.id); if (!original || progress === 1) return { ...node, measured };
         const width = (original.width || 0) + ((node.width || 0) - (original.width || 0)) * eased;
         const height = (original.height || 0) + ((node.height || 0) - (original.height || 0)) * eased;
         return { ...node, measured, position: { x: original.position.x + (node.position.x - original.position.x) * eased, y: original.position.y + (node.position.y - original.position.y) * eased }, width, height, style: { ...node.style, width, height } };
-      }));
+      }); });
       if (progress < 1) animationFrame.current = requestAnimationFrame(frame);
       else { animationFrame.current = null; animateNextLayout.current = null; setAnimatingLayout(false); }
     };
