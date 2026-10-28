@@ -7,7 +7,7 @@ import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
-import { resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
+import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
 import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
@@ -282,7 +282,7 @@ export class Store {
   }
 
   private preserveModels(before: Project, after: Canvas, freezeAll = false) {
-    const settings = this.record<ProjectModelSettings>('model-settings', before.id) ?? { default:{provider:'nebius' as const,model:process.env.ROS_NEBIUS_MODEL ?? 'nvidia/Nemotron-3-Ultra-550b-a55b'}, overrides:{} };
+    const settings = this.record<ProjectModelSettings>('model-settings', before.id) ?? { default:{provider:'nebius' as const,model:process.env.ROS_NEBIUS_MODEL ?? DEFAULT_NEBIUS_MODEL}, overrides:{} };
     const changes: {id:string;model:string}[] = [];
     for (const node of before.canvas.nodes) {
       if (!after.nodes.some(item => item.id === node.id)) continue;

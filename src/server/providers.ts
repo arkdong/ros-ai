@@ -1,4 +1,5 @@
 import type { ModelMessage } from '../shared/types.js';
+import { DEFAULT_NEBIUS_MODEL, ULTRA_MODEL } from '../shared/model-settings.js';
 import type { SearchProviderId } from '../shared/search.js';
 import {captureChatCompletion} from './response-normalization.js';
 
@@ -70,9 +71,9 @@ export function wireTools(tools:ModelTool[]):Record<string,unknown>[] {
   return tools.map(item=>({type:'function',function:{name:item.name,description:item.description,parameters:item.parameters}}));
 }
 
-// Verified by an authenticated, read-only catalog GET on 2026-09-21. Rechecked
-// before every inference; a historical NEBIUS_MODEL setting is not a selection.
-export const DEFAULT_MODEL = 'nvidia/Nemotron-3-Ultra-550b-a55b';
+// The project default with a person's own Nebius key is Nemotron 3 Super (shared/model-settings.ts lists the
+// models offered). The catalogue is rechecked before every inference; ROS_NEBIUS_MODEL still overrides the default.
+export const DEFAULT_MODEL = DEFAULT_NEBIUS_MODEL;
 export const NEBIUS_BASE = 'https://api.tokenfactory.us-central1.nebius.com/v1';
 // A Tavily-compatible gateway the person set up themselves can replace the public endpoint.
 const TAVILY_BASE = process.env.TAVILY_BASE_URL?.replace(/\/+$/u, '') || 'https://api.tavily.com';
@@ -87,7 +88,7 @@ const TAVILY_BASE = process.env.TAVILY_BASE_URL?.replace(/\/+$/u, '') || 'https:
 export function byteLevelTextInputBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
   const messages=wireRequest.messages;
   const allowedKeys=['model','messages','max_completion_tokens','n','temperature'];
-  if (wireRequest.model!==DEFAULT_MODEL || Object.keys(wireRequest).some(key=>!allowedKeys.includes(key)) || wireRequest.n!==1 || !Number.isInteger(wireRequest.max_completion_tokens) || Number(wireRequest.max_completion_tokens)<1 || !Array.isArray(messages) || !messages.length || !messages.every(message=>message&&typeof message==='object'&&['system','user','assistant'].includes(message.role)&&typeof message.content==='string'&&Object.keys(message).every(key=>key==='role'||key==='content'))) return null;
+  if (wireRequest.model!==ULTRA_MODEL || Object.keys(wireRequest).some(key=>!allowedKeys.includes(key)) || wireRequest.n!==1 || !Number.isInteger(wireRequest.max_completion_tokens) || Number(wireRequest.max_completion_tokens)<1 || !Array.isArray(messages) || !messages.length || !messages.every(message=>message&&typeof message==='object'&&['system','user','assistant'].includes(message.role)&&typeof message.content==='string'&&Object.keys(message).every(key=>key==='role'||key==='content'))) return null;
   const bytes=Buffer.byteLength(JSON.stringify(wireRequest),'utf8');
   return {tokens:bytes+16384+128*messages.length,basis:`${bytes} exact wire UTF-8 bytes + 16,384 fixed chat-template tokens + 128 × ${messages.length} messages; audited Ultra byte-level BPE without normalization, scalar text only`};
 }
@@ -135,7 +136,7 @@ export class NebiusAdapter implements ModelAdapter {
   private info?:ModelInfo;
   constructor(private readonly key?:string,readonly model = process.env.ROS_NEBIUS_MODEL ?? DEFAULT_MODEL) {}
   inputTokenBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
-    return this.model===DEFAULT_MODEL ? byteLevelTextInputBound(wireRequest) : null;
+    return this.model===ULTRA_MODEL ? byteLevelTextInputBound(wireRequest) : null;
   }
   async prepare(signal:AbortSignal):Promise<ModelInfo> {
     this.info = undefined;
