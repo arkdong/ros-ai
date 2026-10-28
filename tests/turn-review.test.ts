@@ -23,6 +23,8 @@ function fixture() {
   const folders = new ProjectFolders(store, { reserved: [join(dir, 'store')] });
   const apps = {
     connected: () => ['notion'],
+    agentApps: () => [{ name: 'notion', app: 'notion', label: 'Notion' }],
+    agentApp: (name: string) => name === 'notion' ? { name: 'notion', app: 'notion', label: 'Notion' } : undefined,
     tools: async () => [{ name: 'notion-fetch', description: 'Fetch', inputSchema: {}, reads: true }],
     call: async (_id: string, tool: string) => tool === 'notion-fetch' ? { text: page, isError: false } : { text: 'unexpected', isError: true },
   } as unknown as RemoteApps;

@@ -27,6 +27,7 @@ test('one save sends the text, the added text and the fields to Notion, then rea
   const calls: { name: string; args: Record<string, any> }[] = [];
   const apps = {
     connected: () => ['notion'],
+    accountsOf: () => [],
     async call(_id: string, name: string, args: Record<string, any>) {
       calls.push({ name, args });
       if (name === 'notion-update-page' && args.command === 'update_content') for (const change of args.content_updates) content = content.replace(change.old_str, change.new_str);

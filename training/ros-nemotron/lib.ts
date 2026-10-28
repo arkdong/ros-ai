@@ -81,8 +81,9 @@ export function teacher(ledger: Ledger, purpose = 'teacher', thinking = !flag('n
 }
 export function student() {
   const base = arg('student-url', process.env.ROS_STUDENT_URL || 'http://127.0.0.1:4319/v1')!;
-  // 32,768 is what Local Ros declares today (src/server/local-ros.ts); ros.ai's admission check counts it against the request.
-  return new ChatAdapter({ base, key: process.env.ROS_STUDENT_KEY || 'local', model: arg('student-model', 'ros-local')!, contextTokens: Number(arg('student-context', '32768')), thinking: false, purpose: 'student', usdPerMillion: { input: 0, output: 0 } });
+  // The injected student is admitted like a hosted model: a token per byte, plus 4,096 and the 8,000-token output cap. The app admits
+  // Local Ros at three bytes a token up to its 64 KB request cap, so 64,000 + 4,096 + 8,000 admits the same requests.
+  return new ChatAdapter({ base, key: process.env.ROS_STUDENT_KEY || 'local', model: arg('student-model', 'ros-local')!, contextTokens: Number(arg('student-context', '76096')), thinking: false, purpose: 'student', usdPerMillion: { input: 0, output: 0 } });
 }
 
 /** One JSON object from a model's text answer, tolerating a Markdown fence around it. */

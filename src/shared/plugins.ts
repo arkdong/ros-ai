@@ -55,5 +55,10 @@ export type PluginStatus = {
   checkMessage: string | null;
 };
 
-/** An app connected by signing in to its hosted MCP server. */
-export type AppConnectionStatus = { id: string; name: string; connected: boolean; connectedAt: string | null; account: string | null };
+/** One sign-in of an app a person signs in to more than once (Notion: one workspace each). key: its name in ros.ai;
+ * default: the account agents and blocks use first. */
+export type AppAccountStatus = { key: string; name: string; email: string | null; connected: boolean; connectedAt: string | null; default: boolean };
+/** An app connected by signing in to its hosted MCP server. account: the default account's name. accounts: every
+ * account of an app that takes several, the default first. notice: what the last sign-in did besides connecting (it
+ * renewed an account), for a short while after it. */
+export type AppConnectionStatus = { id: string; name: string; connected: boolean; connectedAt: string | null; account: string | null; accounts?: AppAccountStatus[]; notice?: string };

@@ -16,6 +16,7 @@ import type { AgentId as SetupAgentId, LinkResult, SetupLinkResponse, SetupStatu
 import { AgentIcon, agentWhy, CommandBox } from './Setup';
 import { date } from './Content';
 import { api, post } from './api';
+import { readSavedList, saveLocal } from './persistence';
 import { RosMark } from './RosDock';
 import { CatalogueHero, CatalogueRow, CatalogueSidebar } from './PluginsPage';
 import type { CloudAccountStatus } from '../shared/cloud-account';
@@ -69,21 +70,30 @@ const billingLine: Record<AgentId, string> = {
 };
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
+/** What the page read last in this session: it opens with that at once while it reads again. */
+type AgentReads = { credentials?: CredentialStatus[]; codex?: LocalAgentSetup; codexKey?: LocalAgentSetup; claude?: ClaudeAgentSettings; budgets?: ConnectionBudgetStatus[]; cloud?: CloudAccountStatus; setup?: SetupStatus; local?: LocalRosStatus; acp?: AcpAgentStatus[] };
+let lastReads: AgentReads = {};
+/** What was connected when the page last finished reading, saved on this computer, so the page and its sidebar open with it. */
+type Installed = { id: AgentId; label: string };
+const savedAgents = () => readSavedList<Installed>('agents-installed', item => agentItems.some(entry => entry.id === item?.id) && typeof item?.label === 'string');
+export const lastInstalledAgents = () => savedAgents().map(item => item.id);
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
 export function ModelPage({projectId,connections,publicDemo,selected,onSelect,onInstalled,onChanged}:Props) {
-  const [credentials,setCredentials]=useState<CredentialStatus[]>([]),[codex,setCodex]=useState<LocalAgentSetup>(),[codexKey,setCodexKey]=useState<LocalAgentSetup>(),[claude,setClaude]=useState<ClaudeAgentSettings>();
-  const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState('');
-  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>([]),[cloud,setCloud]=useState<CloudAccountStatus>(),[setup,setSetup]=useState<SetupStatus>(),[local,setLocal]=useState<LocalRosStatus>(),[acp,setAcp]=useState<AcpAgentStatus[]>([]);
-  const refresh=useCallback(async()=>{
+  const [credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[codex,setCodex]=useState(lastReads.codex),[codexKey,setCodexKey]=useState(lastReads.codexKey),[claude,setClaude]=useState(lastReads.claude);
+  const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedAgents);
+  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[cloud,setCloud]=useState(lastReads.cloud),[setup,setSetup]=useState(lastReads.setup),[local,setLocal]=useState(lastReads.local),[acp,setAcp]=useState<AcpAgentStatus[]>(lastReads.acp??[]);
+  useEffect(()=>{lastReads={credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp};},[credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp]);
+  const refresh=useCallback(async(recheck=false)=>{
     if(publicDemo)return;
     setLoading(true);
-    // Codex's two agents are checked apart: on the subscription, and on the key.
-    const codexSetup=projectId?`/api/projects/${projectId}/agents/setup/codex`:null;
-    const paths=['/api/connections/credentials',codexSetup,'/api/agents/claude','/api/connections/budgets','/api/cloud','/api/setup','/api/local-ros','/api/agents/acp',codexSetup&&`${codexSetup}?billing=api-key`];
-    const values=await Promise.allSettled(paths.map(path=>!path?Promise.resolve(null):path.includes('/agents/setup/')?post<unknown>(path):api<unknown>(path)));
+    // Each answer shows as it comes, so a slow check (Codex, Claude Code's sign-in, ros.ai cloud) holds up nothing else.
     const failures:Record<string,string>={};
-    values.forEach((result,index)=>{const id=['credentials','codex','claude','budgets','cloud','setup','local','acp','codexKey'][index]!;if(result.status==='rejected'){failures[id]=result.reason instanceof Error?result.reason.message:String(result.reason);return;}if(index===0)setCredentials((result.value as {credentials:CredentialStatus[]}).credentials);if(index===1&&result.value)setCodex(result.value as LocalAgentSetup);if(index===2)setClaude(result.value as ClaudeAgentSettings);if(index===3)setBudgets((result.value as {budgets:ConnectionBudgetStatus[]}).budgets);if(index===4)setCloud(result.value as CloudAccountStatus);if(index===5)setSetup(result.value as SetupStatus);if(index===6)setLocal(result.value as LocalRosStatus);if(index===7)setAcp((result.value as {agents:AcpAgentStatus[]}).agents);if(index===8&&result.value)setCodexKey(result.value as LocalAgentSetup);});
-    setErrors(failures);setLoading(false);
+    const show=async<T,>(id:string,request:Promise<T>|null,apply:(value:T)=>void)=>{try{if(request)apply(await request);}catch(cause){failures[id]=message(cause);}};
+    // Codex's two agents are checked apart: on the subscription, and on the key. A check serves for a minute; Refresh checks again.
+    const codexSetup=(billing:'plan'|'api-key')=>projectId?post<LocalAgentSetup>(`/api/projects/${projectId}/agents/setup/codex?billing=${billing}${recheck?'&refresh=1':''}`):null;
+    await Promise.all([show('credentials',api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),value=>setCredentials(value.credentials)),show('codex',codexSetup('plan'),setCodex),show('claude',api<ClaudeAgentSettings>('/api/agents/claude'),setClaude),show('budgets',api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),value=>setBudgets(value.budgets)),
+      show('cloud',api<CloudAccountStatus>('/api/cloud'),setCloud),show('setup',api<SetupStatus>('/api/setup'),setSetup),show('local',api<LocalRosStatus>('/api/local-ros'),setLocal),show('acp',api<{agents:AcpAgentStatus[]}>('/api/agents/acp'),value=>setAcp(value.agents)),show('codexKey',codexSetup('api-key'),setCodexKey)]);
+    setErrors(failures);setLoading(false);setRead(true);
   },[projectId,publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
   const changed=async()=>{await refresh();await onChanged();};
@@ -97,8 +107,11 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   // Codex on the key also needs the Codex CLI on this computer.
   const codexOnKey=key('openai').connected&&codexKey&&!codexKey.installed?{label:'Not installed',connected:false}:key('openai');
   const stateOf=(id:AgentId)=>isAcpAgent(id)?acpState(acp.find(item=>item.id===id)):id==='ros'?(cloud?.state==='signed-in'?{label:'Signed in',connected:true}:local?.state==='ready'?{label:'On this computer',connected:true}:{label:'Not connected',connected:false}):id==='claude-plan'?claudePlan:id==='claude'?key('claude'):id==='codex'?chatgptPlan:id==='codex-key'?codexOnKey:id==='own-claude'?own('claude-code'):id==='own-codex'?own('codex'):id==='own-cursor'?own('cursor'):id==='own-gemini'?own('gemini-cli'):id==='own-pi'?own('pi'):id==='own-hermes'?own('hermes'):id==='nebius'?key('nebius'):id==='openai'?key('openai'):setup?.models.some(item=>item.connectionId)?{label:'Connected',connected:true}:{label:setup?.models.some(item=>item.running)?'Not connected':'',connected:false};
-  const installedKey=agentItems.filter(item=>stateOf(item.id).connected).map(item=>item.id).join(',');
-  useEffect(()=>{onInstalled(installedKey?installedKey.split(',') as AgentId[]:[]);},[installedKey,onInstalled]);
+  // Until this visit's reads are in, what was connected last time still shows, so the list never starts empty.
+  const shown=(id:AgentId)=>{const state=stateOf(id),before=read?undefined:remembered.find(item=>item.id===id);return before&&!state.connected?{label:before.label,connected:true}:state;};
+  const installedKey=JSON.stringify(agentItems.filter(item=>shown(item.id).connected).map(item=>({id:item.id,label:shown(item.id).label})));
+  // Once they are in, what is connected is saved on this computer for the next time.
+  useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('agents-installed',installed);},[installedKey,read,onInstalled]);
   if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
@@ -109,19 +122,19 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     'codex-key':()=><KeyConnection forceOpen provider="openai" label="OpenAI API key" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Codex answers in the Ros bar, billed to your OpenAI API key, the same key Ros uses for GPT models. Pick Codex (API key) from the model name in the Ros bar." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}>{credentials.find(item=>item.provider==='openai')?.configured&&<AgentModelChoice agent="codex-key"/>}{codexKey&&(!codexKey.installed||!codexKey.isolationReady)&&<p className="connection-limit">{!codexKey.installed?'Install the Codex CLI on this computer first. ros.ai runs it with your key.':'This Codex version can’t keep Codex to the project. Update the Codex CLI.'}</p>}</KeyConnection>,
     openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="GPT models for Ros through your OpenAI API key. Codex (API key) runs on the same key." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
     ...Object.fromEntries((['gemini','goose','opencode'] as const).map(id=>[id,()=><AcpAgentCard status={acp.find(item=>item.id===id)} onChanged={value=>setAcp(list=>list.map(item=>item.id===value.id?value:item))}/>])) as Record<'gemini'|'goose'|'opencode',()=>ReactNode>,
-    'own-claude':()=><OutsideAgents only="claude-code" onChanged={changed}/>,
-    'own-codex':()=><OutsideAgents only="codex" onChanged={changed}/>,
-    'own-cursor':()=><OutsideAgents only="cursor" onChanged={changed}/>,
-    'own-gemini':()=><OutsideAgents only="gemini-cli" onChanged={changed}/>,
-    'own-pi':()=><OutsideAgents only="pi" onChanged={changed}/>,
-    'own-hermes':()=><OutsideAgents only="hermes" onChanged={changed}/>,
+    'own-claude':()=><OutsideAgents only="claude-code" known={setup} onChanged={changed}/>,
+    'own-codex':()=><OutsideAgents only="codex" known={setup} onChanged={changed}/>,
+    'own-cursor':()=><OutsideAgents only="cursor" known={setup} onChanged={changed}/>,
+    'own-gemini':()=><OutsideAgents only="gemini-cli" known={setup} onChanged={changed}/>,
+    'own-pi':()=><OutsideAgents only="pi" known={setup} onChanged={changed}/>,
+    'own-hermes':()=><OutsideAgents only="hermes" known={setup} onChanged={changed}/>,
     local:()=><LocalModels hide={[local?.connectionId]} onChanged={changed}/>,
   };
   const current=selected?agentItems.find(item=>item.id===selected):undefined;
   // On a subscription the agent keeps its own sign-in, and its card says so.
   const footnote=current&&(isAcpAgent(current.id)?'It keeps its own sign-in and model; ros.ai never sees either.':current.id==='claude-plan'||current.id==='codex'?null:'Keys stay on the local server. What each spends shows in Settings › Usage.');
   if(current)return <div className="plugins-page plugin-detail">
-    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={<>{current.title??current.summary}<span className="plugin-billing">{billingLine[current.id]}</span></>} state={current.id==='local'&&!stateOf('local').label?undefined:stateOf(current.id)} uses={current.uses}/>
+    <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={<>{current.title??current.summary}<span className="plugin-billing">{billingLine[current.id]}</span></>} state={current.id==='local'&&!shown('local').label?undefined:shown(current.id)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
     <h2 className="plugin-section">Connection</h2>
@@ -129,10 +142,10 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     {footnote&&<p className="plugins-footnote">{footnote}</p>}
   </div>;
   return <div className="plugins-page">
-    <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh()}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
+    <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh(true)}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
-    {agentGroups.map(group=><section key={group.billing} className="plugin-group"><h2>{group.title}</h2>{group.why&&<p className="plugin-group-why">{group.why}</p>}<div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={stateOf(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
+    {agentGroups.map(group=><section key={group.billing} className="plugin-group"><h2>{group.title}</h2>{group.why&&<p className="plugin-group-why">{group.why}</p>}<div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={shown(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
     <p className="plugins-footnote"><button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
   </div>;
 }
@@ -254,9 +267,10 @@ function GoogleOAuthForm({busy,onSave}:{busy:boolean;onSave:(value:{clientId:str
 }
 export function message(cause:unknown) { return cause instanceof Error?cause.message:String(cause); }
 
-/** The person's own Claude Code, Codex, Cursor or Gemini CLI, on their own plan, using ros.ai as an MCP server. */
-function OutsideAgents({only,onChanged}:{only:SetupAgentId;onChanged?:()=>Promise<unknown>}) {
-  const [setup,setSetup]=useState<SetupStatus>(),[error,setError]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState<LinkResult>();
+/** The person's own Claude Code, Codex, Cursor or Gemini CLI, on their own plan, using ros.ai as an MCP server.
+ * known: what the page last read, shown while this card reads again. */
+function OutsideAgents({only,known,onChanged}:{only:SetupAgentId;known?:SetupStatus;onChanged?:()=>Promise<unknown>}) {
+  const [setup,setSetup]=useState(known),[error,setError]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState<LinkResult>();
   const load=useCallback(async(rescan=false)=>{try{setSetup(await api<SetupStatus>(`/api/setup${rescan?'?rescan=1':''}`));}catch(cause){setError(message(cause));}},[]);
   useEffect(()=>{void load();},[load]);
   const act=async(remove:boolean)=>{
