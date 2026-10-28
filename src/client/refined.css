@@ -27,6 +27,8 @@
 .single-canvas-shell.sidebar-hidden .sidebar { display: flex; margin-left: -248px; visibility: hidden; transition: margin-left .2s cubic-bezier(.4, 0, .2, 1), visibility 0s linear .2s; }
 .single-canvas-shell .sidebar-backdrop { animation: sidebar-backdrop .2s ease-out both; }
 @keyframes sidebar-backdrop { from { opacity: 0; } }
+/* Cards centred with translateX(-50%) rise in: the block sheet and the New project card. */
+@keyframes rise-centered { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .single-canvas-shell .sidebar, .single-canvas-shell.sidebar-hidden .sidebar { transition: none; } .single-canvas-shell .sidebar-backdrop { animation: none; } }
 .single-canvas-shell .sidebar .new-project-button,
 .single-canvas-shell .sidebar .demo-entry-button { border-radius: var(--radius-button); }

@@ -7,7 +7,7 @@ import type { ExperimentService } from './experiments.js';
 import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
 import type { ProjectFolders } from './project-folders.js';
-import { WORKFLOW_STEPS, WorkflowTutorial, type WorkflowSession } from './demo-workflow.js';
+import { WORKFLOW_STEPS, WORKFLOW_TITLE, WorkflowTutorial, type WorkflowSession } from './demo-workflow.js';
 import { loadTutorialContent, localMarketDataAvailable } from './tutorial-content.js';
 import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import { LAYOUT_GAP } from '../shared/layout.js';
@@ -27,6 +27,10 @@ const isOutput = (artifact:Artifact) => ['plot','table','metric','result'].inclu
 
 /** A visitor advances a prepared lesson explicitly. Saved evidence imports are
  * not research executions; the optional rerun uses the existing exact approval. */
+/** A lesson's project name, and the four stages every lesson builds. */
+const lessonTitle = (id:TutorialScenarioId) => id === 'banking' ? 'Dutch AI adoption' : 'Historical market risk';
+const LESSON_STAGES = 4;
+
 export class TutorialService {
   private highlights:Highlights;
   /** The guided workflow builds its canvas in a project folder, so it needs the local app. */
@@ -47,7 +51,7 @@ export class TutorialService {
 
   catalog():TutorialCatalog {
     return {
-      scenarios:[{id:'workflow' as const,title:'From idea to report · AI in Dutch business',
+      scenarios:[{id:'workflow' as const,title:'From idea to report · AI in Dutch business',projectTitle:WORKFLOW_TITLE,steps:WORKFLOW_STEPS,
         summary:'The whole workflow in seven steps: web searches from a first idea, findings read from the pages, themes and a leading conclusion, a calculation and a notebook on CBS data, charts and a final report.',
         question:'How is AI changing Dutch businesses, and what does it mean for a bank such as ABN AMRO?',publicDataReady:false,publicDataStatus:'',available:Boolean(this.workflow),
         ...this.workflow ? {} : {unavailableReason:'Available in the local app, where projects are folders on your computer.'}},
@@ -55,7 +59,7 @@ export class TutorialService {
         // Restricted market files are deliberately absent from the public image.
         // Listing the unavailable choice must not read or package its snapshot.
         if (id === 'market' && !this.marketAvailable()) return {
-          id,title:'When market conditions change · a historical risk baseline',
+          id,title:'When market conditions change · a historical risk baseline',projectTitle:lessonTitle(id),steps:LESSON_STAGES,
           summary:'Explore historical risk thresholds and their limits. This real-data demonstration is currently available in the local research workspace.',
           question:'How well does a simple historical risk baseline describe losses as market conditions change?',
           publicDataReady:false,available:false,
@@ -65,7 +69,7 @@ export class TutorialService {
             : 'The market scenario needs its captured S&P/FRED data, which is kept outside the repository. Add the local research files under examples/demo-market-risk to enable it.',
         };
         const content = loadTutorialContent(id);
-        return { id, title:content.title, summary:content.summary, question:content.question,
+        return { id, title:content.title, projectTitle:lessonTitle(id), steps:content.stages.length, summary:content.summary, question:content.question,
           publicDataReady:content.publicDataReady, publicDataStatus:content.publicDataStatus,
           available:!this.options.publicDemo || content.publicDataReady,
           ...this.options.publicDemo && !content.publicDataReady ? {unavailableReason:content.publicDataStatus} : {} };
@@ -114,18 +118,23 @@ export class TutorialService {
       execution:this.execution(), notice, createdAt:saved.createdAt };
   }
 
-  create(scenario:TutorialScenarioId):TutorialSession {
+  /** Starts a demo, in the folder given when this computer keeps projects as folders. */
+  create(scenario:TutorialScenarioId,folder?:string):TutorialSession {
+    const folders = this.options.folders;
+    if (folder && !folders) throw new StoreError('Project folders are available in the local app.');
     if (scenario === 'workflow') {
       if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',403);
-      return this.read(this.workflow.create())!;
+      return this.read(this.workflow.create(folder))!;
     }
     if (scenario === 'market' && !this.marketAvailable()) throw new StoreError(this.options.publicDemo
       ? 'The market scenario is unavailable publicly: its captured S&P/FRED data and derived figures need reproduction permission or an approved replacement dataset.'
       : 'The market scenario needs its captured S&P/FRED data, which is not in this checkout.',this.options.publicDemo ? 403 : 409);
     const content = loadTutorialContent(scenario);
     if (this.options.publicDemo && !content.publicDataReady) throw new StoreError(content.publicDataStatus,403);
-    return this.store.atomic(() => {
-      const project = this.store.createProject(scenario === 'banking' ? 'Dutch AI adoption' : 'Historical market risk');
+    // Check the folder before the project exists, so a refused folder leaves nothing behind.
+    if (folder) folders!.prepare(folder);
+    const session = this.store.atomic(() => {
+      const project = this.store.createProject(lessonTitle(scenario));
       const saved:LessonSession = { projectId:project.id, scenario, step:0, createdAt:now(),
         stageNodeIds:[], questionArtifactId:'', sourceArtifactIds:[], outputArtifactIds:[] };
       const stage = this.addStage(saved,0,content.stages[0].description);
@@ -142,6 +151,8 @@ export class TutorialService {
       this.save(saved);
       return this.read(project.id)!;
     });
+    if (folder) try { folders!.attach(session.projectId,folder); } catch (error) { this.store.trashProject(session.projectId); throw error; }
+    return session;
   }
 
   private save(session:SavedSession) { return this.store.saveRecord('demo-session',session.projectId,session.projectId,session); }
@@ -310,8 +321,8 @@ export class TutorialService {
 export function attachTutorialRoutes(app:Express,service:TutorialService) {
   app.get('/api/demo-scenarios',(_req,res) => res.json(service.catalog()));
   app.post('/api/demo-sessions',(req,res) => {
-    const {scenario} = z.object({scenario:z.enum(['workflow',...lessonSchema.options])}).strict().parse(req.body);
-    res.status(201).json(service.create(scenario));
+    const {scenario,folder} = z.object({scenario:z.enum(['workflow',...lessonSchema.options]),folder:z.string().trim().min(1).max(4000).optional()}).strict().parse(req.body);
+    res.status(201).json(service.create(scenario,folder));
   });
   app.get('/api/projects/:id/demo-session',(req,res) => res.json(service.read(identifier.parse(req.params.id))));
   app.post('/api/projects/:id/demo-session/advance',(req,res) => {

@@ -2,8 +2,7 @@
    The header holds the kind, the title and the view switch; the footer one line of chips. */
 .block-scrim { position: absolute; inset: 0; z-index: 18; background: rgba(250, 250, 250, .55); }
 .block-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0; background: #fff; overflow: hidden; }
-.block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); animation: block-sheet-rise .22s cubic-bezier(.2, .8, .2, 1) both; }
-@keyframes block-sheet-rise { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); animation: rise-centered .22s cubic-bezier(.2, .8, .2, 1) both; }
 .block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; border-left: 1px solid var(--card-line); }
 /* Ros in full view keeps the right edge; the panel moves in beside it. */
 .workspace-body:has(.ros-full) > .block-panel { margin-right: min(438px, 50%); }

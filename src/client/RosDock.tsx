@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, Folder, LoaderCircle, SlidersHorizontal, X } from 'lucide-react';
+import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, LoaderCircle, X } from 'lucide-react';
 import type { AssistantFocus, AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
 import type { ResearchPolicy } from '../shared/research';
-import { useFolderSuggestion } from './ProjectFolder';
 import { readSaved, saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
@@ -96,40 +95,5 @@ export function RosBar({ state, detail, policy, focus, busy, onSend, onCancel, o
           : <button type="submit" className="ros-send" aria-label="Send to Ros" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
     </form>
-  </div>;
-}
-
-/** A project title from the first question: its opening words, cut at a word boundary. */
-export function titleFromQuestion(question: string) {
-  const text = question.replace(/\s+/g, ' ').trim().replace(/[?.!]+$/, '');
-  if (text.length <= 60) return text;
-  const cut = text.slice(0, 60), space = cut.lastIndexOf(' ');
-  return `${cut.slice(0, space > 30 ? space : 60)}…`;
-}
-
-/** The empty-state start: one box for the question; everything else sits behind Advanced. */
-export function RosStart({ folders, onStart, onAdvanced, onDemo }: { folders: boolean; onStart: (title: string, question: string, folder?: string) => Promise<void>; onAdvanced: () => void; onDemo: () => void }) {
-  const [question, setQuestion] = useDraft('start-question'), [busy, setBusy] = useState(false);
-  const title = titleFromQuestion(question);
-  const suggestion = useFolderSuggestion(title || 'New project', folders);
-  const submit = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!question.trim() || busy) return;
-    setBusy(true);
-    try { await onStart(title, question.trim(), suggestion?.path); } finally { setBusy(false); }
-  };
-  return <div className="ros-start">
-    <h2>What do you want to find out?</h2>
-    <form className="ros-start-box" onSubmit={submit}>
-      <textarea aria-label="Your question" data-testid="start-question" rows={3} autoFocus value={question} maxLength={12000} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} placeholder="Ask a research question. Ros plans it with you on the map."/>
-      <div className="ros-start-row">
-        <RosMark working={busy}/>
-        {suggestion && <span className="ros-chip" title={suggestion.path}><Folder size={12}/>Saved as files on this computer</span>}
-        <span className="ros-start-spacer"/>
-        <button type="button" className="ros-start-advanced" onClick={onAdvanced}><SlidersHorizontal size={13}/>Advanced</button>
-        <button type="submit" className="primary small" data-testid="start-project" disabled={!question.trim() || busy}>{busy ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}Start</button>
-      </div>
-    </form>
-    <button type="button" className="text-button ros-start-demo" onClick={onDemo}>Or open a guided demo</button>
   </div>;
 }
