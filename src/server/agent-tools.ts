@@ -139,6 +139,14 @@ export const APP_TOOL_DESCRIPTIONS = {
   ros_app_guide: 'How to build an App block: its sealed frame, the ros.ai kit (window.ros) that reads its inputs, the chart, Preact and KaTeX libraries ros.ai serves, the rules, and three starter pages. Read it once before writing or changing an App.',
   ros_check_app: 'Open an App page in a hidden browser with its real inputs and report what went wrong (script errors, reads that failed, lines that try to leave the frame) and what the page shows, as a screen reader outline. Give source and inputs to check a page before proposing it, or nodeId for an App on the canvas or in your pending proposal. Fix what it reports before asking the person to look. It takes a few seconds and changes nothing.',
 };
+/** A model that cites blocks by id in 【】 marks names them by title instead; an id that is no block is dropped, and
+ * other words inside the marks stay as a plain aside. */
+export function citeByTitle(text: string, nodes: readonly { id: string; title: string }[]): string {
+  return text.replace(/\s*【([^】]*)】/gu, (_match, inner: string) => {
+    const names = [...new Set(inner.split(/[,;、]/u).map(part => part.trim()).filter(Boolean).map(part => nodes.find(node => node.id === part)?.title ?? (/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(part) || /^[\w-]{20,}$/u.test(part) ? '' : part)).filter(Boolean))];
+    return names.length ? ` (${names.join(', ')})` : '';
+  });
+}
 export type AgentReportProposal = { agent?: AgentName; client?: string; id: string; projectId: string; assistantTurnId: string; status: 'pending' | 'accepted' | 'dismissed'; createdAt: string; captureHash: string; expectedRevision: number; draft: z.infer<typeof reportSchema>; evidence: { id: string; hash: string }[]; sourceHash?: string; resultArtifactId?: string; nodeId: string };
 
 export type AgentCapture = {
@@ -207,7 +215,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_propose_groups', description: 'Propose grouping the findings by theme rather than by search direction (for example what the rules say, what happens in classrooms, risks, open questions), and setting weak or off-topic directions or findings aside with a short reason. A direction set aside is dimmed in its Web block; findings set aside go into one folded "Set aside" group; nothing is deleted. The researcher reviews the whole rearrangement once; it waits for their approval.', inputSchema: z.toJSONSchema(groupsSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_check_claims', description: `Check what a block says against the web, for example an answer pasted from another assistant or a draft. Name the block in nodeId and list every checkable factual claim in it, up to ${MAX_CLAIMS}: dates, numbers, thresholds, names, who or what a rule covers, how something is classified. Include the claims that look doubtful or wrong, since finding those is the point. Give each in the block's own words, with one or two ${CHECK_TERMS}. Skip opinions, advice and claims about the researcher. The check starts at once; its searches run and their passages come back here, numbered per claim. Read the most promising pages with ros_read_pages (use the claim's claimId as resultNodeId), then mark every claim with ros_write_verdicts.`, inputSchema: z.toJSONSchema(checkSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_write_verdicts', description: 'Mark the claims of this turn\'s ros_check_claims as backed or contradicted by a source, quoting it word for word (copy the sentence from ros_read_pages, or from the search passage), or as unsupported when no source found settles it. Give each a one-line note: for a contradiction, what the source says instead. ros.ai checks every quote against the saved text and refuses verdicts it cannot find there; the marks appear on the block, and each contradiction is also saved as a Finding note. Send verdicts again for a claim to replace them.', inputSchema: z.toJSONSchema(verdictsSchema, { io: 'input' }) },
-    { type: 'function', name: 'ros_propose_report', description: 'Propose an immutable report revision for a selected block, or for a report block this turn added with ros_propose_canvas (addNode with blockType "report") when none is selected, using exact selected evidence versions (evidenceIds may be empty when the evidence is in blocks you name in the text). The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
+    { type: 'function', name: 'ros_propose_report', description: 'Propose an immutable report revision for a selected block, or for a report block this turn added with ros_propose_canvas (addNode with blockType "report") when none is selected, using exact selected evidence versions (evidenceIds may be empty when the evidence is in blocks you name in the text). The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
@@ -299,7 +307,11 @@ export class AgentWorkspaceTools {
   /** Agents known by the name they gave (their client, model or ACP agent) rather than a fixed one. */
   private get named() { return this.agent === 'outside' || this.agent === 'model' || isAcpAgent(this.agent); }
   preview() { return { ...this.capture, artifacts: this.capture.artifacts.map(({ content, ...a }) => ({ ...a, characters: content.length, preview: content.slice(0, 1200), truncated: content.length > 1200 })) }; }
-  private node(id: string) { if (!this.scope.nodeIds.includes(id) && !this.own.has(id)) throw new StoreError('Tool target is outside the explicit captured block selection.', 403); }
+  private node(id: string) {
+    if (this.scope.nodeIds.includes(id) || this.own.has(id)) return;
+    if ([...this.waiting.values()].some(change => change.nodes.has(id))) throw new StoreError(`Block ${id} is a change of this turn that still waits for the person's Accept, so nothing can build on it yet. Say that it waits for review and stop.`, 409);
+    throw new StoreError('Tool target is outside the explicit captured block selection.', 403);
+  }
   /** A block a canvas change may touch or put blocks in: any block on this project's canvas. The selection points Ros at
    * a block but does not fence off the rest of the map: the approval mode decides what lands at once (Full access every
    * change, Approve for me additions and moves), the rest waits for the person's Accept, and all of it can be undone. */
@@ -384,10 +396,11 @@ export class AgentWorkspaceTools {
       this.store.saveRecord('agent-reuse', action.id, this.scope.projectId, { action, agent: this.agent, client: this.client, turnId: this.turnId, sourceVersion: { id: artifact.id, hash: artifact.hash }, captureHash: this.capture.hash });
     } else if (name === 'ros_propose_report') {
       const value = lenient(reportSchema, supplied); this.node(value.nodeId); this.current();
+      value.text = citeByTitle(value.text, this.store.getProject(this.scope.projectId).canvas.nodes);
       const source = value.sourceArtifactId ? this.artifact(value.sourceArtifactId) : undefined;
       if (source && source.nodeId !== value.nodeId) throw new StoreError('Report revision must remain in the original selected block.');
       const evidence = [...new Set(value.evidenceIds)].map(id => this.artifact(id));
-      const proposal: AgentReportProposal = { agent: this.agent, client: this.client, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.capture.revision, draft: value, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId: value.nodeId };
+      const proposal: AgentReportProposal = { agent: this.agent, client: this.client, id: randomUUID(), projectId: this.scope.projectId, assistantTurnId: this.turnId, status: 'pending', createdAt: new Date().toISOString(), captureHash: this.capture.hash, expectedRevision: this.expectedRevision, draft: value, evidence: evidence.map(a => ({ id: a.id, hash: a.hash })), ...(source ? { sourceHash: source.hash } : {}), nodeId: value.nodeId };
       this.store.saveRecord('agent-report-proposal', proposal.id, this.scope.projectId, proposal);
       action = { id: proposal.id, type: 'proposal', title: `Review report: ${value.title}`, nodeId: value.nodeId, reportProposalId: proposal.id, status: 'pending' } as AssistantAction;
     } else if (name === 'ros_propose_analysis') {
@@ -1264,7 +1277,10 @@ export function decideAgentReport(store: Store, projectId: string, proposalId: s
       for (const selected of proposal.evidence) if (store.getArtifact(selected.id).hash !== selected.hash) throw new StoreError('Selected report evidence differs from its captured version.', 409);
       if (proposal.draft.sourceArtifactId && store.getArtifact(proposal.draft.sourceArtifactId).hash !== proposal.sourceHash) throw new StoreError('Report source differs from the captured version.', 409);
       const { rationale: _rationale, ...draft } = proposal.draft;
-      const saved = new ArtifactEditingService(store).saveReport(projectId, { ...draft, expectedRevision: proposal.expectedRevision }, { agent: proposal.agent ?? 'codex', ...(proposal.client ? { client: proposal.client } : {}), assistantTurnId: proposal.assistantTurnId, captureHash: proposal.captureHash });
+      // The canvas moves on between the proposal and the Accept (the turn's own accepted blocks, a block dragged); what
+      // the report depends on is checked exactly instead: the evidence and source hashes above, the block and its
+      // current version in saveReport.
+      const saved = new ArtifactEditingService(store).saveReport(projectId, draft, { agent: proposal.agent ?? 'codex', ...(proposal.client ? { client: proposal.client } : {}), assistantTurnId: proposal.assistantTurnId, captureHash: proposal.captureHash });
       proposal.status = 'accepted'; proposal.resultArtifactId = saved.artifact.id;
     } else proposal.status = 'dismissed';
     store.saveRecord('agent-report-proposal', proposal.id, projectId, proposal);
