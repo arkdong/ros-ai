@@ -53,12 +53,13 @@ bash to_gguf.sh out/merged out/gguf                                  # BF16 GGUF
 
 Then publish `ros-nemotron-4b-Q4_K_M.gguf` with NVIDIA's Open Model License text to a Hugging Face model repo, and point Local Ros at it (`MODEL_REPO` in `src/server/local-ros.ts`, overridable today with `ROS_LOCAL_MODEL_REPO`). Delete the VM when done.
 
-Evaluation, against any OpenAI-compatible server (Local Ros listens on 127.0.0.1:4319 with its own key):
+Evaluation, from the snapshot commit, against any OpenAI-compatible server. Here that is llama-server with each model's GGUF in turn. `--max-usd` caps the total in `data/spend.jsonl`, so it is what was already spent plus the eval's budget. The only paid calls are the simulated pages and Super's own run.
 
 ```sh
-ROS_STUDENT_KEY=<local key> npx tsx training/ros-nemotron/run.ts eval --label=nano-4b-baseline
-ROS_STUDENT_KEY=<local key> npx tsx training/ros-nemotron/run.ts eval --label=ros-nemotron
-npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-usd=3
+llama-server -m <model>.gguf --jinja --reasoning-budget 0 -c 131072 --parallel 2 --port 4339 --alias ros-local
+npx tsx training/ros-nemotron/run.ts eval --label=nano-4b-baseline --student-url=http://127.0.0.1:4339/v1 --concurrency=2 --max-usd=35
+npx tsx training/ros-nemotron/run.ts eval --label=ros-nemotron --student-url=http://127.0.0.1:4339/v1 --concurrency=2 --max-usd=35
+npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --no-thinking --concurrency=4 --max-usd=35
 ```
 
 ## Costs (measured on 27 October)
@@ -70,7 +71,7 @@ npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-us
 | H100 pilot, 40 steps | 11 min, 43 GiB peak memory | AI Cloud credit |
 | H100 training, 2 epochs (134 steps) | 31.7 min, 43.2 GiB peak memory | AI Cloud credit |
 | H100 VM in all: setup, pilot, waiting, a restart, merge and GGUF | about 4 hours, about US$12 at about US$3 an hour | AI Cloud credit |
-| Evaluation | under US$3 (estimate) | Token Factory credit |
+| Evaluation, 28 October | US$1.08: US$0.92 for the first run and Super, US$0.16 for the rerun | Token Factory credit |
 
 The H100 VM bills by the hour from creation, so setup, the GGUF step and idle time count too; delete it once the GGUF is copied off.
 
@@ -83,6 +84,23 @@ What the runs on the VM taught (already in the scripts):
 - Evaluation runs one sample at a time and keeps only the loss. Batches of 8 with full-vocabulary logits needed 77 GiB.
 - transformers 5 refuses to save the merged model as the base model ships it, so `do_sample` is set and `_tied_weights_keys` becomes a dict.
 - llama.cpp's converter runs transformers 4 and cannot read a tokenizer that transformers 5 saved, so the base model's own tokenizer files go next to the merged weights.
+
+## Evaluation (28 October)
+
+The 95 held-out tasks, on Adam's Mac. Both small models are Q4_K_M GGUFs in llama-server, and Super ran on Token Factory.
+
+| Model | Held-out tasks passed (of 95) | KNMI tasks (of 10) |
+|---|---|---|
+| Nemotron 3 Nano 4B (NVIDIA's GGUF) | 33 | 3 |
+| ros-nemotron | 66 | 8 |
+| Nemotron 3 Super, the teacher without its family guides | 52 | 9 |
+
+- **Where ros-nemotron gains most:** where the base model never used the tools. Add notes went from 0 to 17 of 17, report from 0 to 5 of 6, edit existing from 1 to 5 of 6, and cannot do from 7 to 8 of 8.
+- **Research:** 0 of 20 for every model, Super included. The held-out checks need saved findings and groups, and the long turns run out of room.
+- **Out of room:** 14 ros-nemotron tasks still ran out of context.
+- **Super:** most of its failures are answers over the word limit, because it ran without the guides it had while making the data.
+
+The first run gave the student 32,768 tokens and scored 12 and 15. The harness injects the student like a hosted model, whose admission counts a token per byte plus 4,096 and the 8,000-token output cap, so it refused most requests over about 20 KB. The app admits Local Ros at three bytes a token up to its 64 KB request cap. The table comes from the rerun with `--student-context=65536`, which is slightly stricter than the app. `student()` now defaults to 76,096 tokens (64,000 + 4,096 + 8,000), so it admits what the app admits.
 
 ## Known risks
 
