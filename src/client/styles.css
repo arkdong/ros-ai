@@ -2470,33 +2470,6 @@ a {
 .modal-actions .primary,.modal-actions .secondary {
   font-size: 14px;
 }
-.kind-choices {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.kind-choices button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid #dedede;
-  white-space: normal;
-}
-.kind-choices button.selected {
-  border-color: #c9c9c9;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-}
-.kind-choices span {
-  font-size: 14px;
-  font-weight: 400;
-  color: #171717;
-}
-.node-kind-note {
-  margin-top: 13px;
-}
 .provider-card .subtle {
   font-size: 14px;
 }
@@ -3720,12 +3693,6 @@ a {
   margin: 30px 0 50px;
   text-align: center;
   font-size: 60px;
-}
-.kind-choices strong {
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 /* Lime marks keyboard focus on buttons; a field shows focus by its darker hairline. */
 .single-canvas-shell button:focus-visible {
@@ -5446,7 +5413,7 @@ button.outline-title:hover {
 
 .assistant-blocker{display:grid;gap:5px;padding-top:6px;line-height:1.45}.assistant-submission-failure{margin:14px 0;padding:14px;background:#fff5ed;border:1px solid #e8c9ad;border-radius:10px}.assistant-submission-failure p{white-space:pre-wrap;font-size:14px}.assistant-provider-status{flex-wrap:wrap;max-height:150px;overflow:auto}
 
-.assistant-backend{padding:9px 16px;border-bottom:1px solid #e6e8e6;font-size:13px;display:grid;gap:4px}.assistant-backend label{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px}.assistant-backend select{min-width:0;font-size:13px}.agent-connection details{font-size:13px}.agent-blocker{background:#fff5ed;padding:8px;border-radius:6px;font-size:14px}.kind-choices{flex-wrap:wrap}.kind-choices>button{flex:1 0 42%}
+.assistant-backend{padding:9px 16px;border-bottom:1px solid #e6e8e6;font-size:13px;display:grid;gap:4px}.assistant-backend label{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px}.assistant-backend select{min-width:0;font-size:13px}.agent-connection details{font-size:13px}.agent-blocker{background:#fff5ed;padding:8px;border-radius:6px;font-size:14px}
 
 .direct-canvas .relationship-edge-label.on-route-relationship-label {
   display: flex;
