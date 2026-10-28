@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -8,21 +8,23 @@ import { TrainingBlock } from './TrainingView';
 import { rowBlockOperations } from '../shared/notion-rows';
 import { ArtifactContent } from './Experiment';
 import { MarkdownPreview } from './Content';
-import { agentDirections, RESULT_PLACEHOLDER, splitSources } from '../shared/agent-work';
+import { agentDirections, RESULT_PLACEHOLDER, splitSources, webState } from '../shared/agent-work';
+import { WebFace, type WebFaceData } from './WebBlock';
+import { VERDICT_ORDER, VERDICT_WORDS, checkTally } from '../shared/source-check';
 import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel } from '../shared/vocabulary';
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardWidth, initialCardSize, setCardHeight } from '../shared/card-size';
+import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardFootprintHeight, cardWidth, initialCardSize, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
-import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, type CanvasReflowPlan } from '../shared/canvas-reflow';
+import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
 import { aggregateTopLevelRelationships, relationshipBadgeText, type AggregateRelationship } from '../shared/aggregate-relationships';
 import { routeRelationship, type RelationshipRoute, type RouteNode } from '../shared/routing';
 import { relationshipLabelSize } from '../shared/relationship-label';
 import { readSaved, saveLocal } from './persistence';
-import { arrangeCanvas, numberedStageOrder, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
-import type { Artifact, Canvas, CanvasNode, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
+import { arrangeCanvas, freeSpot, groupContentRight, numberedStageOrder, openGroupSize, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
+import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
 import type { NotebookSummary } from '../shared/notebooks';
 import { textPreview } from '../shared/presentation';
 import './canvas-interactions.css';
@@ -31,6 +33,7 @@ import './canvas-evidence.css';
 import './groups.css';
 import './aggregate-relationships.css';
 import './agent-view.css';
+import './source-check.css';
 import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
@@ -59,7 +62,7 @@ export function KindIcon({ kind, blockType, google, size = 14 }: { kind?: string
   if (blockType === 'notion') return <BrandLogo id="notion" size={size}/>;
   if (blockType === 'training') return <BrandLogo id="nebius" size={size}/>;
   if (blockType === 'google') return <BrandLogo id={google === 'sheet' ? 'google-sheets' : google === 'doc' ? 'google-docs' : 'google-drive'} size={size}/>;
-  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : TextIcon;
+  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
   return <Icon size={size}/>;
 }
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -107,8 +110,12 @@ type CardData = {
   why?: string;
   /** The searches run on a Result note, newest first. */
   queries?: string[];
+  /** How many claims of the block carry each mark, after an agent checked them on the web (on the Agent block: the claims it checked). */
+  check?: Record<ClaimVerdict, number>;
   /** An Agent block's searches so far, the pages it read and the findings it saved. */
   directions?: { total: number; written: number; sources: number; pages: number; findings: number };
+  /** A Web block's directions and the pages its searches found. */
+  web?: WebFaceData;
 };
 export type AgentTurnSummary = { status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; runtime: string; thought?: string; pending: number };
 const agentState = { running: 'Working', completed: 'Finished', failed: 'Stopped with an error', cancelled: 'Stopped', interrupted: 'Interrupted' } as const;
@@ -132,10 +139,9 @@ function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
 type ResearchNode = Node<CardData, 'research'>;
 /** A card being resized: its new size, and how far its top left corner moved when it was pulled from the left or top. */
 export type CardResize = { width: number; height?: number; dx: number; dy: number };
-/** The edges and corners a card is resized from. A closed Group fits what it lists, so only its sides move. */
+/** The edges and corners a card is resized from. A closed Group fits what it lists and is not resized. */
 const RESIZE_EDGES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 type ResizeEdge = typeof RESIZE_EDGES[number];
-const GROUP_RESIZE_EDGES: readonly ResizeEdge[] = ['e', 'w'];
 const RESIZE_GRID = 24;
 /** The card's size while one of its edges or corners is dragged. Pulled from the left or top, the opposite edge stays
  * put and the move keeps to the canvas grid, as every saved position does. */
@@ -160,6 +166,10 @@ const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.fi
 const ShownNotion = memo(NotionBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onRows) === Boolean(b.onRows) && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownTraining = memo(TrainingBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownGoogle = memo(GoogleBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onCopy) === Boolean(b.onCopy) && JSON.stringify(a.view) === JSON.stringify(b.view));
+/** A checked block's marks, worst first: how many claims a source contradicts, how many none backs, how many hold. */
+function CheckTally({ tally }: { tally: Record<ClaimVerdict, number> }) {
+  return <div className="check-tally" aria-label="Sources checked">{VERDICT_ORDER.filter(verdict => tally[verdict] > 0).map(verdict => <span key={verdict} className={`claim-mark ${verdict}`}>{tally[verdict]} {VERDICT_WORDS[verdict].toLowerCase()}</span>)}</div>;
+}
 /** An App on its card: the page is live, but takes clicks only after a click into it, so the map still drags and
  * zooms over it; Escape or a click outside hands the map back. */
 function AppFace({ id, data, onErrors }: { id: string; data: CardData; onErrors: (errors: string[]) => void }) {
@@ -189,9 +199,10 @@ function AppFace({ id, data, onErrors }: { id: string; data: CardData; onErrors:
 function AgentFace({ data }: { data: CardData }) {
   const work = data.directions, running = data.agent?.status === 'running', plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   return <div className="agent-face">
-    {work && work.total > 0 ? <ul>
+    {data.check ? <ul><li><Quote size={12}/>{plural(Object.values(data.check).reduce((sum, n) => sum + n, 0), 'claim')} checked on the web</li></ul> : null}
+    {data.check ? <CheckTally tally={data.check}/> : work && work.total > 0 ? <ul>
       <li><SearchIcon size={12}/>{plural(work.total, 'direction')} searched · {plural(work.sources, 'source')}</li>
-      <li><BookOpen size={12}/>{work.written} of {plural(work.total, 'result note')} written</li>
+      <li><BookOpen size={12}/>{work.written} of {plural(work.total, 'direction')} written up</li>
       {work.pages + work.findings > 0 && <li><Quote size={12}/>{plural(work.pages, 'page')} read · {plural(work.findings, 'finding')}</li>}
     </ul> : !running && data.description ? <ShownMarkdown text={data.description} limit={200}/> : null}
     {data.agent?.pending ? <p className="agent-waiting">{plural(data.agent.pending, 'change')} waiting for your review</p> : null}
@@ -237,8 +248,8 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const workState=data.awaitingApproval?'Awaiting approval':active?(data.label==='result'?'Searching':data.status):data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
   const [appErrors,setAppErrors]=useState<string[]>([]);
-  // The edge that takes keyboard focus and arrow keys: a Group's right side, another card's corner.
-  const edges=group?GROUP_RESIZE_EDGES:RESIZE_EDGES, handle:ResizeEdge=group?'e':'se';
+  // The corner that takes keyboard focus and arrow keys.
+  const handle:ResizeEdge='se';
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
@@ -256,16 +267,17 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
       </> : <>
         {notebook?data.notebook?.cells?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
         :data.blockType==='agent'?<div className={`block-work-state ${data.agent?.status==='running'?'running':data.agent&&data.agent.status!=='completed'?'failed':''}`}>{data.agent?.status==='running'&&<LoaderCircle size={12} className="spin"/>}{data.agent?`${agentState[data.agent.status]} · ${data.agent.runtime}`:'Agent'}</div>
-        :workState&&<div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{workState}</div>}
+        :workState&&!data.web&&<div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{workState}</div>}
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
           :data.blockType==='search'?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}<ul className="search-queries">{data.description.split('\n').filter(Boolean).slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul></div>
           :data.label==='result'&&data.description===RESULT_PLACEHOLDER?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}{data.queries?.length?<ul className="search-queries">{data.queries.slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul>:<p className="block-empty-hint">{data.description}</p>}</div>
-          :data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+        {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
-      {!data.expanded&&!group&&<Provenance data={data} appErrors={appErrors}/>}
+      {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
     </div>
-    {!data.expanded&&!data.readonly&&edges.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
-      {...edge===handle?{role:'button',tabIndex:0,'aria-label':group?`Resize ${data.title}, now ${data.width} wide. Arrow keys resize`:`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:group?'Drag to resize':'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
+    {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
+      {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()};data.onActivate();}}
       onPointerMove={event=>{if(resizing.current)data.onResize(resized(event));}}
       onPointerUp={event=>{const start=resizing.current;if(!start)return;const size=resized(event);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);
@@ -274,7 +286,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
       onPointerCancel={()=>{resizing.current=null;data.onResize(null);}}
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
-      onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending||group&&arrow[0]==='s')return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
+      onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2]),true);}:undefined}/>)}
     {data.expanded&&<div className="group-actions nodrag"><span>Mixed research blocks · relationships do not run work</span><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
@@ -341,12 +353,25 @@ export function placeCanvasRelationshipLabels(items: { route: RelationshipRoute;
     if (chosen) { route.label = chosen.point; route.labelWidth = chosen.area.width; route.labelHeight = height; occupied.push(chosen.area); }
   }
 }
-export function emptyPosition(canvas: Canvas): { x: number; y: number } {
-  for (let row = 0; row < 100; row++) for (let column = 0; column < 5; column++) {
-    const x = column * (CARD_SIZE.width + LAYOUT_GAP), y = row * (CARD_MAX_HEIGHT + LAYOUT_GAP);
-    if (canvas.nodes.every(node => x >= node.x + cardWidth(node) + 24 || x + CARD_SIZE.width + 24 <= node.x || y >= node.y + CARD_MAX_HEIGHT + 24 || y + CARD_MAX_HEIGHT + 24 <= node.y)) return { x, y };
-  }
-  return { x: 0, y: Math.max(0, ...canvas.nodes.map(n => n.y)) + CARD_MAX_HEIGHT + LAYOUT_GAP };
+/** Where a new block goes among the blocks directly in `parentId` (the canvas or a Group): the first free spot in
+ * reading order beside or below them, within the width they already take, so an open Group's frame stays as
+ * narrow as it is; otherwise below them all. Each block counts with the tallest card it can show, as the server
+ * checks it, and an open Group with its frame. */
+export function emptyPosition(canvas: Canvas, parentId: string | null = null, expandedIds: readonly string[] = []): { x: number; y: number } {
+  const open = new Set(expandedIds), seen = new Set<string>();
+  const footprint = (node: CanvasNode): CanvasSize => {
+    const card = { width: cardWidth(node), height: cardFootprintHeight(node) }, inside = canvas.nodes.filter(item => item.parentId === node.id);
+    if (!open.has(node.id) || !inside.length || seen.has(node.id)) return card;
+    seen.add(node.id);
+    const frame = openGroupSize({ width: Math.max(...inside.map(item => Math.max(0, item.x) + footprint(item).width)), height: Math.max(...inside.map(item => Math.max(0, item.y) + footprint(item).height)) });
+    return { width: Math.max(card.width, frame.width), height: Math.max(card.height, frame.height) };
+  };
+  const boxes = canvas.nodes.filter(node => (node.parentId || null) === parentId).map(node => ({ x: node.x, y: node.y, ...footprint(node) }));
+  if (!boxes.length) return { x: 0, y: 0 };
+  const origin = parentId ? { x: 0, y: 0 } : { x: Math.min(...boxes.map(box => box.x)), y: Math.min(...boxes.map(box => box.y)) };
+  const right = parentId ? groupContentRight(boxes) : Math.max(origin.x + 5 * (CARD_SIZE.width + LAYOUT_GAP) - LAYOUT_GAP, ...boxes.map(box => box.x + box.width));
+  return freeSpot(boxes, { width: CARD_SIZE.width, height: CARD_MAX_HEIGHT }, origin, right)
+    ?? { x: origin.x, y: Math.ceil((Math.max(...boxes.map(box => box.y + box.height)) + LAYOUT_GAP) / 24) * 24 };
 }
 export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   const result = structuredClone(canvas); const marks = new Map<string, CardData['preview']>();
@@ -411,7 +436,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const live = useRef(new Set<string>()), dragFrom = useRef(new Map<string, XYPosition>()), settling = useRef<{ frame: number; targets: Map<string, XYPosition> } | null>(null);
   const saving = useRef(new Map<string, { parentId: string | null; position: XYPosition }>()), missedLayout = useRef(false), boxSelecting = useRef(false);
   const [layoutRetry, setLayoutRetry] = useState(0);
-  const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean } | null>(null);
+  // `settled`: the plan has been checked against the layout it was made from; `expanded`: the Groups open at the last reflow.
+  const reflowState = useRef<{ plan: CanvasReflowPlan; canvas: Canvas; sizes: Record<string, CanvasSize>; positions: string; dimensions: string; structure: string; shape: string; ready: boolean; settled: boolean; expanded: string[] } | null>(null);
   const reflowWriting = useRef(false);
   const [cardMeasurements, setCardMeasurements] = useState<Record<string, CanvasSize>>({}), [draftSizes, setDraftSizes] = useState<Record<string, CardResize>>({});
   const resizeCommits = useRef(new Set<string>());
@@ -680,6 +706,12 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const artifacts = detail.artifacts.filter(a => (!manualBlock || isOutputArtifact(a)) && (pinned.some(h => h.artifactId === a.id) || selected.some(i => i.artifactId === a.id) || (([local?.id,research?.id,capture?.id].includes(a.runId) || notebookRuns.has(a.runId)) && isOutputArtifact(a)))).sort((a, b) => Number(pinned.some(h => h.artifactId === b.id)) - Number(pinned.some(h => h.artifactId === a.id)));
     return [parentId, resultPage(artifacts, resultChoices[parentId])];
   })), [displayed.canvas.nodes, detail.runs, detail.inputs, detail.artifacts, highlights, resultChoices, descendantIds]);
+  // A Web block's page opens as its saved search excerpt; a named link not yet read opens in the browser.
+  const webFace = (node: CanvasNode): WebFaceData => {
+    const state = webState(node, displayed.canvas, detail.runs, detail.artifacts);
+    return { search: node.web!, state, onOpen: source => { if (source.artifacts[0]) onArtifact(source.artifacts[0], node.id); else window.open(source.url, '_blank', 'noopener,noreferrer'); },
+      onStop: readonly || !state.sweepId ? undefined : () => { void api(`/api/runs/${encodeURIComponent(state.sweepId!)}/cancel`, { method: 'POST' }).then(() => setMessage('Stopped the searches. The pages found so far stay on the block.')).catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Could not stop the searches.')); } };
+  };
   // Apps on the canvas read their watched blocks again when the project changes.
   const appWatch = `${detail.project.revision}:${detail.artifacts.length}:${detail.artifacts[0]?.id ?? ''}`;
   const computedNodes = useMemo<(ResearchNode | ArtifactNode)[]>(() => {
@@ -688,8 +720,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       const built: (ResearchNode | ArtifactNode)[] = []; let right = 0, bottom = 0;
       for (const node of siblings) {
         const expanded = isGroup(node) && expandedIds.includes(node.id); const child = expanded ? build(node.id, depth + 1) : { nodes: [], width: 0, height: 0 };
-        const width = expanded ? Math.ceil(Math.max(768, child.width + GROUP_INSET.x * 2) / 24) * 24 : cardSizes[node.id].width;
-        const height = expanded ? Math.ceil(Math.max(408, child.height + GROUP_INSET.y + GROUP_FOOTER) / 24) * 24 : cardSizes[node.id].height;
+        const { width, height } = expanded ? openGroupSize(child) : cardSizes[node.id];
         const draft = expanded ? undefined : draftSizes[node.id], nodeX = node.x + (draft?.dx ?? 0), nodeY = node.y + (draft?.dy ?? 0);
         const box: Box = { x: parentId ? Math.max(0, nodeX) : nodeX, y: parentId ? Math.max(0, nodeY) : nodeY, width, height };
         right = Math.max(right, box.x + width); bottom = Math.max(bottom, box.y + height);
@@ -706,7 +737,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const direction = node.blockType === 'search' || node.label === 'result';
         // A block an agent made says so on its provenance line: a Result note through its link from the Agent block, a finding through its Result note.
         const origin=blockOrigin(displayed.canvas,node.id);
-        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, training: node.training ? { projectId: detail.project.id, view: node.training } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id)) : undefined, origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, app:node.blockType==='app'?{ projectId: detail.project.id, version: appVersion(node.app?.source ?? ''), inputs: node.app?.inputs.length ?? 0, watchKey: appWatch, onFocus: blockId => { onSelect(blockId); setFocusRequest(blockId); }, ...(historyCanvas ? { still: 'An App from a saved canvas. It runs on the current canvas.' } : proposal && ['added','changed'].includes(displayed.marks.get(node.id) ?? '') ? { proposalId: proposal.id, leaves: appFlags(node.app?.source ?? '') } : {}) }:undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google})=>({id,title,kind,blockType,google:google?.kind})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, height: cardSizes[node.id].height, heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id)) : undefined } }, ...child.nodes);
+        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, training: node.training ? { projectId: detail.project.id, view: node.training } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id)) : undefined, origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, app:node.blockType==='app'?{ projectId: detail.project.id, version: appVersion(node.app?.source ?? ''), inputs: node.app?.inputs.length ?? 0, watchKey: appWatch, onFocus: blockId => { onSelect(blockId); setFocusRequest(blockId); }, ...(historyCanvas ? { still: 'An App from a saved canvas. It runs on the current canvas.' } : proposal && ['added','changed'].includes(displayed.marks.get(node.id) ?? '') ? { proposalId: proposal.id, leaves: appFlags(node.app?.source ?? '') } : {}) }:undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google})=>({id,title,kind,blockType,google:google?.kind})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, height: cardSizes[node.id].height, heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onAdd(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, check: node.check ? checkTally(node.check) : node.blockType === 'agent' ? (checked => checked?.check ? checkTally(checked.check) : undefined)(displayed.canvas.nodes.find(item => item.check?.agentNodeId === node.id)) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id, detail.runs)) : undefined, web: node.blockType === 'web' && node.web ? webFace(node) : undefined } }, ...child.nodes);
       }
       return { nodes: built, width: right, height: bottom };
     };
@@ -730,7 +761,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const shape = JSON.stringify([structure, [...expandedIds].sort()]);
     let state = reflowState.current;
     if (!state) {
-      state = { plan: createCanvasReflowPlan(source, actualSizes), canvas: source, sizes: actualSizes, positions, dimensions, structure, shape, ready: false };
+      state = { plan: createCanvasReflowPlan(source, actualSizes, cardSizes), canvas: source, sizes: actualSizes, positions, dimensions, structure, shape, ready: false, settled: false, expanded: [] };
       reflowState.current = state;
     }
     const shapeChanged = state.shape !== shape, sizeChanged = state.dimensions !== dimensions;
@@ -742,27 +773,32 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (state.positions !== positions && moved) {
       // A user's move or an explicit Arrange establishes a new spatial plan.
       // Newly generated notes alone retain the spacing of existing neighbours.
-      state.plan = createCanvasReflowPlan(source, actualSizes);
+      state.plan = createCanvasReflowPlan(source, actualSizes, cardSizes); state.settled = false;
     } else if (state.structure !== structure) {
-      state.plan = extendCanvasReflowPlan(source, { ...actualSizes, ...state.sizes }, state.plan);
+      state.plan = extendCanvasReflowPlan(source, { ...actualSizes, ...state.sizes }, state.plan, cardSizes); state.settled = false;
     }
     state.positions = positions; state.canvas = source; state.structure = structure;
     if (!state.ready && !shapeChanged) {
       // Initial font/card measurements establish the baseline. Reopening a
       // project never becomes an implicit Arrange or a layout persistence loop.
-      state.plan = createCanvasReflowPlan(source, actualSizes); state.dimensions = dimensions; state.sizes = actualSizes;
-      const timer = setTimeout(() => { if (reflowState.current === state) state.ready = true; }, 180);
+      state.plan = createCanvasReflowPlan(source, actualSizes, cardSizes); state.dimensions = dimensions; state.sizes = actualSizes; state.settled = false;
+      const timer = setTimeout(() => { if (reflowState.current === state) { state.ready = true; setReflowRevision(revision => revision + 1); } }, 180);
       return () => clearTimeout(timer);
     }
-    if (!shapeChanged && !sizeChanged) return;
+    // Blocks moved onto each other (by another browser, an agent or a drop) or an open Group with room before its
+    // content settle once, without waiting for a block to change size.
+    const unsettledLayout = !state.settled && unsettled(source, actualSizes, expandedIds);
+    if (!shapeChanged && !sizeChanged && !unsettledLayout) { state.settled = true; state.expanded = [...expandedIds]; return; }
     const timer = setTimeout(() => {
       if (dragging.current || reflowWriting.current || reflowState.current !== state) return;
-      const result = reflowCanvas(source, state.plan, { expandedIds, extraContent, nodeSizes: cardSizes });
+      const opening = expandedIds.filter(id => !state.expanded.includes(id));
+      const result = reflowCanvas(source, state.plan, { expandedIds, extraContent, nodeSizes: cardSizes, opening });
       const operations: Mutation[] = result.canvas.nodes.flatMap(node => {
         const before = source.nodes.find(candidate => candidate.id === node.id)!;
         return before.x === node.x && before.y === node.y ? [] : [{ type: 'updateNode' as const, id: node.id, patch: { x: node.x, y: node.y } }];
       });
-      state.ready = true; state.shape = shape; state.dimensions = sizeKey(result.sizes); state.positions = positionKey(result.canvas);
+      state.ready = true; state.settled = true; state.plan = result.plan; state.expanded = [...expandedIds];
+      state.shape = shape; state.dimensions = sizeKey(result.sizes); state.positions = positionKey(result.canvas);
       state.canvas = result.canvas; state.sizes = result.sizes;
       if (!operations.length) return;
       reflowWriting.current = true;
@@ -788,8 +824,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const shouldAnimate = hasArrived && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!shouldAnimate) {
       if (hasArrived) animateNextLayout.current = null;
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setAnimatingLayout(false); setNodes(shown.map(node => ({ ...node, measured: measurements.get(node.id) }))); return;
+      // React Flow's measurements are read as the update applies, so a size it reported since the last render (a group
+      // that just closed) is kept; an older one would stay, since the block does not resize again to correct it.
+      setAnimatingLayout(false); setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => ({ ...node, measured: measurements.get(node.id) })); }); return;
     }
     const before = new Map(liveNodes.current.map(node => [node.id, node]));
     const started = performance.now(), duration = 420;
@@ -798,14 +835,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       const progress = Math.min(1, (time - started) / duration), eased = 1 - (1 - progress) ** 3;
       // React Flow invalidates handle bounds if a controlled update drops measured.
       // Keep its latest measurements while ResizeObserver follows changing group sizes.
-      const measurements = new Map(liveNodes.current.map(node => [node.id, node.measured]));
-      setNodes(shown.map(node => {
+      setNodes(current => { const measurements = new Map(current.map(node => [node.id, node.measured])); return shown.map(node => {
         const measured = measurements.get(node.id);
         const original = before.get(node.id); if (!original || progress === 1) return { ...node, measured };
         const width = (original.width || 0) + ((node.width || 0) - (original.width || 0)) * eased;
         const height = (original.height || 0) + ((node.height || 0) - (original.height || 0)) * eased;
         return { ...node, measured, position: { x: original.position.x + (node.position.x - original.position.x) * eased, y: original.position.y + (node.position.y - original.position.y) * eased }, width, height, style: { ...node.style, width, height } };
-      }));
+      }); });
       if (progress < 1) animationFrame.current = requestAnimationFrame(frame);
       else { animationFrame.current = null; animateNextLayout.current = null; setAnimatingLayout(false); }
     };

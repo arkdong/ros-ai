@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
-import { LAYOUT_GAP } from '../shared/layout.js';
+import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
@@ -25,9 +25,10 @@ const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
   z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
 ]);
-/** A Google Sheet or Doc shown live (see GoogleView). Kept apart from nodeFields, so the canvas tool agents see reads as
- * the training snapshot has it while Google Drive is not connected. */
-const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional() };
+/** A Google Sheet or Doc shown live (see GoogleView), a Web block and a block's claim marks. Kept apart from nodeFields,
+ * so the canvas tool agents see reads as the training snapshot has it while Google Drive is not connected; agents
+ * cannot write a Web block or claim marks through it in any case (agent-tools.ts). */
+const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional(), check:z.object({checkedAt:z.string().max(40),agentNodeId:identifier,textHash:z.string().regex(/^[a-f0-9]{64}$/),claims:z.array(z.object({text:z.string().max(400),verdict:z.enum(['backed','contradicted','unsupported','open']),note:z.string().max(240).optional(),quote:z.string().max(400).optional(),source:z.object({title:z.string().max(300),url:z.string().max(2000).optional()}).strict().optional()}).strict()).max(12)}).strict().optional(), web:z.object({question:z.string().trim().min(1).max(300),directions:z.array(z.object({id:identifier,title:z.string().trim().min(1).max(80),why:z.string().max(160),queries:z.array(z.string().trim().min(1).max(400)).max(8),links:z.array(z.string().max(2000)).max(5).optional(),summary:z.string().max(12000).optional(),aside:z.string().max(160).optional()}).strict()).min(1).max(12)}).strict().optional() };
 /** Where a paper came from: set by ros.ai when the person or an agent adds one (papers.ts), so agents never write it. */
 export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zotero']), id: z.string().regex(PAPER_ID), doi: z.string().regex(DOI).optional(), link: z.string().url().max(2000) }).strict();
 /** The agent whose turn an Agent block stands for, ACP agents (Gemini CLI, Goose, OpenCode) included. Kept apart from nodeFields, so the
@@ -37,11 +38,11 @@ const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', 
  * ros.ai keeps the other. Kept apart from nodeFields, so the canvas tool agents see reads as the training snapshot has
  * it until Apps are switched on for agents. */
 const appSchema = z.object({ source: z.string().max(APP_SOURCE_LIMIT).optional(), inputs: z.array(identifier).max(MAX_APP_INPUTS).optional() }).strict().refine(value => value.source !== undefined || value.inputs !== undefined, 'Give the page (source), the inputs, or both');
-const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','app']).optional(), app: appSchema.optional() };
+const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app']).optional(), app: appSchema.optional() };
 /** A training run the person adds (see TrainingView). Kept out of what agents may propose, Apps on or off, because it names a
  * folder and an ssh host on this computer, and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
 export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
-export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','app','training']).optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
@@ -320,6 +321,12 @@ export class Store {
     const overlaps = () => others.some(other => (other.parentId ?? null) === (placed.parentId ?? null)
       && placed.x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < placed.x + cardWidth(placed) + LAYOUT_GAP
       && (other.y <= placed.y ? placed.y < other.y + height(other) + LAYOUT_GAP : other.y < placed.y + height(placed) + LAYOUT_GAP));
+    if (placed.parentId && overlaps()) {
+      // Inside a Group, the first free spot beside or below its blocks keeps its frame as tight as it is.
+      const boxes = others.filter(other => other.parentId === placed.parentId).map(other => ({ x: other.x, y: other.y, width: cardWidth(other), height: height(other) }));
+      const spot = freeSpot(boxes, { width: cardWidth(placed), height: height(placed) }, { x: 0, y: 0 }, groupContentRight(boxes));
+      if (spot) { coordinate.parse(spot.x); coordinate.parse(spot.y); return { ...placed, ...spot }; }
+    }
     const originX = placed.x;
     const stepX = Math.ceil((cardWidth(placed) + LAYOUT_GAP) / GRID) * GRID;
     const stepY = Math.ceil((CARD_MAX_HEIGHT + LAYOUT_GAP) / GRID) * GRID;

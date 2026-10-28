@@ -14,7 +14,7 @@ import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { assertModelResponseUsable, normalizeAssistantReply, parseWholeJsonObject } from './response-normalization.js';
-import { NebiusAdapter, TavilyAdapter, ExaAdapter, BraveAdapter, EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, TAVILY_CREDIT_USD, searchCostUsd, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from './providers.js';
+import { NebiusAdapter, TavilyAdapter, ExaAdapter, BraveAdapter, EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, CHECK_SEARCH_SCHEMA, SEARCH_CREDITS, SWEEP_SEARCH_SCHEMA, TAVILY_CREDIT_USD, searchCostUsd, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth, type SweepResponse } from './providers.js';
 import { aSearchLabel, isSearchProvider, searchLabels, searchProviders, type SearchProviderId, type SearchServiceStatus } from '../shared/search.js';
 
 const now = () => new Date().toISOString();
@@ -29,6 +29,22 @@ function abortable<T>(task:Promise<T>,signal:AbortSignal):Promise<T> {
   });
 }
 const requestText = z.string().trim().min(1).max(12000);
+/** A Web block's sweep runs a few searches at a time, and at most so many start in any minute, shared by every sweep,
+ * within each service's limits: a Tavily development key allows 100 a minute, Exa 10 a second, and Brave Search
+ * as little as 1 a second on older plans. */
+export const SWEEP_MAX_SEARCHES = 40;
+export const SWEEP_LIMITS:Record<SearchProviderId,{workers:number;perMinute:number}> = {tavily:{workers:6,perMinute:90},exa:{workers:4,perMinute:120},brave:{workers:1,perMinute:60}};
+const sweepStarts:Record<SearchProviderId,number[]> = {tavily:[],exa:[],brave:[]};
+async function sweepSlot(provider:SearchProviderId,signal:AbortSignal) {
+  const starts = sweepStarts[provider], {perMinute} = SWEEP_LIMITS[provider];
+  for (;;) {
+    if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.');
+    const at = Date.now();
+    while (starts.length && at - starts[0] >= 60_000) starts.shift();
+    if (starts.length < perMinute) { starts.push(at); return; }
+    await new Promise(resolve => setTimeout(resolve, Math.min(1000, 60_000 - (at - starts[0]))));
+  }
+}
 const id = z.string().min(1).max(120);
 const node = z.object({id,title:z.string().min(1).max(160),description:z.string().max(12000),x:z.number(),y:z.number(),kind:z.enum(['topic','activity','unspecified','group']).optional(),parentId:id.nullable().optional(),blockType:z.enum(['note','action','dataset','figure','code','notebook','report','file']).optional(),artifactId:id.optional(),legacyKind:z.enum(['topic','activity','unspecified']).optional(),groupHighlights:z.array(z.object({nodeId:id,artifactId:id,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional()}).strict();
 const operation = z.discriminatedUnion('type',[
@@ -383,11 +399,12 @@ export class ExecutionService {
     return this.searchRun(projectId,nodeId,query,signal,turnId,true);
   }
   /** One web search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
-   * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes. */
-  agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
-    return this.searchRun(projectId,nodeId,query,signal,turnId,false);
+   * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes.
+   * A claim check searches in depth, for passages it can quote. */
+  agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,depth:SearchDepth='basic'):Promise<Run>{
+    return this.searchRun(projectId,nodeId,query,signal,turnId,false,depth);
   }
-  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean):Promise<Run>{
+  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean,depth:SearchDepth='basic'):Promise<Run>{
     this.admitWork(false);
     this.checkSignal(signal);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
@@ -396,7 +413,9 @@ export class ExecutionService {
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
     if(lock&&this.chats.has(projectId))throw new Error('The project assistant is already responding.');
-    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:pricing.model,modelVersion:null,configuration:{purpose:lock?'assistant-search':'agent-search',assistantTurnId:turnId,search:pricing.schema.configuration},tools:[pricing.schema],events:[],artifactIds:[]});
+    // A claim check searches Tavily in depth, for passages it can quote; another service's search already returns them.
+    const deep=depth==='advanced'&&service.id==='tavily',schema=deep?CHECK_SEARCH_SCHEMA:pricing.schema;
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:deep?'advanced-search':pricing.model,modelVersion:null,configuration:{purpose:lock?'assistant-search':depth==='advanced'?'agent-claim-check':'agent-search',assistantTurnId:turnId,search:schema.configuration},tools:[schema],events:[],artifactIds:[]});
     const controller=new AbortController();if(lock)this.chats.set(projectId,controller);
     const active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combinedSignal=AbortSignal.any([signal,this.signal(controller)]);
@@ -446,17 +465,80 @@ export class ExecutionService {
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
   }
+  /** A Web block's searches as one run on the block: several at a time within the service's limits, each saved as soon as it returns, so the sources
+   * gather on the canvas while the rest still run. A failed search leaves the others; stopping the run stops them all. */
+  webSweep(projectId:string,nodeId:string,searches:{direction:string;query:string}[],signal:AbortSignal,turnId:string):Promise<Run>{
+    this.admitWork(false);
+    this.checkSignal(signal);
+    const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
+    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} search has no configured remaining authorization.`);
+    const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
+    if(!node?.web)throw new Error('The Web block was removed from the canvas.');
+    const list=z.array(z.object({direction:z.string().min(1).max(128),query:z.string().trim().min(1).max(400)}).strict()).min(1).max(SWEEP_MAX_SEARCHES).parse(searches);
+    // Tavily's sweep keeps five sources of each search with their relevance and site icons; another service runs its usual search.
+    const schema=service.adapter.sweep?SWEEP_SEARCH_SCHEMA:pricing.schema;
+    const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:list.map(item=>item.query).join('\n'),useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:'web-sweep',modelVersion:null,configuration:{purpose:'web-sweep',assistantTurnId:turnId,search:schema.configuration,searches:list},tools:[schema],events:[],artifactIds:[]});
+    const controller=new AbortController(),active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
+    // Each search keeps the usual deadline; the whole sweep may take a few of them.
+    const combined=AbortSignal.any([signal,controller.signal,AbortSignal.timeout(this.timeoutMs*3)]);
+    const task=Promise.resolve().then(()=>this.sweep(run,list,combined,service)).finally(()=>this.active.delete(run.id));
+    active.done=task.then(()=>undefined,()=>undefined);
+    return task;
+  }
+  private async sweep(run:Run,searches:{direction:string;query:string}[],signal:AbortSignal,service:{id:SearchProviderId;adapter:SearchAdapter}):Promise<Run>{
+    const {projectId,nodeId}=run,turnId=run.configuration.assistantTurnId,saved:string[]=[],pricing=SEARCH_SERVICES[service.id];
+    const open=()=>['queued','running'].includes(this.store.getRun(run.id).status);
+    let next=0,reserved=0,found=0,credits:number|null=0,spentUsd:number|null=0,refused:string|null=null;
+    const one=async(index:number)=>{
+      const {direction,query}=searches[index];
+      let reservation:UsageRecord|undefined;
+      try{
+        await sweepSlot(service.id,signal);
+        reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:`${run.id}:${index}`,spendUsd:pricing.searchUsd});return this.reserveSearch(service.id,'Web block sweep',pricing.searchBasis,run.id,{query,direction,assistantTurnId:turnId});});
+        reserved++;
+        const searching=AbortSignal.any([signal,AbortSignal.timeout(this.timeoutMs)]);
+        const response:SweepResponse=await abortable(service.adapter.sweep?service.adapter.sweep(query,searching):service.adapter.search(query,searching).then(found=>({...found,results:found.results.map(source=>({...source,score:null,favicon:null}))})),signal);this.checkSignal(signal);
+        const costUsd=searchCostUsd(response);
+        this.store.updateUsage(reservation.id,{status:costUsd===null?'uncertain':'settled',estimatedUsd:costUsd,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,credits:response.credits,requestId:response.requestId,assistantTurnId:turnId}});
+        credits=credits===null||response.credits===null?null:credits+response.credits;
+        spentUsd=spentUsd===null||costUsd===null?null:spentUsd+costUsd;
+        const artifacts=response.results.map(({score,favicon,...source},rank)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`S${saved.length+rank+1}`,capture:'search-snippet',...source,metadata:{direction,query,search:index+1,rank:rank+1,...(score===null?{}:{score}),...(favicon?{favicon}:{})}}));
+        saved.push(...artifacts.map(item=>item.id));found++;
+        this.store.updateRun(run.id,{artifactIds:[...saved],events:[...this.store.getRun(run.id).events,{at:now(),type:'search-captured',message:`Searched “${query}”: ${artifacts.length} source${artifacts.length===1?'':'s'}.`,data:{search:index+1,direction,sources:artifacts.length}}]});
+      }catch(error){
+        if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
+        // A stopped sweep keeps what it saved; its terminal state is already recorded.
+        if(signal.aborted||!open())return;
+        // An allowance or a project that refuses one search refuses the rest too.
+        if(!reservation)refused??=this.safeError(error);
+        this.event(run.id,'search-failed',`Could not search “${query}”: ${this.safeError(error)}`,{search:index+1,direction});
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(SWEEP_LIMITS[service.id].workers,searches.length)},async()=>{
+      for(let index=next++;index<searches.length&&!refused&&!signal.aborted;index=next++)await one(index);
+    }));
+    if(!open())return this.store.getRun(run.id);
+    const cost={reservedUsd:reserved*pricing.searchUsd,estimatedUsd:spentUsd},usage={searches:searches.length,found,credits};
+    if(signal.aborted){
+      const timedOut=signal.reason instanceof Error&&signal.reason.name==='TimeoutError';
+      return this.store.updateRun(run.id,{status:timedOut?'failed':'cancelled',endedAt:now(),error:timedOut?'The sweep ran out of time. The sources it found are saved.':'Stopped. The sources found so far are saved.',cost,usage});
+    }
+    if(!found)return this.store.updateRun(run.id,{status:'failed',endedAt:now(),error:refused??'No search of the sweep returned sources.',cost,usage});
+    return this.store.updateRun(run.id,{status:'completed',endedAt:now(),events:[...this.store.getRun(run.id).events,{at:now(),type:'sweep-captured',message:`Saved ${saved.length} source excerpts from ${found} of ${searches.length} searches. Snippets are evidence, not independent verification.`}],cost,usage});
+  }
   private async performAssistantSearch(run:Run,signal:AbortSignal,service:{id:SearchProviderId;adapter:SearchAdapter}):Promise<Run>{
     const {projectId,nodeId,request:query}=run,turnId=run.configuration.assistantTurnId,pricing=SEARCH_SERVICES[service.id];
+    const depth:SearchDepth=run.model==='advanced-search'?'advanced':'basic',credits=SEARCH_CREDITS[depth],amountUsd=depth==='advanced'?credits*TAVILY_CREDIT_USD:pricing.searchUsd;
+    const purpose=run.configuration.purpose==='agent-claim-check'?'Agent claim check':'Assistant source discovery',basis=depth==='advanced'?`Continued cumulative Tavily allowance: one advanced search, ${credits} credits at $0.008 PAYG upper bound.`:pricing.searchBasis;
     let reservation:UsageRecord|undefined;
     try{
       this.checkSignal(signal);
-      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:pricing.searchUsd});return this.reserveSearch(service.id,'Assistant source discovery',pricing.searchBasis,run.id,{query,assistantTurnId:turnId});});
-      const response=await abortable(service.adapter.search(query,signal),signal);this.checkSignal(signal);
+      reservation=this.store.atomic(()=>{new Authority(this.store).reserve(projectId,{kind:'model',nodeId,fingerprint:run.id,spendUsd:amountUsd});return this.reserveSearch(service.id,purpose,basis,run.id,{query,assistantTurnId:turnId},amountUsd);});
+      const response=await abortable(service.adapter.search(query,signal,depth),signal);this.checkSignal(signal);
       const costUsd=searchCostUsd(response);
       this.store.updateUsage(reservation.id,{status:costUsd===null?'uncertain':'settled',estimatedUsd:costUsd,reportedUsage:{...(reservation.reportedUsage as Record<string,unknown>),query,response,assistantTurnId:turnId}});
       const artifacts=response.results.map((source,index)=>this.store.addArtifact({projectId,nodeId,runId:run.id,kind:'source',sourceId:`S${index+1}`,capture:'search-snippet',...source}));
-      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:pricing.searchUsd,estimatedUsd:costUsd},usage:response});
+      return this.store.updateRun(run.id,{status:'completed',endedAt:now(),artifactIds:artifacts.map(a=>a.id),events:[{at:now(),type:'search-captured',message:`Saved ${artifacts.length} source excerpts. Snippets are evidence, not independent verification.`}],cost:{reservedUsd:amountUsd,estimatedUsd:costUsd},usage:response});
     }catch(error){
       if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
       // cancelRun/shutdown have already saved their terminal state and event.

@@ -25,11 +25,18 @@ export type SearchResult = { title:string; url:string; content:string; locator:s
 /** credits: Tavily's own unit. costUsd: the dollars a service reported (Exa) or charges at a flat price (Brave). */
 export type SearchResponse = { results:SearchResult[]; credits:number|null; requestId:string|null; costUsd?:number|null };
 export type ExtractResponse = { pages:{url:string;content:string;locator:string}[]; failed:string[]; credits:number|null; requestId:string|null; costUsd?:number|null };
+/** Basic search costs 1 credit and returns each page's summary; advanced costs 2 and returns the passages that best match the query. */
+export type SearchDepth = 'basic'|'advanced';
+/** A source of a Web block's sweep: its relevance to the query (0 to 1) and its site's icon, when the service gives them. */
+export type SweepResult = SearchResult & { score:number|null; favicon:string|null };
+export type SweepResponse = { results:SweepResult[]; credits:number|null; requestId:string|null };
 export interface SearchAdapter {
   readonly configured:boolean;
-  search(query:string,signal:AbortSignal):Promise<SearchResponse>;
+  search(query:string,signal:AbortSignal,depth?:SearchDepth):Promise<SearchResponse>;
   /** The full text of pages a search found. */
   extract?(urls:string[],signal:AbortSignal):Promise<ExtractResponse>;
+  /** One search of a Web block's sweep, which keeps more sources of each search and draws them by relevance. */
+  sweep?(query:string,signal:AbortSignal):Promise<SweepResponse>;
 }
 
 // Complete external harnesses are intentionally a different boundary from inference.
@@ -181,6 +188,11 @@ const samePage = (asked:string,returned:string) => pageKey(asked)===pageKey(retu
 
 export const TAVILY_CREDIT_USD = 0.008;
 export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
+// Checking a claim needs the page's own words: advanced search returns up to three verbatim passages per page.
+export const CHECK_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One user-approved advanced web search for checking a claim. Captured passages of each page, not full documents.',configuration:{...SEARCH_SCHEMA.configuration,search_depth:'advanced',chunks_per_source:3}};
+export const SEARCH_CREDITS:Record<SearchDepth,number> = {basic:1,advanced:2};
+// A Web block's sweep keeps five sources of each basic search, still 1 credit, with each site's icon.
+export const SWEEP_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One basic web search of a Web block\'s sweep. Captured search snippets, not full documents.',configuration:{...SEARCH_SCHEMA.configuration,max_results:5,include_favicon:true}};
 // Basic extract costs 1 credit for every 5 pages read. A page keeps at most PAGE_CHARACTERS.
 export const EXTRACT_PAGES_PER_CREDIT = 5, PAGE_CHARACTERS = 50_000;
 export const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
@@ -203,17 +215,26 @@ export class TavilyAdapter implements SearchAdapter {
     if (!this.configured) throw new Error('Set TAVILY_API_KEY in the server-side .env.local, then restart; model-only work is available without search.');
     return this.key ?? process.env.TAVILY_API_KEY ?? '';
   }
-  async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
-    const key = this.credential();
-    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({query,...SEARCH_SCHEMA.configuration}),signal});
+  async search(query:string,signal:AbortSignal,depth:SearchDepth='basic'):Promise<SearchResponse> {
+    const result = await this.request(query,depth === 'advanced' ? CHECK_SEARCH_SCHEMA.configuration : SEARCH_SCHEMA.configuration,signal);
+    return {...result,results:result.results.slice(0,3).map(({score:_score,favicon:_favicon,...source})=>source)};
+  }
+  async sweep(query:string,signal:AbortSignal):Promise<SweepResponse> {
+    return this.request(query,SWEEP_SEARCH_SCHEMA.configuration,signal);
+  }
+  private async request(query:string,configuration:Record<string,unknown>,signal:AbortSignal):Promise<SweepResponse> {
+    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify({query,...configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
-    return {results:result.results.slice(0,3).map((source:any,index:number)=>{
+    return {results:result.results.slice(0,5).map((source:any,index:number)=>{
       if (typeof source.content !== 'string' || typeof source.url !== 'string') throw new Error('Search provider returned a malformed source.');
       const url = new URL(source.url);
       if (!['http:','https:'].includes(url.protocol)) throw new Error('Search provider returned an unsupported source URL.');
       // Keep the exact text sent to the model; explicitly record its bounded snippet range.
       const content = source.content.slice(0,6000);
-      return {title:String(source.title ?? url.hostname).slice(0,300),url:url.href,content,locator:`Tavily search result ${index+1}; content characters 0–${content.length}${source.content.length > content.length ? ` of ${source.content.length} (truncated)` : ''}`};
+      const score = typeof source.score === 'number' && Number.isFinite(source.score) ? Math.max(0,Math.min(1,source.score)) : null;
+      // A site icon is only ever shown as an image, so only a web address is kept.
+      const favicon = typeof source.favicon === 'string' && /^https:\/\/[^\s"'<>]{1,500}$/u.test(source.favicon) ? source.favicon : null;
+      return {title:String(source.title || url.hostname).slice(0,300),url:url.href,content,locator:`Tavily search result ${index+1}; content characters 0–${content.length}${source.content.length > content.length ? ` of ${source.content.length} (truncated)` : ''}`,score,favicon};
     }),credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null};
   }
 }

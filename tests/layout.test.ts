@@ -143,7 +143,8 @@ test('measured card heights and saved widths determine gap and group bounds', ()
   assert.equal(first.sizes.a.width, 700, 'Saved width applies before any browser measurement');
   assert.equal(first.sizes.b.height, 390);
   assert.ok(notes.b.x >= notes.a.x + 700 + LAYOUT_GAP);
-  assert.ok(notes.c.y >= 390 + LAYOUT_GAP);
+  assert.equal(notes.c.x, notes.a.x, 'The next block goes under the column that ends highest');
+  assert.ok(notes.c.y >= notes.a.y + first.sizes.a.height + LAYOUT_GAP && notes.c.y < 390 + LAYOUT_GAP);
   assert.ok(first.sizes.group.width >= notes.b.x + first.sizes.b.width + GROUP_INSET.x * 2);
   assert.ok(first.sizes.group.height >= notes.c.y + first.sizes.c.height + GROUP_INSET.y + GROUP_FOOTER);
   assert.deepEqual(arrangeCanvas(first.canvas, options), first);
@@ -158,5 +159,18 @@ test('dependency edges across nested branches order their containing groups and 
   assert.ok(notes['consumer-group'].y >= notes['source-group'].y + first.sizes['source-group'].height + LAYOUT_GAP);
   assert.equal(notes.source.parentId, 'source-group'); assert.equal(notes.consumer.parentId, 'consumer-group');
   assert.deepEqual(first.canvas.connections, graph.connections);
+  assert.deepEqual(arrangeCanvas(first.canvas, options), first);
+});
+
+test('Tidy inside a Group packs its blocks into columns without the gaps a row of taller blocks leaves', () => {
+  // A candidate's group: a wide profile note, a tall CV and a Notion page, as an agent filed them.
+  const group: CanvasNode = { ...node('candidate'), kind: 'group' };
+  const graph: Canvas = { nodes: [group, { ...node('profile', 'candidate'), x: 24, y: 72, width: 720 }, { ...node('cv', 'candidate'), x: 1272, y: 72, width: 420, height: 560 }, { ...node('page', 'candidate'), x: 0, y: 1200, width: 420, height: 440 }], connections: [] };
+  const options = { expandedIds: ['candidate'], nodeSizes: { profile: { width: 720, height: 300 } } };
+  const first = arrangeCanvas(graph, options), at = Object.fromEntries(first.canvas.nodes.map(n => [n.id, n]));
+  assert.deepEqual([at.profile.x, at.profile.y], [0, 0], 'Content starts at the frame corner');
+  assert.deepEqual([at.cv.x, at.cv.y], [792, 0]);
+  assert.deepEqual([at.page.x, at.page.y], [0, 384], 'The page goes under the shorter profile, not below the CV');
+  assert.deepEqual(first.sizes.candidate, { width: 1296, height: 1032 });
   assert.deepEqual(arrangeCanvas(first.canvas, options), first);
 });

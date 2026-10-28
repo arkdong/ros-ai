@@ -1,0 +1,23 @@
+/* Claim marks: green only where a source backs the claim, the warning and failure colours for the rest. */
+.check-tally { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.claim-mark { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 7px; border-radius: 99px; white-space: nowrap; background: var(--accent-light); color: var(--muted); }
+.claim-mark.backed { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.claim-mark.contradicted { background: color-mix(in srgb, var(--fail) 11%, transparent); color: var(--fail); }
+.claim-mark.unsupported { background: color-mix(in srgb, var(--wait) 12%, transparent); color: var(--wait); }
+.source-check { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.source-check-heading { display: flex; align-items: baseline; gap: 10px; }
+.source-check-heading h3 { margin: 0; font-size: 14px; color: var(--ink); }
+.source-check-heading small { color: var(--muted); font-size: 12px; }
+.source-check-spacer { flex: 1; }
+.source-check .check-tally { margin: 8px 0 4px; }
+.claim-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.claim-list li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.claim-list li:first-child { border-top: 0; }
+.claim-list .claim-mark { justify-self: start; align-self: start; margin-top: 1px; }
+.claim-text { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.45; }
+.claim-note { margin: 3px 0 0; color: var(--body); font-size: 13px; }
+.claim-list blockquote { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1.45; }
+.claim-source { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; color: var(--muted); text-decoration: none; }
+a.claim-source:hover { color: var(--ink); text-decoration: underline; }
+.source-check-offer { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.source-check-offer small { color: var(--muted); font-size: 12px; }

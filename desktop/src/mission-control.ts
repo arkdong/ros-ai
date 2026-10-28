@@ -2,8 +2,10 @@
  * ros.ai's look in Mission Control: while Mission Control is open, the ros.ai window shows the ring over a blurred
  * view of its own workspace.
  * macOS tells an app nothing when Mission Control opens, so a small script asks the window server a few times a
- * second whether the Dock is showing a full-screen window (Mission Control, App Exposé or Launchpad) and the
- * window covers itself only then. Mission Control's pictures of windows are live, so the cover appears in them.
+ * second whether the Dock has a window over a whole screen between the app windows and the Dock itself. Mission
+ * Control and App Exposé add one there (layer 18 on macOS 26); the Dock's own window spans the screen too but sits
+ * at the Dock's level (20) and is on screen whenever the Dock shows, so a Dock sliding in doesn't count. The window
+ * covers itself only then. Mission Control's pictures of windows are live, so the cover appears in them.
  * ROS_MISSION_CONTROL_DEBUG=1 prints the Dock's windows on each change, to tune the check on a new macOS.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -15,18 +17,25 @@ ObjC.import('CoreGraphics'); ObjC.import('AppKit');
 const debug = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey('ROS_MISSION_CONTROL_DEBUG')) === '1';
 const out = $.NSFileHandle.fileHandleWithStandardOutput;
 const say = text => out.writeData($(text + '\\n').dataUsingEncoding($.NSUTF8StringEncoding));
-let last = '';
+let last = '', note = '', dock = -1, looked = 0;
 for (;;) {
+  // The Dock by its bundle id, as its window owner name is translated (程序坞 in Chinese); a restarted Dock has a new pid.
+  if (Date.now() - looked > 5000) {
+    const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('com.apple.dock');
+    dock = apps.count ? Number(apps.objectAtIndex(0).processIdentifier) : -1;
+    looked = Date.now();
+  }
   const all = $.NSScreen.screens, screens = [];
   for (let i = 0; i < all.count; i++) screens.push(all.objectAtIndex(i).frame);
   const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1 /* on screen only */, 0))) || [];
-  const dock = list.filter(w => w.kCGWindowOwnerName === 'Dock');
-  const open = dock.some(w => w.kCGWindowLayer > 0 && screens.some(s =>
+  const windows = list.filter(w => (w.kCGWindowOwnerPID === dock || w.kCGWindowOwnerName === 'Dock') && w.kCGWindowLayer > 0);
+  const open = windows.some(w => w.kCGWindowLayer < 20 /* the Dock's own level */ && screens.some(s =>
     w.kCGWindowBounds.Width >= s.size.width * 0.9 && w.kCGWindowBounds.Height >= s.size.height * 0.9));
   const state = open ? 'open' : 'closed';
-  if (state !== last) {
-    last = state; say(state);
-    if (debug) say('debug ' + JSON.stringify({ screens, dock: dock.map(w => [w.kCGWindowLayer, w.kCGWindowBounds]) }));
+  if (state !== last) { last = state; say(state); }
+  if (debug) {
+    const seen = windows.map(w => [w.kCGWindowNumber, w.kCGWindowLayer, w.kCGWindowBounds]), now = JSON.stringify(seen);
+    if (now !== note) { note = now; say('debug ' + JSON.stringify({ state, screens, dock: seen })); }
   }
   delay(0.08);
 }`;
