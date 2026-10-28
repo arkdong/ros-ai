@@ -388,14 +388,6 @@ blockquote {
   width: 24px;
   height: 24px;
 }
-.workspace-welcome .eyebrow {
-  font-size: 14px;
-  color: #171717;
-}
-.workspace-welcome .primary {
-  margin-top: 29px;
-  font-size: 14px;
-}
 .chat-introduction {
   padding-bottom: 7px;
 }
@@ -1420,18 +1412,6 @@ blockquote {
   .canvas-tools {
     right: 13px;
   }
-  .workspace-welcome h2 {
-    font-size: 34.0px;
-  }
-  .workspace-welcome p {
-    font-size: 14px;
-  }
-  .welcome-local {
-    font-size: 14px;
-    line-height: 1.7;
-    text-align: left;
-    max-width: 260px;
-  }
   .modal {
     padding: 20px;
   }
@@ -1798,38 +1778,8 @@ a {
   justify-content: center;
   flex-direction: column;
   text-align: center;
-  background-size: 24px 24px;
-  padding: 25px;
-  background-image: radial-gradient(#dedede 1px,transparent 1px);
-}
-.workspace-welcome h2 {
-  line-height: 1.18;
-  letter-spacing: -1.8px;
-  font-weight: 450;
-  margin: 20px 0;
-  font-size: 42px;
-  color: #171717;
-}
-.workspace-welcome p {
-  line-height: 1.85;
-  font-size: 15px;
-  color: #171717;
-}
-.welcome-mark {
-  font-size: 48.0px;
-  letter-spacing: -3px;
-  margin-bottom: 27px;
-  font-family: Arial,sans-serif;
-  font-weight: 600;
-  color: #171717;
-}
-.welcome-local {
-  margin-top: 52px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 14px;
-  color: #171717;
+  gap: 12px;
+  color: var(--muted);
 }
 .workspace-body {
   flex: 1;
@@ -2972,15 +2922,6 @@ a {
   }
   .permission-strip>span {
     font-size: 13px;
-  }
-  .workspace-welcome h2 {
-    font-size: 35px;
-  }
-  .welcome-local {
-    font-size: 13px;
-  }
-  .workspace-welcome p {
-    font-size: 15px;
   }
 }
 .canvas-artifact .metric-value {
@@ -4268,25 +4209,6 @@ a {
 .single-canvas-shell .canvas-empty .primary {
   font-size: 14px;
 }
-.single-canvas-shell .workspace-welcome {
-  background-color: #f7f7f7;
-  background-image: radial-gradient(#f7f7f7 .7px,transparent .7px);
-}
-.single-canvas-shell .workspace-welcome h2 {
-  font-weight: 500;
-  color: #171717;
-  letter-spacing: -1.5px;
-}
-.single-canvas-shell .workspace-welcome p {
-  font-size: 15px;
-  color: #6b6b6b;
-}
-.single-canvas-shell .welcome-mark {
-  color: #6b6b6b;
-  font-family: 'Trebuchet MS',sans-serif;
-  font-size: 35px;
-  letter-spacing: -2px;
-}
 .assistant-panel {
   position: relative;
   flex: 0 0 388px;
@@ -4999,73 +4921,6 @@ button.outline-title:hover {
   font-size: 13px;
   color: #6b6b6b;
 }
-.new-project-modal {
-  width: 535px;
-}
-.project-start-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin: 22px 0 24px;
-}
-.single-canvas-shell .project-start-choices>button {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 15px;
-  text-align: left;
-  border: 1px solid #dedede;
-  border-radius: 8px;
-  white-space: normal;
-  background: #ffffff;
-  color: #6b6b6b;
-}
-.single-canvas-shell .project-start-choices>button.selected {
-  background: #ffffff;
-  border-color: #c9c9c9;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-  color: #171717;
-}
-.project-start-choices>button>span:first-of-type {
-  flex: 1;
-  min-width: 0;
-}
-.project-start-choices strong {
-  display: block;
-  line-height: 1.5;
-  font-weight: 500;
-  font-size: 16px;
-  color: #171717;
-}
-.project-start-choices small {
-  display: block;
-  line-height: 1.6;
-  margin-top: 3px;
-  font-weight: 400;
-  font-size: 14px;
-  color: #6b6b6b;
-}
-.choice-radio {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #dedede;
-  border-radius: 50%;
-  background: #ffffff;
-  flex-shrink: 0;
-}
-.selected .choice-radio {
-  background: #ffffff;
-  border-color: #171717;
-  color: #171717;
-}
-.start-conversation-note {
-  padding: 12px 0 0;
-  font-size: 14px;
-  line-height: 1.7;
-}
 @media (min-width:1800px) {
   .assistant-panel {
     width: 420px;
@@ -5286,14 +5141,6 @@ button.outline-title:hover {
   }
   .single-canvas-shell .modal-description {
     font-size: 14px;
-  }
-  .project-start-choices {
-    gap: 8px;
-    margin: 19px 0;
-  }
-  .single-canvas-shell .project-start-choices>button {
-    padding: 13px 11px;
-    gap: 11px;
   }
   .single-canvas-shell .canvas-empty h2 {
     font-size: 28px;

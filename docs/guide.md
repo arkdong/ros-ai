@@ -7,11 +7,11 @@ Credentials, `.ros-ai/` databases, local `evidence/`, generated `outputs/`, hist
 ## Begin with a question
 
 
-**New project** offers three starting points:
+**New project** is one card: the project's name on top, and on the line below it the folder the project is saved in (suggested from the name until you change it) and **Start from**, which offers a blank map, a folder you already have, or one of the demos. Enter creates the project. Before any project is open, the same card is the start screen, with the demos as a gallery under it.
 
-- **Start blank:** an empty canvas with the assistant closed. Create Code or Notebook directly from **Add block**; deliberately open Assistant when useful.
-- **Explore a demo:** choose banking or market research. Four user-controlled steps load the question, captured evidence, real saved calculations and editable draft into a new workspace. Starting or advancing the tutorial does not call a model, search the web or execute code. The older KNMI starter remains readable in existing projects.
-- **Start a conversation:** submit a question to the project assistant. With authorized model access, it can clarify the idea and propose a small set of related notes for review under the project’s approval mode.
+- **Blank:** an empty map with the assistant closed. Create Code or Notebook directly from **Add block**; ask Ros in the bar when useful.
+- **A folder:** a folder ros.ai made opens with its canvas and history; any other folder becomes a new project, and you choose which of its files to add.
+- **A demo:** the guided workflow builds a map in seven steps as you press Next; the banking lesson loads the question, captured evidence, real saved calculations and an editable draft in four steps. Starting or advancing a demo does not call a model, search the web or execute code.
 
 The right panel stays with the project. **Conversation** holds the continuing exchange. **Research outline** anchors the original question above collapsible research directions, with findings indented beneath a direction only when saved ownership or evidence references support that association. Actual nested notes form nested directions; shared findings appear under **Across directions**, and findings without a linked direction remain under **Other findings**. Decisions, hypotheses, gaps and question history remain available in their own disclosures. Short summaries help scanning; full text and references open the notes, artifacts, proposals or saved attempts. Earlier project messages remain accessible without being repeated as new turns.
 

@@ -2,7 +2,8 @@ import type { ExperimentPreview } from './experiments.js';
 
 export type TutorialScenarioId = 'workflow' | 'banking' | 'market';
 export type TutorialExecution = { available:boolean; backend:'docker-python'; reason:string };
-export type TutorialScenario = { id:TutorialScenarioId; title:string; summary:string; question:string; publicDataReady:boolean; publicDataStatus:string; available?:boolean; unavailableReason?:string };
+/** A demo as the start screen lists it: `projectTitle` is the name its project gets, `steps` how many steps build it. */
+export type TutorialScenario = { id:TutorialScenarioId; title:string; projectTitle:string; steps:number; summary:string; question:string; publicDataReady:boolean; publicDataStatus:string; available?:boolean; unavailableReason?:string };
 export type TutorialCatalog = {
   scenarios:TutorialScenario[];
   execution:TutorialExecution;

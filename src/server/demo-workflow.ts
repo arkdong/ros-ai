@@ -25,7 +25,7 @@ type Research = {
 /** What the demo keeps about a project: how far it got, and which block and artifact each part of the research became. */
 export type WorkflowSession = { projectId: string; scenario: 'workflow'; step: number; createdAt: string; nodes: Record<string, string>; artifacts: Record<string, string> };
 
-const TITLE = 'Demo · AI in Dutch business';
+export const WORKFLOW_TITLE = 'Demo · AI in Dutch business';
 const source = (path: string) => fileURLToPath(new URL(`../../examples/demo-workflow/${path}`, import.meta.url));
 const FILES = { data: 'data/CBS AI use by company size 2024.csv', code: 'code/AI use by company size.py', notebook: 'notebooks/Explore the turnover gap.ipynb', report: 'report.md' };
 const RECORDED = 'Recorded for this demo on 11 October 2026 while it was prepared; no live search.';
@@ -77,14 +77,14 @@ function research(): Research {
 export class WorkflowTutorial {
   constructor(private store: Store, private folders: ProjectFolders, private importArtifacts: (projectId: string, nodeId: string, artifacts: ImportArtifact[], request: string) => Artifact[]) {}
 
-  create(): string {
+  /** Builds the demo in the folder given, or in a fresh one: a folder that does not exist yet and that no other project, even a trashed one, still claims. */
+  create(folder?: string): string {
     const content = research();
-    // A fresh folder each time: one that does not exist yet and that no other project, even a trashed one, still claims.
-    const first = this.folders.suggest(TITLE).path;
-    const target = Array.from({ length: 100 }, (_, index) => index ? `${first} ${index + 1}` : first)
+    const first = this.folders.suggest(WORKFLOW_TITLE).path;
+    const target = folder || Array.from({ length: 100 }, (_, index) => index ? `${first} ${index + 1}` : first)
       .find(path => { if (existsSync(path)) return false; try { this.folders.prepare(path); return true; } catch { return false; } });
     if (!target) throw new StoreError('Could not find a free folder for the demo. Remove older demo folders and try again.', 409);
-    const project = this.store.createProject(TITLE);
+    const project = this.store.createProject(WORKFLOW_TITLE);
     try { this.folders.attach(project.id, target); } catch (error) { this.store.trashProject(project.id); throw error; }
     return this.store.atomic(() => {
       const session: WorkflowSession = { projectId: project.id, scenario: 'workflow', step: 0, createdAt: now(), nodes: {}, artifacts: {} };
