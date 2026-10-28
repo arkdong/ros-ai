@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, History, LayoutGrid, LoaderCircle, Maximize, Minus, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -44,9 +44,9 @@ import { fileMediaType, fileUrl } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
 import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
 import { CodeView, modKey } from './code';
-import { CanvasDock } from './CanvasDock';
+import { CanvasDock, type DockItem } from './CanvasDock';
 import { CanvasMinimap } from './CanvasMinimap';
-import { CanvasToolSwitch, useCanvasTool } from './CanvasTool';
+import { useCanvasTool } from './CanvasTool';
 
 function notebookCard(detail: ProjectDetail, nodeId: string): Pick<CardData, 'notebook' | 'notebookFigure'> {
   const notebook = detail.notebooks?.find(item => item.nodeId === nodeId);
@@ -469,7 +469,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const overlay = element.getBoundingClientRect();
         if (overlay.height) top = Math.max(top, overlay.bottom - bounds.top + 22);
       }
-      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .canvas-hint, .edge-selection, .ros-dock') || []) {
+      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .edge-selection, .ros-dock') || []) {
         const overlay = element.getBoundingClientRect();
         if (overlay.height && overlay.top > bounds.top + bounds.height / 2) bottom = Math.max(bottom, bounds.bottom - overlay.top + 22);
       }
@@ -1072,6 +1072,30 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     onMoveStart: closeLabelMenu,
     onMoveEnd: (_, view) => saveLocal(viewKey, view),
   });
+  // The map's tools, in the groups the dock draws: pointer, add, arrange, history, view, demo. An empty map offers
+  // Add block alone, with Undo beside it only when there is something to undo.
+  const divider = (id: string): DockItem => ({ id, divider: true });
+  const addItem: DockItem = { id: 'add', label: selectedGroup ? 'Add inside' : 'Add block', hint: selectedGroup ? `Into ${selectedGroup.title}` : undefined, icon: <Plus size={18}/>, disabled: readonly || busy, testId: 'add-node', onClick: () => onAdd(selectedGroup?.id ?? null) };
+  const historyItems: DockItem[] = [
+    ...(onUndo ? [{ id: 'undo', label: 'Undo', hint: `${modKey}Z`, icon: <Undo2 size={18}/>, disabled: !detail.canUndo || readonly || busy, onClick: onUndo }] : []),
+    ...(onRedo ? [{ id: 'redo', label: 'Redo', hint: modKey === '⌘' ? '⌘⇧Z' : 'Ctrl+Shift+Z', icon: <Redo2 size={18}/>, disabled: !detail.canRedo || readonly || busy, onClick: onRedo }] : []),
+    ...(onHistory ? [{ id: 'history', label: 'History', hint: 'Earlier versions of the map', icon: <History size={18}/>, pressed: historyOpen, expanded: historyOpen, controls: 'canvas-content-history', onClick: onHistory }] : []),
+  ];
+  const dockItems: DockItem[] = !nodes.length ? [addItem, ...(historyItems.length && (detail.canUndo || detail.canRedo) ? [divider('history-divider'), ...historyItems] : [])] : [
+    { id: 'move', label: 'Move', hint: 'V', icon: <MousePointer2 size={18}/>, pressed: canvasTool.tool === 'move', onClick: () => canvasTool.setTool('move') },
+    { id: 'hand', label: 'Hand', hint: 'H, or hold Space', icon: <Hand size={18}/>, pressed: canvasTool.tool === 'hand', onClick: () => canvasTool.setTool('hand') },
+    divider('add-divider'), addItem, divider('arrange-divider'),
+    { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks' : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
+    ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
+    { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
+    { id: 'tidy', label: 'Tidy', hint: 'Line blocks up', icon: arranging || animatingLayout ? <LoaderCircle size={18} className="spin"/> : <LayoutGrid size={18}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
+    { id: 'delete', label: 'Delete', hint: deletable.length > 1 ? `${deletable.length} picked blocks · ⌫` : '⌫', icon: <Trash2 size={18}/>, disabled: !deletable.length, onClick: removeSelected },
+    ...(historyItems.length ? [divider('history-divider'), ...historyItems] : []),
+    divider('view-divider'),
+    { id: 'all', label: 'See all', hint: 'Every block in view', icon: <Maximize size={18}/>, onClick: () => void fitCanvas(400, true) },
+    { id: 'collapse', label: 'Collapse', hint: 'Close every open group', icon: <PanelTopClose size={18}/>, disabled: !expandedIds.length, onClick: () => { onExpandedChange([]); onSelect(null); } },
+    ...(onDemo || onTour ? [divider('demo-divider'), ...(onDemo ? [{ id: 'demo', label: demoLabel, icon: <BookOpen size={18}/>, onClick: onDemo }] : []), ...(onTour ? [{ id: 'tour', label: 'Tour saved research', icon: <BookOpen size={18}/>, onClick: onTour }] : [])] : []),
+  ];
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
@@ -1079,30 +1103,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodeDragThreshold={0} nodesConnectable={!readonly} selectNodesOnDrag={false}
       panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
-      <div className="canvas-context"><span className="eyebrow"><span className="live-dot"/>{historyCanvas ? 'Saved canvas · read only' : proposal ? 'Proposed changes' : 'Research canvas'}</span><span>{displayed.canvas.nodes.filter(node=>!isGroup(node)).length} blocks · {displayed.canvas.nodes.filter(isGroup).length} groups</span></div>
-      <div className="canvas-edit-controls nodrag nopan" role="toolbar" aria-label="Canvas editing">
-        <CanvasToolSwitch tool={canvasTool.tool} onChange={canvasTool.setTool}/>
-        <button className="secondary small canvas-add-button" data-testid="add-node" aria-label={selectedGroup?`Add a block inside ${selectedGroup.title}`:"Add block to canvas"} disabled={readonly||busy} onClick={()=>onAdd(selectedGroup?.id??null)}><Plus size={15}/> {selectedGroup?"Add inside":"Add block"}</button>
-        {onUndo&&<button className="icon-button" aria-label="Undo canvas change" title={`Undo canvas change (${modKey}Z)`} disabled={!detail.canUndo||readonly||busy} onClick={onUndo}><Undo2 size={16}/></button>}
-        {onRedo&&<button className="icon-button" aria-label="Redo canvas change" title={`Redo canvas change (${modKey === '⌘' ? '⌘⇧Z' : 'Ctrl+Shift+Z'})`} disabled={!detail.canRedo||readonly||busy} onClick={onRedo}><Redo2 size={16}/></button>}
-        {onHistory&&<button className={`icon-button ${historyOpen?'active':''}`} aria-label="Canvas history" title="Canvas content history" aria-expanded={historyOpen} aria-controls="canvas-content-history" onClick={onHistory}><History size={16}/></button>}
-        {onDemo&&<button className="secondary small canvas-add-button" onClick={onDemo}><BookOpen size={14}/>{demoLabel}</button>}
-        {onTour&&<button className="icon-button" title="Tour saved research" aria-label="Start guided demo" onClick={onTour}><BookOpen size={17}/></button>}
-      </div>
+      {(historyCanvas || proposal) && <div className="canvas-context"><span className="canvas-state">{historyCanvas ? 'Saved canvas · read only' : 'Proposed changes'}</span></div>}
       {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
     </div>
-    <CanvasDock label="Canvas tools" items={[
-      { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks.' : 'Pick blocks, then put them in a group.', icon: <BoxSelect size={19}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
-      ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Dissolve the selected group. Its blocks stay where they are.', icon: <Ungroup size={19}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
-      { id: 'up', label: 'Up a level', hint: 'Go to the group around the selected block.', icon: <CornerLeftUp size={19}/>, onClick: broader },
-      { id: 'tidy', label: 'Tidy', hint: 'Line blocks up so nothing overlaps.', icon: arranging || animatingLayout ? <LoaderCircle size={19} className="spin"/> : <LayoutGrid size={19}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
-      { id: 'delete', label: 'Delete', hint: deletable.length > 1 ? `Delete the ${deletable.length} picked blocks (⌫).` : 'Delete the selected block (⌫).', icon: <Trash2 size={19}/>, disabled: !deletable.length, onClick: removeSelected },
-      { id: 'all', label: 'See all', hint: 'Zoom out to show every block.', icon: <Maximize size={19}/>, onClick: () => void fitCanvas(400, true) },
-      { id: 'collapse', label: 'Collapse', hint: 'Close every open group.', icon: <PanelTopClose size={19}/>, disabled: !expandedIds.length, onClick: () => { onExpandedChange([]); onSelect(null); } },
-    ]}/>
+    <CanvasDock label="Canvas tools" items={dockItems}/>
     {labelMenu && (() => { const target = displayed.canvas.nodes.find(node => node.id === labelMenu.nodeId); return target ? <LabelMenu key={target.id} node={target} left={labelMenu.left} top={labelMenu.top} onClose={closeLabelMenu} onPick={value => { closeLabelMenu(); void mutate([{ type: 'updateNode', id: target.id, patch: labelPatch(target, value) }], value ? `Label as ${value.trim().slice(0, 40)}` : 'Remove label'); }}/> : null; })()}
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
-    {!nodes.length && <div className="canvas-empty"><BookOpen size={34} strokeWidth={1.2}/><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p></div>}
+    {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p></div>}
     {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Choose another note to connect</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
     {selectedAggregate && <section className="aggregate-relationships nodrag nopan nowheel" role="dialog" aria-modal="false" aria-label="Contributing relationships">
@@ -1115,7 +1122,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       </li>)}</ol>
     </section>}
     <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
-    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div><div className="canvas-hint">Double-click to open content · Groups expand with their arrow · drag to arrange</div>
+    <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div>
   </div>;
 }
 export function ResearchCanvas(props: Props) { return <ReactFlowProvider key={props.detail.project.id}><FlowCanvas {...props}/></ReactFlowProvider>; }

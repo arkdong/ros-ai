@@ -1518,8 +1518,8 @@ input::placeholder,textarea::placeholder {
   color: #6b6b6b;
 }
 input:focus,textarea:focus,select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 12%,transparent);
+  border-color: #c4c4c4;
+  box-shadow: none;
 }
 pre {
   font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -1935,9 +1935,9 @@ a {
   gap: 6px;
   align-items: center;
   font-weight: 500;
-  font-size: 13px;
-  color: #171717;
-  text-transform: capitalize;
+  font-size: 12px;
+  color: #6b6b6b;
+  text-transform: none;
   letter-spacing: 0;
 }
 .card-title {
@@ -2485,9 +2485,9 @@ a {
   white-space: normal;
 }
 .kind-choices button.selected {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: #c9c9c9;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 .kind-choices span {
   font-size: 14px;
@@ -3076,58 +3076,37 @@ a {
   color: #171717;
   font-size: 13px;
 }
-.canvas-context .eyebrow {
-  font-size: 13px;
-  color: #171717;
-}
 .unified-canvas .canvas-tools {
   bottom: 22px;
   right: 21px;
   background: #ffffff;
 }
-.canvas-hint {
-  position: absolute;
-  bottom: 29px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  font-size: 13px;
-  color: #6b6b6b;
-  white-space: nowrap;
-  pointer-events: none;
-}
 .canvas-empty {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  top: 42%;
+  transform: translate(-50%,-50%);
   width: 100%;
   text-align: center;
   display: flex;
   align-items: center;
   flex-direction: column;
-  top: 15%;
   padding: 0 18px;
   pointer-events: none;
 }
 .canvas-empty button {
   pointer-events: auto;
 }
-.canvas-empty>svg {
-  margin: 0 auto;
-  color: #6b6b6b;
-}
 .canvas-empty h2 {
-  margin: 22px 0 12px;
+  margin: 0 0 10px;
   font-weight: 500;
-  font-size: 34px;
-  letter-spacing: -1.1px;
+  font-size: 28px;
+  letter-spacing: -.6px;
   color: #171717;
 }
 .canvas-empty p {
-  color: #171717;
-  font-size: 15px;
+  color: #6b6b6b;
+  font-size: 14px;
   max-width: 300px;
   margin-left: auto;
   margin-right: auto;
@@ -3158,11 +3137,11 @@ a {
   height: 23px;
 }
 .research-card .card-type {
-  font-size: 13px;
-  letter-spacing: .25px;
+  font-size: 12px;
+  letter-spacing: 0;
   gap: 6px;
-  text-transform: uppercase;
-  color: #171717;
+  text-transform: none;
+  color: #6b6b6b;
 }
 .research-card .card-title {
   font-size: 17px;
@@ -3253,9 +3232,7 @@ a {
 }
 .research-card.selected {
   border-color: var(--accent);
-  outline: 2px solid color-mix(in srgb,var(--accent) 75%,#a7d72c);
-  outline-offset: 2px;
-  box-shadow: 0 5px 15px #00000012;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .unified-canvas .research-card.selected {
   border-color: var(--accent);
@@ -3296,10 +3273,10 @@ a {
   display: flex;
   align-items: center;
   gap: 5px;
-  text-transform: uppercase;
-  font-size: 13px;
-  letter-spacing: .3px;
-  color: #171717;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: #6b6b6b;
 }
 .canvas-artifact .icon-button {
   height: 23px;
@@ -3750,17 +3727,18 @@ a {
   align-items: center;
   gap: 8px;
 }
-.single-canvas-shell button:focus-visible,.single-canvas-shell input:focus-visible,.single-canvas-shell textarea:focus-visible,.single-canvas-shell select:focus-visible {
+/* Lime marks keyboard focus on buttons; a field shows focus by its darker hairline. */
+.single-canvas-shell button:focus-visible {
   outline: 2px solid #a7d72c;
   outline-offset: 3px;
+}
+.single-canvas-shell input:focus-visible,.single-canvas-shell textarea:focus-visible,.single-canvas-shell select:focus-visible {
+  outline: 0;
 }
 .single-canvas-shell .edge-selection {
   top: 110px;
 }
 @media (max-width:1200px) {
-  .canvas-hint {
-    display: none;
-  }
   .single-canvas-shell .workspace-heading h1 {
     max-width: 31vw;
   }
@@ -3791,9 +3769,6 @@ a {
   }
   .node-modal {
     height: calc(100dvh - 40px);
-  }
-  .canvas-context {
-    left: 18px;
   }
   .single-workspace {
     width: 100%;
@@ -3833,19 +3808,6 @@ a {
     height: 30px;
     padding: 6px;
     justify-content: center;
-  }
-  .canvas-context {
-    top: 19px;
-    left: 16px;
-  }
-  .canvas-context>span:last-child {
-    display: none;
-  }
-  .canvas-context .eyebrow {
-    font-size: 13px;
-  }
-  .canvas-empty {
-    top: 25%;
   }
   .canvas-empty h2 {
     font-size: 27px;
@@ -4360,15 +4322,9 @@ a {
   width: 34px;
   height: 34px;
 }
-.single-canvas-shell .canvas-context {
-  color: #6b6b6b;
-}
-.single-canvas-shell .canvas-context .eyebrow {
-  color: #6b6b6b;
-}
 .single-canvas-shell .canvas-empty h2 {
-  font-size: 32px;
-  letter-spacing: -1px;
+  font-size: 28px;
+  letter-spacing: -.6px;
   font-weight: 500;
   color: #171717;
 }
@@ -5133,8 +5089,8 @@ button.outline-title:hover {
 }
 .single-canvas-shell .project-start-choices>button.selected {
   background: #ffffff;
-  border-color: #b7ef32;
-  box-shadow: 0 0 0 1px #b7ef32;
+  border-color: #c9c9c9;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
   color: #171717;
 }
 .project-start-choices>button>span:first-of-type {
@@ -5265,12 +5221,6 @@ button.outline-title:hover {
     width: 365px;
     flex-basis: 365px;
   }
-  .single-canvas-shell .canvas-context {
-    left: 19px;
-  }
-  .single-canvas-shell .canvas-context>span:last-child {
-    display: none;
-  }
 }
 @media (max-width:850px) {
   .assistant-panel {
@@ -5389,9 +5339,6 @@ button.outline-title:hover {
   .single-canvas-shell .assistant-composer textarea {
     font-size: 16px;
     min-height: 85px;
-  }
-  .single-canvas-shell .canvas-context .eyebrow {
-    font-size: 13px;
   }
   .single-canvas-shell .canvas-tools .icon-button {
     width: 32px;

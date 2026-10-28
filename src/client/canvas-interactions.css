@@ -21,8 +21,8 @@
   margin-bottom: 10px;
 }
 .direct-canvas .research-card .card-type {
-  letter-spacing: .045em;
-  font-size: 13px;
+  letter-spacing: 0;
+  font-size: 12px;
   color: #6b6b6b;
 }
 .direct-canvas .research-card .card-label {
@@ -341,11 +341,11 @@
   border-color: #dedede;
   background: #ffffff;
 }
+/* The selected block carries one lime hairline; its connection handles appear on hover, as on any block. */
 .direct-canvas.unified-canvas .research-card.selected {
-  outline-offset: 2px;
   border-color: #a3d52b;
-  outline: 2px solid #b7ef32;
-  box-shadow: 0 2px 6px #00000006;
+  outline: 0;
+  box-shadow: 0 0 0 1px #a3d52b, 0 2px 6px #00000006;
 }
 .direct-canvas.unified-canvas .relationship-handle {
   width: 15px;
@@ -371,7 +371,7 @@
 .direct-canvas .relationship-handle.react-flow__handle-right {
   right: 0;
 }
-.direct-canvas .research-card:hover>.relationship-handle,.direct-canvas .research-card.selected>.relationship-handle,.direct-canvas .research-card:focus-within>.relationship-handle,.direct-canvas.is-connecting .relationship-handle,.direct-canvas .relationship-handle:focus-visible {
+.direct-canvas .research-card:hover>.relationship-handle,.direct-canvas .research-card:focus-within>.relationship-handle,.direct-canvas.is-connecting .relationship-handle,.direct-canvas .relationship-handle:focus-visible {
   opacity: 1;
 }
 .direct-canvas.unified-canvas .relationship-handle:hover,.direct-canvas .relationship-handle:focus-visible {
@@ -480,20 +480,6 @@
   border-color: #a3d52b;
   box-shadow: 0 0 0 1px #b7ef32,0 2px 6px #00000006;
 }
-.direct-canvas .canvas-context {
-  top: 23px;
-  left: 25px;
-  font-size: 14px;
-  color: #6b6b6b;
-}
-.direct-canvas .canvas-context .eyebrow {
-  font-size: 13px;
-  letter-spacing: .055em;
-  color: #6b6b6b;
-}
-.direct-canvas .canvas-context .live-dot {
-  background: #6b6b6b;
-}
 .direct-canvas .connection-instruction {
   position: absolute;
   left: 50%;
@@ -558,11 +544,6 @@
   width: 32px;
   height: 32px;
 }
-.direct-canvas .canvas-hint {
-  font-size: 14px;
-  color: #6b6b6b;
-  bottom: 33px;
-}
 /* Keep automatically elevated edge SVGs inside one layer below their labels. */
 .direct-canvas .react-flow__edges {
   z-index: 2000;
@@ -602,9 +583,6 @@
   box-shadow: 0 0 0 1px #b7ef32;
 }
 @media (max-width:1200px) {
-  .direct-canvas .canvas-context {
-    left: 20px;
-  }
   .direct-canvas .relationship-semantics {
     display: none;
   }
@@ -613,10 +591,6 @@
   }
 }
 @media (max-width:600px) {
-  .direct-canvas .canvas-context {
-    top: 18px;
-    left: 16px;
-  }
   .single-canvas-shell .direct-canvas .relationship-editor {
     left: 15px;
     top: 90px;
