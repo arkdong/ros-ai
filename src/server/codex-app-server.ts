@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -88,11 +88,13 @@ export function childEnvironment(api: CodexApiKey | null = null): NodeJS.Process
   if (api) { env.CODEX_HOME = api.home; if (api.key) env[API_KEY_ENV] = api.key; }
   return env;
 }
-export function inspectCodexProtocol(): CodexProtocol {
+/** One short Codex command. It runs beside the local server rather than holding it up, so every other request is answered meanwhile. */
+const codexRun = (args: string[], timeout: number) => new Promise<{ ok: boolean; stdout: string; stderr: string }>(done =>
+  execFile(codexBinary(), args, { encoding: 'utf8', timeout, maxBuffer: 20000, env: childEnvironment() }, (error, stdout, stderr) => done({ ok: !error, stdout, stderr })));
+export async function inspectCodexProtocol(): Promise<CodexProtocol> {
   const directory = mkdtempSync(join(tmpdir(), 'ros-ai-codex-schema-'));
   try {
-    const result = spawnSync(codexBinary(), ['app-server', 'generate-json-schema', '--experimental', '--out', directory], { encoding: 'utf8', timeout: 10000, maxBuffer: 20000, env: childEnvironment() });
-    if (result.status !== 0) return noProtocol;
+    if (!(await codexRun(['app-server', 'generate-json-schema', '--experimental', '--out', directory], 10000)).ok) return noProtocol;
     const thread = JSON.parse(readFileSync(join(directory, 'v2/ThreadStartParams.json'), 'utf8'));
     const resume = JSON.parse(readFileSync(join(directory, 'v2/ThreadResumeParams.json'), 'utf8'));
     const turn = JSON.parse(readFileSync(join(directory, 'v2/TurnStartParams.json'), 'utf8'));
@@ -103,13 +105,12 @@ export function inspectCodexProtocol(): CodexProtocol {
   } catch { return noProtocol; }
   finally { rmSync(directory, { recursive: true, force: true }); }
 }
-export function readCliStatus() {
-  const run = (file: string, args: string[]) => spawnSync(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 20000, env: childEnvironment() });
-  const version = run(codexBinary(), ['--version']), login = version.status === 0 ? run(codexBinary(), ['login', 'status']) : null;
-  const output = `${login?.stdout ?? ''}\n${login?.stderr ?? ''}`;
+export async function readCliStatus() {
+  const [version, login] = await Promise.all([codexRun(['--version'], 5000), codexRun(['login', 'status'], 5000)]);
+  const output = version.ok ? `${login.stdout}\n${login.stderr}` : '';
   return {
-    installed: version.status === 0, version: version.status === 0 ? version.stdout.trim().slice(0, 100) : null,
-    signedIn: login?.status === 0 && /logged in/i.test(output),
+    installed: version.ok, version: version.ok ? version.stdout.trim().slice(0, 100) : null,
+    signedIn: version.ok && login.ok && /logged in/i.test(output),
     authMethod: /using ChatGPT/i.test(output) ? 'chatgpt' as const : /API key/i.test(output) ? 'api-key' as const : null,
   };
 }

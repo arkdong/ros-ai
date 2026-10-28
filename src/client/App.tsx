@@ -32,10 +32,9 @@ import { WorkflowDemo } from './WorkflowDemo';
 import type { TutorialSession } from '../shared/tutorial';
 import { NetworkPrompt } from './NetworkPrompt';
 import { BalanceSettings, GeneralSettings, SettingsSidebar, UsageSettings, type SettingsSection } from './SettingsPage';
-import { PluginsPage, PluginsSidebar } from './PluginsPage';
-import { SkillsPage, SkillsSidebar } from './SkillsPage';
-import type { SkillSummary } from '../shared/skills';
-import { AgentsSidebar, type AgentId } from './ModelPage';
+import { PluginsPage, PluginsSidebar, lastInstalledPlugins } from './PluginsPage';
+import { SkillsPage, SkillsSidebar, lastSkills, type SkillItem } from './SkillsPage';
+import { AgentsSidebar, lastInstalledAgents, type AgentId } from './ModelPage';
 import { PLUGINS, type PluginId } from '../shared/plugins';
 import { MemoryPage } from './MemoryPage';
 import { AppRail, RailPageFrame, type RailPage } from './AppRail';
@@ -63,10 +62,10 @@ import type { OutsideAgentsStatus } from '../shared/outside-agents';
 type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion' | 'file' | 'google' | 'app' | 'training';
 
 export function App(){
-  const [agentId,setAgentId]=useState<AgentId|null>(null),[installedAgents,setInstalledAgents]=useState<AgentId[]>([]);
-  const [pluginId,setPluginId]=useState<PluginId|null>(null),[installedPlugins,setInstalledPlugins]=useState<PluginId[]>([]);
-  // Skills share the Plugins page: its sidebar switches between the two.
-  const [skillName,setSkillName]=useState<string|null>(null),[skillList,setSkillList]=useState<SkillSummary[]>([]);
+  // Each sidebar opens with what its page last found, saved on this computer, while the page reads again.
+  const [agentId,setAgentId]=useState<AgentId|null>(null),[installedAgents,setInstalledAgents]=useState<AgentId[]>(lastInstalledAgents);
+  const [pluginId,setPluginId]=useState<PluginId|null>(null),[installedPlugins,setInstalledPlugins]=useState<PluginId[]>(lastInstalledPlugins);
+  const [skillName,setSkillName]=useState<string|null>(null),[skillList,setSkillList]=useState<SkillItem[]>(lastSkills);
   const [projectOpen,setProjectOpenState]=useState<boolean>(()=>readSaved('sidebar-project-open',true));const setProjectOpen=(open:boolean)=>{setProjectOpenState(open);saveLocal('sidebar-project-open',open);};
   const [projects,setProjects]=useState<Project[]>([]),[projectId,setProjectId]=useState<string|null>(null),[detail,setDetail]=useState<ProjectDetail|null>(null);
   const [setup,setSetup]=useState<SetupStatus|null>(null),[setupOpen,setSetupOpen]=useState(false);
