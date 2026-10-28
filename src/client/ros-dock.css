@@ -77,7 +77,8 @@
 .ros-chip-button > :not(span), .ros-context > :not(span) { flex-shrink: 0; }
 .ros-chip-button:hover:not(:disabled), .ros-chip-button[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
 .ros-chip-button:disabled, .single-canvas-shell .ros-chip-button:disabled { cursor: default; color: var(--body); opacity: 1; }
-.ros-context { display: inline-flex; flex: 0 1000 auto; align-items: center; gap: 6px; min-width: 28px; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--muted); }
+/* The focus chip's shrink weight is large enough that the other chips lose not even a fraction of a pixel while it gives way; a fraction would cut their labels to an ellipsis. */
+.ros-context { display: inline-flex; flex: 0 1000000 auto; align-items: center; gap: 6px; min-width: 28px; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--muted); }
 .ros-context > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ros-context.focused { min-width: 56px; }
 @container (min-width: 548px) { .ros-context, .ros-context.focused { min-width: 96px; } }
@@ -177,7 +178,8 @@
 .assistant-panel.ros-panel .assistant-composer.ros-composer { overflow: visible; margin: 8px 12px 12px; padding: 12px 10px 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
 .assistant-panel.ros-panel .ros-composer textarea, .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea { display: block; width: 100%; box-sizing: border-box; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; outline: 0; box-shadow: none; resize: none; background: transparent; font: inherit; font-size: var(--text-md); line-height: 1.5; color: var(--ink); }
 .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea:focus, .single-canvas-shell .assistant-panel.ros-panel .ros-composer textarea:focus-visible { outline: 0; box-shadow: none; border: 0; }
-.assistant-panel.ros-panel .ros-composer .ros-chip-button { margin-left: -8px; }
+/* The pull to the left is on each chip's wrapper: on the chip itself it took 8px from the width its label may use (max-width 100%), cutting every label short. */
+.assistant-panel.ros-panel .ros-composer .ros-model { margin-left: -8px; }
 .assistant-panel.ros-panel .ros-composer .ros-send { margin-left: 4px; }
 /* The side panel is narrow: the composer's footer takes two rows, what Ros runs with above, where it looks and Send below. */
 .ros-footer-break { display: none; }
