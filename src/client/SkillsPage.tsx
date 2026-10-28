@@ -6,7 +6,7 @@ import { BrandLogo } from './brand-logos';
 import { MarkdownEditor } from './MarkdownEditor';
 import { Modal } from './Modal';
 import { api, post } from './api';
-import { readSaved, saveLocal } from './persistence';
+import { readSaved, readSavedList, saveLocal } from './persistence';
 import './skills.css';
 
 /** Skills: the person's saved ways of working, in the SKILL.md format Claude Code and Codex use. One library;
@@ -45,24 +45,37 @@ type AddTab = 'write' | 'paste' | 'link' | 'file';
 /** How the Add dialog opens: on a tab, or straight on the review of one skill (a row's +). */
 type AddStart = { tab?: AddTab; request?: SkillPreviewRequest };
 
+/** One of the person's skills, as a list shows it. */
+export type SkillItem = Pick<SkillSummary, 'name' | 'title' | 'description' | 'enabled'>;
+/** The person's skills as last read, saved on this computer, so the page and its sidebar open with them. */
+export const lastSkills = () => readSavedList<SkillItem>('skills-list', item => typeof item?.name === 'string' && typeof item.title === 'string' && typeof item.description === 'string' && typeof item.enabled === 'boolean');
+/** What the page read last in this session: it opens with that at once while it reads again. */
+let lastReads: { state?: SkillsState; found?: FoundSkill[] } = {};
+
 /** The sidebar lists the person's skills; a dot marks the ones that are on. */
-export function SkillsSidebar({ skills, selected, onSelect }: { skills: SkillSummary[]; selected: string | null; onSelect: (name: string | null) => void }) {
+export function SkillsSidebar({ skills, selected, onSelect }: { skills: SkillItem[]; selected: string | null; onSelect: (name: string | null) => void }) {
   return <CatalogueSidebar sections={[{ id: 'skills', label: 'Skills' }]} label="Your skills" empty="No skills yet" installed={skills.map(item => ({ id: item.name, name: item.title, mark: <BookText size={16}/>, off: !item.enabled }))} selected={selected} onSelect={onSelect} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
 }
 
-export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publicDemo: boolean; selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillSummary[]) => void }) {
-  const [state, setState] = useState<SkillsState | null>(null), [found, setFound] = useState<FoundSkill[]>([]), [error, setError] = useState('');
+export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publicDemo: boolean; selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillItem[]) => void }) {
+  const [state, setState] = useState<SkillsState | null>(lastReads.state ?? null), [found, setFound] = useState<FoundSkill[]>(lastReads.found ?? []), [error, setError] = useState(''), [remembered] = useState(lastSkills);
   const [adding, setAdding] = useState<AddStart | null>(null), [notice, setNotice] = useState('');
+  useEffect(() => { lastReads = { state: state ?? undefined, found }; }, [state, found]);
   const refresh = useCallback(async () => {
     if (publicDemo) return;
-    const [library, local] = await Promise.allSettled([api<SkillsState>('/api/skills'), api<{ found: FoundSkill[] }>('/api/skills/found')]);
-    if (library.status === 'fulfilled') { setState(library.value); onSkills(library.value.skills); setError(''); } else setError(fail(library.reason));
-    if (local.status === 'fulfilled') setFound(local.value.found);
+    // Your skills show as soon as they are read; the look through your other tools' folders follows on its own.
+    const local = api<{ found: FoundSkill[] }>('/api/skills/found').then(value => setFound(value.found), () => undefined);
+    try {
+      const library = await api<SkillsState>('/api/skills');
+      setState(library); onSkills(library.skills); setError('');
+      saveLocal('skills-list', library.skills.map(({ name, title, description, enabled }) => ({ name, title, description, enabled })));
+    } catch (cause) { setError(fail(cause)); }
+    await local;
   }, [publicDemo, onSkills]);
   useEffect(() => { void refresh(); }, [refresh]);
   const head = (action?: ReactNode) => <header className="plugins-head"><div><h1>Skills</h1><p>Ways of working your agents follow when a task matches</p></div>{action}</header>;
   if (publicDemo) return <div className="plugins-page skills-page">{head()}<p className="rail-page-note">This demo keeps no skills. Launch the local workspace to add yours.</p></div>;
-  const skills = state?.skills ?? [];
+  const skills: SkillItem[] = state?.skills ?? remembered;
   const added = (names: string[]) => {
     setAdding(null);
     setNotice(names.length === 1 ? `${skillTitle(names[0]!)} is in your skills. Agents can use it from your next request.` : `${names.length} skills are in your skills. Agents can use them from your next request.`);
@@ -78,7 +91,7 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
     {notice && <p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section className="plugin-group"><h2>Your skills</h2>
-      {!state ? <p className="skills-empty"><LoaderCircle size={13} className="spin"/> Reading your skills…</p>
+      {!state && !skills.length ? <p className="skills-empty"><LoaderCircle size={13} className="spin"/> Reading your skills…</p>
         : skills.length ? <div className="plugin-grid">{skills.map(skill => <CatalogueRow key={skill.name} mark={<BookText size={20}/>} name={skill.title} summary={skill.description} state={{ label: skill.enabled ? 'On' : 'Off', connected: skill.enabled, shown: true }} action={<MoreHorizontal size={16}/>} onClick={() => onSelect(skill.name)}/>)}</div>
         : <p className="skills-empty">No skills yet. Write one, or add one from your other tools or the lists below.</p>}
     </section>

@@ -42,7 +42,10 @@ const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','d
 /** A training run the person adds (see TrainingView). Kept out of what agents may propose, Apps on or off, because it names a
  * folder and an ssh host on this computer, and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
 export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
-export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** A Notion block with the account the person chose to read it with (see NotionView), by its key in ros.ai. Kept out
+ * of what agents may propose and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
+const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
+export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
@@ -396,7 +399,9 @@ export class Store {
         canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
-        const patch = this.appPatch(project.id, node, operation.patch);
+        let patch = this.appPatch(project.id, node, operation.patch);
+        // An agent that changes a Notion block's filter or columns keeps the account the person chose for it.
+        if (proposal && patch.notion && node.notion?.account && !patch.notion.account && patch.notion.url === node.notion.url) patch = { ...patch, notion: { ...patch.notion, account: node.notion.account } };
         let updated = { ...node, ...patch };
         if (updated.blockType === 'app') delete updated.code;
         // A null height gives the card back to its content.

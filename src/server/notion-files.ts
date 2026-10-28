@@ -73,14 +73,16 @@ export class NotionFileSaver {
     this.isAllowed = options.isAllowed ?? notionFileHost;
   }
   offered() { return this.apps.connected().includes('notion'); }
-  private async call(tool: string, args: Json, signal?: AbortSignal): Promise<Json> {
-    const result = await this.apps.call('notion', tool, args, signal);
+  /** account: which of the person's Notion accounts, left out for the default. */
+  private async call(tool: string, args: Json, signal?: AbortSignal, account?: string): Promise<Json> {
+    const result = await this.apps.call('notion', tool, args, signal, account);
     if (result.isError) throw new StoreError(`Notion: ${clean(result.text.replace(/\\+/gu, '').match(/"message":\s*"(.+?)"\s*[,}]/u)?.[1] ?? result.text)}`, 502);
     try { return JSON.parse(result.text) as Json; } catch { return { text: result.text }; }
   }
-  /** Reads the page, finds the files the input names, gets fresh links for them and downloads each. */
-  async files(input: NotionSaveInput, signal?: AbortSignal): Promise<NotionFiles> {
-    const fetched = await this.call('notion-fetch', { id: input.page }, signal);
+  /** Reads the page, finds the files the input names, gets fresh links for them and downloads each, with the Notion
+   * account the agent named (left out, the default). */
+  async files(input: NotionSaveInput, signal?: AbortSignal, account?: string): Promise<NotionFiles> {
+    const fetched = await this.call('notion-fetch', { id: input.page }, signal, account);
     const text = String(fetched.text ?? '');
     if (!/<page\s/u.test(text) && fetched.metadata && (fetched.metadata as Json).type !== 'page') throw new StoreError('That Notion link is not a page. Give the page (or database row) the file is on.');
     const title = clean(String(fetched.title ?? ''), 120) || 'Notion page';
@@ -106,7 +108,7 @@ export class NotionFileSaver {
     }
     const references = wanted.flatMap(item => item.reference ? [item.reference] : []);
     if (references.length) {
-      const signed = await this.call('notion-get-file-download-urls', { references }, signal);
+      const signed = await this.call('notion-get-file-download-urls', { references }, signal, account);
       const found = signedUrls(signed, references);
       for (const item of wanted) if (item.reference) {
         const href = found.get(item.reference);
