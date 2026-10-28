@@ -1076,25 +1076,30 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     onMoveStart: closeLabelMenu,
     onMoveEnd: (_, view) => saveLocal(viewKey, view),
   });
-  // The map's tools, in the groups the dock draws: pointer, add, arrange, history, view, demo. An empty map offers
-  // Add block alone, with Undo beside it only when there is something to undo.
-  const divider = (id: string): DockItem => ({ id, divider: true });
-  const addItem: DockItem = { id: 'add', label: selectedGroup ? 'Add inside' : 'Add block', hint: selectedGroup ? `Into ${selectedGroup.title}` : undefined, icon: <Plus size={18}/>, disabled: readonly || busy, pressed: Boolean(addMenu), testId: 'add-node', onClick: () => {
+  // Add block opens its menu beside whichever control asked for it: the dock's black tile, or the button in the middle
+  // of an empty map. The menu goes to the right of the control, or to its left when the window is too narrow for that.
+  const openAddMenu = (control: HTMLElement) => {
     if (addMenu) { setAddMenu(null); return; }
-    const tile = area.current?.querySelector('[data-testid=add-node]'), frame = area.current?.getBoundingClientRect();
-    if (!tile || !frame) return;
-    const rect = tile.getBoundingClientRect();
-    setAddMenu({ left: rect.right - frame.left + 10, top: rect.top - frame.top - 6 });
-  } };
+    const frame = area.current?.getBoundingClientRect();
+    if (!frame) return;
+    const rect = control.getBoundingClientRect(), fits = rect.right + 10 + 280 <= frame.right - 16;
+    setAddMenu({ left: fits ? rect.right - frame.left + 10 : rect.left - frame.left - 10 - 280, top: rect.top - frame.top - 6 });
+  };
+  // The map's tools, in the groups the dock draws: add, pointer, arrange, history, view, demo. Add block is the dock's
+  // one black tile, and its hint says what a block can be. An empty map has its Add a block button in the middle
+  // instead, and shows the dock only when there is something to undo.
+  const divider = (id: string): DockItem => ({ id, divider: true });
+  const addItem: DockItem = { id: 'add', label: selectedGroup ? 'Add inside' : 'Add block', hint: selectedGroup ? `Into ${selectedGroup.title}` : 'Text, Code, Data, a file, a paper…', icon: <Plus size={18}/>, primary: true, disabled: readonly || busy, pressed: Boolean(addMenu), testId: 'add-node', onClick: event => openAddMenu(event.currentTarget) };
   const historyItems: DockItem[] = [
     ...(onUndo ? [{ id: 'undo', label: 'Undo', hint: `${modKey}Z`, icon: <Undo2 size={18}/>, disabled: !detail.canUndo || readonly || busy, onClick: onUndo }] : []),
     ...(onRedo ? [{ id: 'redo', label: 'Redo', hint: modKey === '⌘' ? '⌘⇧Z' : 'Ctrl+Shift+Z', icon: <Redo2 size={18}/>, disabled: !detail.canRedo || readonly || busy, onClick: onRedo }] : []),
     ...(onHistory ? [{ id: 'history', label: 'History', hint: 'Earlier versions of the map', icon: <History size={18}/>, pressed: historyOpen, expanded: historyOpen, controls: 'canvas-content-history', onClick: onHistory }] : []),
   ];
-  const dockItems: DockItem[] = !nodes.length ? [addItem, ...(historyItems.length && (detail.canUndo || detail.canRedo) ? [divider('history-divider'), ...historyItems] : [])] : [
+  const dockItems: DockItem[] = !nodes.length ? (historyItems.length && (detail.canUndo || detail.canRedo) ? historyItems : []) : [
+    addItem, divider('add-divider'),
     { id: 'move', label: 'Move', hint: 'V', icon: <MousePointer2 size={18}/>, pressed: canvasTool.tool === 'move', onClick: () => canvasTool.setTool('move') },
     { id: 'hand', label: 'Hand', hint: 'H, or hold Space', icon: <Hand size={18}/>, pressed: canvasTool.tool === 'hand', onClick: () => canvasTool.setTool('hand') },
-    divider('add-divider'), addItem, divider('arrange-divider'),
+    divider('arrange-divider'),
     { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks' : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
     ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
     { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
@@ -1116,11 +1121,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       {(historyCanvas || proposal) && <div className="canvas-context"><span className="canvas-state">{historyCanvas ? 'Saved canvas · read only' : 'Proposed changes'}</span></div>}
       {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
     </div>
-    <CanvasDock label="Canvas tools" items={dockItems}/>
+    {dockItems.length > 0 && <CanvasDock label="Canvas tools" items={dockItems}/>}
     {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} local={local} onPick={kind => { setAddMenu(null); onAdd(selectedGroup?.id ?? null, kind.id); }} onBrowse={kind => { setAddMenu(null); onBrowse(selectedGroup?.id ?? null, kind?.id); }} onClose={() => setAddMenu(null)}/>}
     {labelMenu && (() => { const target = displayed.canvas.nodes.find(node => node.id === labelMenu.nodeId); return target ? <LabelMenu key={target.id} node={target} left={labelMenu.left} top={labelMenu.top} onClose={closeLabelMenu} onPick={value => { closeLabelMenu(); void mutate([{ type: 'updateNode', id: target.id, patch: labelPatch(target, value) }], value ? `Label as ${value.trim().slice(0, 40)}` : 'Remove label'); }}/> : null; })()}
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
-    {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p></div>}
+    {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}
     {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Choose another note to connect</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
     {selectedAggregate && <section className="aggregate-relationships nodrag nopan nowheel" role="dialog" aria-modal="false" aria-label="Contributing relationships">

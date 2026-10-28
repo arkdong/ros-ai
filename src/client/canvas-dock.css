@@ -30,6 +30,10 @@
 .canvas-dock .canvas-dock-item:hover:not(:disabled), .canvas-dock .canvas-dock-item:focus-visible { background: #f2f2f2; }
 /* The tool in use, or a mode that is on, is a pressed grey tile. */
 .canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: #e8e8e8; color: var(--ink); }
+/* The card's one action: Add block is the black tile, first in the column, and stays black while its menu is open. */
+.canvas-dock .canvas-dock-item.primary, .canvas-dock .canvas-dock-item.primary.active { background: var(--ink); color: #ffffff; }
+.canvas-dock .canvas-dock-item.primary:hover:not(:disabled), .canvas-dock .canvas-dock-item.primary:focus-visible { background: #000000; }
+.canvas-dock .canvas-dock-item.primary:disabled { background: var(--line); color: var(--muted); }
 /* An unavailable tool keeps its place and greys its icon, rather than the global see-through fade. */
 .canvas-dock .canvas-dock-item:disabled { opacity: 1; color: #c2c2c2; }
 .canvas-dock-divider { width: 22px; height: 1px; margin: 2px 0; background: #eeeeee; }
@@ -57,6 +61,10 @@
 .canvas-dock-tip strong { font-weight: 600; }
 .canvas-dock-tip span { color: #b8b8b8; }
 .canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; transition-delay: .15s; }
+/* The dock rises in with the first block; an empty map has its Add a block button in the middle instead. */
+.canvas-dock { animation: canvas-dock-rise .28s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes canvas-dock-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .canvas-dock { animation: none; } }
 /* On short windows the column tightens so it stays clear of the minimap below it. */
 @media (max-height: 760px) {
   .canvas-dock { gap: 0; }
