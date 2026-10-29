@@ -8,7 +8,7 @@ A project is a canvas of Text, Code, Notebook, Data, File, External, Web, App an
 
 ## Install
 
-**Mac app.** Download `ros.ai-<version>-arm64.dmg` (Apple silicon) or `ros.ai-<version>-x64.dmg` (Intel) from the [latest release](https://github.com/arkdong/ros-ai/releases/latest), drag ros.ai to Applications and open it. Nothing else is needed. An unsigned build asks once: *System Settings → Privacy & Security → Open Anyway*.
+**Mac app.** Download the latest build for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) (every file is on the [latest release](https://github.com/arkdong/ros-ai/releases/latest)), drag ros.ai to Applications and open it. Nothing else is needed. An unsigned build asks once: *System Settings → Privacy & Security → Open Anyway*.
 
 **From source** (macOS, Linux, Windows under WSL) with Node.js 24 or newer:
 

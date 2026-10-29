@@ -75,6 +75,13 @@ jobs:
           pattern: ros.ai-mac-*
           merge-multiple: true
           path: dist
+      # Fixed names beside the versioned files, so ros-ai.io can link the latest build directly:
+      # https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg
+      - name: Add fixed-name copies of the DMGs
+        run: |
+          for arch in arm64 x64; do
+            cp dist/ros.ai-[0-9]*-"$arch".dmg "dist/ros.ai-mac-$arch.dmg"
+          done
       # A draft first, published only once every file is attached.
       - uses: softprops/action-gh-release@v2
         with:
