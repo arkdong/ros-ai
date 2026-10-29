@@ -1,17 +1,17 @@
 import type { Canvas, CanvasNode, Connection } from './types';
-import { displayRelationship } from './relationships';
+import { isTrail } from './links';
 
 export type RelationshipContribution = {
   connection: Connection;
   sourceTitle: string;
   targetTitle: string;
 };
+/** One line on the canvas: every link between the same two visible blocks, in either direction. */
 export type AggregateRelationship = {
   id: string;
   source: string;
   target: string;
   bidirectional: boolean;
-  label: string;
   contributions: RelationshipContribution[];
 };
 
@@ -37,31 +37,21 @@ export function aggregateTopLevelRelationships(canvas: Canvas, expandedIds?:read
     if (connection.label.trim().toLowerCase() === 'contains'
       && nodes.get(connection.source)?.kind === 'group'
       && nodes.get(connection.target)?.parentId === connection.source) continue;
-    const shown = displayRelationship(connection);
-    const source = rootOf(shown.source), target = rootOf(shown.target);
+    const source = rootOf(connection.source), target = rootOf(connection.target);
     if (!source || !target || source === target) continue;
     const id = `group-relationship:${[source, target].sort().map(encodeURIComponent).join(':')}`;
     let aggregate = pairs.get(id);
     if (!aggregate) {
-      aggregate = { id, source, target, bidirectional: false, label: '', contributions: [] };
+      aggregate = { id, source, target, bidirectional: false, contributions: [] };
       pairs.set(id, aggregate);
     } else if (aggregate.source !== source) aggregate.bidirectional = true;
     aggregate.contributions.push({ connection, sourceTitle: nodes.get(connection.source)!.title, targetTitle: nodes.get(connection.target)!.title });
-    const count = aggregate.contributions.length;
-    aggregate.label = `${count} relationship${count === 1 ? '' : 's'}`;
   }
   return [...pairs.values()];
 }
 
-/** Links an agent draws for its own steps (question to agent, agent to its Result notes, Web blocks and blocks it
- * added, result to its findings, and the older agent to Search to result links) carry no badge
- * on the canvas. Their wording stays in the relationship details. */
-export function quietRelationship(connection: Connection, node: (id: string) => CanvasNode | undefined): boolean {
-  const label = connection.label.trim().replace(/\s+/gu, ' ').toLowerCase(), from = node(connection.source), to = node(connection.target), source = from?.blockType, target = to?.blockType;
-  return (source === 'agent' && (target === 'search' || target === 'web' || to?.label === 'result' || label === 'added')) || (source === 'search' && label === 'found') || (target === 'agent' && label === 'taken on by') || (target === 'finding' && label === 'finding');
-}
-/** The badge a top-level relationship shows on the canvas; empty when it has none. */
-export function relationshipBadgeText(group: AggregateRelationship, node: (id: string) => CanvasNode | undefined): string {
-  if (group.contributions.every(item => quietRelationship(item.connection, node))) return '';
-  return group.contributions.length === 1 ? displayRelationship(group.contributions[0].connection).label.replace(/\s+/gu, ' ').trim() || 'Related' : `${group.contributions.length} relationships`;
+/** The word a line shows on the canvas: one link's own word, a count for several, nothing for trails or an unnamed link. */
+export function linkWord(group: AggregateRelationship, node: (id: string) => CanvasNode | undefined): string {
+  if (group.contributions.every(item => isTrail(item.connection, node))) return '';
+  return group.contributions.length === 1 ? group.contributions[0].connection.label.replace(/\s+/gu, ' ').trim() : `${group.contributions.length} links`;
 }

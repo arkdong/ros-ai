@@ -18,6 +18,10 @@ const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
 const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
+const linkSide = z.enum(['top','right','bottom','left']);
+/** The person's edit of a link on the canvas: its word, or its direction. Not offered to agents, whose canvas tool
+ * keeps the shape of the training snapshot; they add and remove links. */
+const updateConnectionSchema = z.object({ type: z.literal('updateConnection'), id: identifier, patch: z.object({ label: z.string().max(200).optional(), source: identifier.optional(), target: identifier.optional(), sourceHandle: linkSide.optional(), targetHandle: linkSide.optional() }).strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
   z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
   z.object({ type: z.literal('updateNode'), id: identifier, patch: z.object(fields).partial().strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict(),
@@ -45,7 +49,8 @@ export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).ma
 /** A Notion block with the account the person chose to read it with (see NotionView), by its key in ros.ai. Kept out
  * of what agents may propose and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
-export const mutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);
 /** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
@@ -434,9 +439,17 @@ export class Store {
         if (canvas.connections.some(item => item.source === connection.source && item.target === connection.target)) throw new StoreError('These nodes are already connected');
         if (canvas.connections.length >= MAX_CONNECTIONS) throw new StoreError(`A project supports at most ${MAX_CONNECTIONS} connections`);
         canvas.connections.push(connection); normalized.push(operation);
-      } else {
+      } else if (operation.type === 'removeConnection') {
         if (!canvas.connections.some(item => item.id === operation.id)) throw new StoreError('Connection is not active in this project');
         canvas.connections = canvas.connections.filter(item => item.id !== operation.id); normalized.push(operation);
+      } else {
+        const current = canvas.connections.find(item => item.id === operation.id);
+        if (!current) throw new StoreError('Connection is not active in this project');
+        const updated = { ...current, ...operation.patch };
+        activeNode(updated.source); activeNode(updated.target);
+        if (updated.source === updated.target) throw new StoreError('Connect two different nodes');
+        if (canvas.connections.some(item => item.id !== current.id && item.source === updated.source && item.target === updated.target)) throw new StoreError('These nodes are already connected');
+        canvas.connections = canvas.connections.map(item => item.id === current.id ? updated : item); normalized.push(operation);
       }
     }
     // Validate the final transaction, allowing a proposal to add parent and

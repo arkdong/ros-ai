@@ -1,0 +1,56 @@
+/* Links between blocks: a soft curve from the side of one block that faces the other to the facing side, drawn beneath
+   the cards, with its word in a chip at the middle. Trails, the lines ros.ai draws itself to show where a block came
+   from, are dotted and carry no word. Lime marks only the selected link's chip, as it marks the selected block. */
+.direct-canvas .react-flow__edgelabel-renderer { z-index: 1000; pointer-events: none; }
+.direct-canvas .react-flow__edge.link .react-flow__edge-path { stroke: #c2c2c2; stroke-width: 1.5; transition: stroke .12s; }
+.direct-canvas .react-flow__edge.link .link-edge.hovered .react-flow__edge-path { stroke: #8f8f8f; }
+.direct-canvas .react-flow__edge.link.selected .react-flow__edge-path { stroke: #171717; stroke-width: 2; }
+.direct-canvas .react-flow__edge.link.trail .react-flow__edge-path { stroke: #d2d2d2; stroke-width: 1.25; stroke-dasharray: 3 5; stroke-linecap: round; }
+.direct-canvas .react-flow__edge.link.trail .link-edge.hovered .react-flow__edge-path { stroke: #a8a8a8; }
+.direct-canvas .react-flow__edge.link.trail.selected .react-flow__edge-path { stroke: #6b6b6b; stroke-width: 1.5; }
+.direct-canvas .react-flow__edge.link .react-flow__edge-interaction { cursor: pointer; }
+/* The line being dragged from a handle. */
+.direct-canvas .react-flow__connection-path { stroke: #8f8f8f; stroke-width: 1.5; stroke-dasharray: 4 4; }
+/* The chip: the word, where the line is picked up. */
+.direct-canvas .link-slot { position: absolute; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.direct-canvas .link-slot > * { pointer-events: all; }
+.direct-canvas .link-chip { height: 24px; max-width: 240px; padding: 0 9px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; color: #6b6b6b; font: inherit; font-size: 12px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .12s, border-color .12s; }
+.direct-canvas .link-chip:hover, .direct-canvas .link-edge.hovered .link-chip { color: #171717; border-color: #c9c9c9; }
+.direct-canvas .link-chip.selected { color: #171717; border-color: #a3d52b; box-shadow: 0 0 0 1px #a3d52b; }
+.direct-canvas .link-chip.ghost { color: #8a8a8a; border-style: dashed; border-color: #d0d0d0; }
+.direct-canvas .link-chip.trail, .direct-canvas .link-chip.still { color: #8a8a8a; cursor: default; }
+.direct-canvas .link-chip:focus-visible { outline: 2px solid #b7ef32; outline-offset: 2px; }
+.direct-canvas .link-chip-delete { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; color: #6b6b6b; cursor: pointer; flex-shrink: 0; }
+.direct-canvas .link-chip-delete:hover, .direct-canvas .link-chip-delete:focus-visible { color: #171717; border-color: #c9c9c9; outline: 0; }
+/* The word, edited where the chip was, with the common words beneath. */
+.direct-canvas .link-editor { position: relative; }
+.direct-canvas .link-chip-input { height: 24px; width: 140px; box-sizing: border-box; padding: 0 9px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; color: #171717; font: inherit; font-size: 12px; line-height: 22px; outline: 0; }
+.direct-canvas .link-editor .link-chip-input, .direct-canvas .link-chip-input:focus-visible { border-color: #a3d52b; box-shadow: 0 0 0 1px #a3d52b; }
+.direct-canvas .link-chip-input::placeholder { color: #8a8a8a; }
+.direct-canvas .link-chip-input:disabled { color: #8a8a8a; background: #fafafa; }
+.direct-canvas .link-menu { position: absolute; left: 0; top: calc(100% + 8px); display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 6px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .08); }
+.direct-canvas .link-menu-heading { margin: 0; padding: 8px 10px 4px; font-size: 12px; line-height: 16px; color: #6b6b6b; }
+.direct-canvas .link-menu button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: #171717; font: inherit; font-size: 14px; line-height: 20px; text-align: left; cursor: pointer; }
+.direct-canvas .link-menu button[role="menuitem"] { justify-content: flex-start; }
+.direct-canvas .link-menu button > svg { flex-shrink: 0; color: #6b6b6b; }
+.direct-canvas .link-menu button:hover, .direct-canvas .link-menu button:focus-visible { background: #f2f2f2; outline: 0; }
+.direct-canvas .link-menu button[aria-checked="true"] { background: #fafafa; }
+.direct-canvas .link-menu-divider { height: 1px; margin: 4px 6px; background: #eeeeee; }
+/* Several links between the same two blocks, listed under their line. */
+.direct-canvas .link-list { position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); width: 520px; box-sizing: border-box; padding: 12px 14px 10px; border: 1px solid #e3e3e3; border-radius: 12px; background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .08); color: #171717; font-size: 13px; line-height: 18px; text-align: left; }
+.direct-canvas .link-list header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 8px; }
+.direct-canvas .link-list header strong { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.direct-canvas .link-list header .icon-button { width: 24px; height: 24px; flex-shrink: 0; }
+.direct-canvas .link-list ol { margin: 0; padding: 0; list-style: none; }
+.direct-canvas .link-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eeeeee; }
+.direct-canvas .link-list-ends { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #3d3d3d; }
+.direct-canvas .link-list .link-chip-input { width: 128px; }
+.direct-canvas .link-list-note { margin: 0; padding-top: 8px; border-top: 1px solid #eeeeee; font-size: 12px; line-height: 17px; color: #6b6b6b; }
+/* Handles: four small dots on the border, shown while the pointer is over the block. Drag one onto another block,
+   or click it and then the block. The block under a drag gets a dark hairline; lime stays for selection. */
+.direct-canvas.unified-canvas .relationship-handle { width: 8px; height: 8px; min-width: 8px; min-height: 8px; box-sizing: border-box; border: 1.5px solid #b0b0b0; border-radius: 50%; background: #fff; opacity: 0; z-index: 4; transition: opacity .12s, border-color .12s; cursor: crosshair; }
+.direct-canvas .relationship-handle:before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+.direct-canvas .research-card:hover > .relationship-handle, .direct-canvas .research-card:focus-within > .relationship-handle, .direct-canvas.is-connecting .relationship-handle, .direct-canvas .relationship-handle:focus-visible { opacity: 1; }
+.direct-canvas.unified-canvas .relationship-handle:hover, .direct-canvas .relationship-handle:focus-visible { outline: 0; border-color: #171717; box-shadow: none; }
+.direct-canvas.is-connecting .research-card { cursor: crosshair; }
+.direct-canvas.is-connecting .research-card:hover { border-color: #8f8f8f; box-shadow: 0 0 0 1px #8f8f8f, 0 2px 6px #00000006; }

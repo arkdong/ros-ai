@@ -87,7 +87,9 @@ export type Mutation =
  | {type:'updateNode'; id:string; patch:Partial<Omit<CanvasNode,'id'>>}
  | {type:'removeNode'; id:string}
  | {type:'addConnection'; connection:Connection}
- | {type:'removeConnection'; id:string};
+ | {type:'removeConnection'; id:string}
+ /** A link's word, or its direction: the person's edit on the canvas; agents add and remove links only. */
+ | {type:'updateConnection'; id:string; patch:Partial<Omit<Connection,'id'>>};
 /** threadId: the ROS thread a project message (nodeId null) belongs to; block conversations have none. */
 export type Message = {id:string; projectId:string; nodeId:string|null; role:'user'|'assistant'|'system'; content:string; createdAt:string; runId?:string; threadId?:string};
 /** after: proposals this one builds on, accepted before it and dismissed with it. batch: proposals made together (an
