@@ -1,6 +1,8 @@
 /** First launch: what ros.ai found on this computer and the links it made for the person.
  * Detection reads existence, names and modification times, never credentials; every link is one
  * `ros-ai` entry in the agent's own settings, with a record here and an Undo. */
+import type { ZoteroApp } from './plugins.js';
+
 export type AgentId = 'claude-code' | 'codex' | 'cursor' | 'gemini-cli' | 'pi' | 'hermes';
 export type LinkMethod = 'cli' | 'file';
 export type LinkRecord = { agent: AgentId; method: LinkMethod; target: string; bridge: string; writtenAt: string; backup?: string };
@@ -39,7 +41,9 @@ export type LocalModel = { id: string; context: number | null; maxContext: numbe
 export type DetectedModel = { id: LocalModelId; label: string; endpoint: string; found: boolean; running: boolean; models: string[]; details: LocalModel[]; connectionId: string | null };
 export type DetectedKey = { provider: string; label: string; source: 'environment' | 'saved' };
 export type AppId = 'notion' | 'slack' | 'zotero' | 'github' | 'obsidian' | 'linear' | 'figma' | 'google-drive' | 'dropbox';
-export type DetectedApp = { id: AppId; label: string; signals: string[]; usedBy: string[]; connected: boolean };
+/** local: how what is on this computer would connect it with nothing to paste (the GitHub CLI's sign-in, the Zotero
+ * app): ready, or what stands in the way (see ZoteroApp). */
+export type DetectedApp = { id: AppId; label: string; signals: string[]; usedBy: string[]; connected: boolean; local?: ZoteroApp };
 export type SetupStatus = {
   seenAt: string | null;
   scannedAt: string;
