@@ -30,20 +30,23 @@ type Props = {
   readOnlyNote?: string;
   /** The PDF or image a File block shows. */
   file?: ShownFile;
-  /** Asks Ros to check the block's claims on the web. */
+  /** Asks ROS to check the block's claims on the web. */
   onCheckSources?: () => void;
   /** Set where SQL runs, on this computer: reloads the project after a query result is saved. */
   sql?: { onChanged: () => Promise<unknown> };
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
   onGoogleCopy?: () => Promise<boolean>;
+  /** Whether the conversation column shows, when the frame around the block owns that choice through its footer chip. */
+  conversation?: boolean; onConversation?: (open: boolean) => void;
 };
 
-export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, onCheckSources, sql, onGoogleCopy }: Props) {
+export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, onCheckSources, sql, onGoogleCopy, conversation, onConversation }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
   const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
   // The conversation stays out of the way until asked for.
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatState, setChatState] = useState(false);
+  const chatOpen = conversation ?? chatState, setChatOpen = (open: boolean) => { setChatState(open); onConversation?.(open); };
   const priorNode = useRef(node);
   useEffect(() => { if (title === priorNode.current.title) setTitle(node.title); if (description === priorNode.current.description) setDescription(node.description); priorNode.current = node; }, [node]);
   // Text saves itself shortly after typing stops, and the title when you leave it, like a file in Obsidian.
@@ -74,10 +77,10 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
   useEffect(() => { if (side === 'conversation') thread.current?.scrollTo({ top: thread.current.scrollHeight }); }, [side, messages.length, active?.events.length]);
   return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}`} aria-label="Node work tools">
     <div className="note-main">
-      {!chatOpen&&(messages.length>0||runs.length>0||active)&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
+      {!chatOpen&&conversation===undefined&&(messages.length>0||runs.length>0||active)&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
       {node.notion?.kind!=='page'&&<><label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/></>}
       {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
-      {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
+      {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onAccount={readOnly?undefined:account=>void mutate([{type:'updateNode',id:node.id,patch:{notion:{...node.notion!,account}}}],'Read with another Notion account')} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {node.training&&<section className="note-content"><TrainingBlock projectId={detail.project.id} nodeId={node.id} view={node.training} full/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
@@ -96,7 +99,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {side==='history'
         ? <div className="note-side-scroll runs-section">{!runs.length&&<div className="empty-small"><Clock3 size={22} strokeWidth={1.2}/><p>Each run of this node will appear here.</p></div>}{runs.map((run,index)=><RunDetails key={run.id} run={run} detail={detail} initialOpen={index===0} onAttach={onAttach} onCancel={onCancel} onRetry={onRetry} readOnly={readOnly}/>)}</div>
         : <div ref={thread} className="note-side-scroll conversation" data-testid="node-conversation">
-          {!messages.length&&<p className="note-side-welcome">No earlier conversation on this block. To talk about it, select it on the map and ask Ros from the composer.</p>}
+          {!messages.length&&<p className="note-side-welcome">No earlier conversation on this block. To talk about it, select it on the map and ask ROS from the composer.</p>}
           {messages.map(message => {
             const run = message.runId ? detail.runs.find(r => r.id === message.runId) : undefined;
             const sources = run ? evidenceForRun(run, detail) : [];

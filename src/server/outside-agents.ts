@@ -172,7 +172,7 @@ export class OutsideAgents {
     if (name === 'ros_read_memory') {
       this.touch(session);
       const packet = this.personal?.packet();
-      return packet ? { enabled: true, ...packet } : { enabled: false, memory: [], note: 'Ros remembers is off in ros.ai, so there are no saved preferences to read.' };
+      return packet ? { enabled: true, ...packet } : { enabled: false, memory: [], note: 'ROS remembers is off in ros.ai, so there are no saved preferences to read.' };
     }
     if (name === 'ros_list_skills' || name === 'ros_use_skill') {
       this.touch(session);

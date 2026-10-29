@@ -53,14 +53,15 @@ python train_lora.py --train train.jsonl --val val.jsonl --out out   # LoRA r=32
 bash to_gguf.sh out/merged out/gguf                                  # BF16 GGUF, Q4_K_M, and a tool-call check in llama-server
 ```
 
-Then publish `ros-nemotron-4b-Q4_K_M.gguf` with NVIDIA's Open Model License text to a Hugging Face model repo, and point Local Ros at it (`MODEL_REPO` in `src/server/local-ros.ts`, overridable today with `ROS_LOCAL_MODEL_REPO`). Delete the VM when done.
+The model is published at [arkdong/ros-nemotron-4b-GGUF](https://huggingface.co/arkdong/ros-nemotron-4b-GGUF): the Q4_K_M GGUF, the LoRA adapter, NVIDIA's licence and its notice. Local Ros downloads it (`MODEL_REPO` in `src/server/local-ros.ts`, overridable with `ROS_LOCAL_MODEL_REPO`). Delete the VM when done.
 
-Evaluation, against any OpenAI-compatible server (Local Ros listens on 127.0.0.1:4319 with its own key):
+Evaluation, from the snapshot commit, against any OpenAI-compatible server. Here that is llama-server with each model's GGUF in turn. `--max-usd` caps the total in `data/spend.jsonl`, so it is what was already spent plus the eval's budget. The only paid calls are the simulated pages and Super's own run.
 
 ```sh
-ROS_STUDENT_KEY=<local key> npx tsx training/ros-nemotron/run.ts eval --label=nano-4b-baseline
-ROS_STUDENT_KEY=<local key> npx tsx training/ros-nemotron/run.ts eval --label=ros-nemotron
-npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-usd=3
+llama-server -m <model>.gguf --jinja --reasoning-budget 0 -c 131072 --parallel 2 --port 4339 --alias ros-local
+npx tsx training/ros-nemotron/run.ts eval --label=nano-4b-baseline --student-url=http://127.0.0.1:4339/v1 --concurrency=2 --max-usd=35
+npx tsx training/ros-nemotron/run.ts eval --label=ros-nemotron --student-url=http://127.0.0.1:4339/v1 --concurrency=2 --max-usd=35
+npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --no-thinking --concurrency=4 --max-usd=35
 ```
 
 ## Costs (measured on 27 October)
@@ -70,12 +71,38 @@ npx tsx training/ros-nemotron/run.ts eval --model=teacher --label=super --max-us
 | Projects and tasks | US$0.34 | Token Factory credit |
 | Rollouts, two pilots and a retry of failed tasks | US$31.65 for 1,351 tasks (about US$0.02 each), 1,140 samples kept | Token Factory credit |
 | H100 pilot, 40 steps | 11 min, 43 GiB peak memory | AI Cloud credit |
-| H100 training, 2 epochs | about 37 min (pilot estimate), about US$2 | AI Cloud credit |
-| Evaluation | under US$3 (estimate) | Token Factory credit |
+| H100 training, 2 epochs (134 steps) | 31.7 min, 43.2 GiB peak memory | AI Cloud credit |
+| H100 VM in all: setup, pilot, waiting, a restart, merge and GGUF | about 4 hours, about US$12 at about US$3 an hour | AI Cloud credit |
+| Evaluation, 28 October | US$1.08: US$0.92 for the first run and Super, US$0.16 for the rerun | Token Factory credit |
 
 The H100 VM bills by the hour from creation, so setup, the GGUF step and idle time count too; delete it once the GGUF is copied off.
 
-Three things the first run on the VM taught (already in the scripts): pin torch 2.10, whose prebuilt Mamba kernels avoid a source build that fails with CUDA 13; LoRA cannot target the Mamba-2 out_proj or conv1d, so the targets are listed; and Nemotron-H's remote code ignores the Trainer's num_items_in_batch, so `model_accepts_loss_kwargs` is turned off, or the loss is summed over the 16 accumulation steps.
+The 27 October run brought the validation loss from 0.54 (the base model) to 0.405 after epoch 1 and 0.403 after epoch 2; the training loss ended at about 0.33. The Q4_K_M GGUF is 2.84 GB: some layers stay at q5_0 or q8_0 because their 3,136 columns do not divide by 256. In llama-server its first reply was a proper `ros_read_canvas` call.
+
+What the runs on the VM taught (already in the scripts):
+- Pin torch 2.10. Its prebuilt Mamba kernels avoid a source build that fails with CUDA 13.
+- LoRA cannot target the Mamba-2 out_proj or conv1d, so the targets are listed.
+- Nemotron-H's remote code ignores the Trainer's num_items_in_batch, so `model_accepts_loss_kwargs` is turned off. Otherwise the loss is summed over the 16 accumulation steps.
+- Evaluation runs one sample at a time and keeps only the loss. Batches of 8 with full-vocabulary logits needed 77 GiB.
+- transformers 5 refuses to save the merged model as the base model ships it, so `do_sample` is set and `_tied_weights_keys` becomes a dict.
+- llama.cpp's converter runs transformers 4 and cannot read a tokenizer that transformers 5 saved, so the base model's own tokenizer files go next to the merged weights.
+
+## Evaluation (28 October)
+
+The 95 held-out tasks, on Adam's Mac. Both small models are Q4_K_M GGUFs in llama-server, and Super ran on Token Factory.
+
+| Model | Held-out tasks passed (of 95) | KNMI tasks (of 10) |
+|---|---|---|
+| Nemotron 3 Nano 4B (NVIDIA's GGUF) | 33 | 3 |
+| ros-nemotron | 66 | 8 |
+| Nemotron 3 Super, the teacher without its family guides | 52 | 9 |
+
+- **Where ros-nemotron gains most:** where the base model never used the tools. Add notes went from 0 to 17 of 17, report from 0 to 5 of 6, edit existing from 1 to 5 of 6, and cannot do from 7 to 8 of 8.
+- **Research:** 0 of 20 for every model, Super included. The held-out checks need saved findings and groups, and the long turns run out of room.
+- **Out of room:** 14 ros-nemotron tasks still ran out of context.
+- **Super:** most of its failures are answers over the word limit, because it ran without the guides it had while making the data.
+
+The first run gave the student 32,768 tokens and scored 12 and 15. The harness injects the student like a hosted model, whose admission counts a token per byte plus 4,096 and the 8,000-token output cap, so it refused most requests over about 20 KB. The app admits Local Ros at three bytes a token up to its 64 KB request cap. The table comes from the rerun with `--student-context=65536`, which is slightly stricter than the app. `student()` now defaults to 76,096 tokens (64,000 + 4,096 + 8,000), so it admits what the app admits.
 
 ## Known risks
 

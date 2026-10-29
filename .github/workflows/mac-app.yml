@@ -13,6 +13,8 @@ on:
 jobs:
   build:
     strategy:
+      # Let the other Mac finish, so one failure still shows whether the other architecture builds.
+      fail-fast: false
       matrix:
         include:
           - runner: macos-latest
@@ -38,7 +40,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm --prefix desktop ci
       - name: Build the app
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -75,6 +76,13 @@ jobs:
           pattern: ros.ai-mac-*
           merge-multiple: true
           path: dist
+      # Fixed names beside the versioned files, so ros-ai.io can link the latest build directly:
+      # https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg
+      - name: Add fixed-name copies of the DMGs
+        run: |
+          for arch in arm64 x64; do
+            cp dist/ros.ai-[0-9]*-"$arch".dmg "dist/ros.ai-mac-$arch.dmg"
+          done
       # A draft first, published only once every file is attached.
       - uses: softprops/action-gh-release@v2
         with:

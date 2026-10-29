@@ -4,6 +4,9 @@ import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
 
+/** A label word as it is shown: first letter up. */
+export const sentence = (word: string) => word ? word[0].toUpperCase() + word.slice(1) : word;
+
 /** What a block is on screen: nine kinds plus Group. Storage keeps the older blockType and kind words as aliases
  * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
  * A Web block is External too, named for what it reads. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
@@ -40,7 +43,7 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
-  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
+  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'ROS' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
 }
 
 /** The caption of the link from a decision block to the block it rests on. */

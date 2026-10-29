@@ -1,4 +1,4 @@
-/* Ros asks: one question at a time, docked where the composer sits. */
+/* ROS asks: one question at a time, docked where the composer sits. */
 .ros-question { flex-shrink:0; margin:8px 12px 12px; border:1px solid var(--line); border-radius:var(--radius-card); background:var(--paper); box-shadow:0 6px 24px #0000000d; display:flex; flex-direction:column; max-height:min(70%, 560px); min-height:0; outline:none; }
 .ros-question>header { display:flex; align-items:center; gap:8px; padding:10px 10px 0 14px; }
 .ros-question>header>.icon-button { margin-left:auto; color:var(--muted); }

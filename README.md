@@ -4,11 +4,11 @@
 
 ros.ai is an open workspace where AI agents from any vendor and your own tools work on the same project. They collaborate through one shared context, a canvas of blocks, where you can inspect, evaluate and direct their work instead of each agent keeping its own. It runs on your computer: projects, keys and the Python sandbox stay there, and model requests go only to the providers you connect.
 
-A project is a canvas of Text, Code, Notebook, Data, File, External, Web, App and Agent blocks, plus Groups. Ros, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
+A project is a canvas of Text, Code, Notebook, Data, File, External, Web, App and Agent blocks, plus Groups. ROS, the built-in assistant, and any agent you connect (Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a local model) propose changes that you review under the project's approval mode. Everything an agent adds carries its provenance and can be undone.
 
 ## Install
 
-**Mac app.** Download `ros.ai-<version>-arm64.dmg` (Apple silicon) or `ros.ai-<version>-x64.dmg` (Intel) from the [latest release](https://github.com/arkdong/ros-ai/releases/latest), drag ros.ai to Applications and open it. Nothing else is needed. An unsigned build asks once: *System Settings → Privacy & Security → Open Anyway*.
+**Mac app.** Download the latest build for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) (every file is on the [latest release](https://github.com/arkdong/ros-ai/releases/latest)), drag ros.ai to Applications and open it. Nothing else is needed. An unsigned build asks once: *System Settings → Privacy & Security → Open Anyway*.
 
 **From source** (macOS, Linux, Windows under WSL) with Node.js 24 or newer:
 
@@ -19,12 +19,14 @@ npm start        # the workspace at http://127.0.0.1:4310
 npm run app      # or the same in its own window (Mac)
 ```
 
+`npm link` (once) gives the `ros-ai` command, which the install script on ros-ai.io sets up for you: `ros-ai` starts the workspace and opens it in the browser, `ros-ai update` pulls the latest release and rebuilds, `ros-ai app` opens the window on a Mac.
+
 The service binds to loopback only. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Each project also lives in a folder you choose, as ordinary Markdown, `.py`, `.ipynb` and CSV files that Obsidian, VS Code or Jupyter open; edits saved there come back as changes you can undo.
 
 ## First run
 
-1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a running Ollama or LM Studio, and the free hosted Ros. **Connect** links them in one go. You can come back to this on the **Agents** page.
-2. **Pick a model for Ros.** Sign in for the free hosted Ros (Nemotron on Nebius, no key), paste your own key on the **Model** page, download Ros to run on this computer (Agents › Ros, about 3 GB), or point ros.ai at a local server.
+1. **Connect your tools.** ros.ai looks at this computer (the Applications folder, your PATH, the agents' own settings, model servers on `127.0.0.1`; nothing is sent anywhere, no credential file is opened) and shows what it found: Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, a running Ollama or LM Studio, and the free hosted ROS. **Connect** links them in one go. You can come back to this on the **Agents** page.
+2. **Pick a model for ROS.** Sign in for the free hosted ROS (Nemotron on Nebius, no key), paste your own key on the **Model** page, download ROS to run on this computer (Agents › ROS, about 3 GB), or point ros.ai at a local server.
 3. **Start a project.** New project opens a blank canvas; the book icon opens the bundled examples.
 
 **Code and Notebook blocks** need nothing else on macOS: the first run sets up ros.ai's own Python 3.12 with uv (about 150 MB, once, in the data folder) and runs code in the macOS sandbox, the way Codex and Claude Code run commands. The only network is a proxy on this computer that asks before each new website (Allow once, Always for this project, Deny; PyPI is always allowed, so `%pip install` works in notebooks); Settings → General → Python network can switch to Full network. On Linux and Windows they use Docker: `docker build -t ros-ai-research-python:1 src/server/sandbox`.
@@ -73,7 +75,7 @@ Inside the Mac app the command names a `ros-ai-node` launcher instead of `node`,
 
 **Apps on the canvas.** An App block is one HTML page that runs on its card: a table you can filter, a chart you can explore, a what-if calculator. It reads only the blocks named as its inputs, through ros.ai's kit (with Observable Plot, Preact and KaTeX served from this computer), and runs in a sealed frame on a second local port: no network, no forms or pop-ups, and no way into ros.ai's API. Add one with Add block › App. Settings › General › Apps lets agents build them too, with a guide and a check that opens the page in a hidden browser; it is off until you turn it on. Each page is also an `.html` file in the project folder's `apps/` folder. In the Mac app the window also stops an App frame from navigating away.
 
-**Ros remembers.** Ros notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
+**ROS remembers.** ROS notices how you like work done and proposes one line at a time, kept as Markdown files in the data folder (`memory/`). Settings › Memory lists the lines and can turn it off; every agent receives the kept lines as your preferences, never as instructions.
 
 ## Three approval modes
 
@@ -104,15 +106,15 @@ Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), 
 
 The public site at [ros-ai.io](https://ros-ai.io) lives in `arkdong/ros-ai-site`. The hosted demo is built from the root Dockerfile on `main`; it uses per-browser visitor stores and saved results only, with no new inference, execution or host-file access.
 
-## Hosted Ros
+## Hosted ROS
 
-The app works on its own with your keys and agents. Signing in to ros.ai cloud adds free hosted Ros (NVIDIA Nemotron on Nebius) with a usage allowance, and later the paid tiers (a hosted workspace that keeps running, memory across machines, hosted connectors). That service lives in the separate private repository `arkdong/ros-ai-cloud`; `ROS_CLOUD_URL=off` hides it.
+The app works on its own with your keys and agents. Signing in to ros.ai cloud adds free hosted ROS (NVIDIA Nemotron on Nebius) with a usage allowance, and later the paid tiers (a hosted workspace that keeps running, memory across machines, hosted connectors). That service lives in the separate private repository `arkdong/ros-ai-cloud`; `ROS_CLOUD_URL=off` hides it.
 
 ## Licence
 
 ros.ai's code and documentation are released under the [MIT licence](LICENSE): the local app is open source and runs on its own. The licence does not cover:
 
-- the hosted service (sign-in, the hosted Ros gateway and the usage ledger), which lives in the separate private repository `arkdong/ros-ai-cloud` and is not open source; ros.ai runs that service and sells the paid tiers on it. The app works without it;
+- the hosted service (sign-in, the hosted ROS gateway and the usage ledger), which lives in the separate private repository `arkdong/ros-ai-cloud` and is not open source; ros.ai runs that service and sells the paid tiers on it. The app works without it;
 - the ros.ai name and logo (`public/brand/`, `desktop/build/icon.png`);
 - other organisations' logos and marks in `src/client/brand-logos/` (sources in its `SOURCES.md`) and drawn in `src/client/ModelMakerSymbol.tsx`; they belong to their owners and are shown only to identify their services;
 - third-party data in `examples/`: KNMI weather observations and the datasets derived from them ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), Royal Netherlands Meteorological Institute), CBS statistics in `examples/dutch-ai-adoption/` (CBS's own reuse terms), and NDW counter-site records (ODC PDDL).

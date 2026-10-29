@@ -15,7 +15,7 @@ async function sha256(text: string) {
 export function SourceCheckView({ check, text, onCheck }: { check?: SourceCheck; text: string; onCheck?: () => void }) {
   const [changed, setChanged] = useState(false);
   useEffect(() => { let live = true; if (check && crypto.subtle) void sha256(text).then(hash => { if (live) setChanged(hash !== check.textHash); }); return () => { live = false; }; }, [check, text]);
-  if (!check) return onCheck && text.trim().length >= 80 ? <div className="source-check-offer"><button type="button" className="small secondary" title="Ros checks the claims on the web and marks each one here" onClick={onCheck}><Quote size={12}/> Check sources</button></div> : null;
+  if (!check) return onCheck && text.trim().length >= 80 ? <div className="source-check-offer"><button type="button" className="small secondary" title="ROS checks the claims on the web and marks each one here" onClick={onCheck}><Quote size={12}/> Check sources</button></div> : null;
   const tally = checkTally(check), claims = [...check.claims].sort((a, b) => VERDICT_ORDER.indexOf(a.verdict) - VERDICT_ORDER.indexOf(b.verdict));
   return <section className="source-check" aria-label="Sources checked">
     <div className="source-check-heading">

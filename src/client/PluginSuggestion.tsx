@@ -24,7 +24,7 @@ function actionLabel(kind: SuggestionConnect, state: PluginReadiness | undefined
   return state === 'failed' ? kind === 'key' ? 'Replace key' : 'Replace token' : kind === 'key' ? 'Add key' : 'Add token';
 }
 const stateText = (name: string, state: PluginReadiness | undefined) => state === 'off' ? `${name} is off for agents` : state === 'failed' ? `${name} needs reconnecting` : `${name} isn’t connected`;
-const stepsNote = (names: string) => `This also turns on “Use ros.ai’s tools step by step” for this project, so Ros can use ${names}.`;
+const stepsNote = (names: string) => `This also turns on “Use ros.ai’s tools step by step” for this project, so ROS can use ${names}.`;
 
 /** Resolves once the plugin is connected. The sign-in page says so over a BroadcastChannel; while that cannot reach this
  * window (the Mac app signs in in the system browser), ros.ai asks every two seconds, for as long as a sign-in stays valid. */
@@ -46,16 +46,16 @@ function waitForSignIn(id: PluginId, signal: AbortSignal) {
 }
 
 type Phase = 'idle' | 'working' | 'signing-in' | 'key';
-/** connected: the plugin is ready; steps says whether Ros was switched to its tools, or why that could not happen. */
+/** connected: the plugin is ready; steps says whether ROS was switched to its tools, or why that could not happen. */
 type ConnectOptions = { projectId: string; backend?: AssistantBackend; onBackend: () => unknown; onOpenPlugin: (id: PluginId) => void; onConnected?: (id: PluginId, steps: { switched: boolean; error?: string }) => void };
 
 /** Connecting one plugin from a chip or a card, without leaving the conversation: a switch, the app's sign-in in its own
- * window, or a key field. Ros in API mode cannot use plugins, so the click that connects also turns on its tools. */
+ * window, or a key field. ROS in API mode cannot use plugins, so the click that connects also turns on its tools. */
 function useConnect(plugin: PluginDefinition, { projectId, backend, onBackend, onOpenPlugin, onConnected }: ConnectOptions) {
   const kind = suggestionConnect(plugin) ?? 'setup', steps = backend === 'provider';
   const [phase, setPhase] = useState<Phase>('idle'), [error, setError] = useState(''), [signIn, setSignIn] = useState<string>();
   // Only Cancel and × stop waiting. A chip goes away as soon as its plugin reads as connected, often before this flow
-  // hears it, and the flow must still finish: turn on Ros's tools and say the plugin is connected.
+  // hears it, and the flow must still finish: turn on ROS's tools and say the plugin is connected.
   const stopping = useRef<AbortController | null>(null);
   const finish = async () => {
     let switched = false, problem: string | undefined;
@@ -82,7 +82,7 @@ function useConnect(plugin: PluginDefinition, { projectId, backend, onBackend, o
   const saveKey = (value: string) => void run(async () => {
     if (kind === 'key') {
       await api(`/api/connections/credentials/${plugin.id}`, { method: 'PUT', body: JSON.stringify({ apiKey: value }) });
-      // The person picked this search service, so Ros and the agents search with it from now on.
+      // The person picked this search service, so ROS and the agents search with it from now on.
       await api('/api/connections/search', { method: 'PUT', body: JSON.stringify({ provider: plugin.id }) });
     } else {
       await api(`/api/plugins/${plugin.id}`, { method: 'PUT', body: JSON.stringify({ token: value }) });
@@ -130,7 +130,7 @@ export function usePluginChip({ draft, projectId, backend, hidden, onBackend, on
     : first ? <PluginChip key={first.id} match={first} state={status.plugins[first.id]} options={{ projectId, backend, onBackend, onOpenPlugin, onConnected: (id, steps) => setConnected({ id, ...steps }) }} onDismiss={() => setDismissed(list => [...list, first.id])}/>
     : done ? <div className="plugin-chip" role="status" data-testid="plugin-chip">
       <PluginMark id={done.id} size={16}/><span className="plugin-dot" aria-hidden="true"/>
-      <span className="plugin-chip-text">{pluginName(done.id)} connected{done.switched ? '. Ros now works step by step here.' : done.error ? `. Turn on “Use ros.ai’s tools step by step” in the model menu so Ros can use it.` : ''}</span>
+      <span className="plugin-chip-text">{pluginName(done.id)} connected{done.switched ? '. ROS now works step by step here.' : done.error ? `. Turn on “Use ros.ai’s tools step by step” in the model menu so ROS can use it.` : ''}</span>
       <button type="button" className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setConnected(null)}><X size={14}/></button>
     </div> : null;
   return { chip, suggest: open.map(match => match.id) };
@@ -145,7 +145,7 @@ function PluginChip({ match, state, options, onDismiss }: { match: PluginMatch; 
     <PluginMark id={plugin.id} size={16}/>
     <span className="plugin-chip-text" role={connect.error ? 'alert' : signingIn ? 'status' : undefined}>{connect.error || (signingIn ? `Approve ros.ai in the ${plugin.name} window` : stateText(plugin.name, state))}</span>
     {signingIn ? <>{connect.signIn && <a className="plugin-chip-link" href={connect.signIn} target="_blank" rel="noreferrer">Open again<ExternalLink size={11}/></a>}<LoaderCircle size={14} className="spin" aria-hidden="true"/></>
-      : <button type="button" className="primary small" disabled={busy} title={connect.steps && connect.kind !== 'setup' ? 'Also turns on ros.ai’s tools step by step for this project, so Ros can use it' : undefined} onClick={connect.start}>{busy && <LoaderCircle size={13} className="spin"/>}{actionLabel(connect.kind, state)}</button>}
+      : <button type="button" className="primary small" disabled={busy} title={connect.steps && connect.kind !== 'setup' ? 'Also turns on ros.ai’s tools step by step for this project, so ROS can use it' : undefined} onClick={connect.start}>{busy && <LoaderCircle size={13} className="spin"/>}{actionLabel(connect.kind, state)}</button>}
     {dismiss}
   </div>;
 }
@@ -215,7 +215,7 @@ function SuggestionRow({ match, state, options, single, extras, onPhase }: { mat
       <span className="plugin-suggestion-mark"><PluginMark id={plugin.id} size={22}/></span>
       <div className="plugin-suggestion-text">
         <span className="plugin-suggestion-name"><strong>{plugin.name}</strong>{ready && <span className="plugin-suggestion-ok" role="status"><span className="plugin-dot" aria-hidden="true"/>Connected</span>}</span>
-        {ready ? <span>Ros can use {plugin.name} from the next step.</span>
+        {ready ? <span>ROS can use {plugin.name} from the next step.</span>
           : connect.phase === 'signing-in' ? <span className="plugin-suggestion-wait" role="status"><LoaderCircle size={13} className="spin" aria-hidden="true"/>Approve ros.ai in the {plugin.name} window that opened.</span>
           : <><span>{suggestionReason(match)}</span><small><ShieldCheck size={12} aria-hidden="true"/>{pluginReach(plugin.id)}</small></>}
         {!single && !ready && connect.phase !== 'key' && <div className="plugin-suggestion-inline">{action}</div>}

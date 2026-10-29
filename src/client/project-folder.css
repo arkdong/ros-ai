@@ -1,7 +1,6 @@
 .folder-field { display: flex; gap: 8px; align-items: stretch; }
 .folder-field input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px !important; }
 .folder-field button { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.new-project-modal .folder-note { margin: 7px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
 
 .folder-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; min-width: 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; background: #f7f7f7; color: #4b4b4b; font-size: 13px; line-height: 1.2; cursor: pointer; }
 .folder-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

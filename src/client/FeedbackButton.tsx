@@ -18,7 +18,7 @@ function browserName() {
  * presses Send or Post publicly on GitHub. The public demo offers GitHub only.
  * On first visits a hint under the button says ros.ai is in early access. It goes for good once the
  * person closes it or opens the card, steps aside until the next visit at their first press elsewhere,
- * and waits while `quiet` (setup, the demo picker, a walkthrough, Ros or a full page is showing). */
+ * and waits while `quiet` (setup, the demo picker, a walkthrough, ROS or a full page is showing). */
 export function FeedbackButton({ publicDemo, quiet }: { publicDemo: boolean; quiet: boolean }) {
   const [open, setOpen] = useState(false), [setup, setSetup] = useState<FeedbackSetup>();
   const [hintDone, setHintDone] = useState(() => readSaved('feedback-hint-done', false)), [hintAside, setHintAside] = useState(false);

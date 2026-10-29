@@ -26,11 +26,11 @@
 .direct-canvas .expanded-group .card-description { flex-shrink: 1; }
 .direct-canvas .expanded-group .card-bottom { flex-shrink: 0; }
 
-/* One measurable top region replaces overlapping floating controls. */
+/* The map's state and its stages sit at the top, to the right of the tools card. */
 .direct-canvas .canvas-header {
   position: absolute;
   top: 18px;
-  left: 24px;
+  left: 70px;
   right: 24px;
   z-index: 12;
   display: flex;
@@ -43,6 +43,17 @@
   position: static;
   max-width: 100%;
   pointer-events: auto;
+}
+.direct-canvas .canvas-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e3e3e3;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  color: #6b6b6b;
 }
 .direct-canvas .canvas-stage-navigation {
   display: flex;
@@ -75,35 +86,6 @@
 .single-canvas-shell .canvas-stage,
 .single-canvas-shell .canvas-stage > .canvas-area,
 .direct-canvas .react-flow { background: #ffffff; }
-.direct-canvas .canvas-edit-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  max-width: 100%;
-  gap: 5px;
-  padding: 4px;
-  border: 1px solid #dedede;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px #00000008;
-  pointer-events: auto;
-}
-.direct-canvas .canvas-edit-controls .icon-button {
-  width: 34px;
-  height: 34px;
-}
-.direct-canvas .canvas-edit-controls .canvas-add-button {
-  min-height: 34px;
-  padding: 7px 10px;
-  background: #ffffff;
-  border: 0;
-  font-size: 14px;
-}
-.direct-canvas .canvas-edit-controls button:focus-visible {
-  outline: 2px solid #6a806d;
-  outline-offset: 2px;
-}
-.direct-canvas .canvas-edit-controls .active { background: #eeeeee; }
 .single-canvas-shell .direct-canvas .relationship-editor { top: auto; bottom: 98px; }
 @media (max-width: 850px) {
   .single-canvas-shell .assistant-panel { width: min(365px, 48%); }

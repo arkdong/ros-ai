@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Brain, ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
-import { modeLabel } from './ResearchControls';
+import { ChipChoice } from './ChipChoice';
+import { approvalModes } from './RosModelMenu';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
+import type { SetupResetPlan, SetupResetResponse } from '../shared/setup';
+import { cloudAccountChanged } from './ProfileButton';
 import { BrandLogo } from './brand-logos';
 import { RosMark } from './RosDock';
 import { Commands, DownloadLink } from './UpdateButton';
@@ -80,8 +83,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
     {!publicDemo && <UpdateSettings/>}
     {projectId && <section><h2>This project</h2><div className="settings-card">
       <Row title="Permissions" detail={`${projectTitle ? `${projectTitle}: ` : ''}${approvalDetail[mode]}`}>
-        {busy && <LoaderCircle size={14} className="spin"/>}
-        <select aria-label="Project permissions" value={mode} disabled={busy} onChange={event => void choose(event.target.value as ApprovalMode)}>{(['ask', 'review', 'full'] as const).map(value => <option key={value} value={value}>{modeLabel(value)}</option>)}</select>
+        <ChipChoice label="Project permissions" caption="Agents may" value={mode} busy={busy} options={approvalModes.map(item => { const Icon = item.icon; return { id: item.mode, label: item.label, detail: item.detail, icon: <Icon size={13}/> }; })} onChange={value => void choose(value)}/>
       </Row>
     </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>}
     {!publicDemo && <SuggestionSettings/>}
@@ -91,16 +93,67 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
     </div></section>}
     {network && <section><h2>Python network</h2><div className="settings-card">
       <Row title="Sites" detail={network.mode === 'full' ? 'Python in Code and Notebook blocks can reach any website.' : `Python asks before reaching a new website. ${network.preset.join(' and ')} are always allowed for installing packages.`}>
-        <select aria-label="Python network" value={network.mode} onChange={event => void saveNetwork(event.target.value as 'ask' | 'full')}><option value="ask">Ask for each site</option><option value="full">Full network</option></select>
+        <ChipChoice label="Python network" value={network.mode} options={[{ id: 'ask', label: 'Ask for each site' }, { id: 'full', label: 'Full network' }]} onChange={value => void saveNetwork(value)}/>
       </Row>
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
     {!publicDemo && <AppSettings/>}
+    {!publicDemo && <FirstRunSettings/>}
     {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>
       <Row title="Keys file" detail="API keys every data folder reads, kept outside the code."><code title={paths?.keysFile ?? ''}>{paths ? paths.keysFile ?? 'None' : '…'}</code></Row>
     </div></section>}
   </div>;
+}
+
+type ResetOption = 'links' | 'tokens' | 'cloud' | 'localRos';
+/** Reset onboarding, to test the first run again: it starts again from the welcome page, as on a new computer, and each
+ * option also undoes one kind of thing it connects. Only the agent links this ros.ai recorded are removed, so a test copy
+ * leaves the links of another ros.ai alone. */
+function FirstRunSettings() {
+  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, tokens: false, cloud: false, localRos: false });
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState<string[]>([]), [error, setError] = useState('');
+  const show = () => window.dispatchEvent(new CustomEvent('ros-setup-reset', { detail: { from: 'welcome' } }));
+  const start = async () => { setError(''); setFailed([]); try { setPlan(await api<SetupResetPlan>('/api/setup/reset')); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
+  const reset = async () => {
+    if (!plan) return;
+    setBusy(true); setError('');
+    try {
+      const cloud = choice.cloud && plan.cloud;
+      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify({ links: choice.links && plan.links.length > 0, tokens: choice.tokens && plan.tokens.length > 0, cloud, localRos: choice.localRos && plan.localRos }) });
+      setPlan(null);
+      if (cloud) cloudAccountChanged();
+      // What could not be undone stays here to read; otherwise the welcome page opens at once.
+      if (answer.failed.length) setFailed(answer.failed); else show();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  };
+  const options: { id: ResetOption; label: string; detail?: string }[] = plan ? [
+    ...(plan.links.length ? [{ id: 'links' as const, label: 'Remove the ros-ai links in your agents', detail: plan.links.join(', ') }] : []),
+    ...(plan.tokens.length ? [{ id: 'tokens' as const, label: 'Forget saved tokens', detail: plan.tokens.join(', ') }] : []),
+    ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted ROS' }] : []),
+    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the ROS download', detail: 'ROS on this computer, about 3 GB' }] : []),
+  ] : [];
+  return <section><h2>First run</h2><div className="settings-card">
+    <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
+      <button type="button" className="secondary small" onClick={show}>Show</button>
+    </Row>
+    <Row title="Reset onboarding" detail="Start again from the welcome page, as on a new computer.">
+      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>Reset…</button>
+    </Row>
+    {plan && <div className="settings-confirm">
+      <div className="settings-options">
+        <label className="settings-option"><input type="checkbox" checked disabled/><span><span>Show the welcome, sign-in and tools pages again</span></span></label>
+        {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
+      </div>
+      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset</button></div>
+    </div>}
+    {failed.length > 0 && <div className="settings-confirm">
+      <p className="settings-confirm-note">Reset, except for these:</p>
+      <ul className="settings-confirm-list">{failed.map(line => <li key={line}>{line}</li>)}</ul>
+      <div className="settings-confirm-actions"><button type="button" className="primary small" onClick={() => { setFailed([]); show(); }}>Show the welcome page</button></div>
+    </div>}
+  </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }
 
 /** Whether agents may build App blocks. Off, they see their tools exactly as before; people can always add one. */
@@ -226,7 +279,7 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
     <div className="usage-controls">
       <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
-      <select aria-label="Group usage" value={group} onChange={event => setGroup(event.target.value as Group)}><option value="model">By model</option><option value="task">By task</option></select>
+      <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
     </div>
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section className="settings-card usage-chart-card" aria-label="Spend over time">
@@ -263,7 +316,7 @@ export function BalanceSettings({ publicDemo }: { publicDemo: boolean }) {
   const load = async () => { setBusy(true); try { setBalances((await api<{ balances: ProviderBalance[] }>('/api/usage/balances')).balances); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   useEffect(() => { if (!publicDemo) void load(); }, [publicDemo]);
   const mark = (id: ProviderBalance['id']) => id === 'ros-cloud' ? <span className="plugins-mark-small balance-ros"><RosMark/></span> : <BrandLogo id={id} size={20}/>;
-  // Ros cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
+  // ROS cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
   const typed = (item: ProviderBalance) => ['nebius', 'openai', 'claude'].includes(item.id);
   const saveCredit = async (id: string, amountUsd: number | null) => { await api(`/api/usage/credit/${id}`, { method: 'PUT', body: JSON.stringify({ amountUsd }) }); await load(); };
   const reports = (item: ProviderBalance) => ['ros-cloud', 'codex', 'tavily'].includes(item.id);

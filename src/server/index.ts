@@ -35,6 +35,7 @@ import { BrowserService } from './browser.js';
 import { ProjectCache } from './project-cache.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
+import { trustSystemCertificates } from './system-certificates.js';
 import { LocalRos } from './local-ros.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
@@ -53,6 +54,8 @@ import { AppFrames } from './app-frames.js';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
 if (!publicMode) loadEnv({ path: resolve(root, '.env.local'), quiet: true });
+// Before any request goes out: trust what this computer trusts, so a network that inspects HTTPS works here too.
+if (!publicMode) trustSystemCertificates();
 // Keys typed once into a file outside the code, before anything reads them.
 let keysFile: string | null = null;
 try { keysFile = publicMode ? null : loadLocalKeys(); }
@@ -139,7 +142,7 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference,port);
-    // Ros on this computer starts with the app once its download is on disk.
+    // ROS on this computer starts with the app once its download is on disk.
     localRos = new LocalRos(dataDir,inference);
     void localRos.start();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
@@ -175,7 +178,7 @@ try {
     // App blocks: pages agents write, run sealed on a second local server; checked in the same browser.
     appFrames = new AppFrames(store, new AppKit(root), { browser });
     AgentWorkspaceTools.appFrames = appFrames;
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud});
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,localRos});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.

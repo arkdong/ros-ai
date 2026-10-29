@@ -38,7 +38,7 @@ export function useProjectModels(projectId: string, revision: number) {
   return { choices, current, fallback: selection?.model, choose };
 }
 
-/** What Ros runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel.
+/** What ROS runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel.
  * Claude Code and Codex show as their logo, followed by a chip with the model and effort they run on. */
 export function RosModelMenu({ state, detail, running, onRefresh, onConnections, onPermissions, onError }: {
   state: AssistantState | null; detail: ProjectDetail; running: boolean; onRefresh: () => unknown;
@@ -87,7 +87,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
     { id: 'codex', caption: 'On your ChatGPT subscription' },
     { id: 'codex-key', caption: 'On your OpenAI API key' },
   ];
-  // Picking a model while an outside agent runs Ros hands Ros back to that model.
+  // Picking a model while an outside agent runs ROS hands ROS back to that model.
   const pickModel = (choice: ModelChoice) => switchTo(async () => { await models.choose(choice); if (agentLabel) await setBackend('provider'); });
   const usingModel = (choice: ModelChoice) => !agentLabel && models.current?.provider === choice.provider && models.current?.model === choice.model;
   const groups = models.choices.reduce<{ provider: string; label: string; items: ModelChoice[] }[]>((list, choice) => {
@@ -97,11 +97,11 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   }, []);
   const link = (action: () => void) => () => { setMenu(false); action(); };
   return <><div className={`ros-model${compact ? ' compact' : ''}`}>
-    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} aria-label={compact ? label : undefined} disabled={running || switching} title={running ? 'Ros is working' : compact ? `${label}: choose what Ros runs with` : 'Choose what Ros runs with'} {...openOnPress(() => setMenu(value => !value))}>
+    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} aria-label={compact ? label : undefined} disabled={running || switching} title={running ? 'ROS is working' : compact ? `${label}: choose what ROS runs with` : 'Choose what ROS runs with'} {...openOnPress(() => setMenu(value => !value))}>
       {inApp ? <BrandLogo id={inApp.agent} size={14}/> : isAcpAgent(backend) ? <BrandLogo id={acpLogo[backend]} size={14}/> : models.current ? <ModelMakerSymbol maker={models.current.maker} size={14}/> : null}
       {!compact && <span>{label}</span>}{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
-    {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="Ros runs with">
+    {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="ROS runs with">
       {groups.map(group => <div key={group.provider} className="ros-menu-group">
         <p>{groups.length > 1 ? group.label : 'Models'}</p>
         {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
@@ -120,20 +120,20 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   {inAppId && <AgentModelChip agent={inAppId} state={agentModel} running={running} onError={onError}/>}</>;
 }
 
-/** Icons for the three sizes of Ros: each shows the shape you get. */
+/** Icons for the three sizes of ROS: each shows the shape you get. */
 export function RosSizeIcon({ size: shape, px = 16 }: { size: 'bar' | 'half' | 'full'; px?: number }) {
   const fill = shape === 'bar' ? 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' : shape === 'half' ? 'M3 12h18v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' : 'M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5z';
   return <svg width={px} height={px} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d={fill} fill="currentColor" stroke="none"/></svg>;
 }
-export const rosSizeLabel = { bar: 'Fold Ros to the bar', half: 'Open Ros as a half sheet', full: 'Open Ros as a side panel' } as const;
+export const rosSizeLabel = { bar: 'Fold ROS to the bar', half: 'Open ROS as a half sheet', full: 'Open ROS as a side panel' } as const;
 
-const approvalModes: { mode: ApprovalMode; label: string; detail: string; icon: typeof Hand }[] = [
+export const approvalModes: { mode: ApprovalMode; label: string; detail: string; icon: typeof Hand }[] = [
   { mode: 'ask', label: 'Ask every time', detail: 'Every code run and every canvas change waits for your OK', icon: Hand },
   { mode: 'review', label: 'Approve for me', detail: 'Plain analysis, new blocks and moves go ahead; the rest waits for you', icon: ShieldCheck },
   { mode: 'full', label: 'Full access', detail: 'Code runs and canvas changes land at once; everything stays undoable', icon: Zap },
 ];
 
-/** How Ros's actions are approved: a chip naming the mode and one menu to change it, like Codex's picker. */
+/** How ROS's actions are approved: a chip naming the mode and one menu to change it, like Codex's picker. */
 export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError }: { policy: ResearchPolicy | null; running: boolean; onRefresh: () => unknown; onDetails: () => void; onError?: (message: string) => void }) {
   const [menu, setMenu] = useState(false), [saving, setSaving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -155,11 +155,11 @@ export function RosApprovalMenu({ policy, running, onRefresh, onDetails, onError
   };
   const Icon = current.icon;
   return <div className="ros-model ros-approval">
-    <button ref={trigger} type="button" className={`ros-chip-button mode-${policy.mode}`} aria-haspopup="menu" aria-expanded={menu} disabled={saving} title={running ? 'Applies to the next step' : 'How Ros’s actions are approved'} {...openOnPress(() => setMenu(value => !value))}>
+    <button ref={trigger} type="button" className={`ros-chip-button mode-${policy.mode}`} aria-haspopup="menu" aria-expanded={menu} disabled={saving} title={running ? 'Applies to the next step' : 'How ROS’s actions are approved'} {...openOnPress(() => setMenu(value => !value))}>
       <Icon size={13}/><span>{current.label}</span>{saving ? <LoaderCircle size={11} className="spin"/> : <ChevronDown size={11}/>}
     </button>
-    {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="How Ros’s actions are approved">
-      <p>How should Ros’s actions be approved?</p>
+    {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="How ROS’s actions are approved">
+      <p>How should ROS’s actions be approved?</p>
       {approvalModes.map(item => { const ItemIcon = item.icon; return <button key={item.mode} type="button" role="menuitemradio" aria-checked={policy.mode === item.mode} className={`mode-${item.mode}`} onClick={() => void choose(item.mode)}><ItemIcon size={16}/><span className="ros-menu-label">{item.label}<small>{item.detail}</small></span>{policy.mode === item.mode && <Check size={14}/>}</button>; })}
       {policy.mode === 'full' && <p className="ros-menu-note"><TriangleAlert size={12}/> Runs in the isolated sandbox; the map keeps its history.</p>}
       <hr/>

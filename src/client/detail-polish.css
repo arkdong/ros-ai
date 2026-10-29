@@ -172,12 +172,12 @@
   font-size: 13px;
   line-height: 1.5;
 }
-.node-modal .note-detail .node-heading {
+.block-view .note-detail .node-heading {
   max-height: 42vh;
   overflow-y: auto;
   padding: 16px 25px 12px;
 }
-.node-modal .note-detail .node-heading > input {
+.block-view .note-detail .node-heading > input {
   margin: 0 0 9px;
   font-size: 21px;
   line-height: 1.4;
@@ -215,10 +215,10 @@
 .note-detail .note-settings .disclosure-body {
   padding: 14px 0 1px;
 }
-.node-modal .note-detail .inspector-tabs {
+.block-view .note-detail .inspector-tabs {
   min-height: 49px;
 }
-.node-modal .note-detail .experiment-tools {
+.block-view .note-detail .experiment-tools {
   padding: 22px 25px 28px;
 }
 .experiment-tools.detail-polish .experiment-intro {
@@ -368,14 +368,14 @@
     align-items: flex-start;
     gap: 3px;
   }
-  .node-modal .note-detail .node-heading {
+  .block-view .note-detail .node-heading {
     padding: 15px 17px 9px;
   }
   .note-detail .note-heading-actions {
     flex-wrap: wrap;
     gap: 8px;
   }
-  .node-modal .note-detail .experiment-tools {
+  .block-view .note-detail .experiment-tools {
     padding: 18px 17px 24px;
   }
 }

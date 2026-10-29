@@ -12,7 +12,7 @@ import { ClaudeAgentService } from '../src/server/claude-agent.js';
 import { CodexAgentService, codexStatusRecord } from '../src/server/codex-agent.js';
 
 // Claude Code and Codex are two agents each inside ros.ai: one on the person's subscription, one on an API key.
-// Each project picks one in the Ros bar, so picking one never moves another project onto the other way of paying.
+// Each project picks one in the ROS bar, so picking one never moves another project onto the other way of paying.
 
 function workspace() {
   const directory = mkdtempSync(join(tmpdir(), 'ros-claude-codex-')), store = new Store(directory), execution = new ExecutionService(store, { includeSetupUsage: false });
@@ -51,7 +51,7 @@ test('on the old default, the API key, projects keep Claude Code (API key), and 
   } finally { await claude.shutdown(); await f.close(); }
 });
 
-test('each project picks one of the four agents, and the Ros bar and the turn follow that pick', async () => {
+test('each project picks one of the four agents, and the ROS bar and the turn follow that pick', async () => {
   const f = workspace();
   const saved = { ROS_CODEX_BINARY: process.env.ROS_CODEX_BINARY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
   // No Codex on this computer and no keys: nothing outside the test is read or started.

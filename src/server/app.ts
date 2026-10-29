@@ -118,10 +118,14 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   attachAppFrameRoutes(app,options.publicDemo?undefined:tools?.appFrames);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
-    const { title,start,folder } = z.object({ title: z.string().trim().min(1).max(160),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
+    const { title:named,start,folder } = z.object({ title: z.string().trim().max(160).optional(),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
     if(folder&&!folders)throw new StoreError('Project folders are available in the local app.');
     // Check the folder before the project exists, so a refused folder leaves nothing behind.
     if(folder)folders!.prepare(folder);
+    // A project created without a name is Untitled, numbered past the ones already there.
+    const titles=new Set(store.listProjects().map(project=>project.title));
+    let title=named||'Untitled';
+    for(let n=2;!named&&titles.has(title);n++)title=`Untitled ${n}`;
     const project=store.createProject(title);
     if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
     res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));

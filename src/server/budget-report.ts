@@ -80,7 +80,7 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
 const providerNames: Record<string, string> = { nebius: 'Nebius', openai: 'OpenAI', ...searchLabels, claude: 'Claude Code', 'nebius-sandbox': 'Nebius Sandbox' };
 // The work a request did, named the way the app names it.
 const tasks: [RegExp, string][] = [
-  [/^Continuous project assistant/, 'Ros'], [/^Project discussion/, 'Project chat'], [/^Claude Code/, 'Claude Code'], [/^Codex/, 'Codex'],
+  [/^Continuous project assistant/, 'ROS'], [/^Project discussion/, 'Project chat'], [/^Claude Code/, 'Claude Code'], [/^Codex/, 'Codex'],
   [/^Node synthesis/, 'Block summary'], [/^Experiment code/, 'Code plan'], [/^Research collaborator/, 'Research'], [/workspace guide/i, 'Workspace guide'],
   [/search|reading|source discovery/i, 'Web search'], [/experiment/i, 'Code run'],
 ];

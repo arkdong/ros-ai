@@ -1,60 +1,75 @@
-/* Vertical canvas tools on the left edge, each in its own tile. Tiles magnify towards the pointer;
-   --dock-grow/--dock-widen stretch the dock's invisible hover area over the magnified tiles. */
+/* The map's tools: one white card at the top left, tiles in a column, a hairline between the groups.
+   Each tile explains itself in one line to its right. */
 .canvas-dock {
   position: absolute;
   left: 16px;
-  top: 50%;
-  translate: 0 -50%;
+  top: 16px;
   z-index: 13;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: var(--dock-grow, 0px) var(--dock-widen, 0px) var(--dock-grow, 0px) 0;
+  align-items: center;
+  gap: 1px;
+  padding: 4px;
+  border: 1px solid var(--card-line, #e3e3e3);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: var(--float-shadow, 0 6px 20px #00000014);
 }
-/* Only the magnification moves; hover tints are instant like every other button. */
 .canvas-dock .canvas-dock-item {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #ffffff;
-  box-shadow: 0 3px 10px #00000012;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--ink);
-  transform-origin: left center;
-  transition: scale .12s ease-out, translate .12s ease-out;
 }
 .canvas-dock .canvas-dock-item:hover:not(:disabled), .canvas-dock .canvas-dock-item:focus-visible { background: #f2f2f2; }
-.canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: var(--ink); border-color: var(--ink); color: #ffffff; }
-/* An unavailable tool keeps a solid tile and greys its icon, rather than the global see-through fade. */
-.canvas-dock .canvas-dock-item:disabled { opacity: 1; color: #c2c2c2; box-shadow: none; }
+/* The tool in use, or a mode that is on, is a pressed grey tile. */
+.canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: #e8e8e8; color: var(--ink); }
+/* The card's one action: Add block is the black tile, first in the column, and stays black while its menu is open. */
+.canvas-dock .canvas-dock-item.primary, .canvas-dock .canvas-dock-item.primary.active { background: var(--ink); color: #ffffff; }
+.canvas-dock .canvas-dock-item.primary:hover:not(:disabled), .canvas-dock .canvas-dock-item.primary:focus-visible { background: #000000; }
+.canvas-dock .canvas-dock-item.primary:disabled { background: var(--line); color: var(--muted); }
+/* An unavailable tool keeps its place and greys its icon, rather than the global see-through fade. */
+.canvas-dock .canvas-dock-item:disabled { opacity: 1; color: #c2c2c2; }
+.canvas-dock-divider { width: 22px; height: 1px; margin: 2px 0; background: #eeeeee; }
 .canvas-dock-tip {
   position: absolute;
-  left: calc(100% + 14px);
+  left: calc(100% + 12px);
   top: 50%;
   translate: 0 -50%;
-  transform-origin: left center;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   width: max-content;
-  max-width: 230px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--ink);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #1d1f1e;
   color: #ffffff;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.4;
+  white-space: nowrap;
   text-align: left;
   pointer-events: none;
   opacity: 0;
   transition: opacity .12s;
 }
-.canvas-dock-tip strong { display: block; font-size: 13px; font-weight: 600; }
-.canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .canvas-dock .canvas-dock-item { transition: none; }
+.canvas-dock-tip strong { font-weight: 600; }
+.canvas-dock-tip span { color: #b8b8b8; }
+.canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; transition-delay: .15s; }
+/* The dock rises in with the first block; an empty map has its Add a block button in the middle instead. */
+.canvas-dock { animation: canvas-dock-rise .28s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes canvas-dock-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .canvas-dock { animation: none; } }
+/* On short windows the column tightens so it stays clear of the minimap below it. */
+@media (max-height: 760px) {
+  .canvas-dock { gap: 0; }
+  .canvas-dock .canvas-dock-item { width: 32px; height: 32px; }
+  .canvas-dock-divider { margin: 1px 0; }
 }
 
 /* Transient canvas notices sit above every canvas control, centred at the top. */

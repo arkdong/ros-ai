@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/desktop/main.cjs",
+  "bin": { "ros-ai": "bin/ros-ai.mjs" },
   "engines": {
     "node": ">=24"
   },

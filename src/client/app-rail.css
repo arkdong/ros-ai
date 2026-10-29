@@ -5,7 +5,9 @@
 .app-rail-button:focus-visible { outline:2px solid #679a43; outline-offset:2px; }
 .app-rail-button:nth-child(1) { margin-bottom:8px; }
 .app-rail-hint { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); padding:5px 9px; border-radius:7px; background:#1d1f1e; color:#fff; font-size:12px; font-weight:500; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .12s ease; z-index:60; }
-.app-rail-button:hover .app-rail-hint, .app-rail-button:focus-visible .app-rail-hint { opacity:1; transition-delay:.15s; }
+.app-rail-button:hover .app-rail-hint, .app-rail-button:focus-visible .app-rail-hint { opacity:1; transition-delay:.3s; }
+/* The sidebar already names the page you are on, so its icon shows no hint. */
+.app-rail-button.active .app-rail-hint { display:none; }
 
 .workspace { position:relative; }
 .rail-page { position:absolute; inset:0; z-index:40; overflow:auto; scrollbar-gutter:stable; background:#fcfcfc; }
@@ -17,10 +19,10 @@
 .rail-page .connections-intro { padding:0 0 14px; }
 .rail-page .tool-connection p { font-size:13px; }
 .rail-page .tool-connection-name strong { font-size:14px; }
-.rail-page .tool-connection-name small { font-size:11.5px; }
-.rail-page .connection-state { font-size:11px; }
+.rail-page .tool-connection-name small { font-size:13px; }
+.rail-page .connection-state { font-size:12px; }
 .rail-page .connections-footnote { margin-top:16px; }
-.rail-page .resources-panel { background:#fff; border:1px solid #e4e4e4; border-radius:10px; padding-top:16px; }
+.rail-page .resources-panel { background:#fff; border:1px solid rgba(0,0,0,.08); border-radius:16px; padding-top:16px; }
 .inference-presets { display:flex; gap:8px; margin-bottom:10px; }
 .brand-logo { display:block; object-fit:contain; flex-shrink:0; }
 .inference-presets button { display:inline-flex; align-items:center; gap:6px; }

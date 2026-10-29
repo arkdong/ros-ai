@@ -1,4 +1,4 @@
-/* Plugin suggestions: the chip above Ros's input before a message is sent, and the card under a reply.
+/* Plugin suggestions: the chip above ROS's input before a message is sent, and the card under a reply.
    Neutral throughout; green only as the dot of a plugin that is connected. */
 .plugin-chip {
   align-self: flex-start; display: flex; align-items: center; gap: 10px; max-width: 100%; min-height: 42px; box-sizing: border-box;
@@ -32,7 +32,7 @@
 .plugin-key-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--text-xs); color: var(--body); }
 .plugin-key-link:hover { color: var(--ink); }
 
-/* The card under a reply, beside "Ros noticed". */
+/* The card under a reply, beside "ROS noticed". */
 .plugin-card .assistant-action-title { align-items: center; }
 .plugin-card .assistant-action-title .ros-mark, .plugin-card .assistant-action-title .ros-mark .research-ring { width: 16px; height: 16px; }
 .plugin-card .assistant-action-title > span:not(.ros-mark) { text-transform: none; }

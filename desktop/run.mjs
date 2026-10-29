@@ -45,7 +45,11 @@ if (building || prod) run(process.execPath, [join(root, 'node_modules', 'vite', 
 const bin = (name) => join(desktop, 'node_modules', '.bin', windows ? `${name}.cmd` : name);
 if (building) {
   run(bin('tsc'), ['--noEmit', '-p', desktop]);
-  run(bin('electron-builder'), ['--config', join(desktop, 'electron-builder.yml'), ...rest], { cwd: desktop });
+  // CI passes the signing secrets through even when they are not set, as empty strings; electron-builder takes an
+  // empty CSC_LINK for a certificate path and stops ("not a file"). Unset means unsigned, which is what we want then.
+  for (const key of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'CSC_NAME', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) if (!process.env[key]?.trim()) delete process.env[key];
+  // The release workflow attaches the files itself; electron-builder must not try to publish on its own when it sees CI.
+  run(bin('electron-builder'), ['--config', join(desktop, 'electron-builder.yml'), '--publish', 'never', ...rest], { cwd: desktop });
   process.exit(0);
 }
 /**

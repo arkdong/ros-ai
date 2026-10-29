@@ -7,9 +7,11 @@ import type { InferenceConnections } from './inference-connections.js';
 import type { ToolCredentials } from './tool-credentials.js';
 import type { PluginTokens } from './plugins.js';
 import type { CloudAccount } from './cloud-account.js';
+import type { LocalRos } from './local-ros.js';
+import { PLUGINS } from '../shared/plugins.js';
 import { detectAgents, detectApps, detectDocker, detectModels, mac, ollamaDefaultContext, pretty, win, type Found } from './setup-detect.js';
 import { SetupLinks, linkCommand } from './setup-links.js';
-import type { DetectedAgent, DetectedApp, DetectedKey, DetectedModel, LinkResult, ModelLinkResult, SetupLinkResponse, SetupStatus } from '../shared/setup.js';
+import type { AgentId, DetectedAgent, DetectedApp, DetectedKey, DetectedModel, LinkResult, ModelLinkResult, SetupLinkResponse, SetupResetPlan, SetupResetResponse, SetupStatus } from '../shared/setup.js';
 
 /** First launch: what ros.ai found on this computer, the links it made for the person, and whether
  * the screen has been seen. Everything here is read from this computer and stays on it. */
@@ -18,16 +20,19 @@ const AGENTS = ['claude-code', 'codex', 'cursor', 'gemini-cli', 'pi', 'hermes'] 
 const MODELS = ['ollama', 'lm-studio'] as const;
 /** The context Ollama gives a model below 24 GB of graphics memory, and LM Studio's usual load: assumed while unknown. */
 const LOCAL_DEFAULT_CONTEXT = 4096;
+const agentLabels: Record<AgentId, string> = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
 const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Claude API key', openai: 'OpenAI key', tavily: 'Tavily key', exa: 'Exa key', brave: 'Brave Search key' };
 const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor, Gemini CLI, Pi and Hermes Agent (names only)', 'model servers on 127.0.0.1'];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
+/** localRos: the ROS download on this computer, which Reset onboarding can remove. */
+type Deps = { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount; localRos?: Pick<LocalRos, 'status' | 'remove'> };
 
 export class Setup {
   private readonly file: string;
   private readonly links: SetupLinks;
   private cache: { at: number; scan: Scan } | null = null;
   private scanning: Promise<Scan> | null = null;
-  constructor(private readonly deps: { dataDir: string; outside: OutsideAgents; inference: InferenceConnections; credentials: ToolCredentials; plugins: PluginTokens; cloud: CloudAccount }) {
+  constructor(private readonly deps: Deps) {
     this.file = join(deps.dataDir, 'setup.json');
     this.links = new SetupLinks(deps.dataDir);
   }
@@ -84,6 +89,40 @@ export class Setup {
     this.cache = null;
     return result;
   }
+  /** ROS on this computer is downloaded, downloading, or left a download that stopped. */
+  private downloaded() { return Boolean(this.deps.localRos && this.deps.localRos.status().state !== 'not-downloaded'); }
+  /** What Reset onboarding can undo on this computer, for its options: the links this ros.ai recorded (only those, so a
+   * test copy never removes the links another ros.ai made), saved plugin tokens, the hosted ROS sign-in and the download. */
+  resetPlan(): SetupResetPlan {
+    return {
+      links: this.links.records().map(record => agentLabels[record.agent] ?? record.agent),
+      tokens: this.deps.plugins.saved().map(id => PLUGINS.find(plugin => plugin.id === id)?.name ?? id),
+      cloud: this.deps.cloud.signedIn,
+      localRos: this.downloaded(),
+    };
+  }
+  /** Reset onboarding, for testing the first run again: it shows again from the welcome page, plus whatever else the
+   * person chose to undo. What could not be undone comes back in words; the reset goes on past it. */
+  async reset(request: unknown): Promise<SetupResetResponse> {
+    const input = z.object({ links: z.boolean().default(false), tokens: z.boolean().default(false), cloud: z.boolean().default(false), localRos: z.boolean().default(false) }).strict().parse(request ?? {});
+    const done: string[] = [], failed: string[] = [];
+    const attempt = async (success: string, work: () => unknown) => { try { await work(); done.push(success); } catch (error) { failed.push(error instanceof Error ? error.message : String(error)); } };
+    if (input.links && this.links.records().length) {
+      const scan = await this.scan(true);
+      for (const record of this.links.records()) {
+        const found = scan.agents.find(item => item.id === record.agent);
+        if (!found) { failed.push(`${agentLabels[record.agent]} was not found on this computer, so its link stays recorded.`); continue; }
+        const result = await this.links.unlink(found);
+        if (result.ok) done.push(result.message); else failed.push(result.command ? `${result.message} ${result.command}` : result.message);
+      }
+    }
+    if (input.tokens) for (const id of this.deps.plugins.saved()) await attempt(`Forgot the ${PLUGINS.find(plugin => plugin.id === id)?.name ?? id} token.`, () => this.deps.plugins.disconnect(id));
+    if (input.cloud && this.deps.cloud.signedIn) await attempt('Signed out of hosted ROS.', () => this.deps.cloud.signOut());
+    if (input.localRos && this.downloaded()) await attempt('Removed the ROS download.', () => this.deps.localRos!.remove());
+    this.seen(false);
+    this.cache = null;
+    return { done, failed };
+  }
   /** A running Ollama or LM Studio becomes an inference connection with no USD rate, like any loopback server.
    * Each model keeps the context its server gives it and whether it can call tools; embedding models stay out. */
   private async registerModel(model: Omit<DetectedModel, 'connectionId'>): Promise<ModelLinkResult> {
@@ -123,4 +162,7 @@ export function attachSetupRoutes(app: Express, setup: Setup) {
   app.delete('/api/setup/links/:agent', async (req, res) => { res.json(await setup.unlink(String(req.params.agent))); });
   app.post('/api/setup/seen', (_req, res) => { setup.seen(true); res.json({ ok: true }); });
   app.delete('/api/setup/seen', (_req, res) => { setup.seen(false); res.json({ ok: true }); });
+  // Settings › General › Reset onboarding: what it can undo, and the reset itself.
+  app.get('/api/setup/reset', (_req, res) => { res.json(setup.resetPlan()); });
+  app.post('/api/setup/reset', async (req, res) => { res.json(await setup.reset(req.body)); });
 }

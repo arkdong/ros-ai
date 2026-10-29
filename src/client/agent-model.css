@@ -1,4 +1,4 @@
-/* The model and effort Claude Code or Codex runs with: a chip beside the agent in the Ros bar with its menu,
+/* The model and effort Claude Code or Codex runs with: a chip beside the agent in the ROS bar with its menu,
    and the same choice on the agent's own page. The effort slider is a native range input over a drawn track. */
 .ros-model.compact { flex-shrink: 0; min-width: 0; }
 .ros-model-menu.agent-model-menu { width: 300px; max-height: min(560px, 70vh); }
