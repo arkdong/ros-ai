@@ -41,4 +41,6 @@ export type AssistantThread = {id:string;projectId:string;title:string;createdAt
 export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean};
 /** threads: newest activity first. activeTurnId: a running turn in any thread. threadId: set on the state a new message
  * returns, naming the thread it went into (a new one when the message named none). */
+/** The hosted demo's modelBlocker: no model runs there, and the panel offers the download. */
+export const HOSTED_DEMO_BLOCKER = 'hosted-demo';
 export type AssistantState = {projectId:string;focus:AssistantFocus;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};

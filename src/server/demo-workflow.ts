@@ -30,8 +30,11 @@ const source = (path: string) => fileURLToPath(new URL(`../../examples/demo-work
 const FILES = { data: 'data/CBS AI use by company size 2024.csv', code: 'code/AI use by company size.py', notebook: 'notebooks/Explore the turnover gap.ipynb', report: 'report.md' };
 const RECORDED = 'Recorded for this demo on 11 October 2026 while it was prepared; no live search.';
 const AI_USE = 'Drafted with an AI assistant (Claude) while this demo was prepared, from the findings and calculations on this canvas.';
+/** What the hosted demo cannot do, said where a step would otherwise invite it. */
+export const HOSTED = 'To run agents, code and notebooks on your own work, download ros.ai from ros-ai.io';
 const NOTICE = 'Recorded walk-through: the searches and pages were captured on 11 October 2026 and the calculations are saved sandbox results, so Next makes no live calls.';
-const STEPS: { label: string; title: string; summary: string; live: string; next?: string }[] = [
+/** hosted: what the hosted demo says in place of live, where live invites something only the app does. */
+const STEPS: { label: string; title: string; summary: string; live: string; hosted?: string; next?: string }[] = [
   { label: 'Idea', title: 'Start from an idea', next: 'Plan and search the web',
     summary: 'A project starts as a rough question on the canvas: how is AI changing Dutch businesses, and what does that mean for a bank such as ABN AMRO?',
     live: 'Write your own question as a note, or bring it to the assistant.' },
@@ -46,10 +49,12 @@ const STEPS: { label: string; title: string; summary: string; live: string; next
     live: 'In a live run the agent proposes this grouping and you accept or change it.' },
   { label: 'Test', title: 'Test with data', next: 'Explore and chart',
     summary: 'The size gap is tested on CBS\'s own table. The Code block checks the data and calculates a 41.4-point gap in AI use between the smallest and the largest firms.',
-    live: 'Open the Code block and press Run: it calculates again in a sandbox on this computer.' },
+    live: 'Open the Code block and press Run: it calculates again in a sandbox on this computer.',
+    hosted: 'Open the Code block to read the program and its saved results. In the app, Run calculates again in a sandbox on your computer.' },
   { label: 'Charts', title: 'Explore and visualise', next: 'Write the report',
     summary: 'A notebook digs into what the code leaves open: where AI users hold more turnover than their share of firms. The charts from both sit on the canvas as Figures.',
-    live: 'Open the notebook and run a cell to calculate it again.' },
+    live: 'Open the notebook and run a cell to calculate it again.',
+    hosted: 'Open the notebook to read its cells. In the app it is a live notebook you can run.' },
   { label: 'Report', title: 'The final result',
     summary: 'The report brings the work together: what the sources say, the calculated figures and what the evidence does not show. Every source and figure in it links to the saved page or result.',
     live: 'Download it as a self-contained HTML file to share, with its AI-use statement.' },
@@ -75,21 +80,25 @@ function research(): Research {
  * Searches and pages were recorded while the demo was prepared and the calculations are saved sandbox results, all
  * labelled as such, so advancing makes no model, search or code calls. Every block stays live and editable. */
 export class WorkflowTutorial {
-  constructor(private store: Store, private folders: ProjectFolders, private importArtifacts: (projectId: string, nodeId: string, artifacts: ImportArtifact[], request: string) => Artifact[]) {}
+  /** Without folders (the hosted demo) the files become saved blocks: the data and code as they are, the notebook as a note with its chart. */
+  constructor(private store: Store, private folders: ProjectFolders | undefined, private importArtifacts: (projectId: string, nodeId: string, artifacts: ImportArtifact[], request: string) => Artifact[]) {}
 
   /** Builds the demo in the folder given, or in a fresh one: a folder that does not exist yet and that no other project, even a trashed one, still claims. */
   create(folder?: string): string {
-    const content = research();
-    const first = this.folders.suggest(WORKFLOW_TITLE).path;
-    const target = folder || Array.from({ length: 100 }, (_, index) => index ? `${first} ${index + 1}` : first)
-      .find(path => { if (existsSync(path)) return false; try { this.folders.prepare(path); return true; } catch { return false; } });
-    if (!target) throw new StoreError('Could not find a free folder for the demo. Remove older demo folders and try again.', 409);
-    const project = this.store.createProject(WORKFLOW_TITLE);
-    try { this.folders.attach(project.id, target); } catch (error) { this.store.trashProject(project.id); throw error; }
+    const content = research(), folders = this.folders;
+    let project;
+    if (folders) {
+      const first = folders.suggest(WORKFLOW_TITLE).path;
+      const target = folder || Array.from({ length: 100 }, (_, index) => index ? `${first} ${index + 1}` : first)
+        .find(path => { if (existsSync(path)) return false; try { folders.prepare(path); return true; } catch { return false; } });
+      if (!target) throw new StoreError('Could not find a free folder for the demo. Remove older demo folders and try again.', 409);
+      project = this.store.createProject(WORKFLOW_TITLE);
+      try { folders.attach(project.id, target); } catch (error) { this.store.trashProject(project.id); throw error; }
+    } else project = this.store.createProject(WORKFLOW_TITLE);
     return this.store.atomic(() => {
       const session: WorkflowSession = { projectId: project.id, scenario: 'workflow', step: 0, createdAt: now(), nodes: {}, artifacts: {} };
       this.step(session, [{ type: 'addNode', node: this.node(session, 'idea', { title: content.idea.title, description: content.idea.text, kind: 'topic', blockType: 'note' }) }], 'Demo: the idea');
-      this.store.addMessage(project.id, null, 'system', 'This demo builds the canvas in seven steps as you press Next in the demo guide. The web searches and pages were recorded on 11 October 2026 while the demo was prepared, and the calculations are saved results from ros.ai\'s sandbox. Next makes no model, search or code calls. Every block stays editable, and Run calculates again.');
+      this.store.addMessage(project.id, null, 'system', `This demo builds the canvas in seven steps as you press Next in the demo guide. The web searches and pages were recorded on 11 October 2026 while the demo was prepared, and the calculations are saved results from ros.ai's sandbox. Next makes no model, search or code calls. Every block stays editable${folders ? ', and Run calculates again' : `. ${HOSTED}`}.`);
       this.save(session);
       return project.id;
     });
@@ -108,7 +117,7 @@ export class WorkflowTutorial {
       [['Open the code', 'code'], ['Open the data', 'dataset']], [['Open the notebook', 'notebook'], ['Open a chart', 'figure:gap']], [['Open the report', 'report']]];
     const stages: TutorialStage[] = STEPS.map((step, index) => {
       const done = index <= session.step, frame = done ? frames[index].flatMap(id) : [];
-      return { index, title: step.title, nodeId: frame[0] ?? null, summary: step.summary, status: done ? 'completed' : 'pending', label: step.label, live: step.live, next: step.next, frame,
+      return { index, title: step.title, nodeId: frame[0] ?? null, summary: step.summary, status: done ? 'completed' : 'pending', label: step.label, live: this.folders ? step.live : step.hosted ?? step.live, next: step.next, frame,
         open: done ? opens[index].flatMap(([label, key]) => id(key).map(nodeId => ({ label, nodeId }))) : [] };
     });
     return { projectId: session.projectId, scenario: 'workflow', title: content.title, step: session.step, stages, runId: null, preview: null, outputArtifactIds: [], freshOutputArtifactIds: [],
@@ -182,7 +191,7 @@ export class WorkflowTutorial {
         session.artifacts['plot:denominator'] = output('Challenge the denominator · adoption versus turnover');
         session.artifacts['metric:gap'] = output('Largest–smallest size gap · percentage points');
       } else if (step === 5) {
-        const dataset = need('dataset'), code = need('code'), notebook = this.addFile(session, 'notebook', FILES.notebook);
+        const dataset = need('dataset'), code = need('code'), notebook = this.folders ? this.addFile(session, 'notebook', FILES.notebook) : this.savedNotebook(session);
         const cells = (JSON.parse(readFileSync(source(FILES.notebook), 'utf8')) as { cells: { outputs?: { data?: Record<string, string | string[]> }[] }[] }).cells;
         const png = cells.flatMap(cell => cell.outputs ?? []).map(output => output.data?.['image/png']).find(Boolean);
         if (!png) throw new StoreError('The demo notebook has no chart.', 500);
@@ -223,8 +232,10 @@ export class WorkflowTutorial {
 
   private link(source: string, target: string, label: string): Mutation { return { type: 'addConnection', connection: { id: randomUUID(), source, target, label } }; }
 
-  /** Copies one of the demo's files into the project folder and adds it as a block, as Add from the folder does. */
+  /** Copies one of the demo's files into the project folder and adds it as a block, as Add from the folder does.
+   * Without a folder the data and code become saved blocks with the same content. */
   private addFile(session: WorkflowSession, key: string, path: string): CanvasNode {
+    if (!this.folders) return this.savedFile(session, key, path);
     const root = projectFolderRoot(this.store, session.projectId);
     if (!root) throw new StoreError('The demo\'s project folder is missing. Reconnect it, or start the demo again.', 409);
     const target = join(root, ...path.split('/'));
@@ -233,6 +244,29 @@ export class WorkflowTutorial {
     const { nodeId } = this.folders.add(session.projectId, path);
     session.nodes[key] = nodeId;
     return this.store.getProject(session.projectId).canvas.nodes.find(node => node.id === nodeId)!;
+  }
+
+  private savedFile(session: WorkflowSession, key: string, path: string): CanvasNode {
+    const text = readFileSync(source(path), 'utf8'), title = path.split('/').pop()!.replace(/\.[^.]+$/u, '');
+    const node = this.node(session, key, path.endsWith('.csv')
+      ? { title, description: '', kind: 'topic', blockType: 'dataset' }
+      : { title, description: '', kind: 'topic', blockType: 'code', code: { language: 'python', source: text, parameters: {}, inputArtifactId: null } });
+    this.store.mutate(session.projectId, [{ type: 'addNode', node }], `Demo: add ${title}`);
+    if (node.blockType === 'dataset') {
+      const [data] = this.importArtifacts(session.projectId, node.id, [{ kind: 'dataset', title, content: text, mediaType: 'text/csv', metadata: { tutorialOrigin: 'saved', provenance: 'CBS table saved with this demo.' } }], 'Load the demo\'s CBS table');
+      this.store.mutate(session.projectId, [{ type: 'updateNode', id: node.id, patch: { artifactId: data.id } }], `Demo: add ${title}`);
+    }
+    return this.store.getProject(session.projectId).canvas.nodes.find(item => item.id === node.id)!;
+  }
+
+  /** The hosted demo has no notebooks: the notebook's cells stay readable as a note, and its chart is imported as in the app. */
+  private savedNotebook(session: WorkflowSession): CanvasNode {
+    const cells = (JSON.parse(readFileSync(source(FILES.notebook), 'utf8')) as { cells: { cell_type: string; source: string | string[] }[] }).cells;
+    const text = cells.map(cell => { const body = Array.isArray(cell.source) ? cell.source.join('') : cell.source; return cell.cell_type === 'code' ? `\`\`\`python\n${body}\n\`\`\`` : body; }).join('\n\n');
+    const node = this.node(session, 'notebook', { title: 'Explore the turnover gap', label: 'notebook', kind: 'topic', blockType: 'note',
+      description: `*${HOSTED}: there this is a live notebook you can run.*\n\n${text}`.slice(0, 20_000) });
+    this.store.mutate(session.projectId, [{ type: 'addNode', node }], 'Demo: add the notebook');
+    return node;
   }
 
   /** One undoable change: the step's blocks and relationships, with the demo's blocks laid out again as a tree that

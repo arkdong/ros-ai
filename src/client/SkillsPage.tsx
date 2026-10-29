@@ -74,7 +74,7 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
   }, [publicDemo, onSkills]);
   useEffect(() => { void refresh(); }, [refresh]);
   const head = (action?: ReactNode) => <header className="plugins-head"><div><h1>Skills</h1><p>Ways of working your agents follow when a task matches</p></div>{action}</header>;
-  if (publicDemo) return <div className="plugins-page skills-page">{head()}<p className="rail-page-note">This demo keeps no skills. Launch the local workspace to add yours.</p></div>;
+  if (publicDemo) return <div className="plugins-page skills-page">{head()}<p className="rail-page-note">This demo keeps no skills. <a href="https://ros-ai.io/#get" target="_blank" rel="noreferrer">Download ros.ai</a> to add yours.</p></div>;
   const skills: SkillItem[] = state?.skills ?? remembered;
   const added = (names: string[]) => {
     setAdding(null);

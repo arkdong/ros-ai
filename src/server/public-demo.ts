@@ -3,17 +3,22 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import express, { type Express, type Request, type Response } from 'express';
 import { z } from 'zod';
-import type { AssistantFocus, AssistantState } from '../shared/assistant.js';
+import { HOSTED_DEMO_BLOCKER, type AssistantFocus, type AssistantState } from '../shared/assistant.js';
 import { Store, StoreError } from './store.js';
 import { createApp } from './app.js';
 import { ModelSettings } from './model-settings.js';
 import { TutorialService } from './tutorial.js';
 
-const disabledReason = 'This public demo uses saved evidence. Fresh execution and paid model/search calls require a separately configured and authorized research server.';
+const disabledReason = 'This demo plays back saved work, so agents, plugins and code do not run here. Download ros.ai from ros-ai.io to run them on your own projects.';
 const cookieName = 'ros_ai_demo';
 const idPattern = /^[a-f0-9]{64}$/;
 const routeId = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const disabled = ():never => { throw new StoreError(disabledReason,403); };
+const fullPage = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ros.ai demo</title>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#fafafa;color:#111;font:16px/1.5 system-ui,-apple-system,sans-serif;text-align:center">
+<main style="max-width:440px;padding:24px"><h1 style="font-size:26px;margin:0 0 10px">The demo is full right now</h1>
+<p style="color:#666;margin:0 0 22px">Too many people are trying it at once. ros.ai itself runs on your own computer, with your own agents and files, so you can skip the queue.</p>
+<a href="https://ros-ai.io/#get" style="display:inline-block;padding:11px 22px;border-radius:999px;background:#111;color:#fff;font-weight:600;text-decoration:none">Download ros.ai</a></main></body>`;
 
 // Only these existing local operations may reach a visitor's private Store.
 // Host filesystem connectors, provider usage, arbitrary execution and account
@@ -41,7 +46,7 @@ function savedAssistant(store:Store,projectId:string):AssistantState {
   return { projectId,focus,memory:{originalQuestion:question,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]},
     outline:detail.project.canvas.nodes.map(node => ({id:node.id,nodeId:node.id,title:node.title,summary:node.description,
       kind:'direction',references:[{kind:'node',id:node.id,nodeId:node.id,label:node.title}]})),
-    turns:[],threads:[],messages:detail.messages.filter(message => message.nodeId === null),activeTurnId:null,modelAvailable:false,searchAvailable:false };
+    turns:[],threads:[],messages:detail.messages.filter(message => message.nodeId === null),activeTurnId:null,modelAvailable:false,modelBlocker:HOSTED_DEMO_BLOCKER,searchAvailable:false };
 }
 
 function visitorApp(store:Store):Express {
@@ -104,7 +109,9 @@ export function createPublicDemoApp(options:{dataDir:string;origin:string;maxSes
     if (existing && idPattern.test(existing) && existsSync(join(directory,existing))) return existing;
     if (visitorCount() >= maxSessions) pruneExpired();
     if (visitorCount() >= maxSessions) {
-      res.status(503).json({error:'The demonstration has reached its visitor capacity. Existing browser sessions remain available.'});
+      // The page itself gets a page: download ros.ai, which needs no seat here.
+      if (req.path === '/app') res.status(503).type('html').send(fullPage);
+      else res.status(503).json({error:'The demo is full right now. Download ros.ai from ros-ai.io to use it on your own computer.'});
       return null;
     }
     const sessionId = randomBytes(32).toString('hex');

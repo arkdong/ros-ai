@@ -37,7 +37,8 @@ export class TutorialService {
   private workflow?:WorkflowTutorial;
   constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean;folders?:ProjectFolders}={}) {
     this.highlights = new Highlights(store);
-    if (options.folders && !options.publicDemo) this.workflow = new WorkflowTutorial(store,options.folders,(...args) => this.importArtifacts(...args));
+    // The hosted demo has no folders; there the walk-through keeps its files as saved blocks.
+    if (options.folders || options.publicDemo) this.workflow = new WorkflowTutorial(store,options.publicDemo ? undefined : options.folders,(...args) => this.importArtifacts(...args));
   }
 
   private marketAvailable() { return !this.options.publicDemo && localMarketDataAvailable(); }

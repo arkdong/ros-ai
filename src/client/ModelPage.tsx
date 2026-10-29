@@ -112,7 +112,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const installedKey=JSON.stringify(agentItems.filter(item=>shown(item.id).connected).map(item=>({id:item.id,label:shown(item.id).label})));
   // Once they are in, what is connected is saved on this computer for the next time.
   useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('agents-installed',installed);},[installedKey,read,onInstalled]);
-  if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
+  if(publicDemo)return <p className="rail-page-note">Agents don't run in this demo. <a href="https://ros-ai.io/#get" target="_blank" rel="noreferrer">Download ros.ai</a> to connect Claude Code, Codex, ROS and others on your own computer.</p>;
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
     nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,
