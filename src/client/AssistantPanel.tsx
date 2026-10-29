@@ -23,6 +23,7 @@ import { useSmoothText } from './live-reply';
 import { useSkillMenu } from './SkillMenu';
 import type { PluginId } from '../shared/plugins';
 import { PluginSuggestionCard, usePluginChip } from './PluginSuggestion';
+import { RosThreadChip, type ShownThread } from './RosThreads';
 import './assistant-compact.css';
 
 /** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
@@ -44,21 +45,26 @@ type Props = {
   onSkills?: () => void;
   /** Opens a plugin's page, for the setup a chip or card cannot do in place. */
   onOpenPlugin: (id: PluginId) => void;
+  /** The thread shown (null: a new thread, not started yet); the chip in the header switches, renames and deletes. */
+  threadId: ShownThread; onThread: (thread: ShownThread) => void;
+  onRenameThread: (threadId: string, title: string) => Promise<unknown>; onDeleteThread: (threadId: string) => Promise<unknown>;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onProposals, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin }: Props) {
-  const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}`, readSaved(`project-draft:${detail.project.id}`, ''));
+export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onProposals, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin, threadId, onThread, onRenameThread, onDeleteThread }: Props) {
+  const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}:${threadId ?? 'new'}`);
   const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
   const [answerTarget, setAnswerTarget] = useState<{ projectId: string; turnId: string; questions: AssistantClarificationQuestion[] } | null>(null);
   const [preparedNotice, setPreparedNotice] = useState('');
   type Submission={message:string;at:string;status:'pending'|'failed'|'uncertain';error?:string};
-  const [submission,setSubmission]=useState<Submission|null>(()=>{const saved=readSaved<Submission|null>(`assistant-submission:${detail.project.id}`,null);return saved?.status==='pending'?{...saved,status:'uncertain',error:'The browser closed before admission was confirmed. Refresh saved activity before sending again; ros.ai will not retry automatically.'}:saved;});
-  const rememberSubmission=(value:Submission|null)=>{setSubmission(value);saveLocal(`assistant-submission:${detail.project.id}`,value);};
+  // One per thread: a message sent from a new thread moves the panel to the thread it started, and must not read as unconfirmed there.
+  const submissionKey=`assistant-submission:${detail.project.id}:${threadId??'new'}`;
+  const [submission,setSubmission]=useState<Submission|null>(()=>{const saved=readSaved<Submission|null>(submissionKey,null);return saved?.status==='pending'?{...saved,status:'uncertain',error:'The browser closed before admission was confirmed. Refresh saved activity before sending again; ros.ai will not retry automatically.'}:saved;});
+  const rememberSubmission=(value:Submission|null)=>{setSubmission(value);saveLocal(submissionKey,value);};
 
 
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.ros-model-menu, .modal, .cm-editor:focus-within')) onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.ros-model-menu, .ros-thread-rename, .modal, .cm-editor:focus-within')) onClose(); };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [onClose]);
@@ -66,8 +72,9 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
   const focusedArtifact = detail.artifacts.find(artifact => artifact.id === focus.artifactId);
   const blocks = detail.project.canvas.nodes.length;
-  const turns = [...(state?.turns || [])].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)); const active = turns.find(turn => turn.id === state?.activeTurnId);
-  const savedMessages = state?.messages || [];
+  // The panel shows one thread: its turns and, from before turns existed, its saved messages.
+  const allTurns = [...(state?.turns || [])].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)); const turns = threadId ? allTurns.filter(turn => turn.threadId === threadId) : []; const active = turns.findLast(turn => turn.status === 'running');
+  const savedMessages = (state?.messages || []).filter(item => threadId !== null && item.threadId === threadId);
   // The service stores the first user message just before its turn is created.
   const firstTurn=turns[0];
   const firstTurnMessageIndex=firstTurn?savedMessages.findLastIndex(item=>item.role==='user'&&item.content===firstTurn.userMessage&&item.createdAt<=firstTurn.createdAt):-1;
@@ -83,7 +90,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   const lastTurn = turns.at(-1);
   const blocker = state && !state.modelAvailable ? assistantBlocker(state.modelBlocker||'The selected model is unavailable.',state.backend) : null;
   const modelBlocked = Boolean(state && !state.modelAvailable);
-  const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !turns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
+  const pending = detail.proposals.filter(proposal => proposal.status === 'pending' && !allTurns.some(turn => turn.actions.some(action => action.proposalId === proposal.id)));
   const asking = answerTarget?.projectId === detail.project.id;
   // A link or an app's name in the draft whose plugin agents cannot use yet shows as a chip above the composer.
   const plugins = usePluginChip({ draft: message, projectId: detail.project.id, backend: state?.backend, hidden: skills.open || asking, onBackend: onRefresh, onOpenPlugin });
@@ -92,14 +99,16 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
   useEffect(() => { if (prefill) { setMessage(prefill); textarea.current?.focus(); onPrefillUsed(); } }, [prefill, onPrefillUsed]);
   useEffect(() => { const element = scroller.current; if (element) {followConversation.current=true;element.scrollTop = element.scrollHeight;} }, [turns.length, lastTurn?.reply, lastTurn?.status, messages.length, busy]);
   useEffect(()=>{const element=scroller.current;if(!element)return;const observer=new ResizeObserver(()=>{if(followConversation.current)element.scrollTop=element.scrollHeight;});observer.observe(element);return()=>observer.disconnect();},[]);
-  useEffect(()=>{if(submission&&turns.some(turn=>turn.userMessage===submission.message&&turn.createdAt>=submission.at)){setSubmission(null);saveLocal(`assistant-submission:${detail.project.id}`,null);}},[state,detail.project.id,submission]);
+  useEffect(()=>{if(submission&&turns.some(turn=>turn.userMessage===submission.message&&turn.createdAt>=submission.at)){setSubmission(null);saveLocal(submissionKey,null);}},[state,submissionKey,submission]);
   const changeBackend=async(backend:AssistantBackend)=>{if(running)return;try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}};
   const submit = async (event: FormEvent) => {
     event.preventDefault(); if (!message.trim() || running || modelBlocked || submission?.status==='pending') return;
     setPreparedNotice('');
     const attempt:Submission={message:message.trim(),at:new Date().toISOString(),status:'pending'};rememberSubmission(attempt);
-    try{if(await onSend(attempt.message,plugins.suggest)){setMessage('');rememberSubmission(null);}else rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}
-    catch(cause){const error=cause instanceof Error?cause.message:String(cause);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
+    // The box empties before the send: a message from a new thread moves the panel to the thread it starts, and the text must not stay behind as that new thread's draft.
+    setMessage('');
+    try{if(await onSend(attempt.message,plugins.suggest))rememberSubmission(null);else{setMessage(attempt.message);rememberSubmission({...attempt,status:'failed',error:'The message was not admitted. Inspect saved activity and the connection status before sending again.'});}}
+    catch(cause){const error=cause instanceof Error?cause.message:String(cause);setMessage(attempt.message);rememberSubmission({...attempt,status:/timeout|timed out|unknown|unreadable|network|fetch|abort/i.test(error)?'uncertain':'failed',error});}
     textarea.current?.focus();
   };
   // Stop, by button or Esc twice, leaves the cursor in the box for the next question.
@@ -123,7 +132,7 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     return null;
   };
   return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="ROS" data-testid="assistant-panel">
-    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>ROS</h2><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close ROS" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
+    <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>ROS</h2><RosThreadChip state={state} projectId={detail.project.id} current={threadId} onChoose={onThread} onRename={onRenameThread} onDelete={onDeleteThread}/><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close ROS" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}

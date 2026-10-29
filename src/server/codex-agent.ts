@@ -65,7 +65,8 @@ export class CodexAgentService implements AgentRuntime {
   private readonly checking = new Map<CodexBilling, Promise<void>>();
   /** The installed CLI and what its protocol offers are the same for both agents, so checks running together share one look. */
   private looking: Promise<Pick<Checked, 'cli' | 'protocol'>> | null = null;
-  private active = new Map<string, { rpc: CodexAppServer; stop: () => void; done: Promise<unknown> }>();
+  /** Running turns by ROS thread (the project itself when a caller names no thread); each thread keeps its own Codex thread. */
+  private active = new Map<string, { projectId: string; rpc: CodexAppServer; stop: () => void; done: Promise<unknown> }>();
   private readonly onboarding = new LocalAgentOnboarding(() => { this.checked.clear(); });
   private closed = false;
   constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, dataDir: string) {
@@ -73,8 +74,7 @@ export class CodexAgentService implements AgentRuntime {
     this.apiHome = join(dataDir, 'codex-api');
     for (const project of store.listProjects()) for (const attempt of store.records<Attempt>('agent-attempt', project.id)) if (attempt.status === 'running') {
       store.saveRecord('agent-attempt', attempt.id, project.id, { ...attempt, status: 'uncertain', error: 'Local service stopped while Codex was active. Captured requests and full reservations are retained; no turn or tool action was replayed.' });
-      const session = store.record<Session>('codex-session', project.id);
-      if (session) store.saveRecord('codex-session', project.id, project.id, { ...session, state: 'uncertain' });
+      for (const { id, value } of store.recordEntries<Session>('codex-session', project.id)) store.saveRecord('codex-session', id, project.id, { ...value, state: 'uncertain' });
     }
   }
   /** model and effort: on the API key; planModel and planEffort: on the subscription, once chosen here. No effort saved means the model's own default. */
@@ -187,12 +187,12 @@ export class CodexAgentService implements AgentRuntime {
     }
   }
   configureAllowance(projectId: string, supplied: unknown) {
-    if (this.active.has(projectId)) throw new StoreError('Stop the active Codex turn before editing its allowance or scope. Its full reservations will remain retained.', 409);
+    if ([...this.active.values()].some(value => value.projectId === projectId)) throw new StoreError('Stop the active Codex turn before editing its allowance or scope. Its full reservations will remain retained.', 409);
     this.budget.configure(projectId, supplied); this.reflectAllowance(projectId);
     return this.allowance(projectId);
   }
   pauseAllowance(projectId: string) {
-    this.budget.pause(projectId); this.active.get(projectId)?.stop(); this.reflectAllowance(projectId);
+    this.budget.pause(projectId); for (const value of this.active.values()) if (value.projectId === projectId) value.stop(); this.reflectAllowance(projectId);
     return this.allowance(projectId);
   }
   async setup(projectId: string, agent: LocalAgentId, force = true, billing: CodexBilling = 'plan'): Promise<LocalAgentSetup> {
@@ -228,11 +228,12 @@ export class CodexAgentService implements AgentRuntime {
   async execute(request: AgentExecuteRequest): Promise<AgentResult> {
     if (this.closed) throw new StoreError('Local agent service is stopping.', 503);
     if (this.onboarding.hasPending()) throw new StoreError('Complete or cancel native sign-in before starting Codex research.', 409);
-    if (this.active.has(request.projectId)) throw new StoreError('A Codex turn is already active in this project.', 409);
+    const key = request.threadId ?? request.projectId;
+    if (this.active.has(key)) throw new StoreError('A Codex turn is already active in this thread.', 409);
     const billing = request.billing ?? 'plan', status = await this.status(request.projectId, false, billing), choice = await this.modelChoice(billing);
     if (this.closed) throw new StoreError('Local agent service is stopping.', 503);
     if (this.onboarding.hasPending()) throw new StoreError('Complete or cancel native sign-in before starting Codex research.', 409);
-    if (this.active.has(request.projectId)) throw new StoreError('A Codex turn is already active in this project.', 409);
+    if (this.active.has(key)) throw new StoreError('A Codex turn is already active in this thread.', 409);
     if (!status.available) throw new StoreError(status.detail, 503);
     if (request.signal.aborted) throw new StoreError('Agent turn stopped before admission.', 409);
     // Validate before reserving: a reserved turn is never refunded.
@@ -256,7 +257,7 @@ export class CodexAgentService implements AgentRuntime {
     // A new selection moves focus, not the conversation: each prompt states the current selection and scope.
     // The plan and the key keep their threads in different places, so switching starts a new one.
     const scopeHash = createHash('sha256').update(JSON.stringify({ tools: toolkit.definitions.map(item => item.name).sort(), ...(onKey ? { billing, model } : {}) })).digest('hex');
-    const prior = this.store.record<Session>('codex-session', request.projectId);
+    const prior = this.store.record<Session>('codex-session', key);
     const reuse = prior && prior.scopeHash === scopeHash && prior.state !== 'uncertain';
     const cwd = reuse ? prior.cwd : mkdtempSync(join(tmpdir(), 'ros-ai-agent-session-'));
     if (!resolve(cwd).startsWith(`${resolve(tmpdir())}/ros-ai-agent-session-`)) throw new StoreError('Codex session directory is outside its isolated local scope.', 503);
@@ -293,7 +294,7 @@ export class CodexAgentService implements AgentRuntime {
     };
     const deadline = setTimeout(() => { timedOut = true; stop(); if (!turnId) { rpc.close(); fail(new StoreError('Codex exceeded its granted wall-time before turn identity was confirmed.', 503)); } }, reservation.seconds * 1000);
     request.signal.addEventListener('abort', stop, { once: true });
-    this.active.set(request.projectId, { rpc, stop, done: terminal });
+    this.active.set(key, { projectId: request.projectId, rpc, stop, done: terminal });
     rpc.onFailure = fail;
     rpc.onNotification = (method, params) => {
       if (params.threadId && params.threadId !== threadId) return;
@@ -314,8 +315,8 @@ export class CodexAgentService implements AgentRuntime {
         if (total) {
           latest = total; attempt.tokens = total; save();
           // Kept with the thread, so the next turn on it is priced from here.
-          const session = this.store.record<Session>('codex-session', request.projectId);
-          if (session?.threadId === threadId) this.store.saveRecord('codex-session', request.projectId, request.projectId, { ...session, tokens: total });
+          const session = this.store.record<Session>('codex-session', key);
+          if (session?.threadId === threadId) this.store.saveRecord('codex-session', key, request.projectId, { ...session, tokens: total });
         }
         checkCap();
       } else if (method === 'turn/completed') {
@@ -359,7 +360,7 @@ export class CodexAgentService implements AgentRuntime {
       // The thread must bill what the person chose: the OpenAI API key, on the model ros.ai prices.
       if (onKey && (result.modelProvider !== codexProvider(true) || result.model !== model)) throw new StoreError('Codex did not confirm it is using the OpenAI API key from the Agents page, so ros.ai stopped before sending anything.', 503);
       attempt.threadId = threadId; attempt.request = { ...object(attempt.request), reportedModel: result.model ?? null, reportedEffort: result.reasoningEffort ?? null }; save();
-      this.store.saveRecord('codex-session', request.projectId, request.projectId, { projectId: request.projectId, threadId, scopeHash, cwd, state: 'ready', at: now(), ...(latest ? { tokens: latest } : {}) } satisfies Session);
+      this.store.saveRecord('codex-session', key, request.projectId, { projectId: request.projectId, threadId, scopeHash, cwd, state: 'ready', at: now(), ...(latest ? { tokens: latest } : {}) } satisfies Session);
       if (stopped || request.signal.aborted) throw new StoreError('Agent turn stopped before inference submission.', 409);
       const sandboxPolicy = profile ? null : { type: 'readOnly', networkAccess: false, access: { type: 'restricted', readableRoots: [cwd], includePlatformDefaults: true } };
       const confinement = profile ?? { sandboxPolicy };
@@ -386,10 +387,10 @@ export class CodexAgentService implements AgentRuntime {
         else if (settlement) settle(settlement);
         else this.store.updateUsage(usage.id, { status: 'uncertain' });
       }
-      const session = this.store.record<Session>('codex-session', request.projectId);
-      if (session) this.store.saveRecord('codex-session', request.projectId, request.projectId, { ...session, state: attempt.status === 'uncertain' ? 'uncertain' : 'interrupted' });
+      const session = this.store.record<Session>('codex-session', key);
+      if (session) this.store.saveRecord('codex-session', key, request.projectId, { ...session, state: attempt.status === 'uncertain' ? 'uncertain' : 'interrupted' });
       throw new StoreError(attempt.error, 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); rpc.close(); finish(); this.active.delete(request.projectId); void toolkit.close(); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); rpc.close(); finish(); this.active.delete(key); void toolkit.close(); }
   }
   async shutdown() { this.closed = true; await this.onboarding.shutdown(); for (const value of this.active.values()) value.stop(); await Promise.allSettled([...this.active.values()].map(value => value.done)); }
 }

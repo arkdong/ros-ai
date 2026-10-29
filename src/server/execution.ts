@@ -364,16 +364,20 @@ export class ExecutionService {
     }
     return capabilities;
   }
-  async assistantComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection?:ModelSelection){
+  /** One reply at a time per lane: a ROS thread (lane = its id), or the project itself when no lane is named. */
+  private chatKey(projectId:string,lane?:string){return lane?`${projectId}/${lane}`:projectId;}
+  private chatting(projectId:string){return [...this.chats.keys()].some(key=>key===projectId||key.startsWith(`${projectId}/`));}
+  async assistantComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection?:ModelSelection,lane?:string){
     this.store.getProject(projectId);selection??=this.modelSelection(projectId);this.admitWork(true,selection);
-    if(this.chats.has(projectId))throw new Error('The project assistant is already responding.');
-    const controller=new AbortController();this.chats.set(projectId,controller);
+    const key=this.chatKey(projectId,lane);
+    if(this.chats.has(key))throw new Error('The project assistant is already responding.');
+    const controller=new AbortController();this.chats.set(key,controller);
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Continuous project assistant',undefined,projectId,1,selection);}
-    finally{this.chats.delete(projectId);}
+    finally{this.chats.delete(key);}
   }
   async guideComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection:ModelSelection){
     this.store.getProject(projectId);this.admitWork(true,selection);
-    if(this.chats.has(projectId))throw new Error('Finish or stop the current project response before a guide review.');
+    if(this.chatting(projectId))throw new Error('Finish or stop the current project response before a guide review.');
     const controller=new AbortController();this.chats.set(projectId,controller);
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Explicit workspace guide review',undefined,projectId,1,selection);}
     finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
@@ -395,8 +399,8 @@ export class ExecutionService {
     const service=this.searchService();
     return SEARCH_SERVICES[service.id].read?null:`${SEARCH_SERVICES[service.id].label} cannot read whole pages. Quote the page's search excerpt instead, or leave it out.`;
   }
-  async assistantSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string):Promise<Run>{
-    return this.searchRun(projectId,nodeId,query,signal,turnId,true);
+  async assistantSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lane?:string):Promise<Run>{
+    return this.searchRun(projectId,nodeId,query,signal,turnId,true,'basic',lane);
   }
   /** One web search saved on the Result note it feeds. An agent's searches run side by side inside its own turn,
    * so they skip the one-assistant-reply-at-a-time lock that a single assistant search takes.
@@ -404,26 +408,26 @@ export class ExecutionService {
   agentSearch(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,depth:SearchDepth='basic'):Promise<Run>{
     return this.searchRun(projectId,nodeId,query,signal,turnId,false,depth);
   }
-  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean,depth:SearchDepth='basic'):Promise<Run>{
-    this.admitWork(false);
+  private async searchRun(projectId:string,nodeId:string,query:string,signal:AbortSignal,turnId:string,lock:boolean,depth:SearchDepth='basic',lane?:string):Promise<Run>{
+    this.admitWork(false);const key=this.chatKey(projectId,lane);
     this.checkSignal(signal);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
     if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} search has no configured remaining authorization.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
-    if(lock&&this.chats.has(projectId))throw new Error('The project assistant is already responding.');
+    if(lock&&this.chats.has(key))throw new Error('The project assistant is already responding.');
     // A claim check searches Tavily in depth, for passages it can quote; another service's search already returns them.
     const deep=depth==='advanced'&&service.id==='tavily',schema=deep?CHECK_SEARCH_SCHEMA:pricing.schema;
     const run=this.store.createRun({id:randomUUID(),projectId,nodeId,request:query,useSearch:true,status:'running',createdAt:now(),startedAt:now(),projectRevision:project.revision,node:structuredClone(node),inputs:[],messages:[],provider:service.id,model:deep?'advanced-search':pricing.model,modelVersion:null,configuration:{purpose:lock?'assistant-search':depth==='advanced'?'agent-claim-check':'agent-search',assistantTurnId:turnId,search:schema.configuration},tools:[schema],events:[],artifactIds:[]});
-    const controller=new AbortController();if(lock)this.chats.set(projectId,controller);
+    const controller=new AbortController();if(lock)this.chats.set(key,controller);
     const active:Active={controller,done:Promise.resolve()};this.active.set(run.id,active);
     const combinedSignal=AbortSignal.any([signal,this.signal(controller)]);
     // Register before dispatch, so immediate cancellation/shutdown can prevent
     // submission entirely. The same task is awaited during shutdown.
     const task=Promise.resolve().then(()=>this.performAssistantSearch(run,combinedSignal,service)).finally(()=>{
       this.active.delete(run.id);
-      if(this.chats.get(projectId)===controller)this.chats.delete(projectId);
+      if(this.chats.get(key)===controller)this.chats.delete(key);
     });
     active.done=task.then(()=>undefined,()=>undefined);
     return task;
@@ -553,7 +557,7 @@ export class ExecutionService {
   private async projectChat(projectId:string,message:string) {
     message = requestText.parse(message);
     if(new Authority(this.store).policy(projectId).stopped)throw new Error('Project research is stopped. Resume explicitly before conversation work.');
-    if (this.chats.has(projectId)) throw new Error('Project conversation is already running.');
+    if (this.chatting(projectId)) throw new Error('Project conversation is already running.');
     this.admitWork(false);
     const selection=this.modelSelection(projectId);
     if (!this.adapter(selection).configured || !this.cloudAllowed(selection.provider)) return this.localProjectChat(projectId,message);
@@ -781,7 +785,8 @@ export class ExecutionService {
     this.event(runId,'cancelled','Stopped this run only. Any unknown provider charge remains reserved.');
     return this.store.updateRun(runId,{status:'cancelled',endedAt:now()});
   }
-  cancelProjectChat(projectId:string){this.chats.get(projectId)?.abort();}
+  /** Stops the project's replies in every lane. */
+  cancelProjectChat(projectId:string){for(const [key,controller] of this.chats)if(key===projectId||key.startsWith(`${projectId}/`))controller.abort();}
   retryRun(runId:string) {
     const run = this.store.getRun(runId);
     if (!['failed','cancelled','interrupted'].includes(run.status)) throw new Error('Only failed, cancelled, or interrupted runs can be retried.');

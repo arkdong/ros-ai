@@ -192,6 +192,8 @@ export class Store {
     return row ? JSON.parse(row.data) as T : undefined;
   }
   records<T>(namespace:string,projectId:string):T[] { this.getProject(projectId); return this.all<T>('SELECT data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid',namespace,projectId); }
+  /** The project's records of one kind with their ids, for records that do not carry their own id (agent sessions). */
+  recordEntries<T>(namespace:string,projectId:string):{id:string;value:T}[] { this.getProject(projectId); return (this.db.prepare('SELECT id, data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid').all(namespace,projectId) as {id:string;data:string}[]).map(row => ({ id: row.id, value: JSON.parse(row.data) as T })); }
   saveRecord<T>(namespace:string,id:string,projectId:string,value:T):T {
     this.getProject(projectId);
     this.db.prepare('INSERT INTO workspace_records(namespace,id,project_id,data) VALUES (?,?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,projectId,JSON.stringify(value));
@@ -199,7 +201,7 @@ export class Store {
   }
   removeRecord(namespace:string,id:string,projectId:string) { this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId); }
   /** Development only: forget the project conversation (messages, turns, agent sessions, research memory) for a fresh test. Usage and the canvas stay. */
-  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-focus','research-memory','claude-session','codex-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); }); }
+  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-thread','assistant-focus','research-memory','claude-session','codex-session','acp-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); }); }
   atomic<T>(fn:()=>T):T { return this.transaction(fn); }
 
   /** Called with a project id after a canvas change or a finished run is committed. */
@@ -642,14 +644,16 @@ export class Store {
     if (includeRemoved ? !this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(projectId, nodeId) : !project.canvas.nodes.some(node => node.id === nodeId)) throw new StoreError('Node not found in this project', 404);
   }
 
-  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string): Message {
+  /** threadId: the ROS thread a project message belongs to (nodeId null). */
+  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string, threadId?: string): Message {
     this.getProject(projectId);
     if (nodeId !== null) this.requireNode(projectId, nodeId, true);
     if (runId) {
       const run = this.getRun(runId);
       if (run.projectId !== projectId || run.nodeId !== nodeId) throw new StoreError('Run does not belong to this conversation');
     }
-    const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}) };
+    if (threadId !== undefined && nodeId !== null) throw new StoreError('Only project messages belong to a ROS thread');
+    const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
     return message;
   }
@@ -658,6 +662,16 @@ export class Store {
     this.getProject(projectId);
     if (nodeId !== null) this.requireNode(projectId, nodeId, true);
     return this.all<Message>('SELECT data FROM messages WHERE project_id = ? AND node_id IS ? ORDER BY rowid', projectId, nodeId);
+  }
+  /** Puts project messages into a ROS thread: the conversation from before threads becomes the first thread. */
+  assignMessageThread(projectId: string, ids: string[], threadId: string): void {
+    this.getProject(projectId);
+    this.atomic(() => { for (const message of this.listMessages(projectId, null)) if (ids.includes(message.id)) this.db.prepare('UPDATE messages SET data = ? WHERE id = ? AND project_id = ?').run(JSON.stringify({ ...message, threadId }), message.id, projectId); });
+  }
+  /** Deletes project messages by id (a deleted ROS thread); block conversations are never touched. */
+  removeMessages(projectId: string, ids: string[]): void {
+    this.getProject(projectId);
+    this.atomic(() => { for (const id of ids) this.db.prepare('DELETE FROM messages WHERE id = ? AND project_id = ? AND node_id IS NULL').run(id, projectId); });
   }
 
   addInput(projectId: string, nodeId: string, artifactId: string, excerpt?: string): SelectedInput {
