@@ -1,4 +1,4 @@
-/** Ros on this computer, as the Ros agent page shows it. */
+/** ROS on this computer, as the ROS agent page shows it. */
 export type LocalRosStatus = {
   /** False on a computer ros.ai has no engine build for. */
   supported: boolean;

@@ -318,7 +318,7 @@ export class ClaudeAgentService {
       if (timedOut) throw new StoreError(`Claude Code reached the ${MAX_SECONDS / 60}-minute limit for one turn and was stopped.`, 503);
       if (stopped) throw new StoreError('Claude Code was stopped.', 409);
       const failedOnPlan = onPlan && (!result || result.subtype !== 'success');
-      if (failedOnPlan && apiError === 'rate_limit') throw new StoreError('Your Claude subscription’s usage limit is reached for now. Try again later, or pick Claude Code (API key) from the model name in the Ros bar.', 429);
+      if (failedOnPlan && apiError === 'rate_limit') throw new StoreError('Your Claude subscription’s usage limit is reached for now. Try again later, or pick Claude Code (API key) from the model name in the ROS bar.', 429);
       if (failedOnPlan && (apiError === 'authentication_failed' || apiError === 'oauth_org_not_allowed')) { this.plan.forget(); throw new StoreError('Claude Code’s sign-in to your Claude subscription stopped working. Sign in again on the Agents page.', 503); }
       if (!result) throw new StoreError('Claude Code ended without a result. The outcome is uncertain; nothing was repeated.', 503);
       if (result.subtype === 'error_max_budget_usd') throw new StoreError(`Claude Code reached this turn’s US$${reservedUsd.toFixed(2)} budget before finishing. Ask a narrower question or raise ROS_CLAUDE_TURN_USD.`, 503);

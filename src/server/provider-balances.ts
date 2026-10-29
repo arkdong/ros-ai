@@ -13,7 +13,7 @@ const resets = (limit: CodexRateLimit) => limit.resetsAt ? `, resets ${new Date(
 export async function providerBalances(sources: { usage: ProviderUsage; budget: SpendingBudget; cloud?: CloudAccount; codex?: () => { checkedAt: string; limits: CodexRateLimits } | null }): Promise<ProviderBalance[]> {
   const rows: ProviderBalance[] = [];
   const cloud = await sources.cloud?.status().catch(() => null);
-  if (cloud?.state === 'signed-in') rows.push({ id: 'ros-cloud', name: 'Ros (hosted)', left: typeof cloud.leftTodayUsd === 'number' ? `${money(cloud.leftTodayUsd)} left today` : null, detail: typeof cloud.dailyUsd === 'number' ? `Free allowance of ${money(cloud.dailyUsd)} a day.` : cloud.error ?? 'ros.ai cloud did not report an allowance.', link: null, checkedAt: new Date().toISOString() });
+  if (cloud?.state === 'signed-in') rows.push({ id: 'ros-cloud', name: 'ROS (hosted)', left: typeof cloud.leftTodayUsd === 'number' ? `${money(cloud.leftTodayUsd)} left today` : null, detail: typeof cloud.dailyUsd === 'number' ? `Free allowance of ${money(cloud.dailyUsd)} a day.` : cloud.error ?? 'ros.ai cloud did not report an allowance.', link: null, checkedAt: new Date().toISOString() });
   const codex = sources.codex?.();
   if (codex) {
     const limits = [codex.limits.primary, codex.limits.secondary].filter((item): item is CodexRateLimit => Boolean(item));

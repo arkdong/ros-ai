@@ -43,7 +43,7 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
-  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'Ros' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
+  return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'ROS' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
 }
 
 /** The caption of the link from a decision block to the block it rests on. */

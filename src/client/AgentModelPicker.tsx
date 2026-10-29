@@ -12,10 +12,10 @@ const modelPath = (agent: InAppAgent) => `/api/agents/${IN_APP_AGENTS[agent].age
 const SHOWN = 4;
 
 type Change = { model?: string; effort?: EffortLevel };
-/** failed: why the choice could not be read, shown on the agent's page; the Ros bar then shows no chip. */
+/** failed: why the choice could not be read, shown on the agent's page; the ROS bar then shows no chip. */
 export type AgentModelState = { choice: AgentModelChoice | null; saving: boolean; failed: string; choose: (change: Change) => Promise<void> };
 
-/** The model and effort one of the four agents ros.ai runs works with, for every project. The Ros bar and the agent's own page show the same choice. */
+/** The model and effort one of the four agents ros.ai runs works with, for every project. The ROS bar and the agent's own page show the same choice. */
 export function useAgentModel(agent: InAppAgent | null | undefined): AgentModelState {
   // The choice is kept with its agent, so a switch to another agent never shows the last one's model.
   const [held, setHeld] = useState<{ agent: InAppAgent; choice: AgentModelChoice } | null>(null), [saving, setSaving] = useState(false), [failed, setFailed] = useState('');
@@ -76,13 +76,13 @@ export function EffortSlider({ model, effort, disabled, labels, onChange }: { mo
 /** What the slider's level means, and whether it is the model's own default. */
 const effortNote = (model: AgentModel, effort: EffortLevel) => `${EFFORT_NAMES[effort].detail}${effort === model.defaultEffort ? `. ${model.label}’s default.` : '.'}`;
 
-/** The effort as five rising bars, filled up to its level, on the same scale for every model: the icon of the model chip in the Ros bar. */
+/** The effort as five rising bars, filled up to its level, on the same scale for every model: the icon of the model chip in the ROS bar. */
 function EffortBars({ effort }: { effort: EffortLevel }) {
   const at = EFFORT_LEVELS.indexOf(effort);
   return <svg className="effort-bars" width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">{EFFORT_LEVELS.map((level, index) => <rect key={level} x={index * 3} y={8 - index * 2} width="2" height={4 + index * 2} rx="1" fill="currentColor" opacity={index <= at ? 1 : .25}/>)}</svg>;
 }
 
-/** Beside the agent in the Ros bar: the model it runs on with its effort as bars, and one short menu to change both.
+/** Beside the agent in the ROS bar: the model it runs on with its effort as bars, and one short menu to change both.
  * The bar has no room for the effort's name next to the approval chip, so the name shows in the menu and on hover. */
 export function AgentModelChip({ agent, state, running, onError }: { agent: InAppAgent; state: AgentModelState; running: boolean; onError?: (message: string) => void }) {
   const { choice, saving } = state;
@@ -101,7 +101,7 @@ export function AgentModelChip({ agent, state, running, onError }: { agent: InAp
   const choose = (change: Change) => { void state.choose(change).catch(cause => onError?.(cause instanceof Error ? cause.message : String(cause))); };
   const name = IN_APP_AGENTS[agent].label, level = choice.effort ? `${EFFORT_NAMES[choice.effort].label} effort` : null;
   return <div className="ros-model ros-agent-model">
-    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} aria-label={level ? `${model.label}, ${level}` : model.label} disabled={running} title={running ? 'Ros is working' : level ? `${model.label} · ${level}` : model.label} {...openOnPress(() => setMenu(value => !value))}>
+    <button ref={trigger} type="button" className="ros-chip-button" aria-haspopup="menu" aria-expanded={menu} aria-label={level ? `${model.label}, ${level}` : model.label} disabled={running} title={running ? 'ROS is working' : level ? `${model.label} · ${level}` : model.label} {...openOnPress(() => setMenu(value => !value))}>
       {choice.effort && <EffortBars effort={choice.effort}/>}<span>{model.label}</span>{saving ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu agent-model-menu" role="menu" aria-label={`${name}’s model and effort`}>
@@ -120,7 +120,7 @@ export function AgentModelChip({ agent, state, running, onError }: { agent: InAp
   </div>;
 }
 
-/** On an agent's own page: the same choice as the Ros bar, as a list of models and an effort slider with its levels named. */
+/** On an agent's own page: the same choice as the ROS bar, as a list of models and an effort slider with its levels named. */
 export function AgentModelSettings({ agent }: { agent: InAppAgent }) {
   const state = useAgentModel(agent), { choice, saving } = state;
   const [more, setMore] = useState(false), [error, setError] = useState('');
@@ -139,7 +139,7 @@ export function AgentModelSettings({ agent }: { agent: InAppAgent }) {
       <EffortSlider model={model} effort={choice.effort} labels onChange={effort => { if (effort !== choice.effort) choose({ effort }); }}/>
       <p className="agent-model-note">{effortNote(model, choice.effort)} Higher effort is slower and {plan ? 'uses more of your plan’s limits' : 'costs more per turn'}.</p>
     </>}
-    <p className="agent-model-note">Applies to all your projects; the Ros bar shows the same choice.</p>
+    <p className="agent-model-note">Applies to all your projects; the ROS bar shows the same choice.</p>
     {error && <p className="inline-error" role="alert">{error}</p>}
   </div>;
 }

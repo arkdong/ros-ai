@@ -153,7 +153,7 @@ export class CodexAgentService implements AgentRuntime {
     if (!protocol.dynamicTools || !protocol.interrupt) blockers.push('This CLI protocol lacks the dynamic tool or cancellation surface required by ros.ai.');
     if (!codexIsolation(protocol)) blockers.push('This installed app-server protocol has no restricted read-root sandbox. Embedded turns are disabled because read-only alone can read unrelated host files. A CLI update supporting restricted read access or a separately verified OS isolation boundary is required.');
     if (rpc && !rpc.toolRestrictionsConfigured) blockers.push('The process could not confirm all host tool features disabled. Embedded turns remain disabled.');
-    if (!api && rpc?.signedIn && rpc.authMethod !== 'chatgpt') blockers.push('Your Codex is signed in with an API key rather than a ChatGPT subscription. To run Codex on an API key, pick Codex (API key) from the model name in the Ros bar.');
+    if (!api && rpc?.signedIn && rpc.authMethod !== 'chatgpt') blockers.push('Your Codex is signed in with an API key rather than a ChatGPT subscription. To run Codex on an API key, pick Codex (API key) from the model name in the ROS bar.');
     if (!grant.ready) blockers.push(grant.reason);
     if (this.experiments.authority.policy(projectId).stopped) blockers.push('Project work is stopped. Resume deliberately before a new turn.');
     const available = blockers.length === 0;

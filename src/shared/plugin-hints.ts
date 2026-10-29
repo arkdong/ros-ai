@@ -1,6 +1,6 @@
 /** What in a message points at a plugin: a link to the app, or the app's name used for the app. ros.ai reads these
  * itself, on this computer and before the message is sent, so every agent gets the same suggestion whatever its
- * vendor, Local Ros included. Nothing here reaches a model. */
+ * vendor, Local ROS included. Nothing here reaches a model. */
 import { PLUGINS, type PluginDefinition, type PluginId } from './plugins.js';
 
 /** linked: a link or an identifier names the app without doubt. named: the app's name, checked for double meanings. */

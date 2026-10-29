@@ -61,7 +61,7 @@ export function ProfileButton({ onUsage, onSettings, onChanged }: { onUsage: () 
     </button>
     {open && <div className="profile-menu" role="dialog" aria-label={signedIn ? 'Your account' : 'Sign in to ros.ai'}>
       {signedIn ? <>
-        <div className="profile-menu-head"><strong>{email}</strong>{status.leftTodayUsd !== undefined && <span>Hosted Ros · US${status.leftTodayUsd.toFixed(2)} left today</span>}</div>
+        <div className="profile-menu-head"><strong>{email}</strong>{status.leftTodayUsd !== undefined && <span>Hosted ROS · US${status.leftTodayUsd.toFixed(2)} left today</span>}</div>
         {problem && <p className="inline-error" role="alert">{problem}</p>}
         <button className="profile-item" onClick={() => go(onUsage)}><ChartColumn size={15}/> Usage</button>
         <button className="profile-item" onClick={() => go(onSettings)}><Settings2 size={15}/> Settings</button>
@@ -73,7 +73,7 @@ export function ProfileButton({ onUsage, onSettings, onChanged }: { onUsage: () 
         <div className="profile-links"><a href={status.verificationUrl} target="_blank" rel="noreferrer">Open the page again</a><button className="text-button" disabled={busy} onClick={() => void signIn()}>Start again</button></div>
       </div> : <div className="profile-sign-in">
         <strong>Sign in to ros.ai</strong>
-        <p>Use Ros hosted by ros.ai, free while ros.ai is new. Your projects stay on this computer.</p>
+        <p>Use ROS hosted by ros.ai, free while ros.ai is new. Your projects stay on this computer.</p>
         {problem && <p className="inline-error" role="alert">{problem}</p>}
         <button className="primary profile-primary" disabled={busy} onClick={() => void signIn()}>{busy && <LoaderCircle size={13} className="spin"/>}Sign in or create account</button>
         <small>Opens ros.ai in your browser</small>

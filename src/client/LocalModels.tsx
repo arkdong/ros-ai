@@ -66,7 +66,7 @@ function LocalServer({ server, connection, onRescan, onChanged }: { server: Dete
       <span className="local-model-facts">{row.context ? `${short(row.context)} context` : 'Context not known yet'}</span>
       {row.tools === false ? <span className="local-model-tag">Chat only</span> : row.tools && (row.context ?? 0) >= AGENT_CONTEXT_TOKENS ? <span className="local-model-tag">Agent</span> : null}
     </li>)}</ul>}
-    {rows.length > 0 && small && <p className="connection-limit">Ros works step by step with a model marked Agent: it needs tools and a {short(AGENT_CONTEXT_TOKENS)} context, 32k is better. {text.context}</p>}
+    {rows.length > 0 && small && <p className="connection-limit">ROS works step by step with a model marked Agent: it needs tools and a {short(AGENT_CONTEXT_TOKENS)} context, 32k is better. {text.context}</p>}
     {notice && <p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <div className="connection-actions">

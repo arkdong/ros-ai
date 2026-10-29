@@ -256,7 +256,7 @@ test('An old Gemini CLI, a missing agent and a stopped project each block a turn
   } finally { await f.close(); }
 });
 
-test('Ros runs as an ACP agent from the assistant: the turn names the agent and its model, and the block says who made it', async () => {
+test('ROS runs as an ACP agent from the assistant: the turn names the agent and its model, and the block says who made it', async () => {
   const f = await workspace();
   const assistant = new AssistantService(f.store, f.execution, { authority: { policy: () => ({ stopped: false, mode: 'review' }) } } as unknown as ExperimentService, undefined, undefined, undefined, undefined, undefined, f.service);
   try {

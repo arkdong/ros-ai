@@ -49,7 +49,7 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
       <div className="ab-body">
         <div className="ab-list" role="listbox" aria-label="Kinds of block">
           {KIND_GROUPS.map(group => { const items = kinds.filter(item => item.group === group); return items.length ? <div key={group} className="ab-group"><p>{group}</p>{items.map(item => <button key={item.id} type="button" role="option" aria-selected={item.id === selected} className="ab-row" onClick={() => pick(item.id)}>{item.icon(14)}<span>{item.name}</span><span className="ab-cap">{item.caption}</span></button>)}</div> : null; })}
-          {!kinds.length && <p className="ab-none">No block matches. Ros adds blocks too: ask in the bar.</p>}
+          {!kinds.length && <p className="ab-none">No block matches. ROS adds blocks too: ask in the bar.</p>}
           {!query.trim() && <div className="ab-row ab-dim" aria-disabled="true"><span className="ab-plug"/><span>Plugins add their kinds here</span></div>}
         </div>
         <div className="ab-detail">

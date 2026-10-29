@@ -34,7 +34,7 @@
 .setup-state.wait i { background: var(--wait); }
 .setup-state.fail i { background: var(--fail); }
 .setup-state.busy i { display: none; }
-/* A small bar for the Ros download, in the row's state caption. */
+/* A small bar for the ROS download, in the row's state caption. */
 .setup-bar { display: inline-block; width: 40px; height: 4px; border-radius: 2px; background: #ededed; overflow: hidden; }
 .setup-bar i { display: block; height: 100%; background: var(--ink); }
 .setup-command { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 6px 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--canvas); }
