@@ -193,7 +193,7 @@ export function App(){
   /** A PDF or image chosen or dropped is saved into files/ in the project folder; the block shows it from there. */
   const saveFile=async(file:File)=>{
     if(!detail)throw new Error('Open a project first.');
-    if(!fileMediaType(file.name))throw new Error(`${file.name} is not a PDF, PNG or JPEG.`);
+    if(!fileMediaType(file.name))throw new Error(`${file.name} is not a PDF or a PNG, JPEG, WebP or GIF image.`);
     if(!folderStatus?.attached)throw new Error('Choose a project folder first (the folder chip above the canvas); the file is saved there.');
     return upload<{path:string}>(`/api/projects/${detail.project.id}/folder/files?name=${encodeURIComponent(file.name)}`,file);
   };
