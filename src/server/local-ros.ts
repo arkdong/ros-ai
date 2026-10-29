@@ -32,8 +32,11 @@ const assetPattern: Partial<Record<string, RegExp>> = {
   'darwin-x64': /-bin-macos-x64\.(zip|tar\.gz)$/u,
   'linux-x64': /-bin-ubuntu-x64\.(zip|tar\.gz)$/u,
 };
-/** The waits between tries after a dropped connection or a server error, in seconds: five tries in about two minutes. */
+/** The waits between tries after a dropped connection or a server error, in seconds; the last one repeats. A laptop
+ * that is offline for a while (asleep, between networks) finds the download going on when it is back. */
 const RETRY_WAITS = [3, 10, 30, 60];
+/** Tries in a row without getting any further before the download gives up: about half an hour with RETRY_WAITS. */
+const MAX_TRIES = 30;
 /** Room left on the disk past the download: the engine unpacked, and some to spare. */
 const DISK_SPARE = 400e6;
 const installedSchema = z.object({ engineTag: z.string(), server: z.string(), model: z.string(), modelFile: z.string(), apiKey: z.string().min(32), connectionId: z.string().optional() }).strict();
@@ -124,12 +127,15 @@ export class LocalRos {
   /** One step of the download, tried again after a dropped connection or a server error, while the status says so. */
   private async again<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
     for (let tries = 0; ; tries++) {
+      const before = this.job?.done ?? 0;
       try {
         const value = await work();
         if (this.job) this.job.note = undefined;
         return value;
       } catch (error) {
-        const wait = this.waits[tries];
+        // A try that got further than the one before starts the count again.
+        if ((this.job?.done ?? 0) > before) tries = 0;
+        const wait = tries < MAX_TRIES ? this.waits[Math.min(tries, this.waits.length - 1)] : undefined;
         if (signal.aborted || !transient(error) || wait === undefined) throw error;
         if (this.job) { this.job.note = `The connection dropped. Trying again in ${wait} s.`; this.job.samples = []; }
         await sleep(wait * 1000, signal);
