@@ -197,6 +197,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   const spendingBudget = new SpendingBudget(store);
   if (!options.publicDemo) attachSpendingBudgetRoutes(app, spendingBudget);
   if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
+  // How much of the Claude and ChatGPT subscriptions' windows is used, as Claude Code and Codex report it. Local app only.
+  if (!options.publicDemo) app.get('/api/usage/plans', async (_req, res) => res.json({ plans: (await Promise.all([tools?.claude?.plan.usage(), agent?.planUsage()].map(item => item?.catch(() => null)))).filter(Boolean) }));
   app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });

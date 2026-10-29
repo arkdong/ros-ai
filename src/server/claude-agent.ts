@@ -298,6 +298,8 @@ export class ClaudeAgentService {
         } else if (item.type === 'assistant' && item.parent_tool_use_id === null) {
           if (item.error) apiError = item.error;
           for (const block of item.message.content) if (block.type === 'tool_use' && !block.name.startsWith(`mcp__${SERVER}__`)) event({ at: now(), type: 'progress', message: webStep(block.name, block.input) ?? `Claude Code asked to use ${block.name}.`, data: { name: block.name, input: block.input } });
+        } else if (item.type === 'rate_limit_event' && onPlan) {
+          this.plan.noteRateLimit(item.rate_limit_info);
         } else if (item.type === 'result') {
           finished = { cost: item.total_cost_usd, subtype: item.subtype, text: item.subtype === 'success' ? item.result : '', sessionId: item.session_id };
         }

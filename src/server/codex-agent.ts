@@ -17,6 +17,7 @@ import type { CodexAllowanceStatus } from '../shared/agent-budget-settings.js';
 import { CODEX_API_MODELS, type CodexApiModel, type CodexBilling } from '../shared/codex-agent.js';
 import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { LocalAgentOnboarding } from './local-agent-onboarding.js';
+import { windowLabel, type PlanUsage } from '../shared/budget-report.js';
 
 /** A thread's running token totals, as Codex reports them. */
 type Tokens = { inputTokens: number; cachedInputTokens: number; outputTokens: number; totalTokens: number };
@@ -171,6 +172,18 @@ export class CodexAgentService implements AgentRuntime {
   }
   /** The plan limits Codex reported at its last connection check, if any. */
   rateLimits() { const plan = this.checked.get('plan'); return plan?.rpc?.rateLimits ? { checkedAt: new Date(plan.at).toISOString(), limits: plan.rpc.rateLimits } : null; }
+  /** How much of the ChatGPT plan's windows is used, asked of Codex at most once a minute. No request is sent to a model. */
+  async planUsage(): Promise<PlanUsage> {
+    await this.check(false, 'plan');
+    const checked = this.checked.get('plan')!, rpc = checked.rpc, at = new Date(checked.at).toISOString();
+    const usage = (state: PlanUsage['state'], message: string | null, windows: PlanUsage['windows'] = []): PlanUsage => ({ id: 'codex', name: 'Codex', plan: rpc?.planType ?? null, state, windows, message, checkedAt: at });
+    if (!checked.cli.installed) return usage('unavailable', 'Codex is not installed on this computer.');
+    if (!rpc) return usage('unavailable', 'Codex did not answer. Update Codex, then look again.');
+    if (!rpc.signedIn || rpc.authMethod !== 'chatgpt') return usage('signed-out', rpc.signedIn ? 'Codex is signed in with an API key, which has no plan limits.' : 'Codex is signed out. Run codex login to sign in with ChatGPT.');
+    const limits = [rpc.rateLimits?.primary, rpc.rateLimits?.secondary].filter(item => item !== null && item !== undefined);
+    if (!limits.length) return usage('unavailable', 'This version of Codex does not report plan limits. Update Codex to see them.');
+    return usage('ready', null, limits.map(item => ({ label: windowLabel(item.windowMinutes), usedPercent: item.usedPercent, resetsAt: item.resetsAt })));
+  }
   allowance(projectId: string, billing: CodexBilling = 'plan'): CodexAllowanceStatus {
     const value = this.budget.allowance(projectId), checked = this.checked.get(billing);
     const isolationReady = Boolean(checked && codexIsolation(checked.protocol) && checked.rpc?.toolRestrictionsConfigured);
