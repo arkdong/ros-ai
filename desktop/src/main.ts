@@ -178,6 +178,24 @@ function savedBounds(): Electron.Rectangle | undefined {
   } catch { return undefined; }
 }
 
+/** ros.ai's windows show ros.ai only; every other address opens in the default browser, also when a ros.ai address
+ * redirects there (Sign in opens /api/cloud/start, which goes on to the ros.ai cloud sign-in page) and in the windows
+ * ros.ai's page opens itself. A window opened only to go elsewhere closes again instead of staying blank. */
+function showOnlyRosAi(contents: Electron.WebContents, closeIfEmpty: boolean) {
+  let shown = false;
+  contents.on('did-navigate', (_event, address) => { if (local(address)) shown = true; });
+  const elsewhere = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
+    if (!event.isMainFrame || local(event.url)) return;
+    event.preventDefault();
+    void shell.openExternal(event.url);
+    if (closeIfEmpty && !shown) setImmediate(() => BrowserWindow.fromWebContents(contents)?.close());
+  };
+  contents.on('will-navigate', elsewhere);
+  contents.on('will-redirect', elsewhere);
+  contents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; void shell.openExternal(target); return { action: 'deny' }; });
+  contents.on('did-create-window', child => showOnlyRosAi(child.webContents, true));
+}
+
 function openWindow() {
   const bounds = savedBounds();
   window = new BrowserWindow({
@@ -194,9 +212,7 @@ function openWindow() {
   window.on('enter-full-screen', () => fullScreen(true));
   window.on('leave-full-screen', () => fullScreen(false));
   window.webContents.on('did-finish-load', () => fullScreen(Boolean(window?.isFullScreen())));
-  // The window shows ros.ai only; every other address opens in the default browser.
-  window.webContents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; void shell.openExternal(target); return { action: 'deny' }; });
-  window.webContents.on('will-navigate', (event, target) => { if (!local(target)) { event.preventDefault(); void shell.openExternal(target); } });
+  showOnlyRosAi(window.webContents, false);
   window.on('close', () => { try { if (window && !window.isMinimized() && !window.isFullScreen()) writeFileSync(stateFile, JSON.stringify(window.getBounds())); } catch { /* a saved size is a convenience */ } });
   window.on('closed', () => { window = undefined; });
   // A headless check (ROS_DESKTOP_SMOKE=<file.png>): save a picture of the loaded page, then quit.

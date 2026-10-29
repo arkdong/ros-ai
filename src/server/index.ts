@@ -35,6 +35,7 @@ import { BrowserService } from './browser.js';
 import { ProjectCache } from './project-cache.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
+import { trustSystemCertificates } from './system-certificates.js';
 import { LocalRos } from './local-ros.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
@@ -53,6 +54,8 @@ import { AppFrames } from './app-frames.js';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
 if (!publicMode) loadEnv({ path: resolve(root, '.env.local'), quiet: true });
+// Before any request goes out: trust what this computer trusts, so a network that inspects HTTPS works here too.
+if (!publicMode) trustSystemCertificates();
 // Keys typed once into a file outside the code, before anything reads them.
 let keysFile: string | null = null;
 try { keysFile = publicMode ? null : loadLocalKeys(); }
