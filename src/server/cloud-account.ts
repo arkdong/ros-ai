@@ -1,6 +1,8 @@
 import { chmodSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import { join } from 'node:path';
+import { connect } from 'node:tls';
 import type { Express } from 'express';
 import { z } from 'zod';
 import type { CloudAccountStatus } from '../shared/cloud-account.js';
@@ -14,6 +16,24 @@ const escape = (value: string) => value.replace(/[&<>"']/g, char => `&#${char.ch
 const signInTab = (title: string, message: string, script = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · ros.ai</title><link rel="icon" type="image/png" href="/brand/ros-ai-ring.png">
 <style>body{margin:0;min-height:100vh;display:flex;background:#fff;color:#0b0d10;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}main{width:100%;max-width:408px;margin:auto;padding:48px 16px}img{display:block;width:40px;height:40px;margin-bottom:28px}h1{margin:0 0 12px;font-size:26px;line-height:1.25;letter-spacing:-.4px}p{margin:0;color:#4a5059}</style></head>
 <body><main><img src="/brand/ros-ai-ring.png" alt="ros.ai"><h1>${escape(title)}</h1><p>${escape(message)}</p></main>${script}</body></html>`;
+/** Network errors where the request never left this computer, so trying again cannot repeat it. */
+const NOT_CONNECTED = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+/** Errors where the connection opened but this computer refused the certificate that came back. */
+const CERTIFICATE = /CERT|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|SELF_SIGNED/u;
+/** Who issued the certificate a server sends, to name what is in the way when it is refused: read without trusting it,
+ * and the connection closes before anything is sent over it. */
+function certificateIssuer(address: string): Promise<string | undefined> {
+  const { hostname, port } = new URL(address);
+  return new Promise(done => {
+    const socket = connect({ host: hostname, port: Number(port) || 443, servername: isIP(hostname) ? undefined : hostname, rejectUnauthorized: false, timeout: 5000 }, () => {
+      const { O, CN } = socket.getPeerCertificate().issuer ?? {};
+      socket.destroy();
+      done([O, CN].filter(Boolean).join(' ') || undefined);
+    });
+    socket.once('error', () => done(undefined));
+    socket.once('timeout', () => { socket.destroy(); done(undefined); });
+  });
+}
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
@@ -38,9 +58,28 @@ export class CloudAccount {
     const temporary = `${this.file}.tmp`;
     writeFileSync(temporary, JSON.stringify(account), { mode: 0o600 }); chmodSync(temporary, 0o600); renameSync(temporary, this.file);
   }
+  /** One request to ros.ai cloud. A connection that never opened (no DNS answer, refused, timed out) is tried twice more,
+   * since nothing reached the cloud and the one-time sign-in code is still unused; what still fails says which address
+   * could not be reached and why, instead of Node's bare "fetch failed". */
   private async call(path: string, init: RequestInit = {}) {
-    const response = await fetch(`${this.url}${path}`, { ...init, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(15_000), headers: { 'Content-Type': 'application/json', ...init.headers } });
-    return { status: response.status, body: await response.json().catch(() => ({})) as any };
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await fetch(`${this.url}${path}`, { ...init, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(15_000), headers: { 'Content-Type': 'application/json', ...init.headers } });
+        return { status: response.status, body: await response.json().catch(() => ({})) as any };
+      } catch (error) {
+        const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+        if (cause?.code && NOT_CONNECTED.has(cause.code) && attempt < 3) { await new Promise(resolve => setTimeout(resolve, attempt * 1000)); continue; }
+        if (!(error instanceof TypeError) || error.message !== 'fetch failed') throw error;
+        console.error(`ros.ai cloud: ${path} failed: ${cause?.code ?? ''} ${cause?.message ?? ''}`.trim());
+        const host = new URL(this.url!).hostname;
+        if (cause?.code && CERTIFICATE.test(cause.code)) {
+          // Usually a firewall or antivirus that inspects HTTPS and signs with its own authority (a FortiGate, say).
+          const issuer = await certificateIssuer(this.url!);
+          throw new Error(`This computer does not trust the certificate that came back from ${host} (${cause.code}${issuer ? `, issued by ${issuer}` : ''}). A firewall or antivirus on this network is probably inspecting secure connections. Use another network, ask its admin to exempt ${host}, or install its certificate on this computer.`);
+        }
+        throw new Error(`ros.ai could not reach ros.ai cloud at ${host} (${cause?.code ?? cause?.message ?? 'no answer'}). Check the internet connection and try again.`);
+      }
+    }
   }
 
   async status(): Promise<CloudAccountStatus> {
