@@ -1,6 +1,8 @@
 import { chmodSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import { join } from 'node:path';
+import { connect } from 'node:tls';
 import type { Express } from 'express';
 import { z } from 'zod';
 import type { CloudAccountStatus } from '../shared/cloud-account.js';
@@ -16,6 +18,22 @@ const signInTab = (title: string, message: string, script = '') => `<!doctype ht
 <body><main><img src="/brand/ros-ai-ring.png" alt="ros.ai"><h1>${escape(title)}</h1><p>${escape(message)}</p></main>${script}</body></html>`;
 /** Network errors where the request never left this computer, so trying again cannot repeat it. */
 const NOT_CONNECTED = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+/** Errors where the connection opened but this computer refused the certificate that came back. */
+const CERTIFICATE = /CERT|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|SELF_SIGNED/u;
+/** Who issued the certificate a server sends, to name what is in the way when it is refused: read without trusting it,
+ * and the connection closes before anything is sent over it. */
+function certificateIssuer(address: string): Promise<string | undefined> {
+  const { hostname, port } = new URL(address);
+  return new Promise(done => {
+    const socket = connect({ host: hostname, port: Number(port) || 443, servername: isIP(hostname) ? undefined : hostname, rejectUnauthorized: false, timeout: 5000 }, () => {
+      const { O, CN } = socket.getPeerCertificate().issuer ?? {};
+      socket.destroy();
+      done([O, CN].filter(Boolean).join(' ') || undefined);
+    });
+    socket.once('error', () => done(undefined));
+    socket.once('timeout', () => { socket.destroy(); done(undefined); });
+  });
+}
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
@@ -53,7 +71,13 @@ export class CloudAccount {
         if (cause?.code && NOT_CONNECTED.has(cause.code) && attempt < 3) { await new Promise(resolve => setTimeout(resolve, attempt * 1000)); continue; }
         if (!(error instanceof TypeError) || error.message !== 'fetch failed') throw error;
         console.error(`ros.ai cloud: ${path} failed: ${cause?.code ?? ''} ${cause?.message ?? ''}`.trim());
-        throw new Error(`ros.ai could not reach ros.ai cloud at ${new URL(this.url!).host} (${cause?.code ?? cause?.message ?? 'no answer'}). Check the internet connection and try again.`);
+        const host = new URL(this.url!).hostname;
+        if (cause?.code && CERTIFICATE.test(cause.code)) {
+          // Usually a firewall or antivirus that inspects HTTPS and signs with its own authority (a FortiGate, say).
+          const issuer = await certificateIssuer(this.url!);
+          throw new Error(`This computer does not trust the certificate that came back from ${host} (${cause.code}${issuer ? `, issued by ${issuer}` : ''}). A firewall or antivirus on this network is probably inspecting secure connections. Use another network, ask its admin to exempt ${host}, or install its certificate on this computer.`);
+        }
+        throw new Error(`ros.ai could not reach ros.ai cloud at ${host} (${cause?.code ?? cause?.message ?? 'no answer'}). Check the internet connection and try again.`);
       }
     }
   }
