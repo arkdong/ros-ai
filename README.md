@@ -10,9 +10,13 @@ Your notes, code, data, files, papers and Notion pages sit on the canvas as bloc
 
 ## Install
 
-**Mac app:** download it for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg), drag ros.ai to Applications and open it. An unsigned build asks once: *System Settings → Privacy & Security → Open Anyway*.
+**Mac app:** download it for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so macOS calls it damaged on first open. One command in Terminal clears that, then it opens as usual:
 
-**Terminal**, on a Mac, Linux or Windows under WSL, with git and Node.js 24:
+```sh
+xattr -d com.apple.quarantine /Applications/ros.ai.app
+```
+
+**Terminal**, on a Mac, Linux or Windows under WSL, with git and Node.js 24. No warning on this path:
 
 ```sh
 curl -fsSL https://ros-ai.io/install.sh | sh
