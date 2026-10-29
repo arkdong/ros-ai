@@ -2,7 +2,7 @@ import type { Canvas, CanvasNode } from './types';
 import { CARD_DEFAULT_WIDTH, CARD_DEFAULT_HEIGHT, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, cardWidth, setCardHeight } from './card-size';
 import { displayRelationship } from './relationships';
 import { relationshipLabelSize } from './relationship-label';
-import { aggregateTopLevelRelationships, relationshipBadgeText } from './aggregate-relationships';
+import { aggregateTopLevelRelationships, linkWord } from './aggregate-relationships';
 
 export const CARD_SIZE = { width: CARD_DEFAULT_WIDTH, height: CARD_DEFAULT_HEIGHT };
 export const GROUP_INSET = { x: 32, y: 144 };
@@ -78,7 +78,7 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
     return undefined;
   };
   // Only top-level summaries are drawn with a label; the gap after a column fits it.
-  const labels = new Map(aggregateTopLevelRelationships(canvas).map(group => [`${group.source}\u0000${group.target}`, relationshipBadgeText(group, id => byId.get(id))]));
+  const labels = new Map(aggregateTopLevelRelationships(canvas).map(group => [`${group.source}\u0000${group.target}`, linkWord(group, id => byId.get(id))]));
   const flow = (siblings: CanvasNode[], parentId: string | null) => {
     const targets = new Map(siblings.map(node => [node.id, [] as string[]]));
     for (const connection of canvas.connections) {
@@ -170,7 +170,7 @@ export function arrangeCanvas(source: Canvas, options: LayoutOptions = {}): { ca
       for (const connection of aggregateTopLevelRelationships(canvas)) {
         const from = cellById.get(connection.source), to = cellById.get(connection.target);
         if (!from || !to) continue;
-        const label = relationshipLabelSize(connection.label);
+        const label = relationshipLabelSize(linkWord(connection, id => byId.get(id)));
         if (from.row === to.row) {
           for (let column = Math.min(from.column, to.column); column < Math.max(from.column, to.column); column++) columnGaps[column] = Math.max(columnGaps[column], label.width + 48);
         } else {

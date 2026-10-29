@@ -86,7 +86,6 @@
 .single-canvas-shell .canvas-stage,
 .single-canvas-shell .canvas-stage > .canvas-area,
 .direct-canvas .react-flow { background: #ffffff; }
-.single-canvas-shell .direct-canvas .relationship-editor { top: auto; bottom: 98px; }
 @media (max-width: 850px) {
   .single-canvas-shell .assistant-panel { width: min(365px, 48%); }
   .single-canvas-shell .assistant-open .canvas-header { right: calc(min(365px, 48%) + 18px); }

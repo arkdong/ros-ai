@@ -10,6 +10,7 @@ import { CARD_DEFAULT_HEIGHT, cardWidth, setCardHeight } from '../shared/card-si
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
 import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
+import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
@@ -1003,6 +1004,7 @@ export class ProjectFolders implements NotebookFolders {
       return { x: Math.round(x), y: Math.round(y), depth };
     };
     const placed = nodes.map(node => ({ node, ...place(node), ...size(node) }));
+    const boxes = new Map(placed.map(({ node, x, y, width, height }) => [node.id, { x, y, width, height }]));
     const board = {
       // Groups first and outermost first, so Obsidian draws them behind their blocks.
       nodes: placed.sort((a, b) => Number(b.node.kind === 'group') - Number(a.node.kind === 'group') || a.depth - b.depth).map(({ node, x, y, width, height }) => {
@@ -1011,8 +1013,13 @@ export class ProjectFolders implements NotebookFolders {
         if (entry && !entry.removed) return { id: node.id, type: 'file', file: entry.path, x, y, width, height };
         return { id: node.id, type: 'text', text: `**${node.title}**${node.description ? `\n\n${node.description}` : ''}`, x, y, width, height };
       }),
-      edges: project.canvas.connections.map(connection => ({ id: connection.id, fromNode: connection.source, toNode: connection.target, ...(connection.sourceHandle ? { fromSide: connection.sourceHandle } : {}),
-        ...(connection.targetHandle ? { toSide: connection.targetHandle } : {}), ...(connection.label ? { label: connection.label } : {}) })),
+      // Each link leaves and arrives at the sides that face each other, as the canvas draws it, so Obsidian shows the same picture.
+      edges: project.canvas.connections.flatMap(connection => {
+        const from = boxes.get(connection.source), to = boxes.get(connection.target);
+        if (!from || !to) return [];
+        const sides = facingSides(from, to);
+        return [{ id: connection.id, fromNode: connection.source, toNode: connection.target, fromSide: sides.source, toSide: sides.target, ...(connection.label ? { label: connection.label } : {}) }];
+      }),
     };
     const name = `${safeFileBase(project.title)}.canvas`;
     this.writeIfChanged(files, name, Buffer.from(`${JSON.stringify(board, null, 1)}\n`, 'utf8'));

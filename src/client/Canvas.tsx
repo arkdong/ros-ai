@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -19,9 +19,8 @@ import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, 
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
-import { aggregateTopLevelRelationships, relationshipBadgeText, type AggregateRelationship } from '../shared/aggregate-relationships';
-import { routeRelationship, type RelationshipRoute, type RouteNode } from '../shared/routing';
-import { relationshipLabelSize } from '../shared/relationship-label';
+import { aggregateTopLevelRelationships, linkWord, type AggregateRelationship } from '../shared/aggregate-relationships';
+import { LINK_WORDS, LINK_WORD_LIMIT, chipPoint, facingSides, isTrail, linkCurve, sideAnchor, sideFraction, trailWording, type LinkBox, type LinkPoint, type LinkSide } from '../shared/links';
 import { readSaved, saveLocal } from './persistence';
 import { arrangeCanvas, freeSpot, groupContentRight, numberedStageOrder, openGroupSize, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
 import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
@@ -31,7 +30,7 @@ import './canvas-interactions.css';
 import './canvas-reading.css';
 import './canvas-evidence.css';
 import './groups.css';
-import './aggregate-relationships.css';
+import './links.css';
 import './agent-view.css';
 import './source-check.css';
 import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
@@ -253,7 +252,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   // The corner that takes keyboard focus and arrow keys.
   const handle:ResizeEdge='se';
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
-    {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Connect ${data.title} from ${side.id}`} title="Drag to a block, or click then choose a block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
+    {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
       <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
         <button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>
@@ -303,57 +302,71 @@ function ArtifactCard({ data }: NodeProps<ArtifactNode>) {
 const PLACEMENT_PROPS = new Set(['positionAbsoluteX', 'positionAbsoluteY', 'dragging', 'sourceX', 'sourceY', 'targetX', 'targetY', 'sourcePosition', 'targetPosition']);
 function samePlacedProps<P extends object>(a: P, b: P) { return (Object.keys(b) as (keyof P & string)[]).every(key => PLACEMENT_PROPS.has(key) || a[key] === b[key]); }
 const nodeTypes = { research: memo(ResearchCard, samePlacedProps), artifact: memo(ArtifactCard, samePlacedProps) };
-type RoutedEdge = Edge<{ route: RelationshipRoute; label: string; tooltip: string; showLabel: boolean; onSelect: () => void }, 'relationship'>;
-function CanvasRelationshipEdge({ id, data, selected, style, markerStart, markerEnd, interactionWidth }: EdgeProps<RoutedEdge>) {
+/** One line between two visible blocks: a link with a word, or a trail ros.ai drew to show where a block came from.
+ * The chip on the line is the word and, once the line is selected, the place to change it, turn the link around or
+ * delete it. Several links between the same two blocks share one line and list themselves in a small card. */
+type LinkRow = { id: string; sourceTitle: string; targetTitle: string; word: string; trail: boolean };
+type LinkEdgeData = { path: string; chip: LinkPoint; word: string; count: number; trail: boolean; trailWord: string; editable: boolean; editingId: string | null; links: LinkRow[]; heading: string; note: string; onSelect: () => void; onEdit: (connectionId: string | null) => void; onRename: (connectionId: string, word: string) => void; onSwap: (connectionId: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void };
+type LinkEdge = Edge<LinkEdgeData, 'link'>;
+type Geometry = LinkBox & { id: string; parentId?: string };
+function LinkEdgeView({ id, data, selected, markerStart, markerEnd, interactionWidth }: EdgeProps<LinkEdge>) {
+  const [hover, setHover] = useState(false);
   if (!data) return null;
-  const { route, label, tooltip } = data;
-  return <g data-route-source-side={route.sourceHandle} data-route-target-side={route.targetHandle} data-route-obstructed={route.obstructed} data-aggregate-relationship="true">
-    <title>{tooltip}</title>
-    <BaseEdge id={id} path={route.path} style={style} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={interactionWidth}/>
-    <EdgeLabelRenderer>{data.showLabel && <button type="button" className={`relationship-edge-label on-route-relationship-label nodrag nopan ${selected ? 'selected' : ''}`} style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${route.label.x}px, ${route.label.y}px)`, width: route.labelWidth, pointerEvents: 'all' }} title={tooltip} aria-label={`Inspect relationship: ${tooltip}`} onClick={event => { event.stopPropagation(); data.onSelect(); }}><span>{label}</span><ChevronRight size={12} aria-hidden="true"/></button>}</EdgeLabelRenderer>
+  const single = data.count === 1, link = data.links[0], ghost = !data.trail && single && !data.word;
+  const text = data.trail ? (selected ? data.trailWord : '') : data.word || (single ? '+ word' : '');
+  const editing = single && data.editingId === link.id;
+  const chip = Boolean(text) && !editing && (!ghost || ((hover || selected) && data.editable));
+  return <g className={`link-edge${hover ? ' hovered' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <BaseEdge id={id} path={data.path} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={interactionWidth}/>
+    <EdgeLabelRenderer>
+      <div className={`link-slot nodrag nopan${selected ? ' selected' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${data.chip.x}px, ${data.chip.y}px)` }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+        {chip && <button type="button" className={`link-chip${selected ? ' selected' : ''}${ghost ? ' ghost' : ''}${data.trail ? ' trail' : ''}`} aria-label={data.trail ? data.trailWord : single ? `Link: ${link.sourceTitle} → ${link.targetTitle}${data.word ? ` · ${data.word}` : ''}` : data.heading} title={single && !data.trail ? `${link.sourceTitle} → ${link.targetTitle}` : undefined} onClick={event => { event.stopPropagation(); if (selected && single && data.editable && !data.trail) data.onEdit(link.id); else data.onSelect(); }}>{text}</button>}
+        {chip && selected && data.editable && <button type="button" className="link-chip-delete" aria-label={single ? 'Delete link' : `Delete ${data.count} links`} onClick={event => { event.stopPropagation(); data.onDelete(data.links.map(item => item.id)); }}><X size={11}/></button>}
+        {editing && <LinkWordEditor key={link.id} word={data.word} onSave={word => data.onRename(link.id, word)} onSwap={() => data.onSwap(link.id)} onDelete={() => data.onDelete([link.id])} onClose={() => data.onEdit(null)}/>}
+        {selected && !single && <LinkListCard heading={data.heading} note={data.note} links={data.links} editable={data.editable} editingId={data.editingId} onRename={data.onRename} onDelete={data.onDelete} onClose={data.onClose}/>}
+      </div>
+    </EdgeLabelRenderer>
   </g>;
 }
-const edgeTypes = { relationship: memo(CanvasRelationshipEdge, samePlacedProps) };
-function relationshipBadge(group: AggregateRelationship, canvas: Canvas) {
-  const normalize = (text: string) => text.replace(/\s+/gu, ' ').trim();
-  const label = relationshipBadgeText(group, id => canvas.nodes.find(node => node.id === id));
-  const title = (id: string) => normalize(canvas.nodes.find(node => node.id === id)?.title || 'Untitled block');
-  const originals = group.contributions.map(({ connection, sourceTitle, targetTitle }) => `${normalize(sourceTitle) || 'Untitled block'} → ${normalize(targetTitle) || 'Untitled block'}: ${normalize(connection.label) || 'Related'}`);
-  return { label, tooltip: `${title(group.source)} ${group.bidirectional ? '↔' : '→'} ${title(group.target)}\n${originals.length === 1 ? 'Saved relationship' : `${originals.length} saved relationships`}:\n${originals.join('\n')}\nClick to inspect the original relationships.` };
+const edgeTypes = { link: memo(LinkEdgeView, samePlacedProps) };
+/** The word of a link, edited where its chip was: a field, the common words beneath it, then Swap direction and Delete.
+ * Enter or a click elsewhere saves, Esc keeps the old word. */
+function LinkWordEditor({ word, onSave, onSwap, onDelete, onClose }: { word: string; onSave: (word: string) => void; onSwap: () => void; onDelete: () => void; onClose: () => void }) {
+  const [value, setValue] = useState(word); const box = useRef<HTMLDivElement>(null), field = useRef<HTMLInputElement>(null);
+  const latest = useRef({ value, word, onSave, onClose }); latest.current = { value, word, onSave, onClose };
+  useEffect(() => { field.current?.focus(); field.current?.select(); }, []);
+  useEffect(() => {
+    const away = (event: MouseEvent) => { if (box.current && !box.current.contains(event.target as globalThis.Node)) { const { value, word, onSave, onClose } = latest.current; if (value.trim() !== word.trim()) onSave(value); else onClose(); } };
+    document.addEventListener('mousedown', away); return () => document.removeEventListener('mousedown', away);
+  }, []);
+  const current = word.replace(/\s+/gu, ' ').trim().toLowerCase();
+  return <div ref={box} className="link-editor nowheel" role="dialog" aria-label="Word for this link" onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
+    <form onSubmit={event => { event.preventDefault(); if (value.trim() !== word.trim()) onSave(value); else onClose(); }}><input ref={field} className="link-chip-input" value={value} maxLength={LINK_WORD_LIMIT} placeholder="Word for this link" aria-label="Word for this link" onChange={event => setValue(event.target.value)}/></form>
+    <div className="link-menu" role="menu">
+      <p className="link-menu-heading">Common words</p>
+      {LINK_WORDS.map(item => <button key={item} type="button" role="menuitemradio" aria-checked={current === item} onClick={() => onSave(item)}>{item}{current === item && <Check size={13}/>}</button>)}
+      <div className="link-menu-divider" role="separator"/>
+      <button type="button" role="menuitem" onClick={onSwap}><ArrowLeftRight size={13}/> Swap direction</button>
+      <button type="button" role="menuitem" onClick={onDelete}><Trash2 size={13}/> Delete link</button>
+    </div>
+  </div>;
 }
-/** Keep every badge on a straight part of its own rendered route. Enclosing
- * frames have traversable interiors; crowded routes stay selectable without a
- * displaced badge suggesting a relationship elsewhere on the board. */
-export function placeCanvasRelationshipLabels(items: { route: RelationshipRoute; showLabel: boolean }[], nodes: readonly RouteNode[], expandedIds: readonly string[]) {
-  const expanded = new Set(expandedIds), occupied: Box[] = [];
-  const obstacles: Box[] = nodes.flatMap(node => expanded.has(node.id) ? [{ ...node, height: GROUP_INSET.y - 20 }, { ...node, y: node.y + node.height - GROUP_FOOTER, height: GROUP_FOOTER }] : [node]);
-  const intersects = (a: Box, b: Box) => a.x < b.x + b.width + 4 && a.x + a.width + 4 > b.x && a.y < b.y + b.height + 4 && a.y + a.height + 4 > b.y;
-  for (const item of items) {
-    const { route } = item, height = 28;
-    let traversed = 0;
-    const segments = route.points.slice(1).map((b, index) => {
-      const a = route.points[index], length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y), start = traversed;
-      traversed += length;
-      return { a, b, length, start, horizontal: a.y === b.y };
-    });
-    const candidates = segments.flatMap(({ a, b, length, start, horizontal }) => {
-      // Rounded bends consume ten pixels at either end of an inner segment.
-      const width = route.labelWidth;
-      if (width < 64) return [];
-      // The badge can overhang a short horizontal segment's bends when its
-      // complete rectangle still fits; only its center must stay on the line.
-      const margin = horizontal ? 10 : height / 2 + 10;
-      if (length < margin * 2) return [];
-      return [Math.max(margin, Math.min(length - margin, traversed / 2 - start)), ...[.125, .25, .375, .5, .625, .75, .875].map(fraction => Math.max(margin, Math.min(length - margin, length * fraction)))].map(offset => {
-        const point = { x: a.x + (b.x - a.x) * offset / length, y: a.y + (b.y - a.y) * offset / length };
-        const area = { x: point.x - width / 2, y: point.y - height / 2, width, height };
-        return { point, area, distance: Math.abs(start + offset - traversed / 2) };
-      });
-    }).sort((a, b) => a.distance - b.distance);
-    const chosen = candidates.find(candidate => ![...obstacles, ...occupied].some(box => intersects(candidate.area, box)));
-    item.showLabel = Boolean(chosen);
-    if (chosen) { route.label = chosen.point; route.labelWidth = chosen.area.width; route.labelHeight = height; occupied.push(chosen.area); }
-  }
+/** Several links between the same two blocks, one row each: who links to whom, the word to change, and a × for that link alone. */
+function LinkListCard({ heading, note, links, editable, editingId, onRename, onDelete, onClose }: { heading: string; note: string; links: LinkRow[]; editable: boolean; editingId: string | null; onRename: (connectionId: string, word: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void }) {
+  return <div className="link-list nowheel" role="dialog" aria-label={heading}>
+    <header><strong>{heading}</strong><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={14}/></button></header>
+    <ol>{links.map(link => <li key={link.id}>
+      <span className="link-list-ends" title={`${link.sourceTitle} → ${link.targetTitle}`}>{link.sourceTitle} → {link.targetTitle}</span>
+      {link.trail ? <span className="link-chip trail still">{link.word}</span> : <LinkWordField word={link.word} disabled={!editable} autoFocus={editingId === link.id} onSave={word => onRename(link.id, word)}/>}
+      {editable && <button type="button" className="link-chip-delete" aria-label={`Delete the link from ${link.sourceTitle} to ${link.targetTitle}`} onClick={() => onDelete([link.id])}><X size={11}/></button>}
+    </li>)}</ol>
+    {note && <p className="link-list-note">{note}</p>}
+  </div>;
+}
+function LinkWordField({ word, disabled, autoFocus, onSave }: { word: string; disabled: boolean; autoFocus: boolean; onSave: (word: string) => void }) {
+  const [value, setValue] = useState(word); useEffect(() => setValue(word), [word]);
+  const commit = () => { if (value.trim() !== word.trim()) onSave(value); };
+  return <form onSubmit={event => { event.preventDefault(); commit(); event.currentTarget.querySelector('input')?.blur(); }}><input className="link-chip-input" value={value} maxLength={LINK_WORD_LIMIT} placeholder="+ word" disabled={disabled} autoFocus={autoFocus} aria-label="Word for this link" onChange={event => setValue(event.target.value)} onBlur={commit}/></form>;
 }
 /** Where a new block goes among the blocks directly in `parentId` (the canvas or a Group): the first free spot in
  * reading order beside or below them, within the width they already take, so an open Group's frame stays as
@@ -385,6 +398,7 @@ export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
     if (op.type === 'removeNode') for (const id of [op.id, ...groupMembers(result, op.id).map(n => n.id)]) marks.set(id, 'removed');
     if (op.type === 'addConnection') result.connections.push(op.connection);
     if (op.type === 'removeConnection') result.connections = result.connections.filter(c => c.id !== op.id);
+    if (op.type === 'updateConnection') result.connections = result.connections.map(c => c.id === op.id ? { ...c, ...op.patch } : c);
   }
   return { canvas: convertLegacyGroups(result), marks };
 }
@@ -416,7 +430,7 @@ function packArtifactCards(artifacts: Artifact[], parentId: string, highlights: 
 /** The last blocks copied in this window, for browsers that hand a paste only its plain text. */
 let lastCopy: { text: string; plain: string } | null = null;
 type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMoveEnd';
-type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode | ArtifactNode, RoutedEdge>, FlowHandlerName>>;
+type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode | ArtifactNode, LinkEdge>, FlowHandlerName>>;
 /** Handlers that keep their identity across renders and always run the latest code. */
 function useStableHandlers<T extends Record<string, (...args: never[]) => unknown>>(handlers: T): T {
   const latest = useRef(handlers); latest.current = handlers;
@@ -431,12 +445,14 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const [dropTarget, setDropTarget] = useState<{ id: string; left: number; top: number; width: number; height: number } | null>(null); const dropTargetId = useRef<string | null>(null);
   const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group'), [dropping, setDropping] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
+  // The link whose word is being edited, and a link just drawn, whose word opens as soon as the canvas shows it.
+  const [editingLink, setEditingLink] = useState<{ connectionId: string } | null>(null); const pendingEdit = useRef<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
   const [animatingLayout, setAnimatingLayout] = useState(false), [artifactPlacementRevision, setArtifactPlacementRevision] = useState(0);
   const [reflowRevision, setReflowRevision] = useState(0);
   // Blocks being dragged, or settling after a drop, are drawn from React Flow's own store until they come to rest
   // (see followDrag); `saving` keeps a dropped block where it settled until the saved canvas arrives.
-  const flowStore = useStoreApi<ResearchNode | ArtifactNode, RoutedEdge>();
+  const flowStore = useStoreApi<ResearchNode | ArtifactNode, LinkEdge>();
   const live = useRef(new Set<string>()), dragFrom = useRef(new Map<string, XYPosition>()), settling = useRef<{ frame: number; targets: Map<string, XYPosition> } | null>(null);
   const saving = useRef(new Map<string, { parentId: string | null; position: XYPosition }>()), missedLayout = useRef(false), boxSelecting = useRef(false);
   const [layoutRetry, setLayoutRetry] = useState(0);
@@ -461,7 +477,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }, [detail.project.id, runRevision]);
   const measureCard = useCallback((id: string, width: number, height: number) => setCardMeasurements(current => current[id]?.width === width && current[id]?.height === height ? current : { ...current, [id]: { width, height } }), []);
   const animateNextLayout = useRef<Map<string, { x: number; y: number }> | null>(null), animationFrame = useRef<number | null>(null);
-  const routeHistory = useRef(new Map<string, RelationshipRoute>()), shownEdges = useRef(new Map<string, { key: string; edge: RoutedEdge }>());
+  const shownEdges = useRef(new Map<string, { key: string; edge: LinkEdge }>());
   const connectionCommittedAt = useRef(0); const connectionBusy = useRef(false);
   const viewKey = `canvas-view:${detail.project.id}`;
   const viewport = useRef(readSaved<Viewport>(viewKey, readSaved(`viewport:${detail.project.id}:project`, { x: 48, y: 216, zoom: 1 })));
@@ -473,7 +489,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const overlay = element.getBoundingClientRect();
         if (overlay.height) top = Math.max(top, overlay.bottom - bounds.top + 22);
       }
-      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .edge-selection, .ros-dock') || []) {
+      for (const element of area.current!.parentElement?.querySelectorAll('.canvas-tools, .ros-dock') || []) {
         const overlay = element.getBoundingClientRect();
         if (overlay.height && overlay.top > bounds.top + bounds.height / 2) bottom = Math.max(bottom, bounds.bottom - overlay.top + 22);
       }
@@ -540,7 +556,6 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const proposalFrame = useRef(false);
   useEffect(() => { if (proposalIds.length) { proposalFrame.current = true; setFrameRequest(proposalIds); } }, [proposal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const aggregatedRelationships = useMemo(() => aggregateTopLevelRelationships(displayed.canvas, expandedIds), [displayed.canvas, expandedIds]);
-  const selectedAggregate = aggregatedRelationships.find(connection => connection.id === selectedEdge);
   const rootStages = displayed.canvas.nodes.filter(node => !node.parentId);
   const stageOrder = numberedStageOrder(rootStages);
   rootStages.sort((a, b) => stageOrder ? stageOrder.get(a.id)! - stageOrder.get(b.id)! : a.y - b.y || a.x - b.x);
@@ -587,21 +602,22 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   };
   const fitHeight = (id: string) => { if (!readonly) void mutate([{ type: 'updateNode', id, patch: { height: null } }], 'Fit block to its content'); };
   const toggle = (id: string) => { if (!displayed.canvas.nodes.some(node=>node.id===id&&isGroup(node))) return; const open = expandedIds.includes(id); onExpandedChange(open ? expandedIds.filter(n => n !== id) : [...expandedIds, id]); onSelect(id); };
-  const connect = (source: string, target: string, sourceHandle?: Side, targetHandle?: Side) => {
+  const connect = (source: string, target: string) => {
     if (readonly || source === target || connectionBusy.current) return;
     setPendingConnection(null); connectionCommittedAt.current = Date.now();
     const existing = displayed.canvas.connections.find(c => (c.source === source && c.target === target) || (c.source === target && c.target === source));
-    if (existing) { setSelectedEdge(aggregatedRelationships.find(group => group.contributions.some(item => item.connection.id === existing.id))?.id || null); setMessage('These notes already have a relationship. Inspect their details to see it.'); return; }
+    if (existing) { setSelectedEdge(aggregatedRelationships.find(group => group.contributions.some(item => item.connection.id === existing.id))?.id || null); setEditingLink(null); onSelect(null); setMessage('These blocks are already linked.'); return; }
     connectionBusy.current = true;
-    void mutate([{ type: 'addConnection', connection: { id: crypto.randomUUID(), source, target, ...(sourceHandle ? { sourceHandle } : {}), ...(targetHandle ? { targetHandle } : {}), label: '' } }], 'Connect notes').then(result => { if (result !== false) setMessage('Relationship added. No work was started or imported.'); }).finally(() => { connectionBusy.current = false; });
+    const id = crypto.randomUUID();
+    void mutate([{ type: 'addConnection', connection: { id, source, target, label: '' } }], 'Link blocks').then(result => { if (result !== false) pendingEdit.current = id; }).finally(() => { connectionBusy.current = false; });
   };
   const handleClick = (nodeId: string, side: Side) => {
     if (readonly || Date.now() - connectionCommittedAt.current < 250) return;
-    if (pendingConnection && pendingConnection.nodeId !== nodeId) connect(pendingConnection.nodeId, nodeId, pendingConnection.side, side);
-    else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); }
+    if (pendingConnection && pendingConnection.nodeId !== nodeId) connect(pendingConnection.nodeId, nodeId);
+    else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); setEditingLink(null); }
   };
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 4500); return () => clearTimeout(timer); }, [message]);
-  useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setPendingConnection(null); setSelectedEdge(null); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
+  useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setPendingConnection(null); setSelectedEdge(null); setEditingLink(null); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
   // Delete the picked blocks, or the selected one; a block inside another picked group goes with it.
   // A Text block's label is picked from a menu under its caption; a Report or Finding keeps the label its type implies.
   const labelMenuOpener = (node: CanvasNode) => !readonly && kindName(node) === 'Text' && !labelFixed(node) ? (anchor: DOMRect) => { const box = area.current?.getBoundingClientRect(); setLabelMenu({ nodeId: node.id, left: anchor.left - (box?.left ?? 0), top: anchor.bottom - (box?.top ?? 0) + 6 }); } : undefined;
@@ -610,6 +626,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const excluded = new Set(nodeIds.flatMap(id => [id, ...(descendantIds[id] ?? [])]));
     const inside = flow.getNodes().filter(item => item.type === 'research' && expandedIds.includes(item.id) && !excluded.has(item.id)).flatMap(item => { const absolute = flow.getInternalNode(item.id)?.internals.positionAbsolute; return absolute ? [{ id: item.id, absolute, width: item.width || 0, height: item.height || 0 }] : []; }).filter(item => point.x >= item.absolute.x && point.x <= item.absolute.x + item.width && point.y >= item.absolute.y && point.y <= item.absolute.y + item.height);
     return inside.at(-1) ?? null;
+  };
+  // The block under a point on the map; a block inside an open group comes after the group, so it wins.
+  const blockAt = (point: { x: number; y: number }) => {
+    const inside = flow.getNodes().filter(item => item.type === 'research').flatMap(item => { const absolute = flow.getInternalNode(item.id)?.internals.positionAbsolute; return absolute ? [{ id: item.id, absolute, width: item.width || CARD_SIZE.width, height: item.height || CARD_SIZE.height }] : []; }).filter(item => point.x >= item.absolute.x && point.x <= item.absolute.x + item.width && point.y >= item.absolute.y && point.y <= item.absolute.y + item.height);
+    return inside.at(-1)?.id;
   };
   const selectedGroup = !readonly && !selecting && selectedId ? displayed.canvas.nodes.find(node => node.id === selectedId && isGroup(node)) : undefined;
   // The picked blocks: those chosen with the Group picker, a selection box or Shift/⌘-clicks, or else the selected one.
@@ -638,6 +659,54 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, []);
   useEffect(() => { if (readonly) setPendingConnection(null); }, [readonly]);
+  // What the chip on a line can do. A line keeps its edge object while nothing about it changes, so it reaches these
+  // through a ref that always holds the latest canvas.
+  const linkActions = useRef({ select: (_id: string | null) => {}, edit: (_id: string | null) => {}, rename: (_id: string, _word: string) => {}, swap: (_id: string) => {}, remove: (_ids: string[]) => {} });
+  linkActions.current = {
+    select: id => { setSelectedEdge(id); setEditingLink(null); setPendingConnection(null); if (id) { onSelect(null); setGroupSelection([]); } },
+    edit: id => { if (readonly) return; setEditingLink(id ? { connectionId: id } : null); },
+    rename: (id, word) => {
+      setEditingLink(null);
+      const current = displayed.canvas.connections.find(item => item.id === id), next = word.replace(/\s+/gu, ' ').trim().slice(0, LINK_WORD_LIMIT);
+      if (!current || current.label.trim() === next) return;
+      void mutate([{ type: 'updateConnection', id, patch: { label: next } }], next ? `Name link ${next.slice(0, 40)}` : 'Remove the word of a link');
+    },
+    swap: id => {
+      setEditingLink(null);
+      const current = displayed.canvas.connections.find(item => item.id === id);
+      if (!current) return;
+      if (displayed.canvas.connections.some(item => item.source === current.target && item.target === current.source)) { setMessage('A link already runs the other way.'); return; }
+      void mutate([{ type: 'updateConnection', id, patch: { source: current.target, target: current.source } }], 'Swap link direction');
+    },
+    remove: ids => {
+      setEditingLink(null);
+      const live = ids.filter(id => displayed.canvas.connections.some(item => item.id === id));
+      if (!live.length) return;
+      void mutate(live.map(id => ({ type: 'removeConnection' as const, id })), live.length === 1 ? 'Delete link' : `Delete ${live.length} links`).then(saved => { if (saved !== false) setMessage(live.length === 1 ? 'Link deleted. Undo brings it back.' : `Deleted ${live.length} links. Undo brings them back.`); });
+    },
+  };
+  // A link just drawn is selected with its word open; a line whose links are all gone is no longer selected.
+  useEffect(() => {
+    const id = pendingEdit.current, group = id ? aggregatedRelationships.find(item => item.contributions.some(entry => entry.connection.id === id)) : undefined;
+    if (id && group) { pendingEdit.current = null; setSelectedEdge(group.id); onSelect(null); setEditingLink(readonly ? null : { connectionId: id }); }
+    if (selectedEdge && !aggregatedRelationships.some(item => item.id === selectedEdge)) { setSelectedEdge(null); setEditingLink(null); }
+  }, [aggregatedRelationships]); // eslint-disable-line react-hooks/exhaustive-deps
+  // With a line selected and no block picked, Backspace deletes its links and Enter opens the word of a single link.
+  const linkKeys = useRef({ selectedEdge, editingLink, readonly, groups: aggregatedRelationships, picked: picked.length, canvas: displayed.canvas });
+  linkKeys.current = { selectedEdge, editingLink, readonly, groups: aggregatedRelationships, picked: picked.length, canvas: displayed.canvas };
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      const { selectedEdge, editingLink, readonly, groups, picked, canvas } = linkKeys.current;
+      if (!selectedEdge || editingLink || readonly || picked || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]')) return;
+      const group = groups.find(item => item.id === selectedEdge);
+      if (!group) return;
+      if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); linkActions.current.remove(group.contributions.map(item => item.connection.id)); }
+      else if (event.key === 'Enter' && group.contributions.length === 1 && !isTrail(group.contributions[0].connection, id => canvas.nodes.find(node => node.id === id))) { event.preventDefault(); linkActions.current.edit(group.contributions[0].connection.id); }
+    };
+    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+  }, []);
   // ⌘/Ctrl Z undoes the last canvas change and ⌘/Ctrl Shift Z (or Ctrl Y off a Mac) redoes it, like the toolbar
   // buttons. Text fields, editors and dialogs keep their own undo.
   const historyRef = useRef({ onUndo, onRedo, canUndo: detail.canUndo, canRedo: detail.canRedo, blocked: readonly || busy });
@@ -887,21 +956,27 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     while (node && !nodes.some(item => item.id === node!.id)) node = node.parentId ? displayed.canvas.nodes.find(item => item.id === node!.parentId) : undefined;
     return node ? [node.id] : [];
   }))];
-  // The lines of these relationships, routed around the research blocks in `geometry` (their boxes on the canvas).
-  // Original endpoints remain visible in expanded frames; collapsed ancestors aggregate only their hidden contributions.
-  const relationshipEdges = (groups: AggregateRelationship[], geometry: RouteNode[]): RoutedEdge[] => {
-    const items = groups.flatMap(group => {
-      const badge = relationshipBadge(group, displayed.canvas), size = relationshipLabelSize(badge.label);
-      const route = routeRelationship({ source: group.source, target: group.target, nodes: geometry.filter(item=>item.id===group.source||item.id===group.target||!expandedIds.includes(item.id)), previous: routeHistory.current.get(group.id), labelSize: badge.label ? { width: size.width + 14, height: 28 } : { width: 0, height: 0 } });
-      if (!route) return [];
-      routeHistory.current.set(group.id, route);
-      return [{ group, ...badge, showLabel: true, route: { ...route } }];
-    });
-    placeCanvasRelationshipLabels(items, geometry, expandedIds);
-    return items.map(({ group, route, label, tooltip, showLabel }) => {
-      const selected = group.id === selectedEdge, color = selected ? '#536f69' : '#99a5a2';
-      const marker = { type: MarkerType.ArrowClosed, width: 17, height: 17, color };
-      const edge: RoutedEdge = { id: group.id, type: 'relationship' as const, source: group.source, target: group.target, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle, selected, zIndex: 1000, ariaLabel: `Inspect relationship: ${tooltip.replace(/\n/gu, ' ')}`, style: { stroke: color, strokeWidth: selected ? 2 : 1.5 }, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}), data: { route, label, tooltip, showLabel, onSelect: () => { setSelectedEdge(group.id); setPendingConnection(null); } } };
+  // The lines between the visible blocks. Each leaves the side of its block that faces the other block and arrives at
+  // the facing side as a soft curve; links sharing a side spread along it; the word sits at the middle of the curve, or
+  // the nearest spot no other block covers. Original endpoints stay visible in open groups; closed groups gather their links.
+  const linkEdges = (groups: AggregateRelationship[], geometry: Geometry[]): LinkEdge[] => {
+    const boxes = new Map(geometry.map(item => [item.id, item]));
+    const node = (id: string) => displayed.canvas.nodes.find(item => item.id === id), title = (id: string) => node(id)?.title.trim() || 'Untitled block';
+    const sided = groups.flatMap(group => { const a = boxes.get(group.source), b = boxes.get(group.target); return a && b ? [{ group, a, b, ...facingSides(a, b) }] : []; });
+    const slots = new Map<string, { id: string; order: number }[]>();
+    const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
+    for (const { group, a, b, source, target } of sided) { take(group.source, source, group.id, b); take(group.target, target, group.id, a); }
+    const fraction = (nodeId: string, side: LinkSide, id: string) => { const list = [...(slots.get(`${nodeId}:${side}`) ?? [])].sort((x, y) => x.order - y.order || x.id.localeCompare(y.id)); return sideFraction(list.findIndex(item => item.id === id), list.length); };
+    return sided.map(({ group, a, b, source, target }) => {
+      const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, group.id)), source, sideAnchor(b, target, fraction(group.target, target, group.id)), target);
+      const chip = chipPoint(curve.point, geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id)));
+      const links: LinkRow[] = group.contributions.map(({ connection, sourceTitle, targetTitle }) => { const trail = isTrail(connection, node); return { id: connection.id, sourceTitle, targetTitle, word: trail ? trailWording(connection, node) : connection.label.trim(), trail }; });
+      const trail = links.every(item => item.trail), selected = group.id === selectedEdge, arrow = group.bidirectional ? '↔' : '→', word = linkWord(group, node);
+      const color = selected ? (trail ? '#6b6b6b' : '#171717') : trail ? '#cfcfcf' : '#b5b5b5';
+      const marker = { type: MarkerType.ArrowClosed, width: 24, height: 24, markerUnits: 'userSpaceOnUse', strokeWidth: 1, color };
+      const closed = [group.source, group.target].map(node).find(item => item && isGroup(item) && !expandedIds.includes(item.id));
+      const edge: LinkEdge = { id: group.id, type: 'link', source: group.source, target: group.target, sourceHandle: source, targetHandle: target, selected, className: trail ? 'link trail' : 'link', ariaLabel: `Link: ${title(group.source)} ${arrow} ${title(group.target)}${word ? ` · ${word}` : ''}`, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}),
+        data: { path: curve.path, chip, word, count: links.length, trail, trailWord: links.length === 1 ? links[0].word : `${links.length} trails`, editable: !readonly, editingId: editingLink && links.some(item => item.id === editingLink.connectionId) ? editingLink.connectionId : null, links, heading: `${links.length} links · ${title(group.source)} ${arrow} ${title(group.target)}`, note: closed ? `Open ${closed.title.trim() || 'the group'} to see each line on its own block.` : '', onSelect: () => linkActions.current.select(group.id), onEdit: id => linkActions.current.edit(id), onRename: (id, next) => linkActions.current.rename(id, next), onSwap: id => linkActions.current.swap(id), onDelete: ids => linkActions.current.remove(ids), onClose: () => linkActions.current.select(null) } };
       // An unchanged edge keeps its object, so dragging one block redraws only the lines that move with it.
       const key = JSON.stringify(edge), shown = shownEdges.current.get(group.id);
       if (shown?.key === key) return shown.edge;
@@ -909,11 +984,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       return edge;
     });
   };
-  const edges = useMemo<RoutedEdge[]>(() => {
+  const edges = useMemo<LinkEdge[]>(() => {
     const byId=new Map(nodes.map(node=>[node.id,node]));
     const absolute=(id:string):{x:number;y:number}=>{const node=byId.get(id)!;const parent=node.parentId?absolute(node.parentId):{x:0,y:0};return {x:node.position.x+parent.x,y:node.position.y+parent.y};};
-    return relationshipEdges(aggregatedRelationships, nodes.filter(node=>node.type==='research').map(node=>({id:node.id,parentId:node.parentId,...absolute(node.id),width:node.width||CARD_SIZE.width,height:node.height||CARD_SIZE.height})));
-  }, [aggregatedRelationships, nodes, selectedEdge, expandedIds, displayed.canvas]);
+    return linkEdges(aggregatedRelationships, nodes.filter(node=>node.type==='research').map(node=>({id:node.id,parentId:node.parentId,...absolute(node.id),width:node.width||CARD_SIZE.width,height:node.height||CARD_SIZE.height})));
+  }, [aggregatedRelationships, nodes, selectedEdge, editingLink, expandedIds, displayed.canvas, readonly]); // eslint-disable-line react-hooks/exhaustive-deps
   // A dragged block moves in React Flow's own store, in the same frame as the pointer, and the canvas around it is
   // not drawn again: only the lines that end on a moving block are routed again. The canvas takes the blocks back
   // once they come to rest (`settled`).
@@ -924,8 +999,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const moving = (id: string) => { for (let node = nodeLookup.get(id); node; node = node.parentId ? nodeLookup.get(node.parentId) : undefined) if (moved.has(node.id)) return true; return false; };
     const groups = aggregatedRelationships.filter(group => moving(group.source) || moving(group.target));
     if (!groups.length) return;
-    const geometry: RouteNode[] = [...nodeLookup.values()].filter(node => node.type === 'research').map(node => ({ id: node.id, parentId: node.parentId, ...node.internals.positionAbsolute, width: node.width || CARD_SIZE.width, height: node.height || CARD_SIZE.height }));
-    const routed = new Map(relationshipEdges(groups, geometry).map(edge => [edge.id, edge]));
+    const geometry: Geometry[] = [...nodeLookup.values()].filter(node => node.type === 'research').map(node => ({ id: node.id, parentId: node.parentId, ...node.internals.positionAbsolute, width: node.width || CARD_SIZE.width, height: node.height || CARD_SIZE.height }));
+    const routed = new Map(linkEdges(groups, geometry).map(edge => [edge.id, edge]));
     state.setEdges(state.edges.map(edge => routed.get(edge.id) ?? edge));
   };
   // Anything else React Flow reports while blocks move (a measured size, a box being drawn) keeps them where they are shown.
@@ -992,18 +1067,18 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     onNodeClick: (event, node) => {
       if ((event.target as HTMLElement).closest('.relationship-handle')) return;
       if (node.type === 'research') {
-        if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id, pendingConnection.side);
+        if (pendingConnection && pendingConnection.nodeId !== node.id) connect(pendingConnection.nodeId, node.id);
         else if (selecting) setGroupSelection(ids => ids.includes(node.id) ? ids.filter(id => id !== node.id) : [...ids, node.id]);
         // Shift or ⌘ adds a block to the picked ones, or takes it out again.
         else if (event.shiftKey || event.metaKey || event.ctrlKey) { const next = picked.includes(node.id) ? picked.filter(id => id !== node.id) : [...picked, node.id]; setGroupSelection(next.length > 1 ? next : []); onSelect(next.length === 1 ? next[0] : null); }
         else { if (groupSelection.length) setGroupSelection([]); onSelect(node.id); }
       }
-      setSelectedEdge(null);
+      setSelectedEdge(null); setEditingLink(null);
     },
     onNodeDoubleClick: (event, node) => { if ((event.target as HTMLElement).closest('input,textarea,button,.inline-note-editor')) return; if (node.type === 'research') { if(isGroup(displayed.canvas.nodes.find(item=>item.id===node.id)!)) toggle(node.id); else {const contentNode=displayed.canvas.nodes.find(item=>item.id===node.id),artifact=detail.artifacts.find(item=>item.id===contentNode?.artifactId);if(artifact&&!['code','notebook','file'].includes(contentNode?.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);} } else onArtifact(node.data.artifact, node.data.destinationId); },
-    onPaneClick: () => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setPendingConnection(null); closeLabelMenu(); },
-    onEdgeClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
-    onEdgeDoubleClick: (_, edge) => { setSelectedEdge(edge.id); setPendingConnection(null); },
+    onPaneClick: () => { if(!selecting)setGroupSelection([]); onSelect(null); setSelectedEdge(null); setEditingLink(null); setPendingConnection(null); closeLabelMenu(); },
+    onEdgeClick: (_, edge) => linkActions.current.select(edge.id),
+    onEdgeDoubleClick: (_, edge) => { const group = aggregatedRelationships.find(item => item.id === edge.id), only = group?.contributions.length === 1 ? group.contributions[0].connection : undefined; if (only && !isTrail(only, id => displayed.canvas.nodes.find(node => node.id === id))) linkActions.current.edit(only.id); },
     onSelectionStart: () => { boxSelecting.current = true; },
     onSelectionEnd: () => {
       boxSelecting.current = false;
@@ -1067,11 +1142,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         setReflowRevision(revision => revision + 1);
       });
     },
-    onConnect: c => { if (c.source && c.target) connect(c.source, c.target, c.sourceHandle as Side | undefined, c.targetHandle as Side | undefined); },
+    onConnect: c => { if (c.source && c.target) connect(c.source, c.target); },
+    // Let go anywhere over a block, not only over one of its dots, and the block under the pointer is the other end.
     onConnectEnd: (event, state) => {
       if (state.isValid || !state.fromNode || readonly) return;
-      const target = (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
-      if (target && target !== state.fromNode.id) connect(state.fromNode.id, target, state.fromHandle?.id as Side || 'right');
+      const pointer = 'changedTouches' in event ? event.changedTouches[0] : event;
+      const target = blockAt(flow.screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY })) ?? (event.target as HTMLElement | null)?.closest?.('.react-flow__node-research')?.getAttribute('data-id');
+      if (target && target !== state.fromNode.id) connect(state.fromNode.id, target);
     },
     onMoveStart: closeLabelMenu,
     onMoveEnd: (_, view) => saveLocal(viewKey, view),
@@ -1114,7 +1191,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
-    <ReactFlow<ResearchNode | ArtifactNode, RoutedEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} {...flowHandlers}
+    <ReactFlow<ResearchNode | ArtifactNode, LinkEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} {...flowHandlers}
       connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodeDragThreshold={0} nodesConnectable={!readonly} selectNodesOnDrag={false}
       panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
@@ -1127,16 +1204,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
     {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}
     {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
-    {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Choose another note to connect</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
-    {selectedAggregate && <section className="aggregate-relationships nodrag nopan nowheel" role="dialog" aria-modal="false" aria-label="Contributing relationships">
-      <header><GitBranch size={17}/><strong>{selectedAggregate.label}</strong><button className="icon-button" aria-label="Close contributing relationships" onClick={() => setSelectedEdge(null)}><X size={16}/></button></header>
-      <p>{displayed.canvas.nodes.find(node => node.id === selectedAggregate.source)?.title} {selectedAggregate.bidirectional ? '↔' : '→'} {displayed.canvas.nodes.find(node => node.id === selectedAggregate.target)?.title}</p>
-      <p>{selectedAggregate.bidirectional ? 'Contributions run in both directions.' : 'Contributions share one direction.'} Each relationship below retains its original endpoints and wording.</p>
-      <ol>{selectedAggregate.contributions.map(({ connection, sourceTitle, targetTitle }) => <li key={connection.id}>
-        <strong>{connection.label || 'Unlabelled relationship'}</strong><p>{sourceTitle} → {targetTitle}</p>
-        <div className="contribution-actions"><button className="text-button" aria-label={`Inspect source: ${sourceTitle}`} onClick={() => { setSelectedEdge(null); onInspect(connection.source); }}>Inspect source note</button><button className="text-button" aria-label={`Inspect target: ${targetTitle}`} onClick={() => { setSelectedEdge(null); onInspect(connection.target); }}>Inspect target note</button></div>
-      </li>)}</ol>
-    </section>}
+    {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Click the block to link to</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
     <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
     <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div>
   </div>;

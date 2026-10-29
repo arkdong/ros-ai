@@ -347,45 +347,6 @@
   outline: 0;
   box-shadow: 0 0 0 1px #a3d52b, 0 2px 6px #00000006;
 }
-.direct-canvas.unified-canvas .relationship-handle {
-  width: 15px;
-  height: 15px;
-  min-width: 15px;
-  min-height: 15px;
-  opacity: 0;
-  z-index: 4;
-  transition: opacity .12s,background .12s,box-shadow .12s;
-  cursor: crosshair;
-  background: #ffffff;
-  border: 2px solid #b0b0b0;
-}
-.direct-canvas .relationship-handle:before {
-  content: '';
-  position: absolute;
-  inset: -7px;
-  border-radius: 50%;
-}
-.direct-canvas .relationship-handle.react-flow__handle-left {
-  left: 0;
-}
-.direct-canvas .relationship-handle.react-flow__handle-right {
-  right: 0;
-}
-.direct-canvas .research-card:hover>.relationship-handle,.direct-canvas .research-card:focus-within>.relationship-handle,.direct-canvas.is-connecting .relationship-handle,.direct-canvas .relationship-handle:focus-visible {
-  opacity: 1;
-}
-.direct-canvas.unified-canvas .relationship-handle:hover,.direct-canvas .relationship-handle:focus-visible {
-  outline: 0;
-  background: #ffffff;
-  border-color: #9bce26;
-  box-shadow: 0 0 0 3px #b7ef3240;
-}
-.direct-canvas.is-connecting .research-card {
-  cursor: crosshair;
-}
-.direct-canvas.is-connecting .research-card:hover {
-  border-color: #b7ef32;
-}
 .direct-canvas .inline-note-editor {
   display: flex;
   flex-direction: column;
@@ -501,105 +462,11 @@
   bottom: 132px;
   white-space: nowrap;
 }
-.single-canvas-shell .direct-canvas .relationship-editor {
-  top: 117px;
-  left: 25px;
-  transform: none;
-  max-width: calc(100% - 50px);
-  padding: 7px 10px;
-  gap: 10px;
-  border-color: #dedede;
-  z-index: 10;
-  background: #ffffff;
-}
-.direct-canvas .relationship-editor form {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-}
-.direct-canvas .relationship-editor input {
-  width: 215px;
-  padding: 7px 8px;
-  font-size: 14px;
-}
-.direct-canvas .relationship-editor .icon-button {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-}
-.direct-canvas .relationship-label-button {
-  font-size: 14px;
-  gap: 7px;
-  padding: 4px 2px;
-  white-space: normal;
-  text-align: left;
-  max-width: 230px;
-}
-.direct-canvas .relationship-semantics {
-  font-size: 13px;
-  color: #6b6b6b;
-}
 .direct-canvas .canvas-tools .icon-button {
   width: 32px;
   height: 32px;
 }
-/* Keep automatically elevated edge SVGs inside one layer below their labels. */
-.direct-canvas .react-flow__edges {
-  z-index: 2000;
-}
-.direct-canvas .react-flow__edgelabel-renderer {
-  z-index: 2001;
-  pointer-events: none;
-}
-.direct-canvas .relationship-edge-label {
-  pointer-events: auto;
-  z-index: 3;
-  min-width: 32px;
-  padding: 4px 8px;
-  border: 1px solid #dedede;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #6b6b6b;
-  box-shadow: 0 1px 3px #00000006;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.4;
-  text-align: center;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-.direct-canvas .relationship-edge-label:hover {
-  color: #171717;
-  border-color: #b0b0b0;
-}
-.direct-canvas .relationship-edge-label.selected {
-  color: #171717;
-  border-color: #b7ef32;
-  box-shadow: 0 0 0 1px #b7ef32;
-}
-@media (max-width:1200px) {
-  .direct-canvas .relationship-semantics {
-    display: none;
-  }
-  .direct-canvas .relationship-editor input {
-    width: 160px;
-  }
-}
 @media (max-width:600px) {
-  .single-canvas-shell .direct-canvas .relationship-editor {
-    left: 15px;
-    top: 90px;
-    max-width: calc(100% - 30px);
-    gap: 6px;
-  }
-  .direct-canvas .relationship-editor input {
-    width: 135px;
-  }
   .direct-canvas .connection-instruction {
     bottom: 152px;
     font-size: 13px;
