@@ -11,6 +11,8 @@ directories:
   buildResources: build
 # Real files on disk: the server spawns the sandbox watchdog, Python helpers and the MCP bridge by path.
 asar: false
+# Without an Apple identity, sign the packed app ad hoc (see the file) so macOS offers Open Anyway instead of "damaged".
+afterPack: ./after-pack.cjs
 files:
   - package.json
   - dist/client/**
