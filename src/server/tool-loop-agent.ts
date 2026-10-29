@@ -12,9 +12,9 @@ import { AGENT_CONTEXT_TOKENS } from '../shared/setup.js';
 
 const now = () => new Date().toISOString();
 const MAX_TOOL_CALLS = 30, MAX_MODEL_REQUESTS = 30, MAX_SECONDS = 900, MAX_FAILURES_IN_A_ROW = 3;
-const MAX_OUTPUT_TOKENS = 8000, RESULT_CHARACTERS = 12_000, OLD_RESULT_CHARACTERS = 1_500;
-// ros.ai refuses provider requests above 64 KB; older tool results shrink to stay under it.
-const MESSAGE_BUDGET_BYTES = 44_000;
+const MAX_OUTPUT_TOKENS = 8000, RESULT_CHARACTERS = 12_000, OLD_RESULT_CHARACTERS = 1_500, NEW_RESULT_CHARACTERS = 6_000, RESULT_TAIL_CHARACTERS = 400;
+// ros.ai refuses provider requests above 64 KB, tools included; older tool results shrink first, then the newest.
+const MESSAGE_BUDGET_BYTES = 44_000, REQUEST_BYTES = 62_000;
 
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted'; selection: ModelSelection; label: string; requests: number; toolCalls: number; estimatedUsd: number; usageIds: string[]; events: AgentEvent[]; reply: string; error?: string };
 
@@ -26,11 +26,18 @@ function modelTools(toolkit: AgentWorkspaceTools): ModelTool[] {
   });
 }
 const bytes = (messages: ChatMessage[]) => Buffer.byteLength(JSON.stringify(messages), 'utf8');
-/** Keep the system prompt, the question and the newest results whole; clip older tool results first. */
-function fit(messages: ChatMessage[], budget: number) {
+/** A tool result cut to its head and its tail, so the instruction a tool puts last (what to do next) survives the cut. */
+const shorten = (content: string, head: number) => content.length <= head + RESULT_TAIL_CHARACTERS ? content : `${content.slice(0, head)}… [result shortened; call the tool again to see it whole] …${content.slice(-RESULT_TAIL_CHARACTERS)}`;
+/** Keep the system prompt and the question whole; clip older tool results first, then the newest ones if the request
+ * would still overflow (several page reads in one step, for example), rather than let the provider request fail. */
+export function fit(messages: ChatMessage[], budget: number) {
   for (let index = 2; bytes(messages) > budget && index < messages.length - 2; index++) {
     const message = messages[index];
-    if (message.role === 'tool' && message.content.length > OLD_RESULT_CHARACTERS) messages[index] = { ...message, content: `${message.content.slice(0, OLD_RESULT_CHARACTERS)}… [older result shortened; call the tool again to see it whole]` };
+    if (message.role === 'tool' && message.content.length > OLD_RESULT_CHARACTERS + RESULT_TAIL_CHARACTERS) messages[index] = { ...message, content: shorten(message.content, OLD_RESULT_CHARACTERS) };
+  }
+  for (const head of [NEW_RESULT_CHARACTERS, OLD_RESULT_CHARACTERS]) for (let index = 2; bytes(messages) > budget && index < messages.length; index++) {
+    const message = messages[index];
+    if (message.role === 'tool' && message.content.length > head + RESULT_TAIL_CHARACTERS) messages[index] = { ...message, content: shorten(message.content, head) };
   }
 }
 
@@ -108,9 +115,11 @@ export class ToolLoopAgentService {
     const message = z.string().trim().min(1).max(12000).parse(request.message), label = this.label(request.selection);
     const toolkit = new AgentWorkspaceTools(this.store, this.execution, this.experiments, request, request.turnId, 'model', label);
     const tools = modelTools(toolkit), names = new Set(tools.map(item => item.name));
-    // A local model's context holds the tools as well: its messages get the room left, at three bytes a token.
+    // The request carries the tools as well as the messages, so the messages get what the 64 KB cap leaves after the
+    // tools; a local model's context holds both too, at three bytes a token.
     const found = this.registered(request.selection), toolBytes = Buffer.byteLength(JSON.stringify(tools), 'utf8');
-    const budget = found?.local ? Math.min(MESSAGE_BUDGET_BYTES, Math.max(8_000, (found.model.contextTokens - 2_048) * 3 - toolBytes)) : MESSAGE_BUDGET_BYTES;
+    const remote = Math.min(MESSAGE_BUDGET_BYTES, Math.max(8_000, REQUEST_BYTES - toolBytes));
+    const budget = found?.local ? Math.min(remote, Math.max(8_000, (found.model.contextTokens - 2_048) * 3 - toolBytes)) : remote;
     const messages: ChatMessage[] = [
       { role: 'system', content: AGENT_LOOP_INSTRUCTIONS },
       { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}` },
@@ -138,7 +147,7 @@ export class ToolLoopAgentService {
         attempt.usageIds.push(usage.id); attempt.estimatedUsd += usage.estimatedUsd ?? usage.reservedUsd; save();
         const written = response.toolCalls?.length ? undefined : textToolCalls(response.content);
         const text = (written?.text ?? response.content).trim(), calls: ToolCall[] = response.toolCalls?.length ? response.toolCalls : written?.calls ?? [];
-        if (!calls.length) { reply = text; break; }
+        if (!calls.length) { reply = toolkit.nameBlocks(text); break; }
         if (text) event({ at: now(), type: 'thought', message: text.length > 600 ? `…${text.slice(-600)}` : text });
         messages.push({ role: 'assistant', content: text, toolCalls: calls });
         for (const call of calls) {
