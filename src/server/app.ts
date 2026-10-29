@@ -130,8 +130,15 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
     res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));
   });
-  app.post('/api/projects/:id/trash',(req,res)=>res.json(store.trashProject(routeId(req.params.id))));
-  app.post('/api/projects/:id/restore',(req,res)=>res.json(store.restoreProject(routeId(req.params.id))));
+  // Removing a project keeps its folder unless the person asks for the folder to go to the computer's Trash too.
+  app.post('/api/projects/:id/trash',async(req,res)=>{
+    const id=routeId(req.params.id),{files}=z.object({files:z.boolean().optional()}).strict().parse(req.body??{});
+    const project=store.trashProject(id);
+    folders?.release(id);
+    if(files&&folders)try{await folders.moveFolderToTrash(id);}catch(error){store.restoreProject(id);folders.resume(id);throw error;}
+    res.json(project);
+  });
+  app.post('/api/projects/:id/restore',(req,res)=>{const id=routeId(req.params.id),project=store.restoreProject(id);folders?.resume(id);res.json(project);});
   app.get('/api/projects/:id/models', (req,res)=>res.json(modelSettings.read(routeId(req.params.id))));
   app.patch('/api/projects/:id/models', (req,res)=>res.json(modelSettings.update(routeId(req.params.id),req.body)));
   app.get('/api/projects/:id', (req, res) => {
