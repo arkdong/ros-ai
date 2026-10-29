@@ -19,6 +19,8 @@ npm start        # the workspace at http://127.0.0.1:4310
 npm run app      # or the same in its own window (Mac)
 ```
 
+`npm link` (once) gives the `ros-ai` command, which the install script on ros-ai.io sets up for you: `ros-ai` starts the workspace and opens it in the browser, `ros-ai update` pulls the latest release and rebuilds, `ros-ai app` opens the window on a Mac.
+
 The service binds to loopback only. ros.ai keeps its own records in the computer's app-data folder (macOS `~/Library/Application Support/ros.ai`), or in `.ros-ai/` when the checkout already has one; `ROS_DATA_DIR` chooses another place, and the folder in use is printed at startup. Each project also lives in a folder you choose, as ordinary Markdown, `.py`, `.ipynb` and CSV files that Obsidian, VS Code or Jupyter open; edits saved there come back as changes you can undo.
 
 ## First run
