@@ -2,12 +2,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { AppWindow, ArrowRight, ArrowUpRight, Check, FileText, Laptop, ListChecks, LoaderCircle, NotebookPen, Text } from 'lucide-react';
 import type { AgentId, DetectedApp, SetupStatus } from '../shared/setup';
 import type { CloudAccountStatus } from '../shared/cloud-account';
-import type { LocalRosStatus } from '../shared/local-ros';
 import { BrandLogo, hasBrandLogo, type BrandId } from './brand-logos';
 import { Wordmark } from './Brand';
 import { RosMark } from './RosDock';
 import { cloudAccountChanged } from './ProfileButton';
-import { AgentIcon, gb, SetupScreen, useLocalRos } from './Setup';
+import { AgentIcon, SetupScreen } from './Setup';
+import { changeLocalRos, gb, useLocalRosStatus } from './local-ros-status';
 import { api, post } from './api';
 import './first-run.css';
 
@@ -63,7 +63,7 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
   const [step, setStep] = useState<Step>('welcome');
   const [cloud, setCloud] = useState<CloudAccountStatus>(), [choice, setChoice] = useState<'account' | 'without'>('account');
   const [opened, setOpened] = useState(false), [error, setError] = useState(''), [download, setDownload] = useState(true), [localError, setLocalError] = useState('');
-  const local = useLocalRos();
+  const localRos = useLocalRosStatus();
   const sawWaiting = useRef(false), started = useRef(false);
   useEffect(() => { void api<CloudAccountStatus>('/api/cloud').then(setCloud, () => undefined); }, []);
   // The example: both agents move on every 1.8 s and the clock runs until the evals are done; then ROS's proposal
@@ -73,7 +73,7 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
   useEffect(() => { if (!working) return; const timer = setTimeout(() => setPhase(value => value + 1), phase === 0 ? 1600 : 1800); return () => clearTimeout(timer); }, [phase, working]);
   useEffect(() => { if (!working) return; const timer = setInterval(() => setSeconds(value => value + 1), 1000); return () => clearInterval(timer); }, [working]);
 
-  const computer = status.computer, hosted = status.cloud.available, offline = local.status?.supported ?? false;
+  const computer = status.computer, hosted = status.cloud.available, offline = localRos?.supported ?? false;
   const signedIn = cloud ? cloud.state === 'signed-in' : status.cloud.signedIn;
   // The tools page gets the sign-in made here; one object per change, so its rows keep the person's ticks.
   const screenStatus = useMemo(() => signedIn === status.cloud.signedIn ? status : { ...status, cloud: { ...status.cloud, signedIn } }, [status, signedIn]);
@@ -83,10 +83,10 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
 
   /** Download ROS starts it when the page is left, so a change of mind costs nothing. */
   const startDownload = () => {
-    const current = local.status;
+    const current = localRos;
     if (!download || !current?.supported || (current.state !== 'not-downloaded' && current.state !== 'failed') || started.current) return;
     started.current = true; setLocalError('');
-    post<LocalRosStatus>('/api/local-ros/download').then(local.set, cause => { started.current = false; setLocalError(fail(cause)); });
+    changeLocalRos('download').catch(cause => { started.current = false; setLocalError(fail(cause)); });
   };
   const next = () => { if (step === 'account') startDownload(); const following = steps[at + 1]; if (following) setStep(following); else onDone(); };
   const back = () => { const before = steps[at - 1]; if (before) setStep(before); };
@@ -159,7 +159,7 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
     {stepLine}
   </div>;
   else if (step === 'account') {
-    const current = local.status, waiting = opened && choice === 'account' && !signedIn, both = hosted && offline;
+    const current = localRos, waiting = opened && choice === 'account' && !signedIn, both = hosted && offline;
     const percent = current?.totalBytes ? Math.min(100, Math.round(((current.doneBytes ?? 0) / current.totalBytes) * 100)) : 0;
     const [title, lead] = both ? ['Set up ROS', `Two choices, both free. Your projects stay on ${computer} either way.`]
       : hosted ? ['Sign in or create an account', `Free while ros.ai is new. Your projects stay on ${computer} either way.`]
@@ -221,7 +221,7 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
       </section>
       {stepLine}
     </div>;
-  } else page = <SetupScreen status={screenStatus} hostedOn={choice === 'account'} localRos={local.status} after={stepLine}
+  } else page = <SetupScreen status={screenStatus} hostedOn={choice === 'account'} after={stepLine}
     onDone={onDone} onAgents={onAgents} onChanged={onChanged}/>;
 
   // The blocks. Left: the steps, then Sources and Training. Right: Evals, ROS's proposal once the evals are done, and
@@ -238,7 +238,7 @@ export function FirstRun({ status, onDone, onAgents, onChanged }: Props) {
   ];
   const lines = all.slice(0, 4), more = all.length - lines.length;
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const dl = local.status;
+  const dl = localRos;
   // Where ROS runs for the choices made so far, under its proposal: the download while it runs, else the account choice.
   const where = signedIn ? `Hosted by ros.ai${cloud?.email ? ` · ${cloud.email}` : ''}`
     : hosted && step !== 'welcome' && choice === 'without' ? `On your keys${offline ? ` or on ${computer}` : ''}`

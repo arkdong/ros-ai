@@ -6,7 +6,7 @@ import type { TutorialCatalog, TutorialScenario } from '../shared/tutorial';
 import { api } from './api';
 import { RosMark } from './RosDock';
 import { cloudAccountChanged } from './ProfileButton';
-import { gb, useLocalRos } from './Setup';
+
 import { folderName, useFolderSuggestion } from './ProjectFolder';
 import './chip-menu.css';
 import './start-card.css';
@@ -120,11 +120,10 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
 }
 
 /** The screen before any project: the card, the other doors as pills, and a gallery of the demos that exist. What the
- *  first run did shows as quiet pills too: the tools connected, and ROS downloading to this computer. */
+ *  first run connected shows as a quiet pill too; ROS downloading to this computer shows in the corner, as on every page. */
 export function StartScreen({ folders, focusKey, tools = 0, onTools, ...handlers }: Handlers & { folders: boolean; focusKey?: number; tools?: number; onTools?: () => void }) {
   const scenarios = useScenarios(), [from, setFrom] = useState<StartFrom>(blank);
   const [cloud, setCloud] = useState<CloudAccountStatus>();
-  const local = useLocalRos(folders).status;
   useEffect(() => {
     const look = () => void api<CloudAccountStatus>('/api/cloud').then(setCloud).catch(() => undefined);
     look(); window.addEventListener('ros-cloud-changed', look);
@@ -144,8 +143,6 @@ export function StartScreen({ folders, focusKey, tools = 0, onTools, ...handlers
         {folders && from.kind !== 'folder' && <button type="button" className="chip-button" onClick={() => setFrom({ kind: 'folder' })}><FolderOpen size={12}/>Open a folder on {thisComputer}</button>}
         {cloud?.available && cloud.state !== 'signed-in' && <button type="button" className="chip-button" onClick={signIn}>Sign in to ros.ai</button>}
         {tools > 0 && <button type="button" className="chip-button" onClick={onTools}><span className="chip-dot"/>{tools} tool{tools === 1 ? '' : 's'} connected</button>}
-        {local && (local.state === 'downloading' || local.state === 'starting') && <button type="button" className="chip-button" onClick={onTools}>{local.state === 'starting' ? 'ROS is getting ready' : `ROS is downloading${local.totalBytes ? ` · ${gb(local.doneBytes)} of ${gb(local.totalBytes)}` : ''}`}{local.state === 'downloading' && <span className="setup-bar" aria-hidden="true"><i style={{ width: `${local.totalBytes ? Math.min(100, Math.round(((local.doneBytes ?? 0) / local.totalBytes) * 100)) : 0}%` }}/></span>}</button>}
-        {local?.state === 'failed' && <button type="button" className="chip-button" onClick={onTools}>The ROS download stopped</button>}
       </div>
     </div>
     {demos.length > 0 && <section className="start-gallery" aria-label="Demos">

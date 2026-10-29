@@ -7,6 +7,7 @@ import type { ApprovalMode, ResearchPolicy } from '../shared/research';
 import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
 import type { SetupResetPlan, SetupResetResponse } from '../shared/setup';
 import { cloudAccountChanged } from './ProfileButton';
+import { reloadLocalRos } from './local-ros-status';
 import { BrandLogo } from './brand-logos';
 import { RosMark } from './RosDock';
 import { Commands, DownloadLink } from './UpdateButton';
@@ -106,47 +107,52 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   </div>;
 }
 
-type ResetOption = 'links' | 'tokens' | 'cloud' | 'localRos';
-/** Reset onboarding, to test the first run again: it starts again from the welcome page, as on a new computer, and each
- * option also undoes one kind of thing it connects. Only the agent links this ros.ai recorded are removed, so a test copy
- * leaves the links of another ros.ai alone. */
+type ResetOption = 'links' | 'tokens' | 'apps' | 'models' | 'cloud' | 'localRos';
+/** Reset all connections, to test the first run again: every ros-ai entry in the agents' settings (whichever ros.ai wrote
+ * it), saved tokens, app sign-ins, model servers and the hosted ROS sign-in go, each kept by unticking it, and the first
+ * run starts again from the welcome page, as on a new computer. The ROS download stays unless it is ticked. */
 function FirstRunSettings() {
-  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, tokens: false, cloud: false, localRos: false });
+  const [plan, setPlan] = useState<SetupResetPlan | null>(null), [choice, setChoice] = useState<Record<ResetOption, boolean>>({ links: true, tokens: true, apps: true, models: true, cloud: true, localRos: false });
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState<string[]>([]), [error, setError] = useState('');
   const show = () => window.dispatchEvent(new CustomEvent('ros-setup-reset', { detail: { from: 'welcome' } }));
-  const start = async () => { setError(''); setFailed([]); try { setPlan(await api<SetupResetPlan>('/api/setup/reset')); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
+  const start = async () => { setError(''); setFailed([]); setBusy(true); try { setPlan(await api<SetupResetPlan>('/api/setup/reset')); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   const reset = async () => {
     if (!plan) return;
     setBusy(true); setError('');
     try {
-      const cloud = choice.cloud && plan.cloud;
-      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify({ links: choice.links && plan.links.length > 0, tokens: choice.tokens && plan.tokens.length > 0, cloud, localRos: choice.localRos && plan.localRos }) });
+      const chosen = (option: ResetOption, there: boolean) => choice[option] && there;
+      const request = { links: chosen('links', plan.links.length > 0), tokens: chosen('tokens', plan.tokens.length > 0), apps: chosen('apps', plan.apps.length > 0), models: chosen('models', plan.models.length > 0), cloud: chosen('cloud', plan.cloud), localRos: chosen('localRos', plan.localRos) };
+      const answer = await api<SetupResetResponse>('/api/setup/reset', { method: 'POST', body: JSON.stringify(request) });
       setPlan(null);
-      if (cloud) cloudAccountChanged();
+      if (request.cloud) cloudAccountChanged();
+      if (request.localRos) void reloadLocalRos();
       // What could not be undone stays here to read; otherwise the welcome page opens at once.
       if (answer.failed.length) setFailed(answer.failed); else show();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
   const options: { id: ResetOption; label: string; detail?: string }[] = plan ? [
-    ...(plan.links.length ? [{ id: 'links' as const, label: 'Remove the ros-ai links in your agents', detail: plan.links.join(', ') }] : []),
+    ...(plan.links.length ? [{ id: 'links' as const, label: 'Remove the ros-ai link from your agents', detail: plan.links.join(', ') }] : []),
+    ...(plan.apps.length ? [{ id: 'apps' as const, label: 'Disconnect your apps', detail: plan.apps.join(', ') }] : []),
     ...(plan.tokens.length ? [{ id: 'tokens' as const, label: 'Forget saved tokens', detail: plan.tokens.join(', ') }] : []),
+    ...(plan.models.length ? [{ id: 'models' as const, label: 'Disconnect model servers', detail: plan.models.join(', ') }] : []),
     ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted ROS' }] : []),
-    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the ROS download', detail: 'ROS on this computer, about 3 GB' }] : []),
+    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the ROS download', detail: 'ROS on this computer, about 3 GB. Left unticked, it stays.' }] : []),
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
     <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
       <button type="button" className="secondary small" onClick={show}>Show</button>
     </Row>
-    <Row title="Reset onboarding" detail="Start again from the welcome page, as on a new computer.">
-      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>Reset…</button>
+    <Row title="Reset all connections" detail="Undo every link and sign-in on this computer, then start again from the welcome page, as on a new computer.">
+      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>{busy && !plan && <LoaderCircle size={13} className="spin"/>}Reset all…</button>
     </Row>
     {plan && <div className="settings-confirm">
       <div className="settings-options">
         <label className="settings-option"><input type="checkbox" checked disabled/><span><span>Show the welcome, sign-in and tools pages again</span></span></label>
         {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
       </div>
-      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset</button></div>
+      {!options.length && <p className="settings-confirm-note">Nothing is connected on this computer; only the welcome comes back.</p>}
+      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset all</button></div>
     </div>}
     {failed.length > 0 && <div className="settings-confirm">
       <p className="settings-confirm-note">Reset, except for these:</p>

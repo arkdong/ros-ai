@@ -5,12 +5,15 @@
 .feedback .feedback-button, .feedback .feedback-hint, .feedback .feedback-card { pointer-events: auto; }
 /* Above full pages such as Settings, and above everything while open. */
 .workspace:has(> .rail-page) > .feedback, .feedback.open { z-index: 50; }
-.feedback .feedback-anchor { position: absolute; top: 16px; right: 24px; display: flex; }
+/* The corner: the ROS download while it runs, then the button. */
+.feedback .feedback-corner { position: absolute; top: 16px; right: 24px; display: flex; align-items: flex-start; gap: 8px; }
+.feedback .feedback-anchor { position: relative; display: flex; }
 .feedback .feedback-button { height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--card-line); border-radius: 8px; background: #fff; color: var(--ink); font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
 .feedback .feedback-button:hover { background: #f7f7f7; }
 .feedback.open .feedback-button { background: #f2f2f2; }
-/* The map's header leaves the button its room. */
+/* The map's header leaves the button its room, and the download's beside it. */
 .workspace:has(> .feedback) > .workspace-header { padding-right: 148px; }
+.workspace:has(> .feedback .ros-dl) > .workspace-header { padding-right: 268px; }
 
 /* The first-visit hint hangs under the button, its tip on the button's middle, and fades in once the page settles
    (hidden until then, so it catches no presses before it shows). */
@@ -74,9 +77,10 @@
 
 /* Phones: the button keeps only its icon, level with the title row, and the card takes the width under it. */
 @media (max-width: 600px) {
-  .feedback .feedback-anchor { top: 6px; right: 12px; }
+  .feedback .feedback-corner { top: 6px; right: 12px; gap: 6px; }
   .feedback .feedback-button { width: 32px; padding: 0; }
   .feedback .feedback-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .workspace:has(> .feedback) > .workspace-header { padding-right: 56px; }
+  .workspace:has(> .feedback .ros-dl) > .workspace-header { padding-right: 140px; }
   .feedback .feedback-card-space { top: 46px; right: 12px; bottom: 12px; max-width: calc(100% - 24px); }
 }
