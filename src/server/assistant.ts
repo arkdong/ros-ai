@@ -12,7 +12,7 @@ import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
 import type {ModelMessage,Mutation,Run} from '../shared/types.js';
-import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantTurn,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
+import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
 import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
 import {memoryLineSchema,type PersonalMemory} from './personal-memory.js';
@@ -51,15 +51,47 @@ const clip=(value:string,length:number)=>value.length>length?value.slice(0,lengt
 
 /** Project memory and tool coordination. Focus affects attention, never grants.
  * Every durable effect is independently validated by its owning service.
+ * A project holds many threads: each is one conversation with its own history, agent session and running turn, so two can
+ * work at once; the map, its proposals, the approval mode and what ROS runs with belong to the project.
  */
 export class AssistantService {
   private readonly active=new Map<string,{controller:AbortController;done:Promise<void>}>();
+  /** Projects whose conversation from before threads has been placed in their first thread (ensureThreads). */
+  private readonly migrated=new Set<string>();
   private closed=false;
   constructor(private readonly store:Store,private readonly execution:ExecutionService,private readonly experiments:ExperimentService,private readonly agent?:AgentRuntime,private readonly claude?:ClaudeAgentService,private readonly loop?:ToolLoopAgentService,private readonly personal?:PersonalMemory,private readonly skills?:SkillLibrary,private readonly acp?:AcpAgentService){
     for(const project of store.listProjects())for(const turn of this.turns(project.id))if(turn.status==='running')this.save({...turn,status:'interrupted',error:'The service stopped. Captured work is preserved; no model request or tool action was automatically repeated.',updatedAt:now()});
   }
   private turns(projectId:string){return this.store.records<SavedTurn>('assistant-turn',projectId);}
   private getTurn(projectId:string,turnId:string){const turn=this.store.record<SavedTurn>('assistant-turn',turnId);if(!turn||turn.projectId!==projectId)throw new StoreError('Assistant turn not found.',404);this.store.getProject(projectId);return turn;}
+  /** The project's threads, oldest first. A project from before threads gets its one conversation as the first thread. */
+  private threads(projectId:string):AssistantThread[]{this.ensureThreads(projectId);return this.store.records<AssistantThread>('assistant-thread',projectId);}
+  private getThread(projectId:string,threadId:string){const thread=this.threads(projectId).find(item=>item.id===threadId);if(!thread)throw new StoreError('Thread not found.',404);return thread;}
+  /** A thread is named after its first message, cut to one line; Rename makes the name the person's own. */
+  private static threadTitle(message:string){return textPreview(message,60).text||'New thread';}
+  private createThread(projectId:string,title:string,extra:Partial<AssistantThread>={}){const thread:AssistantThread={id:randomUUID(),projectId,title:AssistantService.threadTitle(title),createdAt:now(),updatedAt:now(),...extra};this.store.saveRecord('assistant-thread',thread.id,projectId,thread);return thread;}
+  private touchThread(thread:AssistantThread){this.store.saveRecord('assistant-thread',thread.id,thread.projectId,{...thread,updatedAt:now()});}
+  /** Once per project: the conversation from before threads (its turns, messages and agent sessions) becomes the first thread. */
+  private ensureThreads(projectId:string){
+    if(this.migrated.has(projectId))return;
+    const turns=this.store.records<SavedTurn>('assistant-turn',projectId).filter(turn=>!turn.threadId);
+    this.migrated.add(projectId);
+    const messages=this.store.listMessages(projectId,null).filter(message=>!message.threadId);
+    if(!turns.length&&!messages.length)return;
+    const first=messages.find(message=>message.role==='user')?.content??turns[0]?.userMessage??'Earlier conversation';
+    const createdAt=[turns[0]?.createdAt,messages[0]?.createdAt].filter((value):value is string=>Boolean(value)).sort()[0]??now();
+    const updatedAt=[turns.at(-1)?.updatedAt,messages.at(-1)?.createdAt].filter((value):value is string=>Boolean(value)).sort().at(-1)??createdAt;
+    const thread:AssistantThread={id:randomUUID(),projectId,title:AssistantService.threadTitle(first),createdAt,updatedAt};
+    this.store.atomic(()=>{
+      this.store.saveRecord('assistant-thread',thread.id,projectId,thread);
+      for(const turn of turns)this.amend({...turn,threadId:thread.id});
+      this.store.assignMessageThread(projectId,messages.map(message=>message.id),thread.id);
+      // The agent sessions of that conversation go on in the first thread.
+      for(const namespace of ['claude-session','codex-session','acp-session']){const session=this.store.record<unknown>(namespace,projectId);if(session)this.store.saveRecord(namespace,thread.id,projectId,session);}
+    });
+  }
+  /** A reply or a notice in the turn's thread. */
+  private say(turn:SavedTurn,role:'assistant'|'system',content:string){this.store.addMessage(turn.projectId,null,role,content,undefined,turn.threadId);}
   private readonly listeners=new Map<string,Set<(live:AssistantLive)=>void>>();
   private readonly pending=new Map<string,ReturnType<typeof setTimeout>>();
   private save(turn:SavedTurn){const saved=this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});this.publish(turn);return saved;}
@@ -68,7 +100,7 @@ export class AssistantService {
   /** Running turns are sent at most every 40 ms (the newest text wins); a turn that ends is sent at once. */
   private publish(turn:SavedTurn){
     if(!this.listeners.get(turn.projectId)?.size)return;
-    const send=()=>{this.pending.delete(turn.id);const current=this.store.record<SavedTurn>('assistant-turn',turn.id);if(!current)return;const live:AssistantLive={turnId:current.id,reply:current.reply,status:current.status,step:current.events.at(-1)?.message};for(const listener of this.listeners.get(current.projectId)??[])listener(live);};
+    const send=()=>{this.pending.delete(turn.id);const current=this.store.record<SavedTurn>('assistant-turn',turn.id);if(!current)return;const live:AssistantLive={turnId:current.id,...(current.threadId?{threadId:current.threadId}:{}),reply:current.reply,status:current.status,step:current.events.at(-1)?.message};for(const listener of this.listeners.get(current.projectId)??[])listener(live);};
     if(turn.status!=='running'){clearTimeout(this.pending.get(turn.id));send();return;}
     if(!this.pending.has(turn.id))this.pending.set(turn.id,setTimeout(send,40));
   }
@@ -96,10 +128,11 @@ export class AssistantService {
   setBackend(projectId:string,input:unknown){
     const {backend}=z.object({backend:z.enum(['provider','agent','claude','claude-plan','codex','codex-key',...ACP_AGENT_IDS])}).strict().parse(input);
     this.store.getProject(projectId);
-    if(this.turns(projectId).some(turn=>turn.status==='running'))throw new StoreError('Stop or finish the current assistant turn before changing its connection.',409);
+    // A running turn keeps what it started with; the change applies to the next turn in any thread.
     this.store.saveRecord('assistant-backend',projectId,projectId,{backend});return this.state(projectId);
   }
   state(projectId:string):AssistantState{
+    this.ensureThreads(projectId);
     const detail=this.store.detail(projectId),memory=this.memory(projectId),focus=this.store.record<AssistantFocus>('assistant-focus',projectId)??{nodeId:null};
     if(focus.nodeId&&!detail.project.canvas.nodes.some(n=>n.id===focus.nodeId)){focus.nodeId=null;focus.artifactId=null;}
     const outline:OutlineEntry[]=[];
@@ -116,11 +149,12 @@ export class AssistantService {
       const metrics=detail.artifacts.filter(a=>a.runId===run.id&&a.kind==='metric').slice(0,3);
       outline.push({id:`evidence-${run.id}`,title:`Saved experiment: ${run.node.title}`,summary:metrics.length?metrics.map(a=>`${a.title}: ${clip(a.content,150)}`).join('\n'):'Completed execution; inspect its captured outputs and limitations.',kind:'finding',status:'observed',nodeId:run.nodeId,references:[{kind:'run',id:run.id,nodeId:run.nodeId,label:'Inspect actual execution'},...metrics.map(a=>({kind:'artifact' as const,id:a.id,nodeId:a.nodeId,label:a.title}))]});
     }
+    const threads=this.threads(projectId);
     const turns=this.turns(projectId).map(({steps,...turn})=>{
       const captured=steps.at(-1)?.response?presentAssistantResponse(steps.at(-1)!.response):undefined;
       const question=turn.question??captured?.question??null;
       const clarifications=readAssistantClarifications({clarifications:turn.clarifications??captured?.clarifications,question});
-      return {...turn,question,...(clarifications.length?{clarifications}:{}),actions:turn.actions.map(action=>{
+      return {...turn,threadId:turn.threadId??threads[0]?.id,question,...(clarifications.length?{clarifications}:{}),actions:turn.actions.map(action=>{
       if(action.reportProposalId){const proposal=this.store.record<{status:string;resultArtifactId?:string}>('agent-report-proposal',action.reportProposalId);return {...action,status:proposal?.status==='accepted'?'completed' as const:proposal?.status==='dismissed'?'cancelled' as const:action.status,artifactId:proposal?.resultArtifactId??action.artifactId};}
       if(action.type==='proposal'&&action.proposalId){const proposal=detail.proposals.find(p=>p.id===action.proposalId);return {...action,status:proposal?.status==='accepted'?'completed' as const:proposal?.status==='dismissed'?'cancelled' as const:action.status};}
       if(action.runId){const run=detail.runs.find(r=>r.id===action.runId);if(run)return {...action,status:run.status==='completed'?'completed' as const:run.status==='failed'?'failed' as const:['cancelled','interrupted'].includes(run.status)?'cancelled' as const:run.status==='queued'?'pending' as const:'running' as const,error:run.error};}return action;
@@ -131,33 +165,46 @@ export class AssistantService {
     const agentStatus=way?.agent==='codex'?this.store.record<import('../shared/agent-runtime.js').AgentConnectionStatus>('agent-connection-status',codexStatusRecord(projectId,way.billing)):undefined;
     const claude=way?.agent==='claude'?this.claude?.readiness(projectId,way.billing)??{available:false,reason:'Claude Code is not available in this service.'}:backend==='agent'?this.loop?.readiness(projectId,this.execution.modelSelection(projectId,focus.nodeId))??{available:false,reason:'The agent loop is not available in this service.'}:isAcpAgent(backend)?this.acp?.readiness(projectId,backend)??{available:false,reason:`${ACP_AGENTS[backend].label} is not available in this service.`}:null;
     const capabilities=claude?{modelAvailable:claude.available,searchAvailable:false,modelBlocker:claude.reason}:way?.agent==='codex'?{modelAvailable:Boolean(agentStatus?.available),searchAvailable:false,modelBlocker:agentStatus?.available?null:agentStatus?.detail??'Open Model to check local Codex authentication, protocol and the separate bounded grant. No agent inference has been verified.'}:this.execution.assistantCapabilities(projectId,focus.nodeId);
-    return {projectId,backend,focus,memory,outline,turns,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
+    // Each thread in one line: working and on what, changes waiting for review, or how its last turn ended. Newest activity first.
+    const reviewable=new Set(detail.proposals.filter(p=>p.status==='pending'&&p.baseRevision===detail.project.revision).map(p=>p.id));
+    const summaries:AssistantThreadSummary[]=threads.map(thread=>{
+      const own=turns.filter(turn=>turn.threadId===thread.id),running=own.findLast(turn=>turn.status==='running'),last=own.findLast(turn=>turn.status!=='running');
+      const waiting=own.flatMap(turn=>turn.actions).filter(action=>action.status==='pending'&&(!action.proposalId||reviewable.has(action.proposalId))).length;
+      const updatedAt=own.reduce((latest,turn)=>turn.updatedAt>latest?turn.updatedAt:latest,thread.updatedAt);
+      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{})};
+    }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+    return {projectId,backend,focus,memory,outline,turns,threads:summaries,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
   }
   /** suggest: plugins the person's app noticed in the message (a link or a name) and found unconnected; the reply carries
-   * a card for those the message really names. */
-  start(projectId:string,supplied:{message:string;focus?:AssistantFocus;suggest?:PluginId[]}):AssistantState{
-    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional(),suggest:z.array(z.enum(PLUGINS.map(plugin=>plugin.id) as [PluginId,...PluginId[]])).max(3).optional()}).strict().parse(supplied);
+   * a card for those the message really names. threadId: the thread the message continues; left out, it starts a new
+   * thread named after the message. A thread takes one question at a time; other threads go on working meanwhile. */
+  start(projectId:string,supplied:{message:string;focus?:AssistantFocus;suggest?:PluginId[];threadId?:string}):AssistantState{
+    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional(),suggest:z.array(z.enum(PLUGINS.map(plugin=>plugin.id) as [PluginId,...PluginId[]])).max(3).optional(),threadId:id.optional()}).strict().parse(supplied);
     if(this.closed)throw new StoreError('Assistant is stopping.',503);
-    if(this.turns(projectId).some(t=>t.status==='running'))throw new StoreError('The project assistant is already working.',409);
+    const chosen=body.threadId?this.getThread(projectId,body.threadId):null;
+    if(!chosen)this.ensureThreads(projectId);
+    if(chosen&&this.turns(projectId).some(t=>t.threadId===chosen.id&&t.status==='running'))throw new StoreError('ROS is still working in this thread. Wait for it, or start a new thread.',409);
     const stopped=this.experiments.authority.policy(projectId).stopped;
     const focus=this.validateFocus(projectId,body.focus??this.state(projectId).focus);
     this.store.saveRecord('assistant-focus',projectId,projectId,focus);
-    const message=this.store.addMessage(projectId,null,'user',body.message),memory=this.memory(projectId);
+    const thread=chosen??this.createThread(projectId,body.message);
+    const done=()=>({...this.state(projectId),threadId:thread.id});
+    const message=this.store.addMessage(projectId,null,'user',body.message,undefined,thread.id),memory=this.memory(projectId);
     if(!memory.originalQuestion){memory.originalQuestion=body.message;memory.questionHistory.push({id:message.id,text:body.message,at:message.createdAt});}
     this.store.saveRecord('research-memory',projectId,projectId,memory);
     const backend=this.state(projectId).backend,way=inAppAgent(backend);
-    const turn:SavedTurn={id:randomUUID(),projectId,createdAt:now(),updatedAt:now(),focus,userMessage:body.message,reply:'',status:'running',source:way?.agent==='codex'?'codex-agent':way?.agent==='claude'?'claude-agent':backend==='agent'?'model-agent':isAcpAgent(backend)?'acp-agent':this.execution.assistantCapabilities(projectId,focus.nodeId).modelAvailable?'model':'local-records',...(isAcpAgent(backend)?{acp:backend,model:ACP_AGENTS[backend].label}:{}),...(way?{billing:way.billing}:{}),references:[],actions:[],events:[],steps:[],modelSelection:this.execution.modelSelection(projectId,focus.nodeId)};
+    const turn:SavedTurn={id:randomUUID(),projectId,threadId:thread.id,createdAt:now(),updatedAt:now(),focus,userMessage:body.message,reply:'',status:'running',source:way?.agent==='codex'?'codex-agent':way?.agent==='claude'?'claude-agent':backend==='agent'?'model-agent':isAcpAgent(backend)?'acp-agent':this.execution.assistantCapabilities(projectId,focus.nodeId).modelAvailable?'model':'local-records',...(isAcpAgent(backend)?{acp:backend,model:ACP_AGENTS[backend].label}:{}),...(way?{billing:way.billing}:{}),references:[],actions:[],events:[],steps:[],modelSelection:this.execution.modelSelection(projectId,focus.nodeId)};
     const suggested=body.suggest?.length?pluginMatches(body.message).filter(match=>body.suggest!.includes(match.id)):[];
     if(suggested.length){
       // One open card per plugin: a newer request that needs the same plugin takes the card over.
       for(const earlier of this.turns(projectId))if(earlier.suggested?.status==='open'&&earlier.suggested.plugins.some(item=>suggested.some(match=>match.id===item.id)))this.amend({...earlier,suggested:{...earlier.suggested,status:'moved'}});
       turn.suggested={by:'ros.ai',plugins:suggested,status:'open'};
     }
-    this.save(turn);
-    if(stopped){this.save({...turn,status:'failed',reply:'Project research is stopped. Open Permissions and resume deliberately before continuing.',error:'Project research is stopped. No model or tool was called.'});return this.state(projectId);}
+    this.save(turn);this.touchThread(thread);
+    if(stopped){this.save({...turn,status:'failed',reply:'Project research is stopped. Open Permissions and resume deliberately before continuing.',error:'Project research is stopped. No model or tool was called.'});return done();}
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
     active.done=Promise.resolve().then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.active.delete(turn.id));
-    return this.state(projectId);
+    return done();
   }
   private context(turn:SavedTurn):ModelMessage[]{
     const detail=this.store.detail(turn.projectId),memory=this.memory(turn.projectId),focus=turn.focus;
@@ -181,7 +228,8 @@ export class AssistantService {
     const evidence=detail.artifacts.filter(a=>a.kind!=='notebook'&&(a.capture!=='external'||a.id===focus.artifactId||selectedIds.has(a.id))&&(a.id===focus.artifactId||a.nodeId===focus.nodeId||selectedIds.has(a.id)||['metric','table','result','source'].includes(a.kind)));
     const priority=(artifact:typeof evidence[number])=>artifact.id===focus.artifactId?5:selectedIds.has(artifact.id)?4:requiredRunIds.has(artifact.runId)?3:artifact.nodeId===focus.nodeId?2:1;
     evidence.sort((a,b)=>priority(b)-priority(a));
-    const history=this.store.listMessages(turn.projectId,null);
+    // Each thread is its own conversation: the model sees this thread's messages, not the project's other threads.
+    const history=this.store.listMessages(turn.projectId,null).filter(message=>message.threadId===turn.threadId);
     // The latest user message is retained separately from bounded older messages,
     // including the second inference after a search appended an assistant reply.
     const latestUser=history.findLast(m=>m.role==='user');
@@ -282,13 +330,13 @@ export class AssistantService {
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
         this.event(projectId,turnId,claude?(turn.billing==='plan'?'Starting Claude Code on your Claude subscription.':'Starting Claude Code with your Claude API key.'):loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
         this.followSkills(projectId,turnId,turn.userMessage);
-        const result=await runtime.execute({projectId,turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
+        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
-        this.store.addMessage(projectId,null,'assistant',result.reply);
+        this.say(turn,'assistant',result.reply);
         this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});return;
       }
       if(turn.source==='local-records'){
-        const local=this.groundedLocal(turn);this.store.addMessage(projectId,null,'assistant',local.reply);this.save({...turn,...local,status:'completed'});return;
+        const local=this.groundedLocal(turn);this.say(turn,'assistant',local.reply);this.save({...turn,...local,status:'completed'});return;
       }
       this.followSkills(projectId,turnId,turn.userMessage);
       // A second step may inspect freshly captured searches. No unbounded loop.
@@ -296,7 +344,7 @@ export class AssistantService {
         if(signal.aborted)throw new Error('Assistant stopped.');
         turn=this.getTurn(projectId,turnId);const messages=this.context(turn);
         this.event(projectId,turnId,'Reading project memory and captured evidence.');
-        const result=await this.execution.assistantComplete(projectId,{messages,maxOutputTokens:6000,schema:responseSchema,responseName:'continuous_research',responseMode:'text-json'},signal,turn.modelSelection??this.execution.modelSelection(projectId,turn.focus.nodeId));
+        const result=await this.execution.assistantComplete(projectId,{messages,maxOutputTokens:6000,schema:responseSchema,responseName:'continuous_research',responseMode:'text-json'},signal,turn.modelSelection??this.execution.modelSelection(projectId,turn.focus.nodeId),turn.threadId);
         if(signal.aborted)throw new Error('Assistant stopped.');
         turn=this.getTurn(projectId,turnId);turn.steps.push({provider:result.usage.provider,at:now(),messages,schema:responseSchema,response:result.response.content,usageId:result.usage.id,model:result.response.model,modelVersion:result.response.modelVersion,responseMetadata:result.response.metadata});this.save(turn);
         const normalized=normalizeAssistantReply(result.response,replySchema);
@@ -308,7 +356,7 @@ export class AssistantService {
         turn.reply=reply.reply;turn.question=reply.question;turn.clarifications=clarifications.length?clarifications:undefined;turn.structure=normalized.structure;turn.references=this.references(projectId,reply.references);turn.warning=normalized.warning??undefined;this.save(turn);
         if(normalized.warning)this.event(projectId,turnId,normalized.warning);
         const followUps=clarifications.length?clarifications.map((question,index)=>`${index+1}. ${question.question}${question.options.length?'\nSuggested answers: '+question.options.join('; '):''}`).join('\n\n'):reply.question;
-        this.store.addMessage(projectId,null,'assistant',reply.reply+(followUps&&!reply.reply.includes(followUps)?'\n\n'+followUps:''));
+        this.say(turn,'assistant',reply.reply+(followUps&&!reply.reply.includes(followUps)?'\n\n'+followUps:''));
         const memory=this.memory(projectId);
         if(normalized.value&&reply.question&&reply.question!==memory.questionHistory.at(-1)?.text)memory.questionHistory.push({id:randomUUID(),text:reply.question,at:now()});
         for(const item of reply.memory){
@@ -340,7 +388,7 @@ export class AssistantService {
         if(!searched||pending||step===1)break;
       }
       turn=this.getTurn(projectId,turnId);if(turn.status==='running')this.save({...turn,status:'completed'});
-    }catch(error){const turn=this.getTurn(projectId,turnId);if(turn.status==='running'){const message=error instanceof z.ZodError?`Model response did not match the expected contract (${error.issues.map(issue=>issue.path.join('.')).slice(0,3).join(', ')}). No actions from that response were applied; the captured request and response remain saved.`:error instanceof SyntaxError?'Model returned invalid JSON. No actions were applied; the captured response remains saved.':error instanceof Error?error.message:'Assistant could not complete this step.';this.save({...turn,status:signal.aborted?'cancelled':'failed',error:message,reply:turn.reply||message});this.store.addMessage(projectId,null,'system',message);}}
+    }catch(error){const turn=this.getTurn(projectId,turnId);if(turn.status==='running'){const message=error instanceof z.ZodError?`Model response did not match the expected contract (${error.issues.map(issue=>issue.path.join('.')).slice(0,3).join(', ')}). No actions from that response were applied; the captured request and response remain saved.`:error instanceof SyntaxError?'Model returned invalid JSON. No actions were applied; the captured response remains saved.':error instanceof Error?error.message:'Assistant could not complete this step.';this.save({...turn,status:signal.aborted?'cancelled':'failed',error:message,reply:turn.reply||message});this.say(turn,'system',message);}}
   }
   private addAction(projectId:string,turnId:string,action:AssistantAction){const turn=this.getTurn(projectId,turnId);turn.actions.push(action);this.save(turn);return action;}
   private updateAction(projectId:string,turnId:string,action:AssistantAction){const turn=this.getTurn(projectId,turnId);turn.actions=turn.actions.map(a=>a.id===action.id?action:a);this.save(turn);return action;}
@@ -393,7 +441,7 @@ export class AssistantService {
         action={...action,proposalId:proposal.id,status:proposal.status==='accepted'?'completed':'pending'};
       }else if(tool.type==='search'){
         node(tool.nodeId);action={...action,nodeId:tool.nodeId};this.updateAction(projectId,turnId,action);
-        const run=await this.execution.assistantSearch(projectId,tool.nodeId,tool.query,signal,turnId);
+        const run=await this.execution.assistantSearch(projectId,tool.nodeId,tool.query,signal,turnId,this.getTurn(projectId,turnId).threadId);
         action={...action,status:'completed',runId:run.id};
         this.event(projectId,turnId,`Saved search excerpts in ${run.node.title}; they remain source claims, not experimental findings.`);
       }else if(tool.type==='experiment'){
@@ -416,13 +464,33 @@ export class AssistantService {
       return this.updateAction(projectId,turnId,action);
     }catch(error){action={...action,status:'failed',error:error instanceof Error?error.message:'Tool action failed.'};this.updateAction(projectId,turnId,action);return action;}
   }
-  /** The person's own agent (over MCP) shows in the conversation as its own turn. Its calls
-   * keep landing in that turn while nothing else was said in between. */
+  /** The person's own agent (over MCP) gets a thread of its own per session, named after it, and shows there as its own
+   * turn. Its calls keep landing in that turn while nothing else was said in between. */
   outsideTurn(projectId:string,session:string,label:string){
-    const latest=this.turns(projectId).at(-1);
+    const thread=this.threads(projectId).find(item=>item.outsideSession===session)??this.createThread(projectId,`Your ${label}`,{outsideSession:session});
+    const latest=this.turns(projectId).findLast(turn=>turn.threadId===thread.id);
     if(latest?.source==='outside-agent'&&latest.outsideSession===session)return latest.id;
-    const turn:SavedTurn={id:randomUUID(),projectId,createdAt:now(),updatedAt:now(),focus:{nodeId:null},userMessage:'',reply:'',status:'completed',source:'outside-agent',model:label,references:[],actions:[],events:[],steps:[],outsideSession:session};
-    this.save(turn);return turn.id;
+    const turn:SavedTurn={id:randomUUID(),projectId,threadId:thread.id,createdAt:now(),updatedAt:now(),focus:{nodeId:null},userMessage:'',reply:'',status:'completed',source:'outside-agent',model:label,references:[],actions:[],events:[],steps:[],outsideSession:session};
+    this.save(turn);this.touchThread(thread);return turn.id;
+  }
+  renameThread(projectId:string,threadId:string,supplied:unknown){
+    const {title}=z.object({title:z.string().trim().min(1).max(120)}).strict().parse(supplied);
+    const thread=this.getThread(projectId,threadId);
+    this.store.saveRecord('assistant-thread',thread.id,projectId,{...thread,title});
+    return this.state(projectId);
+  }
+  /** Removes a thread with its turns, messages and agent sessions; refused while it works. What it put on the map stays,
+   * with the map's history. */
+  deleteThread(projectId:string,threadId:string){
+    const thread=this.getThread(projectId,threadId),turns=this.turns(projectId).filter(turn=>turn.threadId===thread.id);
+    if(turns.some(turn=>turn.status==='running'))throw new StoreError('ROS is still working in this thread. Stop it before deleting the thread.',409);
+    this.store.atomic(()=>{
+      for(const turn of turns)this.store.removeRecord('assistant-turn',turn.id,projectId);
+      this.store.removeMessages(projectId,this.store.listMessages(projectId,null).filter(message=>message.threadId===thread.id).map(message=>message.id));
+      for(const namespace of ['claude-session','codex-session','acp-session'])this.store.removeRecord(namespace,thread.id,projectId);
+      this.store.removeRecord('assistant-thread',thread.id,projectId);
+    });
+    return this.state(projectId);
   }
   outsideRecord(projectId:string,turnId:string,entry:{event:string;note?:string;actions?:AssistantAction[]}){
     const turn=this.getTurn(projectId,turnId);
@@ -448,7 +516,7 @@ export class AssistantService {
     return this.state(projectId);
   }
   cancel(projectId:string,turnId:string){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
-  devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);return this.state(projectId);}
+  devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);this.migrated.delete(projectId);return this.state(projectId);}
   stopProject(projectId:string){for(const turn of this.turns(projectId))if(turn.status==='running')this.cancel(projectId,turn.id);}
   async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
@@ -466,6 +534,8 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.post('/api/projects/:id/assistant/backend',(req,res)=>res.json(service.setBackend(String(req.params.id),req.body)));
   app.post('/api/projects/:id/assistant/focus',(req,res)=>res.json(service.setFocus(String(req.params.id),focusSchema.parse(req.body))));
   app.post('/api/projects/:id/assistant/messages',(req,res)=>res.status(202).json(service.start(String(req.params.id),req.body)));
+  app.post('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.renameThread(String(req.params.id),String(req.params.threadId),req.body)));
+  app.delete('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.deleteThread(String(req.params.id),String(req.params.threadId))));
   if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));
   app.post('/api/projects/:id/assistant/actions/:actionId/decision',(req,res)=>{const {decision}=z.object({decision:z.enum(['accept','dismiss'])}).strict().parse(req.body);res.json(service.decide(String(req.params.id),String(req.params.actionId),decision));});

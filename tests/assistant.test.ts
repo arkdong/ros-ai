@@ -217,7 +217,8 @@ test('cancelling a pending model call retains admission and discards late output
   try {
     const state = f.assistant.start(f.project.id, { message: 'Wait for a fixture response' });
     await until(() => f.requests.length === 1);
-    assert.throws(() => f.assistant.start(f.project.id, { message: 'Duplicate work' }), /already working/);
+    // The thread takes one question at a time; a message without a thread would start a new one.
+    assert.throws(() => f.assistant.start(f.project.id, { message: 'Duplicate work', threadId: state.threadId }), /still working in this thread/);
     f.assistant.cancel(f.project.id, state.activeTurnId!);
     release(reply({ reply: 'LATE_RESPONSE_MUST_NOT_PERSIST', tools: [{ type: 'notes', summary: 'Late note', notes: [{ id: 'late-note', title: 'Late note', description: '', kind: 'topic', parentId: null, rationale: 'Too late.' }], relationships: [] }] }));
     await until(() => f.store.listUsage()[0].status === 'uncertain');
@@ -359,9 +360,11 @@ test('large escaped Unicode projects compact below 60 KB while retaining questio
     const code = 'CODE_START\n' + '# ' + rich.repeat(1700) + '\nCODE_END';
     const failed = capture(f.store, f.project.id, 'a', [{ kind: 'code', content: code }, { kind: 'log', content: JSON.stringify({ stderr: 'TRACEBACK_START\n' + rich.repeat(4000) + '\nFINAL_RECORDED_EXCEPTION' }) }], { status: 'failed', error: 'ACTUAL_FAILURE_START ' + rich.repeat(1000) + ' ACTUAL_FAILURE_END', configuration: { kind: 'local-experiment', code, backend: 'docker-python' } });
     const focused = capture(f.store, f.project.id, 'a', [{ kind: 'table', content: 'FOCUSED_CAPTURE_START ' + rich.repeat(2000) }], { configuration: { kind: 'local-experiment' } }).outputs[0];
+    // The messages saved above are the conversation from before threads, now the first thread; the request continues it.
+    const legacyThread = f.assistant.state(f.project.id).threads[0].id;
     const historyBefore = f.store.listMessages(f.project.id, null), memoryBefore = structuredClone(memory), focusedBefore = f.store.getArtifact(focused.id), failedBefore = f.store.getRun(failed.run.id);
     const request = 'LATEST_REQUEST_START ' + rich.repeat(2600) + ' LATEST_REQUEST_END';
-    f.assistant.start(f.project.id, { message: request, focus: { nodeId: 'a', artifactId: focused.id } });
+    f.assistant.start(f.project.id, { message: request, focus: { nodeId: 'a', artifactId: focused.id }, threadId: legacyThread });
     const turn = await finished(f); assert.equal(turn.status, 'completed', turn.error);
     assert.equal(f.requests.length, 1); const sent = f.requests[0], project = modelProject(sent);
     const bytes = Buffer.byteLength(JSON.stringify(sent.messages)) + Buffer.byteLength(JSON.stringify(sent.schema));
@@ -385,5 +388,44 @@ test('saved-record replies show the original question once', async () => {
   try {
     f.assistant.start(f.project.id, { message: 'UNIQUE_ORIGINAL_QUESTION' }); const turn = await finished(f);
     assert.equal(turn.reply.split('UNIQUE_ORIGINAL_QUESTION').length - 1, 1);
+  } finally { await f.close(); }
+});
+
+test('threads keep their own history, two run at once, and the earlier conversation becomes the first thread', async () => {
+  let releaseFirst!: (value: unknown) => void;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  const f = fixture([() => first, reply({ reply: 'SECOND_THREAD_REPLY' }), reply({ reply: 'FOLLOW_UP_REPLY' })]);
+  try {
+    // The conversation saved before threads existed becomes the first thread, named after its first message, with its agent session.
+    f.store.addMessage(f.project.id, null, 'user', 'EARLIER_QUESTION about the fixture');
+    f.store.addMessage(f.project.id, null, 'assistant', 'EARLIER_ANSWER');
+    f.store.saveRecord('claude-session', f.project.id, f.project.id, { sessionId: 'legacy-session' });
+    const before = f.assistant.state(f.project.id), legacy = before.threads[0]?.id;
+    assert.equal(before.threads.length, 1); assert.equal(before.threads[0].title, 'EARLIER_QUESTION about the fixture');
+    assert.ok(before.messages.length === 2 && before.messages.every(message => message.threadId === legacy));
+    assert.deepEqual(f.store.record('claude-session', legacy), { sessionId: 'legacy-session' });
+    // While the first thread works it refuses another question, and a message without a thread starts a new one at once.
+    const one = f.assistant.start(f.project.id, { message: 'Continue the earlier question', threadId: legacy });
+    assert.equal(one.threadId, legacy);
+    await until(() => f.requests.length === 1);
+    assert.throws(() => f.assistant.start(f.project.id, { message: 'Too soon', threadId: legacy }), /still working in this thread/);
+    const two = f.assistant.start(f.project.id, { message: 'A separate question in a new thread' });
+    assert.ok(two.threadId && two.threadId !== legacy); assert.equal(two.threads.filter(thread => thread.running).length, 2);
+    assert.equal(two.threads.find(thread => thread.id === two.threadId)!.title, 'A separate question in a new thread');
+    const second = await finished(f, two.turns.find(turn => turn.threadId === two.threadId)!.id);
+    assert.equal(second.status, 'completed', second.error); assert.equal(second.reply, 'SECOND_THREAD_REPLY');
+    // The new thread's model saw its own message, not the other thread's conversation.
+    assert.doesNotMatch(JSON.stringify(f.requests[1].messages), /EARLIER_ANSWER|Continue the earlier question/);
+    releaseFirst(reply({ reply: 'FIRST_THREAD_REPLY' }));
+    assert.equal((await finished(f, one.activeTurnId!)).reply, 'FIRST_THREAD_REPLY');
+    // A follow-up continues its own thread; the list puts the newest activity first; Rename and Delete act on one thread.
+    const three = f.assistant.start(f.project.id, { message: 'Follow up in the second thread', threadId: two.threadId });
+    await finished(f, three.turns.find(turn => turn.threadId === two.threadId && turn.status === 'running')!.id);
+    assert.match(JSON.stringify(f.requests[2].messages), /SECOND_THREAD_REPLY/); assert.doesNotMatch(JSON.stringify(f.requests[2].messages), /FIRST_THREAD_REPLY/);
+    const renamed = f.assistant.renameThread(f.project.id, two.threadId, { title: 'Second line of work' });
+    assert.equal(renamed.threads[0].id, two.threadId); assert.equal(renamed.threads[0].title, 'Second line of work'); assert.equal(renamed.threads[0].last?.status, 'completed');
+    const deleted = f.assistant.deleteThread(f.project.id, two.threadId);
+    assert.equal(deleted.threads.length, 1); assert.ok(deleted.turns.length === 1 && deleted.turns.every(turn => turn.threadId === legacy));
+    assert.ok(f.store.listMessages(f.project.id, null).every(message => message.threadId === legacy));
   } finally { await f.close(); }
 });

@@ -42,6 +42,8 @@ A project is a folder of plain files: Markdown, `.py`, `.ipynb` and CSV. Obsidia
 
 The bar at the bottom of the canvas is where you direct the work. Ask ROS, or @ an agent. Its menu picks the agent, its model and effort, and the project's permissions. `/` applies a skill. Esc twice stops a running turn.
 
+A project holds many threads. The threads button in the bar starts a new one or switches between them, and two can work at once, each with its own history and its own agent session. Changes they propose land on the one map.
+
 ## Agents
 
 The **Agents** page lists every agent that can work in your projects, grouped by who pays.
