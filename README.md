@@ -10,11 +10,7 @@ Your notes, code, data, files, papers and Notion pages sit on the canvas as bloc
 
 ## Install
 
-**Mac app:** download it for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so macOS calls it damaged on first open. One command in Terminal clears that, then it opens as usual:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/ros.ai.app
-```
+**Mac app:** download it for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so the first open says macOS could not verify it. Click Done, then open System Settings › Privacy & Security and choose Open Anyway. After that it opens as usual.
 
 **Terminal**, on a Mac, Linux or Windows under WSL:
 
@@ -22,7 +18,7 @@ xattr -dr com.apple.quarantine /Applications/ros.ai.app
 curl -fsSL https://ros-ai.io/install.sh | sh
 ```
 
-On a Mac that installs the app from the latest release and opens it, with no warning (`ROS_AI_SOURCE=1` builds from source instead). On Linux and WSL it needs git and Node.js 24: it builds ros.ai in `~/ros-ai`, adds the `ros-ai` command and opens the workspace at http://127.0.0.1:4310. From a clone, `npm ci && npm run build && npm start`; `npm link` adds the command (`ros-ai` starts, `ros-ai update` pulls the latest release and rebuilds, `ros-ai app` opens the Mac window).
+On a Mac that installs the app from the latest release and opens it, with no Open Anyway step (`ROS_AI_SOURCE=1` builds from source instead). On Linux and WSL it needs git and Node.js 24: it builds ros.ai in `~/ros-ai`, adds the `ros-ai` command and opens the workspace at http://127.0.0.1:4310. From a clone, `npm ci && npm run build && npm start`; `npm link` adds the command (`ros-ai` starts, `ros-ai update` pulls the latest release and rebuilds, `ros-ai app` opens the Mac window).
 
 Everything stays on this computer: projects, keys and the Python sandbox. Model requests go only to the providers you connect.
 
