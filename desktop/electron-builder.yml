@@ -11,6 +11,8 @@ directories:
   buildResources: build
 # Real files on disk: the server spawns the sandbox watchdog, Python helpers and the MCP bridge by path.
 asar: false
+# Without an Apple identity, sign the packed app ad hoc (see the file) so macOS offers Open Anyway instead of "damaged".
+afterPack: ./after-pack.cjs
 files:
   - package.json
   - dist/client/**
@@ -33,11 +35,9 @@ files:
 mac:
   category: public.app-category.productivity
   icon: build/icon.png
-  target:
-    - target: dmg
-      arch: [arm64, x64]
-    - target: zip
-      arch: [arm64, x64]
+  # No arch here: each build makes this Mac's architecture, or what --arm64/--x64 asks for. Listing both
+  # would make every build produce both, with the other one's native packages (the workflow builds each on its own Mac).
+  target: [dmg, zip]
   artifactName: ros.ai-${version}-${arch}.${ext}
   hardenedRuntime: true
   gatekeeperAssess: false
