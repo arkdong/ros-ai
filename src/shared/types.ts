@@ -88,7 +88,8 @@ export type Mutation =
  | {type:'removeNode'; id:string}
  | {type:'addConnection'; connection:Connection}
  | {type:'removeConnection'; id:string};
-export type Message = {id:string; projectId:string; nodeId:string|null; role:'user'|'assistant'|'system'; content:string; createdAt:string; runId?:string};
+/** threadId: the ROS thread a project message (nodeId null) belongs to; block conversations have none. */
+export type Message = {id:string; projectId:string; nodeId:string|null; role:'user'|'assistant'|'system'; content:string; createdAt:string; runId?:string; threadId?:string};
 /** after: proposals this one builds on, accepted before it and dismissed with it. batch: proposals made together (an
  * agent turn); accepting one moves the others still pending onto the new canvas revision. */
 export type Proposal = {id:string; projectId:string; baseRevision:number; summary:string; operations:Mutation[]; status:'pending'|'accepted'|'dismissed'; createdAt:string; after?:string[]; batch?:string};

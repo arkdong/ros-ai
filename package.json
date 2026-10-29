@@ -1,11 +1,13 @@
 {
   "name": "ros-ai",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "license": "MIT",
   "type": "module",
   "main": "dist/desktop/main.cjs",
-  "bin": { "ros-ai": "bin/ros-ai.mjs" },
+  "bin": {
+    "ros-ai": "bin/ros-ai.mjs"
+  },
   "engines": {
     "node": ">=24"
   },

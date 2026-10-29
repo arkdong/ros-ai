@@ -159,6 +159,8 @@ function localBase(setting: string | undefined, port: number) {
   return `http://127.0.0.1:${port}`;
 }
 const ollamaBase = () => localBase(process.env.OLLAMA_HOST, 11434), lmStudioBase = () => localBase(process.env.ROS_LMSTUDIO_URL, 1234);
+/** Where the model servers answer on this computer, for Reset all connections to find the connections made to them. */
+export const modelServers = () => [{ id: 'ollama' as const, label: 'Ollama', origin: ollamaBase() }, { id: 'lm-studio' as const, label: 'LM Studio', origin: lmStudioBase() }];
 
 /** Ollama's own facts about each model: whether it calls tools or only embeds, the context it was trained for, and
  * the context Ollama gives it: set on the model itself, or else Ollama's default, which a model loaded now without

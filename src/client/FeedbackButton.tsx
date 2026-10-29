@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, LoaderCircle, MessageSquare, UserRound, X } from 'lucide-react';
 import { FEEDBACK_KINDS, FEEDBACK_MAX_CHARS, publicIssueUrl, type FeedbackSetup } from '../shared/feedback';
 import { api, post } from './api';
@@ -18,8 +18,9 @@ function browserName() {
  * presses Send or Post publicly on GitHub. The public demo offers GitHub only.
  * On first visits a hint under the button says ros.ai is in early access. It goes for good once the
  * person closes it or opens the card, steps aside until the next visit at their first press elsewhere,
- * and waits while `quiet` (setup, the demo picker, a walkthrough, ROS or a full page is showing). */
-export function FeedbackButton({ publicDemo, quiet }: { publicDemo: boolean; quiet: boolean }) {
+ * and waits while `quiet` (setup, the demo picker, a walkthrough, ROS or a full page is showing). `before` sits left of
+ * the button in the same corner: the ROS download while it runs. */
+export function FeedbackButton({ publicDemo, quiet, before }: { publicDemo: boolean; quiet: boolean; before?: ReactNode }) {
   const [open, setOpen] = useState(false), [setup, setSetup] = useState<FeedbackSetup>();
   const [hintDone, setHintDone] = useState(() => readSaved('feedback-hint-done', false)), [hintAside, setHintAside] = useState(false);
   const endHint = () => { if (!hintDone) { saveLocal('feedback-hint-done', true); setHintDone(true); } };
@@ -68,13 +69,13 @@ export function FeedbackButton({ publicDemo, quiet }: { publicDemo: boolean; qui
   };
 
   return <div className={`feedback ${open ? 'open' : ''}`} ref={box}>
-    <div className={`feedback-anchor ${hint ? 'hinting' : ''}`} ref={anchor}>
+    <div className="feedback-corner">{before}<div className={`feedback-anchor ${hint ? 'hinting' : ''}`} ref={anchor}>
       <button ref={trigger} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={open} aria-describedby={hint ? 'feedback-hint-text' : undefined} onClick={() => { endHint(); if (open) close(); else setOpen(true); }}><MessageSquare size={14} aria-hidden/><span>Feedback</span></button>
       {hint && <div className="feedback-hint" role="note">
         <p id="feedback-hint-text"><strong>ros.ai is in early access</strong> Tell us what’s missing or broken. We read every note.</p>
         <button type="button" className="feedback-hint-close" aria-label="Dismiss tip" onClick={endHint}><X size={14}/></button>
       </div>}
-    </div>
+    </div></div>
     {open && setup && <div className="feedback-card-space"><section className="feedback-card" role="dialog" aria-label="Send feedback">
       <header><strong>Send feedback</strong><button type="button" className="feedback-close" aria-label="Close" onClick={close}><X size={16}/></button></header>
       {sent ? <>

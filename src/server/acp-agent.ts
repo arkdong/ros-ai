@@ -256,8 +256,7 @@ export class AcpAgentService {
   constructor(private readonly store: Store, private readonly execution: ExecutionService, private readonly experiments: ExperimentService, private readonly options: { dataDir: string; root: string; binaries?: Partial<Record<AcpAgentId, string>> }) {
     for (const project of store.listProjects()) for (const attempt of store.records<Attempt>('acp-attempt', project.id)) if (attempt.status === 'running') {
       store.saveRecord('acp-attempt', attempt.id, project.id, { ...attempt, status: 'uncertain', error: `ros.ai stopped while ${ACP_AGENTS[attempt.agent].label} was working. Nothing was repeated.` });
-      const session = store.record<Session>('acp-session', project.id);
-      if (session) store.saveRecord('acp-session', project.id, project.id, { ...session, state: 'uncertain' });
+      for (const { id, value } of store.recordEntries<Session>('acp-session', project.id)) store.saveRecord('acp-session', id, project.id, { ...value, state: 'uncertain' });
     }
   }
   /** The port ros.ai listens on, for the per-turn MCP endpoint the agents call back. */
@@ -476,7 +475,9 @@ export class AcpAgentService {
     const id = request.agent, label = ACP_AGENTS[id].label;
     if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
     const found = this.cached(id) ?? await this.probe(id);
-    if (this.active.has(request.projectId)) throw new StoreError('An agent is already working in this project.', 409);
+    // Each ROS thread keeps its own session with the agent, so two threads can run side by side.
+    const key = request.threadId ?? request.projectId;
+    if (this.active.has(key)) throw new StoreError('An agent is already working in this thread.', 409);
     if (!this.port) throw new StoreError('ros.ai has not finished starting. Try again in a moment.', 503);
     const ready = this.readiness(request.projectId, id);
     if (!ready.available) throw new StoreError(ready.reason!, 503);
@@ -562,16 +563,16 @@ export class AcpAgentService {
     const deadline = setTimeout(() => { timedOut = true; stop(); }, MAX_SECONDS * 1000);
     request.signal.addEventListener('abort', stop, { once: true });
     let finish: () => void = () => {};
-    this.active.set(request.projectId, { stop, done: new Promise<void>(resolve => { finish = resolve; }) });
+    this.active.set(key, { stop, done: new Promise<void>(resolve => { finish = resolve; }) });
     try {
-      const prior = this.store.record<Session>('acp-session', request.projectId);
+      const prior = this.store.record<Session>('acp-session', key);
       opened = await this.open(id, binary, cwd, { tools: names, folder: root, token, prior, onUpdate, onRequest });
       const connection = opened.connection;
       attempt = { ...attempt, sessionId: opened.sessionId, mcp: opened.mcp ?? undefined, request: { ...object(attempt.request), resumed: opened.resumed, mode: opened.mode, model: opened.model, agentInfo: opened.agentInfo } }; save();
       // Gemini CLI connects to its MCP servers while it opens a session; without ros.ai's tools a turn could only talk.
       if (id === 'gemini' && !turn.listed) throw new StoreError(`Gemini CLI did not connect to ros.ai’s tools, so ros.ai stopped before sending anything. ${GEMINI_MCP_HINT}`, 503);
       event({ at: now(), type: 'progress', message: `${label} ${opened.resumed ? 'continued this project’s conversation' : 'opened a session'}${opened.model ? ` with ${opened.model}` : ''}. Only ros.ai’s tools${id === 'goose' ? '' : ' and reading the project folder'} are on.` });
-      this.store.saveRecord('acp-session', request.projectId, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'uncertain', at: now() } satisfies Session);
+      this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'uncertain', at: now() } satisfies Session);
       if (stopped) throw new StoreError(`${label} was stopped before the prompt was sent.`, 409);
       const place = !root ? 'This project has no folder on disk, so no files are available; use the selected material and the ros.ai tools.' : id === 'gemini' ? `The project folder is in your workspace: ${root}\nUse full paths to read its files.` : `The project folder is your working directory: ${root}`;
       const prompt = `${opened.resumed ? 'ros.ai’s instructions from the start of this conversation still apply.' : acpInstructions(id)}\n\n${place}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
@@ -591,7 +592,7 @@ export class AcpAgentService {
       const answer = (attempt.reply.slice(segment).trim() || attempt.reply.trim());
       if (!answer) throw new StoreError(`${label} finished without a readable answer.`, 503);
       attempt = { ...attempt, status: 'completed', reply: attempt.reply }; save(); settle = 'completed';
-      this.store.saveRecord('acp-session', request.projectId, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'ready', at: now() } satisfies Session);
+      this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'ready', at: now() } satisfies Session);
       return { reply: answer, sessionId: opened.sessionId, actions: toolkit.actions, requestId: attemptId, model: opened.model };
     } catch (error) {
       // Until the prompt is sent the agent has done nothing; after, it may have.
@@ -601,7 +602,7 @@ export class AcpAgentService {
       throw new StoreError(detail, error instanceof StoreError ? error.status : 503);
     } finally {
       clearTimeout(deadline); clearTimeout(cancelTimer); request.signal.removeEventListener('abort', stop);
-      this.turns.delete(token); opened?.connection.close(); this.active.delete(request.projectId); finish(); void toolkit.close();
+      this.turns.delete(token); opened?.connection.close(); this.active.delete(key); finish(); void toolkit.close();
     }
   }
 

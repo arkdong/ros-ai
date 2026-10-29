@@ -135,8 +135,7 @@ export class ClaudeAgentService {
     this.configDir = join(dataDir, 'claude-code');
     for (const project of store.listProjects()) for (const attempt of store.records<Attempt>('claude-attempt', project.id)) if (attempt.status === 'running') {
       store.saveRecord('claude-attempt', attempt.id, project.id, { ...attempt, status: 'uncertain', error: 'ros.ai stopped while Claude Code was working. Its full reservation stays counted; nothing was repeated.' });
-      const session = store.record<Session>('claude-session', project.id);
-      if (session) store.saveRecord('claude-session', project.id, project.id, { ...session, state: 'uncertain' });
+      for (const { id, value } of store.recordEntries<Session>('claude-session', project.id)) store.saveRecord('claude-session', id, project.id, { ...value, state: 'uncertain' });
     }
     // One setting used to put every project's Claude Code on the subscription; those projects move to 'claude-plan', which keeps them there.
     const legacy = store.globalRecord<{ billing?: ClaudeBilling }>('claude-agent-settings', 'settings');
@@ -212,13 +211,15 @@ export class ClaudeAgentService {
   }
   async execute(request: AgentExecuteRequest): Promise<AgentResult> {
     if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
-    if (this.active.has(request.projectId)) throw new StoreError('Claude Code is already working in this project.', 409);
+    // Each ROS thread keeps its own Claude Code session, so two threads can run side by side.
+    const key = request.threadId ?? request.projectId;
+    if (this.active.has(key)) throw new StoreError('Claude Code is already working in this thread.', 409);
     const billing = request.billing ?? 'api-key', ready = this.readiness(request.projectId, billing);
     if (!ready.available) throw new StoreError(ready.reason!, 503);
     const message = z.string().trim().min(1).max(12000).parse(request.message);
     const { webSearch } = this.saved(), choice = await this.modelChoice(billing), model = choice.model!, effort = choice.effort, onPlan = billing === 'plan';
     if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
-    if (this.active.has(request.projectId)) throw new StoreError('Claude Code is already working in this project.', 409);
+    if (this.active.has(key)) throw new StoreError('Claude Code is already working in this thread.', 409);
     // On a plan its own search costs nothing extra; on an API key the researcher chose.
     const ownSearch = onPlan || webSearch === 'own';
     const apiKey = onPlan ? '' : process.env.ANTHROPIC_API_KEY!.trim();
@@ -241,7 +242,7 @@ export class ClaudeAgentService {
     // A new selection moves focus, not the conversation: each prompt states the current selection.
     // The plan and the key keep their sessions in different places, so switching starts a new one.
     const scopeHash = createHash('sha256').update(JSON.stringify(onPlan ? { cwd, billing } : { cwd })).digest('hex');
-    const prior = this.store.record<Session>('claude-session', request.projectId);
+    const prior = this.store.record<Session>('claude-session', key);
     const resume = prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
     const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
@@ -302,7 +303,7 @@ export class ClaudeAgentService {
         }
       }
     })();
-    this.active.set(request.projectId, { controller, done: done.catch(() => {}) });
+    this.active.set(key, { controller, done: done.catch(() => {}) });
     try {
       try { await done; } catch (error) { if (!stopped) throw error; }
       const result = finished as { cost: number; subtype: string; text: string; sessionId: string } | null;
@@ -312,7 +313,7 @@ export class ClaudeAgentService {
         attempt.costUsd = turnCost;
         if (usage) this.execution.connectionBudgets.settle('claude', usage.id, turnCost, { requestId, model, reportedTotalUsd: result.cost, subtype: result.subtype });
         event({ at: now(), type: 'usage', message: onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`, data: { costUsd: turnCost, subtype: result.subtype, billing } });
-        this.store.saveRecord('claude-session', request.projectId, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
+        this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
       }
       if (refused) throw new StoreError(refused, 503);
       if (timedOut) throw new StoreError(`Claude Code reached the ${MAX_SECONDS / 60}-minute limit for one turn and was stopped.`, 503);
@@ -334,9 +335,9 @@ export class ClaudeAgentService {
       if (!settled && !attempt.sessionId) { if (usage) this.execution.connectionBudgets.settle('claude', usage.id, 0, { requestId, model, outcome: 'Claude Code did not start; no model request was sent' }); attempt.costUsd = 0; settled = true; }
       if (!settled && usage) this.store.updateUsage(usage.id, { status: 'uncertain' });
       attempt = { ...attempt, status: stopped && !refused && !timedOut ? 'interrupted' : settled ? 'failed' : 'uncertain', error: error instanceof StoreError ? error.message : `Claude Code failed: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its full reservation stays counted; nothing was repeated.` }; save();
-      if (!settled) { const session = this.store.record<Session>('claude-session', request.projectId); if (session) this.store.saveRecord('claude-session', request.projectId, request.projectId, { ...session, state: 'uncertain' }); }
+      if (!settled) { const session = this.store.record<Session>('claude-session', key); if (session) this.store.saveRecord('claude-session', key, request.projectId, { ...session, state: 'uncertain' }); }
       throw new StoreError(attempt.error!, 503);
-    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(request.projectId); void toolkit.close(); }
+    } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(key); void toolkit.close(); }
   }
   async shutdown() { this.closed = true; this.plan.shutdown(); for (const value of this.active.values()) value.controller.abort(); await Promise.allSettled([...this.active.values()].map(value => value.done)); }
 }
