@@ -31,6 +31,7 @@ import {pluginMatches} from '../shared/plugin-hints.js';
 const now=()=>new Date().toISOString();
 const id=z.string().min(1).max(128);
 const focusSchema=z.object({nodeId:id.nullable(),artifactId:id.nullable().optional()}).strict();
+const backendSchema=z.enum(['provider','agent','claude','claude-plan','codex','codex-key',...ACP_AGENT_IDS]);
 const refSchema=z.object({kind:z.enum(['node','artifact','run','proposal','message']),id,label:z.string().min(1).max(160),nodeId:id.optional()}).strict();
 const memorySchema=z.object({kind:z.enum(['decision','finding','hypothesis','gap']),text:z.string().min(1).max(1800),references:z.array(refSchema).max(8)}).strict();
 const noteSchema=z.object({id:id.optional(),title:z.string().min(1).max(160),description:z.string().max(12000),kind:z.enum(['topic','activity','group']),parentId:id.nullable(),rationale:z.string().max(1800)}).strict();
@@ -126,10 +127,17 @@ export class AssistantService {
     });
   }
   setBackend(projectId:string,input:unknown){
-    const {backend}=z.object({backend:z.enum(['provider','agent','claude','claude-plan','codex','codex-key',...ACP_AGENT_IDS])}).strict().parse(input);
+    const {backend}=z.object({backend:backendSchema}).strict().parse(input);
     this.store.getProject(projectId);
     // A running turn keeps what it started with; the change applies to the next turn in any thread.
-    this.store.saveRecord('assistant-backend',projectId,projectId,{backend});return this.state(projectId);
+    this.store.saveRecord('assistant-backend',projectId,projectId,{backend});this.store.rememberRosChoice({backend});return this.state(projectId);
+  }
+  /** The project's own choice, else the last one made in any project, else ROS on its model. */
+  private backend(projectId:string):AssistantBackend{
+    const own=this.store.record<{backend:AssistantBackend}>('assistant-backend',projectId)?.backend;
+    if(own)return own;
+    const last=backendSchema.safeParse(this.store.lastRosChoice().backend);
+    return last.success?last.data:'provider';
   }
   state(projectId:string):AssistantState{
     this.ensureThreads(projectId);
@@ -160,7 +168,7 @@ export class AssistantService {
       if(action.runId){const run=detail.runs.find(r=>r.id===action.runId);if(run)return {...action,status:run.status==='completed'?'completed' as const:run.status==='failed'?'failed' as const:['cancelled','interrupted'].includes(run.status)?'cancelled' as const:run.status==='queued'?'pending' as const:'running' as const,error:run.error};}return action;
       })};
     });
-    const backend=this.store.record<{backend:AssistantBackend}>('assistant-backend',projectId)?.backend??'provider';
+    const backend=this.backend(projectId);
     const way=inAppAgent(backend);
     const agentStatus=way?.agent==='codex'?this.store.record<import('../shared/agent-runtime.js').AgentConnectionStatus>('agent-connection-status',codexStatusRecord(projectId,way.billing)):undefined;
     const claude=way?.agent==='claude'?this.claude?.readiness(projectId,way.billing)??{available:false,reason:'Claude Code is not available in this service.'}:backend==='agent'?this.loop?.readiness(projectId,this.execution.modelSelection(projectId,focus.nodeId))??{available:false,reason:'The agent loop is not available in this service.'}:isAcpAgent(backend)?this.acp?.readiness(projectId,backend)??{available:false,reason:`${ACP_AGENTS[backend].label} is not available in this service.`}:null;

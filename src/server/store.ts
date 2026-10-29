@@ -7,11 +7,14 @@ import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
 import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
-import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ProjectModelSettings } from '../shared/model-settings.js';
+import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type ProjectModelSettings } from '../shared/model-settings.js';
 import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
+
+/** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
+export type RosChoice = { backend?: string; model?: ModelSelection };
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
@@ -192,6 +195,10 @@ export class Store {
     return clone(value);
   }
 
+  /** What ROS ran with last, in any project: the model and the way it runs (a backend such as claude-plan). */
+  lastRosChoice():RosChoice { return this.globalRecord<RosChoice>('ros-last-choice','last')??{}; }
+  rememberRosChoice(change:RosChoice) { this.saveGlobalRecord('ros-last-choice','last',{...this.lastRosChoice(),...change}); }
+
   record<T>(namespace:string,id:string):T|undefined {
     const row=this.db.prepare('SELECT data FROM workspace_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
     return row ? JSON.parse(row.data) as T : undefined;
@@ -292,7 +299,7 @@ export class Store {
   }
 
   private preserveModels(before: Project, after: Canvas, freezeAll = false) {
-    const settings = this.record<ProjectModelSettings>('model-settings', before.id) ?? { default:{provider:'nebius' as const,model:process.env.ROS_NEBIUS_MODEL ?? DEFAULT_NEBIUS_MODEL}, overrides:{} };
+    const settings = this.record<ProjectModelSettings>('model-settings', before.id) ?? { default:this.lastRosChoice().model ?? {provider:'nebius' as const,model:process.env.ROS_NEBIUS_MODEL ?? DEFAULT_NEBIUS_MODEL}, overrides:{} };
     const changes: {id:string;model:string}[] = [];
     for (const node of before.canvas.nodes) {
       if (!after.nodes.some(item => item.id === node.id)) continue;
