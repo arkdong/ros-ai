@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppWindow, Check, ChevronDown, Copy, ExternalLink, LoaderCircle, Search, SquareTerminal } from 'lucide-react';
-import type { AgentId, LocalModelId, SetupLinkResponse, SetupStatus } from '../shared/setup';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppWindow, ArrowUpRight, Check, ChevronDown, Copy, LoaderCircle, Search, SquareTerminal } from 'lucide-react';
+import type { AgentId, AppId, LocalModelId, SetupLinkResponse, SetupStatus } from '../shared/setup';
 import type { CloudAccountStatus } from '../shared/cloud-account';
 import type { LocalRosStatus } from '../shared/local-ros';
 import type { GoogleDriveStatus } from '../shared/google-drive';
-import { PLUGINS, type AppConnectionStatus } from '../shared/plugins';
+import { PLUGINS, type AppConnectionStatus, type PluginStatus } from '../shared/plugins';
 import { BrandLogo, hasBrandLogo, type BrandId } from './brand-logos';
 import { RosMark } from './RosDock';
 import { api, post } from './api';
+import { changeLocalRos, gb, percentOf, useLocalRosStatus } from './local-ros-status';
 import './chip-menu.css';
 import './setup.css';
 
-/** Connect your tools: what ros.ai found on this computer, as rows with a check circle, in one card in the bar's shape.
- * It is the last step of the first run (FirstRun.tsx) and comes back from Agents › Show the setup screen again. Every
- * link is one entry in that tool's own settings; the person can undo each one from Agents. */
+/** Connect your tools: everything ros.ai found on this computer, in one list to tick, in one card in the bar's shape.
+ * Connect then works through what was ticked. What needs nothing from the person (an agent's link, a model server, the
+ * ROS download, Figma's desktop app) runs at once in the background; what needs the browser (a sign-in, or a key made
+ * on the app's site) opens one at a time, each as the one before it finishes, in one window ros.ai moves along. It is
+ * the last step of the first run (FirstRun.tsx) and comes back from Agents › Show the setup screen again. Every link is
+ * one entry in that tool's own settings; the person can undo each one from Agents. */
 
 const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli', pi: 'pi', hermes: 'hermes' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
@@ -34,23 +38,6 @@ const list = (items: string[]) => items.length <= 1 ? items.join('') : `${items.
 const words = ['None', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 const count = (n: number) => words[n] ?? String(n);
 const sentence = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
-/** A download size the way the ROS page says it: "1.2 GB". */
-export const gb = (bytes = 0) => `${(bytes / 1e9).toFixed(1)} GB`;
-
-/** ROS on this computer: its state, read again every two seconds while it downloads or starts. */
-export function useLocalRos(on = true) {
-  const [status, setStatus] = useState<LocalRosStatus>();
-  const busy = status?.state === 'downloading' || status?.state === 'starting';
-  useEffect(() => {
-    if (!on) return;
-    let stopped = false;
-    const look = () => api<LocalRosStatus>('/api/local-ros').then(next => { if (!stopped) setStatus(next); }).catch(() => undefined);
-    void look();
-    const timer = busy ? setInterval(look, 2000) : undefined;
-    return () => { stopped = true; if (timer) clearInterval(timer); };
-  }, [on, busy]);
-  return { status, set: setStatus };
-}
 
 /** A command or settings entry to paste, with a copy button. */
 export function CommandBox({ command, label }: { command: string; label: string }) {
@@ -64,8 +51,8 @@ export function CommandBox({ command, label }: { command: string; label: string 
 
 /** The ROS-on-this-computer row of the first run: the download's progress, then Ready. Nothing to choose here. */
 export function LocalRosRow({ status, computer }: { status: LocalRosStatus; computer: string }) {
-  const percent = status.totalBytes ? Math.min(100, Math.round(((status.doneBytes ?? 0) / status.totalBytes) * 100)) : 0;
-  const why = status.state === 'downloading' ? 'Downloading in the background' : status.state === 'starting' ? 'Downloaded · getting ROS ready' : status.state === 'ready' ? `Works offline. Nothing leaves ${computer}.` : status.error || 'The download stopped';
+  const percent = percentOf(status);
+  const why = status.state === 'downloading' ? status.note || 'Downloading in the background' : status.state === 'starting' ? 'Downloaded · getting ROS ready' : status.state === 'ready' ? `Works offline. Nothing leaves ${computer}.` : status.error || 'The download stopped';
   return <div className="setup-row static">
     <span className="setup-tile" aria-hidden="true"><RosMark/></span>
     <span className="setup-text"><span className="setup-name">ROS on {computer}</span><span className="setup-why">{why}</span></span>
@@ -76,22 +63,67 @@ export function LocalRosRow({ status, computer }: { status: LocalRosStatus; comp
   </div>;
 }
 
-/** done: already linked or connected, shown as a row with a green dot. fixed: nothing to do here (an app, which
- * connects on the Plugins page), shown as a plain row. */
-type Choice = { key: string; kind: 'agent' | 'model' | 'ros' | 'app'; id: string; label: string; icon: ReactNode; why: string; state: string; on: boolean; done?: boolean; fixed?: boolean };
-type Outcome = { state: 'ok' | 'wait' | 'fail' | 'busy'; text: string; message?: string; command?: string };
+/** How a row connects. auto: by itself, in the background; terminal: an agent whose command line ros.ai cannot reach, so
+ * the person pastes one line; sign-in: a sign-in in the browser; key: a key the person makes on the app's site and
+ * pastes here; plugins: only on the app's Plugins page. */
+type How = 'auto' | 'terminal' | 'sign-in' | 'key' | 'plugins';
+const tags: Record<How, string> = { auto: 'Automatic', terminal: 'Terminal line', 'sign-in': 'Sign in', key: 'Paste a key', plugins: 'In Plugins' };
+/** How each app found here connects from this screen. Google Drive needs a Google app of the person's own first, so
+ * it stays on its Plugins page; Figma connects by itself once its desktop app's server is on. Obsidian and Dropbox
+ * have no plugin yet. */
+const appHow: Partial<Record<AppId, How>> = { notion: 'sign-in', linear: 'sign-in', zotero: 'key', slack: 'key', github: 'key', figma: 'auto', 'google-drive': 'plugins' };
+/** One thing found here. done: already linked or connected, said in a word beside a green dot, with nothing to tick. */
+type Item = { key: string; kind: 'agent' | 'model' | 'ros' | 'local' | 'app'; id: string; label: string; icon: ReactNode; why: string; how: How; on: boolean; done?: string };
+/** Where a ticked row stands once Connect is pressed. next: waiting its turn; busy: ros.ai is on it; wait: the person
+ * is signing in or pasting a key. url: the page that step opens; blocked: the browser kept it from opening. */
+type Step = { state: 'next' | 'busy' | 'wait' | 'ok' | 'fail' | 'skip'; text: string; message?: string; command?: string; url?: string; blocked?: boolean };
 type Props = {
   status: SetupStatus; onDone: () => void; onAgents: () => void; onChanged: () => Promise<unknown>;
   /** From the first run: the hosted ROS row starts off when the person chose to go without an account. */
   hostedOn?: boolean;
-  /** ROS on this computer while the first run downloads it, as a row of its own. */
-  localRos?: LocalRosStatus;
   /** Under the card: the first run's step caption. */
   after?: ReactNode;
 };
+const interactive = (item: Item) => item.how === 'sign-in' || item.how === 'key';
+/** The Mac app adds ros.ai/<version> to its user agent; it opens other sites in the system browser, a tab each. */
+const macApp = () => / ros\.ai\/\S+$/u.test(navigator.userAgent);
+const WINDOW = 'ros-ai-connect', FEATURES = 'popup,width=520,height=720';
+/** The window the sign-ins open in, one after another. Opened blank, with no way back to this page; from a click, so the
+ * browser allows it. */
+function blankWindow(text: string) {
+  const opened = window.open('', WINDOW, FEATURES);
+  if (!opened) return null;
+  try { opened.opener = null; opened.document.title = 'Connect your tools · ros.ai'; if (opened.document.body) opened.document.body.textContent = text; } catch { /* still on another site */ }
+  return opened;
+}
+/** The window shows a page of ros.ai's own (blank, or where a sign-in ended), which this page may move on or close. On
+ * another site's page it may not, and a window the browser cut off from this page reads as closed. */
+const ours = (popup: Window) => { try { return Boolean(popup.location.href); } catch { return false; } };
+/** Tells ros.ai's own page in the sign-in window where to go next, or to close: that page listens over this channel and
+ * answers (followScript on the server), which reaches it even when the browser cut the window off from this page. False
+ * when no page answered. */
+function steer(to: string) {
+  return new Promise<boolean>(resolve => {
+    let channel: BroadcastChannel;
+    try { channel = new BroadcastChannel('ros-ai-plugins'); } catch { resolve(false); return; }
+    const done = (answered: boolean) => { clearTimeout(timer); channel.close(); resolve(answered); };
+    channel.onmessage = event => { if ((event.data as { steered?: string } | null)?.steered === to) done(true); };
+    const timer = setTimeout(() => done(false), 500);
+    channel.postMessage({ steer: to });
+  });
+}
+/** What happens on Connect, in a sentence: "Two connect by themselves. Then two open in your browser, one at a time." */
+function planOf(items: Item[]) {
+  const auto = items.filter(item => !interactive(item)).length, browser = items.filter(interactive).length;
+  return [
+    auto ? `${count(auto)} connect${auto === 1 ? 's' : ''} by ${auto === 1 ? 'itself' : 'themselves'}.` : '',
+    browser ? `${auto ? `Then ${count(browser).toLowerCase()}` : count(browser)} open${browser === 1 ? 's' : ''} in your browser${browser > 1 ? ', one at a time' : ''}.` : '',
+  ].filter(Boolean).join(' ');
+}
 
-export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, localRos, after }: Props) {
+export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, after }: Props) {
   const [cloud, setCloud] = useState<CloudAccountStatus | null>(null);
+  const localRos = useLocalRosStatus();
   // Apps already connected by a sign-in (Notion, Linear) or with Google, so their rows say so.
   const [signIns, setSignIns] = useState<AppConnectionStatus[]>([]), [google, setGoogle] = useState<GoogleDriveStatus | null>(null);
   useEffect(() => {
@@ -101,41 +133,42 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
   }, [status.apps]);
   // Signed in before this screen (on the account step, or earlier): the row says as whom.
   useEffect(() => { if (status.cloud.signedIn) void api<CloudAccountStatus>('/api/cloud').then(setCloud).catch(() => undefined); }, [status.cloud.signedIn]);
-  const choices = useMemo<Choice[]>(() => {
-    const items: Choice[] = [];
+  const localState = localRos?.supported ? localRos.state : undefined;
+  const items = useMemo<Item[]>(() => {
+    const found: Item[] = [];
     for (const agent of status.agents) {
       if (!agent.found) continue;
       const linked = Boolean(agent.link || agent.entry);
-      const state = linked ? 'Linked' : agent.signals.includes('signed in') ? 'Signed in' : agent.signals.includes('used recently') ? 'Used recently' : agent.linkable ? 'Found' : 'Needs a line in your terminal';
-      items.push({ key: `agent:${agent.id}`, kind: 'agent', id: agent.id, label: agent.label, icon: <AgentIcon id={agent.id} size={16}/>, why: `${agentWhy[agent.id]}${agent.note ? ` ${agent.note}` : ''}`, state, on: !linked && agent.linkable, done: linked });
+      found.push({ key: `agent:${agent.id}`, kind: 'agent', id: agent.id, label: agent.label, icon: <AgentIcon id={agent.id} size={16}/>, why: `${agentWhy[agent.id]}${agent.note ? ` ${agent.note}` : ''}`, how: agent.linkable ? 'auto' : 'terminal', on: !linked && agent.linkable, ...(linked ? { done: 'Linked' } : {}) });
     }
-    if (status.cloud.available) items.push({ key: 'ros', kind: 'ros', id: 'ros', label: 'ROS, hosted by ros.ai', icon: <RosMark/>, why: status.cloud.signedIn ? `Signed in${cloud?.email ? ` as ${cloud.email}` : ''}. ROS appears as a model.` : 'Free while ros.ai is new. One sign-in in your browser.', state: status.cloud.signedIn ? 'Signed in' : 'Recommended', on: !status.cloud.signedIn && (hostedOn ?? true), done: status.cloud.signedIn });
+    if (status.cloud.available) found.push({ key: 'ros', kind: 'ros', id: 'ros', label: 'ROS, hosted by ros.ai', icon: <RosMark/>, why: status.cloud.signedIn ? `Signed in${cloud?.email ? ` as ${cloud.email}` : ''}. ROS appears as a model.` : 'Free while ros.ai is new. Sign in or create an account.', how: 'sign-in', on: !status.cloud.signedIn && (hostedOn ?? true), ...(status.cloud.signedIn ? { done: 'Signed in' } : {}) });
+    // Not downloaded yet: a row to tick. Downloading or downloaded: its own row with the progress (LocalRosRow).
+    if (localState === 'not-downloaded') found.push({ key: 'local', kind: 'local', id: 'local', label: `ROS on ${status.computer}`, icon: <RosMark/>, why: `About 3 GB, in the background. Free, and it works offline on ${status.computer}.`, how: 'auto', on: false });
     for (const model of status.models) {
       if (!model.running) continue;
-      const n = model.models.length, done = model.connectionId ? 'Connected' : n ? undefined : 'No models yet';
-      items.push({ key: `model:${model.id}`, kind: 'model', id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, why: n ? `Running with ${n} model${n === 1 ? '' : 's'}. Use them in ROS, on ${status.computer}.` : 'Running, but without a downloaded model yet.', state: done ?? 'Running', on: !done, done: Boolean(done) });
+      const n = model.models.length;
+      found.push({ key: `model:${model.id}`, kind: 'model', id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, why: n ? `Running with ${n} model${n === 1 ? '' : 's'}. Use them in ROS, on ${status.computer}.` : 'Running, but without a downloaded model yet.', how: n ? 'auto' : 'plugins', on: !model.connectionId && n > 0, ...(model.connectionId ? { done: 'Connected' } : {}) });
     }
-    // Apps found here, as a plain list in two columns: the name, and how it was found or that it is connected. Their
-    // plugins install on the Plugins page, which the caption under the list says.
     for (const app of status.apps) {
+      const how = appHow[app.id];
+      if (!how) continue;
       const connected = app.connected || signIns.some(item => item.id === app.id && item.connected) || (app.id === 'google-drive' && Boolean(google?.connected));
-      const how = app.signals.includes('running') ? 'Running' : app.signals.includes('synced folder') ? 'Synced' : app.signals.includes('signed in on the command line') ? 'Signed in' : app.signals.includes('app') ? 'Installed' : `Used by ${app.usedBy[0]}`;
-      items.push({ key: `app:${app.id}`, kind: 'app', id: app.id, label: app.label, icon: hasBrandLogo(app.id) ? <BrandLogo id={app.id} size={16}/> : <AppWindow size={16} strokeWidth={1.75}/>,
-        why: '', state: connected ? 'Connected' : how, on: false, done: connected, fixed: true });
+      found.push({ key: `app:${app.id}`, kind: 'app', id: app.id, label: app.label, icon: hasBrandLogo(app.id) ? <BrandLogo id={app.id} size={16}/> : <AppWindow size={16} strokeWidth={1.75}/>,
+        why: PLUGINS.find(plugin => plugin.id === app.id)?.summary ?? '', how, on: false, ...(connected ? { done: 'Connected' } : {}) });
     }
-    return items;
-  }, [status, cloud, hostedOn, signIns, google]);
+    return found;
+  }, [status, cloud, hostedOn, signIns, google, localState]);
   const [on, setOn] = useState<Record<string, boolean>>({});
-  // The rows' ticks: the person's own where a row stays, the row's default where it is new, done or fixed.
-  useEffect(() => { setOn(prev => Object.fromEntries(choices.map(choice => [choice.key, prev[choice.key] !== undefined && !choice.done && !choice.fixed ? prev[choice.key] : choice.on]))); }, [choices]);
-  const [phase, setPhase] = useState<'choose' | 'connecting'>('choose');
-  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
-  const [busy, setBusy] = useState(false), [menu, setMenu] = useState(false);
+  // The rows' ticks: the person's own where a row stays, the row's default where it is new.
+  useEffect(() => { setOn(prev => Object.fromEntries(items.map(item => [item.key, prev[item.key] !== undefined && !item.done ? prev[item.key] : item.on]))); }, [items]);
+  const tickable = (item: Item) => !item.done && item.how !== 'plugins';
+  const picked = items.filter(item => tickable(item) && on[item.key]);
+  const [menu, setMenu] = useState(false);
   const foot = useRef<HTMLElement>(null);
-  const selected = choices.filter(choice => on[choice.key]);
   const also = useMemo(() => [
     ...status.keys.map(key => `${/^[aeiou]/i.test(key.label) ? 'an' : 'a'} ${key.label} in your ${key.source === 'environment' ? 'environment' : 'saved keys'}`),
     ...status.models.filter(model => model.found && !model.running).map(model => `${model.label} (not running)`),
+    ...status.apps.filter(app => !appHow[app.id]).map(app => `${app.label} (no plugin yet)`),
     ...(status.docker.found ? ['Docker'] : []),
   ], [status]);
   // A click anywhere else closes the Looked at menu.
@@ -146,50 +179,164 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
     return () => document.removeEventListener('mousedown', away);
   }, [menu]);
 
-  // While the browser approval is open, check every few seconds; the local server does the polling.
-  const waiting = cloud?.state === 'waiting', changed = useRef(onChanged);
-  changed.current = onChanged;
+  // Connecting: the rows ticked when Connect was pressed, where each stands, and the one waiting for the person.
+  const [walk, setWalk] = useState<Item[] | null>(null), [steps, setSteps] = useState<Record<string, Step>>({}), [now, setNow] = useState<string | null>(null);
+  const [walking, setWalking] = useState(false), [key, setKey] = useState(''), [saving, setSaving] = useState(false), [keyError, setKeyError] = useState('');
+  const put = (itemKey: string, step: Step) => setSteps(prev => ({ ...prev, [itemKey]: step }));
+  const shared = useRef<Window | null>(null), waiter = useRef<((step: Step) => void) | null>(null), alive = useRef(true), keyField = useRef<HTMLInputElement>(null);
+  // Leaving the screen stops waiting. A sign-in still open in the browser finishes by itself; ros.ai saves it either way.
+  useEffect(() => () => { alive.current = false; waiter.current?.({ state: 'skip', text: 'Skipped' }); }, []);
+  const waiting = now && steps[now]?.state === 'wait' ? now : null;
+  // The step waiting for the person comes into view in the list, with the key field ready for a paste.
   useEffect(() => {
     if (!waiting) return;
-    const timer = setInterval(async () => { const next = await api<CloudAccountStatus>('/api/cloud').catch(() => undefined); if (next && next.state !== 'waiting') { setCloud(next); await changed.current(); } }, 3000);
-    return () => clearInterval(timer);
-  }, [waiting]);
+    document.querySelector('.setup-row.here')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (walk?.find(item => item.key === waiting)?.how === 'key') keyField.current?.focus({ preventScroll: true });
+  }, [waiting, walk]);
 
+  /** Shows a page in the sign-in window: straight there while the window shows ros.ai's own page, through that page when
+   * the browser cut the window off from this one, or else in a new window, which the browser may block outside a click.
+   * click: the person asked for it, so a new window opens at once. In the Mac app the system browser opens it. False
+   * when it could not open. */
+  const show = async (url: string, click = false) => {
+    try {
+      if (macApp()) { window.open(url, '_blank', 'noopener'); return true; }
+      const to = new URL(url, location.href).href, popup = shared.current;
+      if (popup && !popup.closed && ours(popup)) { popup.location.href = to; try { popup.focus(); } catch { /* the browser decides */ } return true; }
+      // Steering helps only once the window was cut off; a window still on another site's page has none of ros.ai's.
+      if (!click && (!popup || popup.closed) && await steer(to)) return true;
+      shared.current = blankWindow('Opening…');
+      if (!shared.current) return false;
+      shared.current.location.href = to;
+      return true;
+    } catch { return false; }
+  };
+  /** Closes the sign-in window where ros.ai still may: straight away on ros.ai's own page, or through that page. On another
+   * site's page (where a key was copied) it stays for the person to close. */
+  const closeWindow = () => {
+    const popup = shared.current;
+    shared.current = null;
+    if (macApp()) return;
+    if (popup && !popup.closed && ours(popup)) popup.close(); else void steer('close');
+  };
+  /** Waits until the sign-in shows as done: the app's page says so over a BroadcastChannel, and ros.ai asks every two
+   * seconds as well, which is how the Mac app hears it. Skip and leaving the screen end the wait too. */
+  const signedIn = (item: Item) => new Promise<Step>(resolve => {
+    let settled = false, sawWaiting = false, channel: BroadcastChannel | undefined;
+    const finish = (step: Step) => { if (settled) return; settled = true; clearInterval(timer); clearTimeout(expire); channel?.close(); if (waiter.current === finish) waiter.current = null; resolve(step); };
+    waiter.current = finish;
+    const look = async () => {
+      if (item.kind === 'ros') {
+        const account = await api<CloudAccountStatus>('/api/cloud').catch(() => undefined);
+        if (account?.state === 'signed-in') { setCloud(account); finish({ state: 'ok', text: 'Signed in', message: `${account.email ? `Signed in as ${account.email}. ` : ''}ROS now appears as a model.` }); }
+        else if (account?.state === 'waiting') sawWaiting = true;
+        else if (account && sawWaiting) finish({ state: 'fail', text: 'Couldn’t connect', message: account.error || 'The sign-in did not finish.' });
+        return;
+      }
+      const apps = await api<{ apps: AppConnectionStatus[] }>('/api/apps').catch(() => undefined);
+      if (apps?.apps.some(app => app.id === item.id && app.connected)) finish({ state: 'ok', text: 'Connected' });
+    };
+    if (item.kind === 'app') try {
+      channel = new BroadcastChannel('ros-ai-plugins');
+      channel.onmessage = event => { const data = event.data as { connected?: string; failed?: string; error?: string } | null; if (data?.connected === item.id) finish({ state: 'ok', text: 'Connected' }); else if (data?.failed === item.id) finish({ state: 'fail', text: 'Couldn’t connect', message: data.error || 'The sign-in failed.' }); };
+    } catch { /* The asking below still hears it. */ }
+    const timer = setInterval(() => void look(), 2000);
+    const expire = setTimeout(() => finish({ state: 'fail', text: 'Not finished', message: 'The sign-in was not finished within 10 minutes. Connect it later from Plugins.' }), 10 * 60_000);
+  });
+  /** One sign-in: ros.ai asks the app for its sign-in page, shows it, and waits. */
+  const signIn = async (item: Item): Promise<Step> => {
+    put(item.key, { state: 'busy', text: 'Opening' });
+    try {
+      let url: string;
+      if (item.kind === 'ros') url = macApp() ? (await post<CloudAccountStatus>('/api/cloud/sign-in')).verificationUrl ?? '' : '/api/cloud/start?keep=1';
+      else {
+        const started = await post<{ authorizationUrl?: string }>(`/api/apps/${item.id}/connect`, { window: true, keep: !macApp() });
+        if (!started.authorizationUrl) return { state: 'ok', text: 'Connected' };
+        url = started.authorizationUrl;
+      }
+      if (!url) throw new Error('ros.ai cloud sent no sign-in page. Try again from Agents.');
+      const opened = await show(url);
+      put(item.key, { state: 'wait', text: 'Waiting for you', url, blocked: !opened });
+      return await signedIn(item);
+    } catch (cause) { return { state: 'fail', text: 'Couldn’t connect', message: fail(cause) }; }
+  };
+  /** One key: its page opens on the app's site, and the step waits for the key pasted here (saveKey) or Skip. */
+  const keyStep = async (item: Item) => {
+    const page = PLUGINS.find(plugin => plugin.id === item.id)?.tokenLink;
+    setKey(''); setKeyError('');
+    put(item.key, { state: 'busy', text: 'Opening' });
+    const opened = page ? await show(page) : true;
+    if (!alive.current) return { state: 'skip', text: 'Skipped' } satisfies Step;
+    put(item.key, { state: 'wait', text: 'Waiting for you', ...(page ? { url: page, blocked: !opened } : {}) });
+    return new Promise<Step>(resolve => { waiter.current = step => { waiter.current = null; resolve(step); }; });
+  };
+  const saveKey = async (item: Item) => {
+    if (!key.trim() || saving) return;
+    setSaving(true); setKeyError('');
+    try {
+      await api(`/api/plugins/${item.id}`, { method: 'PUT', body: JSON.stringify({ token: key.trim() }) });
+      const checked = await post<PluginStatus>(`/api/plugins/${item.id}/check`, {});
+      if (checked.verified === false) throw new Error(checked.checkMessage ?? `${item.label} did not accept it.`);
+      setKey('');
+      waiter.current?.({ state: 'ok', text: 'Connected' });
+    } catch (cause) { setKeyError(fail(cause)); }
+    finally { setSaving(false); }
+  };
+  /** Everything that needs nothing from the person, at once: the agents' links and model servers in one request, the
+   * ROS download, and Figma's desktop app. */
+  const automatic = async (chosen: Item[]) => {
+    const agents = chosen.filter(item => item.kind === 'agent').map(item => item.id as AgentId), models = chosen.filter(item => item.kind === 'model').map(item => item.id as LocalModelId);
+    const jobs: Promise<unknown>[] = [];
+    if (agents.length || models.length) jobs.push(api<SetupLinkResponse>('/api/setup/links', { method: 'POST', body: JSON.stringify({ agents, models }), signal: AbortSignal.timeout(180_000) }).then(links => {
+      for (const id of agents) {
+        const result = links.agents.find(item => item.agent === id);
+        put(`agent:${id}`, !result ? { state: 'fail', text: 'Couldn’t link', message: 'ros.ai gave no answer for this one. Try again from Agents.' } : result.ok ? { state: 'ok', text: 'Linked', message: result.message } : { state: 'fail', text: result.command ? 'Needs you' : 'Couldn’t link', message: result.message, ...(result.command ? { command: result.command } : {}) });
+      }
+      for (const id of models) {
+        const result = links.models.find(item => item.id === id);
+        put(`model:${id}`, result?.ok ? { state: 'ok', text: 'Connected', message: result.message } : { state: 'fail', text: 'Couldn’t connect', message: result?.message ?? 'ros.ai gave no answer for this one. Try again from Agents.' });
+      }
+    }, cause => { for (const itemKey of [...agents.map(id => `agent:${id}`), ...models.map(id => `model:${id}`)]) put(itemKey, { state: 'fail', text: 'Couldn’t connect', message: fail(cause) }); }));
+    if (chosen.some(item => item.kind === 'local')) jobs.push(changeLocalRos('download').then(() => put('local', { state: 'ok', text: 'Downloading' }), cause => put('local', { state: 'fail', text: 'Couldn’t start', message: fail(cause) })));
+    for (const item of chosen.filter(entry => entry.kind === 'app')) jobs.push(post(`/api/apps/${item.id}/connect`, {}).then(() => put(item.key, { state: 'ok', text: 'Connected' }), cause => put(item.key, { state: 'fail', text: 'Couldn’t connect', message: fail(cause) })));
+    await Promise.all(jobs);
+  };
   const connect = async () => {
-    if (!selected.length) { onDone(); return; }
-    setBusy(true); setPhase('connecting'); setMenu(false);
-    setOutcomes(Object.fromEntries(selected.map(choice => [choice.key, { state: 'busy', text: 'Connecting' } as Outcome])));
+    if (!picked.length) { onDone(); return; }
+    // Sign-ins first: each ends on ros.ai's own page, from where the window moves on to the next. Key pages are other
+    // sites', which ros.ai cannot move the window away from, so they come last.
+    const chosen = picked, queue = [...chosen.filter(item => item.how === 'sign-in'), ...chosen.filter(item => item.how === 'key')];
+    // The window opens from this click, while the browser still allows it; each sign-in then opens in it in turn.
+    if (queue.length && !macApp()) shared.current = blankWindow('Getting your first sign-in ready…');
+    setWalk(chosen); setWalking(true); setMenu(false);
+    setSteps(Object.fromEntries(chosen.map(item => [item.key, interactive(item) ? { state: 'next', text: 'Next' } : { state: 'busy', text: 'Connecting' }] as const)));
     void post('/api/setup/seen').catch(() => undefined);
-    const agents = selected.filter(choice => choice.kind === 'agent').map(choice => choice.id as AgentId), models = selected.filter(choice => choice.kind === 'model').map(choice => choice.id as LocalModelId), ros = selected.some(choice => choice.kind === 'ros');
-    const [links, signIn] = await Promise.all([
-      agents.length || models.length ? post<SetupLinkResponse>('/api/setup/links', { agents, models }).then(value => ({ value }), (cause: unknown) => ({ error: fail(cause) })) : Promise.resolve(null),
-      ros ? post<CloudAccountStatus>('/api/cloud/sign-in').then(value => ({ value }), (cause: unknown) => ({ error: fail(cause) })) : Promise.resolve(null),
-    ]);
-    const next: Record<string, Outcome> = {};
-    if (links) for (const key of [...agents.map(id => `agent:${id}`), ...models.map(id => `model:${id}`)]) {
-      if ('error' in links) { next[key] = { state: 'fail', text: 'Couldn\'t connect', message: links.error }; continue; }
-      const [kind, id] = key.split(':');
-      const result = kind === 'agent' ? links.value.agents.find(item => item.agent === id) : links.value.models.find(item => item.id === id);
-      next[key] = result ? { state: result.ok ? 'ok' : 'fail', text: result.ok ? 'Connected' : 'Couldn\'t connect', message: result.message, ...('command' in result && result.command ? { command: result.command } : {}) } : { state: 'fail', text: 'Couldn\'t connect', message: 'ros.ai gave no answer for this one. Try again from Agents.' };
+    const background = automatic(chosen.filter(item => !interactive(item)));
+    for (const item of queue) {
+      if (!alive.current) return;
+      setNow(item.key);
+      put(item.key, await (item.how === 'key' ? keyStep(item) : signIn(item)));
     }
-    if (signIn) {
-      if ('error' in signIn) next.ros = { state: 'fail', text: 'Couldn\'t connect', message: signIn.error };
-      else { setCloud(signIn.value); if (signIn.value.verificationUrl) window.open(signIn.value.verificationUrl, '_blank', 'noopener'); }
-    }
-    setOutcomes(next); setBusy(false);
-    await onChanged();
+    if (!alive.current) return;
+    setNow(null);
+    closeWindow();
+    await background;
+    if (!alive.current) return;
+    setWalking(false);
+    await onChanged().catch(() => undefined);
   };
-  const rosOutcome = (): Outcome | undefined => {
-    if (outcomes.ros) return outcomes.ros;
-    if (!cloud) return { state: 'busy', text: 'Connecting' };
-    if (cloud.state === 'waiting') return { state: 'wait', text: 'Waiting for you' };
-    if (cloud.state === 'signed-in') return { state: 'ok', text: 'Connected', message: `Signed in${cloud.email ? ` as ${cloud.email}` : ''}. ROS now appears as a model.` };
-    return { state: 'fail', text: 'Couldn\'t connect', message: cloud.error || 'The sign-in did not complete. Try again from Agents.' };
+  /** Opens the step's page again, from a click: after the window was closed, or when the browser blocked it. */
+  const again = async (itemKey: string) => {
+    const url = steps[itemKey]?.url;
+    if (!url) return;
+    const blocked = !(await show(url, true));
+    setSteps(prev => prev[itemKey] ? { ...prev, [itemKey]: { ...prev[itemKey], blocked } } : prev);
   };
-  const outcome = (choice: Choice) => choice.kind === 'ros' ? rosOutcome() : outcomes[choice.key];
-  const local = localRos && localRos.state !== 'not-downloaded' ? <LocalRosRow status={localRos} computer={status.computer}/> : null;
-  // Under the apps: where they connect. Nothing on this screen asks for them.
-  const appsNote = choices.some(choice => choice.kind === 'app' && !choice.done) ? <p className="setup-apps-note">Configure in Plugins</p> : undefined;
+  const skip = () => waiter.current?.({ state: 'skip', text: 'Skipped' });
+
+  const live = localRos && localState && localState !== 'not-downloaded' ? <LocalRosRow status={localRos} computer={status.computer}/> : null;
+  // Apps that connect only on their Plugins page: a line under them says where.
+  const appsNote = items.some(item => item.kind === 'app' && item.how === 'plugins' && !item.done) ? <p className="setup-apps-note">Google Drive connects in Plugins, with a Google app of your own.</p> : undefined;
   const frame = (lead: string, card: ReactNode) => <div className="setup-screen"><div className="setup-column">
     <span className="setup-ring"><RosMark/></span>
     <h1>Connect your tools</h1>
@@ -197,69 +344,80 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
     {card}
     {after}
   </div></div>;
-
-  if (phase === 'connecting') {
-    const states = selected.map(choice => outcome(choice)?.state);
-    const ok = states.filter(state => state === 'ok').length, wait = states.filter(state => state === 'wait').length, failed = states.filter(state => state === 'fail').length;
-    const working = busy || states.includes('busy');
-    const summary = working ? 'Connecting…' : [`${count(ok)} connected.`, wait ? `${count(wait)} ${wait === 1 ? 'is' : 'are'} waiting for you.` : '', failed ? `${count(failed)} ${failed === 1 ? 'needs' : 'need'} a step from you.` : ''].filter(Boolean).join(' ');
-    const linkedAgent = selected.find(choice => choice.kind === 'agent' && outcomes[choice.key]?.state === 'ok');
-    const group = (kind: Choice['kind'][], title: string, extra?: ReactNode) => {
-      const rows = selected.filter(choice => kind.includes(choice.kind));
-      return rows.length || extra ? <><p className="setup-group">{title}</p>{rows.map(choice => {
-        const result = outcome(choice);
-        return <div className="setup-row static" key={choice.key}>
-          <span className="setup-tile" aria-hidden="true">{choice.icon}</span>
-          <span className="setup-text">
-            <span className="setup-name">{choice.label}</span>
-            {choice.kind === 'ros' && waiting && cloud ? <>
-              <span className="setup-why">Finish signing in in your browser; ros.ai picks it up by itself.</span>
-              <a className="chip-button setup-open" href={cloud.verificationUrl} target="_blank" rel="noreferrer">Open the sign-in page <ExternalLink size={11}/></a>
-            </> : result?.message && <span className="setup-why">{result.message}</span>}
-            {result?.command && <CommandBox command={result.command} label={choice.label}/>}
-          </span>
-          <span className={`setup-state ${result?.state ?? ''}`}>{result?.state === 'busy' ? <LoaderCircle size={12} className="spin"/> : <i/>}{result?.text ?? ''}</span>
-        </div>;
-      })}{extra}</> : null;
+  const groups = (rows: Item[], row: (item: Item) => ReactNode, local: ReactNode, note?: ReactNode) => {
+    const group = (kinds: Item['kind'][], title: string, extra?: ReactNode) => {
+      const shown = rows.filter(item => kinds.includes(item.kind));
+      return shown.length || extra ? <><p className="setup-group">{title}</p>{shown.map(row)}{extra}</> : null;
     };
-    return frame(summary, <section className="setup-card" aria-label="Connecting your tools">
+    return <>
       {group(['agent'], 'Your agents')}
-      {group(['ros', 'model'], 'ROS', local)}
-      {group(['app'], `Apps on ${status.computer}`, appsNote)}
+      {group(['ros', 'local', 'model'], 'ROS', local)}
+      {group(['app'], `Apps on ${status.computer}`, note)}
+    </>;
+  };
+
+  if (walk) {
+    const states = walk.map(item => steps[item.key]?.state), current = walk.find(item => item.key === now);
+    const ok = states.filter(state => state === 'ok').length, skipped = states.filter(state => state === 'skip').length, failed = states.filter(state => state === 'fail').length;
+    const settled = ok + skipped + failed;
+    const name = current?.kind === 'ros' ? 'ros.ai' : current?.label;
+    const lead = walking ? `${!current ? 'Connecting…' : current.how === 'key' ? `Add your ${name} key.` : steps[current.key]?.blocked ? `Open the ${name} sign-in to go on.` : `Sign in to ${name} in the window that opened.`} ${settled} of ${walk.length} done.`
+      : [`${count(ok)} connected.`, skipped ? `${count(skipped)} skipped.` : '', failed ? `${count(failed)} ${failed === 1 ? 'needs' : 'need'} a step from you.` : '', localState === 'downloading' ? 'ROS keeps downloading in the background.' : ''].filter(Boolean).join(' ');
+    const linkedAgent = walk.find(item => item.kind === 'agent' && steps[item.key]?.state === 'ok');
+    const row = (item: Item) => {
+      if (item.kind === 'local' && live) return <Fragment key={item.key}>{live}</Fragment>;
+      const step = steps[item.key], here = item.key === now && step?.state === 'wait';
+      const page = item.how === 'key' ? PLUGINS.find(plugin => plugin.id === item.id) : undefined;
+      return <div className={`setup-row static${here ? ' here' : ''}`} key={item.key}>
+        <span className="setup-tile" aria-hidden="true">{item.icon}</span>
+        <span className="setup-text">
+          <span className="setup-name">{item.label}</span>
+          {here && page ? <>
+            <span className="setup-why">{page.tokenHint}</span>
+            <form className="setup-key" onSubmit={event => { event.preventDefault(); void saveKey(item); }}>
+              <input ref={keyField} type="password" autoComplete="off" spellCheck={false} aria-label={page.tokenLabel} placeholder={page.tokenLabel} value={key} onChange={event => setKey(event.target.value)}/>
+              <button type="submit" className="primary small" disabled={!key.trim() || saving}>{saving && <LoaderCircle size={12} className="spin"/>}Save</button>
+            </form>
+            {keyError && <p className="inline-error" role="alert">{keyError}</p>}
+            <span className="setup-step-actions">{step.url && <button type="button" className="chip-button" onClick={() => void again(item.key)}>Open the key page<ArrowUpRight size={11}/></button>}<button type="button" className="chip-button" onClick={skip}>Skip</button></span>
+          </> : here ? <>
+            <span className="setup-why">{step.blocked ? 'Your browser kept the sign-in window from opening.' : `${item.kind === 'ros' ? 'Sign in or create your account' : 'Allow access'} in the window that opened. ros.ai goes on by itself.`}</span>
+            <span className="setup-step-actions"><button type="button" className={step.blocked ? 'primary small' : 'chip-button'} onClick={() => void again(item.key)}>{step.blocked ? `Open the ${item.kind === 'ros' ? 'ros.ai' : item.label} sign-in` : 'Open it again'}<ArrowUpRight size={11}/></button><button type="button" className="chip-button" onClick={skip}>Skip</button></span>
+          </> : step?.message && <span className="setup-why">{step.message}</span>}
+          {step?.command && <CommandBox command={step.command} label={item.label}/>}
+        </span>
+        <span className={`setup-state ${step?.state ?? ''}`}>{step?.state === 'busy' ? <LoaderCircle size={12} className="spin"/> : <i/>}{step?.text ?? ''}</span>
+      </div>;
+    };
+    return frame(lead, <section className="setup-card" aria-label="Connecting your tools" aria-busy={walking}>
+      <div className="setup-list">{groups(walk, row, walk.some(item => item.kind === 'local') ? null : live)}</div>
       <p className="setup-note">{linkedAgent ? <>{linkedAgent.label} is linked. In a new session, try: <span>“Open my ros.ai project and summarise the canvas.”</span></> : 'Every link above is one entry in that tool\'s settings. Undo any of them later from Agents.'}</p>
       <footer className="setup-foot">
-        <RosMark working={working}/>
+        <RosMark working={walking}/>
         <span className="setup-sp"/>
-        {selected.some(choice => choice.kind !== 'app' && ['wait', 'fail'].includes(outcome(choice)?.state ?? '')) && <button type="button" className="chip-button" onClick={onAgents}>Finish later in Agents</button>}
-        <button type="button" className="primary setup-primary" disabled={busy} onClick={onDone}>Start</button>
+        {!walking && failed > 0 && <button type="button" className="chip-button" onClick={onAgents}>Finish later in Agents</button>}
+        <button type="button" className="primary setup-primary" onClick={onDone}>Start</button>
       </footer>
     </section>);
   }
 
-  const group = (kind: Choice['kind'][], title: string, extra?: ReactNode) => {
-    const rows = choices.filter(choice => kind.includes(choice.kind));
-    // Rows with nothing to tick and nothing to explain (the apps) sit two to a line.
-    const plain = rows.length > 1 && rows.every(choice => choice.fixed && !choice.why);
-    const row = (choice: Choice) => choice.done || choice.fixed
-      ? <div className={`setup-row static${choice.why ? '' : ' plain'}`} key={choice.key}>
-        <span className="setup-tile" aria-hidden="true">{choice.icon}</span>
-        <span className="setup-text"><span className="setup-name">{choice.label}</span>{choice.why && <span className="setup-why">{choice.why}</span>}</span>
-        <span className={`setup-state ${choice.done && choice.state !== 'No models yet' ? 'ok' : ''}`}><i/>{choice.state}</span>
-      </div>
-      : <button type="button" role="checkbox" aria-checked={Boolean(on[choice.key])} className={`setup-row${on[choice.key] ? ' on' : ''}`} key={choice.key} onClick={() => setOn(prev => ({ ...prev, [choice.key]: !prev[choice.key] }))}>
-        <span className="setup-tile" aria-hidden="true">{choice.icon}</span>
-        <span className="setup-text"><span className="setup-name">{choice.label}</span><span className="setup-why">{choice.why}</span></span>
-        <span className="setup-cap">{choice.state}</span>
-        <span className="setup-ck" aria-hidden="true">{on[choice.key] && <Check size={12} strokeWidth={2.5}/>}</span>
-      </button>;
-    return rows.length || extra ? <><p className="setup-group">{title}</p>{plain ? <div className="setup-apps">{rows.map(row)}</div> : rows.map(row)}{extra}</> : null;
-  };
-  const places = status.lookedAt.length;
-  return frame(`ros.ai looked at ${status.computer} and found these. Nothing was sent anywhere.`, <section className="setup-card" aria-label="Connect your tools">
-    {group(['agent'], 'Your agents')}
-    {group(['ros', 'model'], 'ROS', local)}
-    {group(['app'], `Apps on ${status.computer}`, appsNote)}
-    {!choices.length && !local && <p className="setup-note">No agents, model servers or apps yet. Everything here can be connected later from Agents and Plugins.</p>}
+  const row = (item: Item) => item.done || !tickable(item)
+    ? <div className="setup-row static" key={item.key}>
+      <span className="setup-tile" aria-hidden="true">{item.icon}</span>
+      <span className="setup-text"><span className="setup-name">{item.label}</span>{item.why && <span className="setup-why">{item.why}</span>}</span>
+      {item.done ? <span className="setup-state ok"><i/>{item.done}</span> : <span className="setup-how">{tags[item.how]}</span>}
+    </div>
+    : <button type="button" role="checkbox" aria-checked={Boolean(on[item.key])} className={`setup-row${on[item.key] ? ' on' : ''}`} key={item.key} onClick={() => setOn(prev => ({ ...prev, [item.key]: !prev[item.key] }))}>
+      <span className="setup-tile" aria-hidden="true">{item.icon}</span>
+      <span className="setup-text"><span className="setup-name">{item.label}</span><span className="setup-why">{item.why}</span></span>
+      <span className="setup-how">{tags[item.how]}</span>
+      <span className="setup-ck" aria-hidden="true">{on[item.key] && <Check size={12} strokeWidth={2.5}/>}</span>
+    </button>;
+  const places = status.lookedAt.length, plan = planOf(picked);
+  return frame(`ros.ai looked at ${status.computer} and found these. Tick what to connect; nothing was sent anywhere.`, <section className="setup-card" aria-label="Connect your tools">
+    <div className="setup-list">{groups(items, row, live, appsNote)}</div>
+    {!items.length && !live && <p className="setup-note">No agents, model servers or apps yet. Everything here can be connected later from Agents and Plugins.</p>}
+    {plan && <p className="setup-plan">{plan}</p>}
     <footer className="setup-foot" ref={foot}>
       <RosMark/>
       <span className="chip-slot">
@@ -272,7 +430,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
       </span>
       <span className="setup-sp"/>
       <button type="button" className="chip-button" onClick={onDone}>Not now</button>
-      <button type="button" className="primary setup-primary" onClick={() => void connect()}>{selected.length ? `Connect ${selected.length}` : 'Start'}</button>
+      <button type="button" className="primary setup-primary" onClick={() => void connect()}>{picked.length ? `Connect ${picked.length}` : 'Start'}</button>
     </footer>
   </section>);
 }

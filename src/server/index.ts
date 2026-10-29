@@ -142,9 +142,9 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference,port);
-    // ROS on this computer starts with the app once its download is on disk.
+    // ROS on this computer starts with the app once its download is on disk, and a download the person started carries on.
     localRos = new LocalRos(dataDir,inference);
-    void localRos.start();
+    void localRos.resume();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
     const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
@@ -178,7 +178,7 @@ try {
     // App blocks: pages agents write, run sealed on a second local server; checked in the same browser.
     appFrames = new AppFrames(store, new AppKit(root), { browser });
     AgentWorkspaceTools.appFrames = appFrames;
-    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,localRos});
+    const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,localRos,apps,googleDrive});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
