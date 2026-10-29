@@ -5,8 +5,12 @@
 .block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); animation: rise-centered .22s cubic-bezier(.2, .8, .2, 1) both; }
 .block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; border-left: 1px solid var(--card-line); }
 /* ROS in full view keeps the right edge; the panel moves in beside it. */
-.workspace-body:has(.ros-full) > .block-panel { margin-right: min(438px, 50%); }
-@media (prefers-reduced-motion: reduce) { .block-sheet { animation: none; transform: translateX(-50%); } }
+.workspace-body:has(.ros-full) > .block-panel { margin-right: min(var(--ros-side) + 18px, 50%); }
+/* With ROS's side panel open the sheet centres on the map left of the panel, narrowing to fit there down to 560 px. On a map too
+   narrow for even that (under about 1170 px) it keeps 560 px from the left edge and the panel covers its right side. */
+.workspace-body:has(.ros-full) .block-sheet { left: 16px; right: calc(var(--ros-side) + 34px); max-width: min(calc(100% - 32px), max(560px, calc(100% - var(--ros-side) - 50px))); margin: 0 auto; transform: none; animation-name: rise-beside; }
+@keyframes rise-beside { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .block-sheet { animation: none; transform: translateX(-50%); } .workspace-body:has(.ros-full) .block-sheet { animation: none; transform: none; } }
 
 .bv-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--card-divider); }
 .bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--canvas); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
