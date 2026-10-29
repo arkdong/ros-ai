@@ -130,7 +130,7 @@ test('A local request fits its model\'s context: the answer gets the room left, 
   } finally { await execution.shutdown(); await ollama.close(); f.close(); }
 });
 
-test('Ros\'s agent works step by step on a local model that calls tools, and says why it cannot on one without tools or room', async () => {
+test('ROS\'s agent works step by step on a local model that calls tools, and says why it cannot on one without tools or room', async () => {
   const ollama = await fakeOllama(8192), f = workspace();
   const id = connect(f.inference, ollama.port, [{ id: 'agent', contextTokens: 32768, tools: true }, { id: 'chat-only', contextTokens: 32768, tools: false }, { id: 'tiny', contextTokens: 8192, tools: true }]);
   const execution = new ExecutionService(f.store, { inference: f.inference, includeSetupUsage: false });

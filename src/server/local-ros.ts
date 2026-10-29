@@ -12,7 +12,7 @@ import { StoreError } from './store.js';
 
 const run = promisify(execFile);
 // ros-nemotron: Nemotron 3 Nano 4B fine-tuned on ros.ai's own agent turns (training/ros-nemotron). A computer that already
-// downloaded NVIDIA's GGUF keeps it until Ros is removed and downloaded again.
+// downloaded NVIDIA's GGUF keeps it until ROS is removed and downloaded again.
 const MODEL_REPO = process.env.ROS_LOCAL_MODEL_REPO || 'arkdong/ros-nemotron-4b-GGUF';
 const ENGINE_REPO = 'ggml-org/llama.cpp';
 const PREFERRED_PORT = 4319, CONTEXT_TOKENS = 32_768;
@@ -25,9 +25,9 @@ const installedSchema = z.object({ engineTag: z.string(), server: z.string(), mo
 type Installed = z.infer<typeof installedSchema>;
 type Download = { url: string; file: string; bytes: number; sha256?: string };
 
-/** Ros on this computer: ros.ai downloads llama.cpp's server and a Nemotron GGUF, runs them on
+/** ROS on this computer: ros.ai downloads llama.cpp's server and a Nemotron GGUF, runs them on
  * loopback with a random key, and registers the result as an ordinary local model connection,
- * so Ros, the assistant and the agent loop use it like any other model. */
+ * so ROS, the assistant and the agent loop use it like any other model. */
 export class LocalRos {
   private readonly dir: string;
   private child?: ChildProcess;
@@ -57,7 +57,7 @@ export class LocalRos {
   /** Fetches the engine and the model in the background; the page polls status for progress. */
   download(): LocalRosStatus {
     const pattern = assetPattern[this.platform];
-    if (!pattern) throw new StoreError('Ros on this computer needs a Mac or a Linux x64 computer for now.', 400);
+    if (!pattern) throw new StoreError('ROS on this computer needs a Mac or a Linux x64 computer for now.', 400);
     if (this.job) return this.status();
     const stop = new AbortController();
     this.job = { stop, done: 0, total: 0, model: '' };
@@ -103,7 +103,7 @@ export class LocalRos {
     const installed = this.installed();
     if (!installed || this.child) return Promise.resolve();
     this.lastError = '';
-    this.starting = this.launch(installed).catch(error => { this.lastError = error instanceof Error ? error.message : 'Ros could not start.'; this.stop(); }).finally(() => { this.starting = undefined; });
+    this.starting = this.launch(installed).catch(error => { this.lastError = error instanceof Error ? error.message : 'ROS could not start.'; this.stop(); }).finally(() => { this.starting = undefined; });
     return this.starting;
   }
   private async launch(installed: Installed) {
@@ -113,13 +113,13 @@ export class LocalRos {
     this.child = child;
     let log = '';
     child.stderr?.on('data', (chunk: Buffer) => { log = (log + chunk.toString()).slice(-2000); });
-    child.on('exit', code => { if (this.child === child) { this.child = undefined; if (code) this.lastError = `Ros stopped (llama.cpp exit ${code}). ${log.split('\n').filter(Boolean).slice(-1)[0] ?? ''}`.trim(); } });
+    child.on('exit', code => { if (this.child === child) { this.child = undefined; if (code) this.lastError = `ROS stopped (llama.cpp exit ${code}). ${log.split('\n').filter(Boolean).slice(-1)[0] ?? ''}`.trim(); } });
     const deadline = Date.now() + 120_000;
     for (;;) {
-      if (this.child !== child) throw new Error(this.lastError || 'Ros stopped while loading.');
+      if (this.child !== child) throw new Error(this.lastError || 'ROS stopped while loading.');
       const ok = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2000) }).then(response => response.ok, () => false);
       if (ok) break;
-      if (Date.now() > deadline) throw new Error('Ros took longer than two minutes to load.');
+      if (Date.now() > deadline) throw new Error('ROS took longer than two minutes to load.');
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     this.register(installed, port);
@@ -128,8 +128,8 @@ export class LocalRos {
   private register(installed: Installed, port: number) {
     const existing = installed.connectionId && this.connections.statuses().find(item => item.id === installed.connectionId && !item.deleted);
     const fields = {
-      name: 'Ros on this computer', endpoint: `http://127.0.0.1:${port}/v1`, apiKey: installed.apiKey, enabled: true,
-      models: [{ id: 'ros-local', label: 'Ros', contextTokens: CONTEXT_TOKENS, inputUsdPerMillion: 0, outputUsdPerMillion: 0, maker: { id: 'nvidia' as const, label: 'NVIDIA Nemotron', monogram: 'N' } }],
+      name: 'ROS on this computer', endpoint: `http://127.0.0.1:${port}/v1`, apiKey: installed.apiKey, enabled: true,
+      models: [{ id: 'ros-local', label: 'ROS', contextTokens: CONTEXT_TOKENS, inputUsdPerMillion: 0, outputUsdPerMillion: 0, maker: { id: 'nvidia' as const, label: 'NVIDIA Nemotron', monogram: 'N' } }],
       caps: { maxInputBytes: 64000, maxOutputTokens: 8000, timeoutMs: 300000, maxConcurrent: 1, maxResponseBytes: 256000 },
     };
     const connection = existing ? this.connections.update(existing.id, fields) : this.connections.create(fields);

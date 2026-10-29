@@ -1,4 +1,4 @@
-/* A chip with a menu, as in the Ros bar: the chip names the choice, the menu lists the options with a check. */
+/* A chip with a menu, as in the ROS bar: the chip names the choice, the menu lists the options with a check. */
 .chip-slot { position: relative; display: inline-flex; }
 .chip-button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--canvas); color: var(--body); font: inherit; font-size: var(--text-xs); white-space: nowrap; cursor: pointer; }
 .chip-button:hover, .chip-button[aria-expanded="true"], .chip-button[aria-pressed="true"] { background: var(--line-soft); color: var(--ink); }

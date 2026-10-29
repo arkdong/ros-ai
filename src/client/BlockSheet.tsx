@@ -24,7 +24,7 @@ type Props = {
 };
 
 /** An open block: a kind chip, its title and the view switch on top, the block itself, and one footer line.
- *  As a sheet it floats over the map with the Ros bar still below it; as a panel it stands beside the map. */
+ *  As a sheet it floats over the map with the ROS bar still below it; as a panel it stands beside the map. */
 export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, status, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   // Focus moves into the block when it opens, and back where it was when it closes, as the dialog did.
@@ -58,7 +58,7 @@ function TitleField({ title, onRename }: { title: string; onRename: (title: stri
   return <input className="bv-title" aria-label="Block title" value={value} maxLength={200} onChange={event => setValue(event.target.value)} onBlur={commit} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } }}/>;
 }
 
-/** The label of a Text block as a footer chip with its menu, as the Ros bar does for its choices. */
+/** The label of a Text block as a footer chip with its menu, as the ROS bar does for its choices. */
 export function LabelChip({ node, onPick }: { node: CanvasNode; onPick: (value: string) => void }) {
   const [open, setOpen] = useState(false), box = useRef<HTMLSpanElement>(null);
   const current = textLabel(node) ?? '';

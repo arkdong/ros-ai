@@ -139,7 +139,7 @@ try {
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference,port);
-    // Ros on this computer starts with the app once its download is on disk.
+    // ROS on this computer starts with the app once its download is on disk.
     localRos = new LocalRos(dataDir,inference);
     void localRos.start();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.

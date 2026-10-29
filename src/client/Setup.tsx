@@ -34,10 +34,10 @@ const list = (items: string[]) => items.length <= 1 ? items.join('') : `${items.
 const words = ['None', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 const count = (n: number) => words[n] ?? String(n);
 const sentence = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
-/** A download size the way the Ros page says it: "1.2 GB". */
+/** A download size the way the ROS page says it: "1.2 GB". */
 export const gb = (bytes = 0) => `${(bytes / 1e9).toFixed(1)} GB`;
 
-/** Ros on this computer: its state, read again every two seconds while it downloads or starts. */
+/** ROS on this computer: its state, read again every two seconds while it downloads or starts. */
 export function useLocalRos(on = true) {
   const [status, setStatus] = useState<LocalRosStatus>();
   const busy = status?.state === 'downloading' || status?.state === 'starting';
@@ -62,14 +62,14 @@ export function CommandBox({ command, label }: { command: string; label: string 
   </>;
 }
 
-/** The Ros-on-this-computer row of the first run: the download's progress, then Ready. Nothing to choose here. */
+/** The ROS-on-this-computer row of the first run: the download's progress, then Ready. Nothing to choose here. */
 export function LocalRosRow({ status, computer }: { status: LocalRosStatus; computer: string }) {
   const percent = status.totalBytes ? Math.min(100, Math.round(((status.doneBytes ?? 0) / status.totalBytes) * 100)) : 0;
-  const why = status.state === 'downloading' ? 'Downloading in the background' : status.state === 'starting' ? 'Downloaded · getting Ros ready' : status.state === 'ready' ? `Works offline. Nothing leaves ${computer}.` : status.error || 'The download stopped';
+  const why = status.state === 'downloading' ? 'Downloading in the background' : status.state === 'starting' ? 'Downloaded · getting ROS ready' : status.state === 'ready' ? `Works offline. Nothing leaves ${computer}.` : status.error || 'The download stopped';
   return <div className="setup-row static">
     <span className="setup-tile" aria-hidden="true"><RosMark/></span>
-    <span className="setup-text"><span className="setup-name">Ros on {computer}</span><span className="setup-why">{why}</span></span>
-    {status.state === 'downloading' ? <span className="setup-cap">{status.totalBytes ? `${gb(status.doneBytes)} of ${gb(status.totalBytes)}` : 'Finding the files'}<span className="setup-bar" role="progressbar" aria-label="Ros download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }}/></span></span>
+    <span className="setup-text"><span className="setup-name">ROS on {computer}</span><span className="setup-why">{why}</span></span>
+    {status.state === 'downloading' ? <span className="setup-cap">{status.totalBytes ? `${gb(status.doneBytes)} of ${gb(status.totalBytes)}` : 'Finding the files'}<span className="setup-bar" role="progressbar" aria-label="ROS download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ width: `${percent}%` }}/></span></span>
       : status.state === 'starting' ? <span className="setup-state"><LoaderCircle size={12} className="spin"/>Starting</span>
       : status.state === 'ready' ? <span className="setup-state ok"><i/>Ready</span>
       : <span className="setup-state fail"><i/>Stopped</span>}
@@ -82,9 +82,9 @@ type Choice = { key: string; kind: 'agent' | 'model' | 'ros' | 'app'; id: string
 type Outcome = { state: 'ok' | 'wait' | 'fail' | 'busy'; text: string; message?: string; command?: string };
 type Props = {
   status: SetupStatus; onDone: () => void; onAgents: () => void; onChanged: () => Promise<unknown>;
-  /** From the first run: the hosted Ros row starts off when the person chose to go without an account. */
+  /** From the first run: the hosted ROS row starts off when the person chose to go without an account. */
   hostedOn?: boolean;
-  /** Ros on this computer while the first run downloads it, as a row of its own. */
+  /** ROS on this computer while the first run downloads it, as a row of its own. */
   localRos?: LocalRosStatus;
   /** Under the card: the first run's step caption. */
   after?: ReactNode;
@@ -109,11 +109,11 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
       const state = linked ? 'Linked' : agent.signals.includes('signed in') ? 'Signed in' : agent.signals.includes('used recently') ? 'Used recently' : agent.linkable ? 'Found' : 'Needs a line in your terminal';
       items.push({ key: `agent:${agent.id}`, kind: 'agent', id: agent.id, label: agent.label, icon: <AgentIcon id={agent.id} size={16}/>, why: `${agentWhy[agent.id]}${agent.note ? ` ${agent.note}` : ''}`, state, on: !linked && agent.linkable, done: linked });
     }
-    if (status.cloud.available) items.push({ key: 'ros', kind: 'ros', id: 'ros', label: 'Ros, hosted by ros.ai', icon: <RosMark/>, why: status.cloud.signedIn ? `Signed in${cloud?.email ? ` as ${cloud.email}` : ''}. Ros appears as a model.` : 'Free while ros.ai is new. One sign-in in your browser.', state: status.cloud.signedIn ? 'Signed in' : 'Recommended', on: !status.cloud.signedIn && (hostedOn ?? true), done: status.cloud.signedIn });
+    if (status.cloud.available) items.push({ key: 'ros', kind: 'ros', id: 'ros', label: 'ROS, hosted by ros.ai', icon: <RosMark/>, why: status.cloud.signedIn ? `Signed in${cloud?.email ? ` as ${cloud.email}` : ''}. ROS appears as a model.` : 'Free while ros.ai is new. One sign-in in your browser.', state: status.cloud.signedIn ? 'Signed in' : 'Recommended', on: !status.cloud.signedIn && (hostedOn ?? true), done: status.cloud.signedIn });
     for (const model of status.models) {
       if (!model.running) continue;
       const n = model.models.length, done = model.connectionId ? 'Connected' : n ? undefined : 'No models yet';
-      items.push({ key: `model:${model.id}`, kind: 'model', id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, why: n ? `Running with ${n} model${n === 1 ? '' : 's'}. Use them in Ros, on ${status.computer}.` : 'Running, but without a downloaded model yet.', state: done ?? 'Running', on: !done, done: Boolean(done) });
+      items.push({ key: `model:${model.id}`, kind: 'model', id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, why: n ? `Running with ${n} model${n === 1 ? '' : 's'}. Use them in ROS, on ${status.computer}.` : 'Running, but without a downloaded model yet.', state: done ?? 'Running', on: !done, done: Boolean(done) });
     }
     // Apps found here, as a plain list in two columns: the name, and how it was found or that it is connected. Their
     // plugins install on the Plugins page, which the caption under the list says.
@@ -183,7 +183,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
     if (outcomes.ros) return outcomes.ros;
     if (!cloud) return { state: 'busy', text: 'Connecting' };
     if (cloud.state === 'waiting') return { state: 'wait', text: 'Waiting for you' };
-    if (cloud.state === 'signed-in') return { state: 'ok', text: 'Connected', message: `Signed in${cloud.email ? ` as ${cloud.email}` : ''}. Ros now appears as a model.` };
+    if (cloud.state === 'signed-in') return { state: 'ok', text: 'Connected', message: `Signed in${cloud.email ? ` as ${cloud.email}` : ''}. ROS now appears as a model.` };
     return { state: 'fail', text: 'Couldn\'t connect', message: cloud.error || 'The sign-in did not complete. Try again from Agents.' };
   };
   const outcome = (choice: Choice) => choice.kind === 'ros' ? rosOutcome() : outcomes[choice.key];
@@ -224,7 +224,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
     };
     return frame(summary, <section className="setup-card" aria-label="Connecting your tools">
       {group(['agent'], 'Your agents')}
-      {group(['ros', 'model'], 'Ros', local)}
+      {group(['ros', 'model'], 'ROS', local)}
       {group(['app'], `Apps on ${status.computer}`, appsNote)}
       <p className="setup-note">{linkedAgent ? <>{linkedAgent.label} is linked. In a new session, try: <span>“Open my ros.ai project and summarise the canvas.”</span></> : 'Every link above is one entry in that tool\'s settings. Undo any of them later from Agents.'}</p>
       <footer className="setup-foot">
@@ -257,7 +257,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, loc
   const places = status.lookedAt.length;
   return frame(`ros.ai looked at ${status.computer} and found these. Nothing was sent anywhere.`, <section className="setup-card" aria-label="Connect your tools">
     {group(['agent'], 'Your agents')}
-    {group(['ros', 'model'], 'Ros', local)}
+    {group(['ros', 'model'], 'ROS', local)}
     {group(['app'], `Apps on ${status.computer}`, appsNote)}
     {!choices.length && !local && <p className="setup-note">No agents, model servers or apps yet. Everything here can be connected later from Agents and Plugins.</p>}
     <footer className="setup-foot" ref={foot}>

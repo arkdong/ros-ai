@@ -1,6 +1,6 @@
 /* The first run as a canvas, in a window of its own: no rail, no sidebar, the wordmark top left. The page is a node in
    the middle, the start screen's column with the card's frame around all of it. Around it the project from ros-ai.io
-   runs the way one runs on the map: Sources and Training in a column on the left, Evals, Ros's proposal and what was
+   runs the way one runs on the map: Sources and Training in a column on the left, Evals, ROS's proposal and what was
    found on this computer in a column on the right, each block with its kind, a title, a last row with the agent that
    made it, and a badge for the app it came from; dashed links join them the way blocks are linked on the map. The lime
    stays in the ring, on keyboard focus and on the choices the person has made. */
@@ -99,7 +99,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-live.wait i { background: var(--wait); animation: fr-breathe 2.4s ease-in-out infinite; }
 .fr-live.ok i { background: var(--ok); }
 .fr-live.fail i { background: var(--fail); }
-/* Ros's proposal: dashed until the person decides, as on the map; solid once accepted, faded once kept for later. It
+/* ROS's proposal: dashed until the person decides, as on the map; solid once accepted, faded once kept for later. It
    unfolds under the Evals when they are done, so the block below slides down with it. */
 .fr-sat.proposal { max-height: 280px; overflow: hidden; border-style: dashed; border-color: #c9c9c9; box-shadow: none; background: rgba(255, 255, 255, .85); transition: max-height .55s cubic-bezier(.2, .8, .2, 1), margin-top .55s cubic-bezier(.2, .8, .2, 1), padding .55s cubic-bezier(.2, .8, .2, 1), opacity .4s ease-out .15s; }
 .fr-sat.proposal.off { max-height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; transition: none; }
@@ -116,9 +116,9 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 @keyframes fr-breathe { 50% { opacity: .3; } }
 @keyframes fr-march { to { stroke-dashoffset: -18; } }
 
-/* Set up Ros: two choices under their own captions. The account choice first and largest, washed lime with the lime
-   border once chosen and a lime Recommended tag; Continue without an account as one quiet row. Then Ros on this
-   computer as two tiles, Download Ros and Later, the chosen one with the lime border; one status row once it runs. */
+/* Set up ROS: two choices under their own captions. The account choice first and largest, washed lime with the lime
+   border once chosen and a lime Recommended tag; Continue without an account as one quiet row. Then ROS on this
+   computer as two tiles, Download ROS and Later, the chosen one with the lime border; one status row once it runs. */
 .fr-account { gap: 8px; }
 .fr-cap { margin: 2px 0 -2px; font-size: var(--text-xs); color: var(--muted); }
 .fr-cap.second { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }

@@ -506,7 +506,7 @@ export class SkillLibrary {
   any(): boolean { return this.usable().length > 0; }
   /** Titles of the skills that are on among those the person called with /name, for the turn's steps. */
   calledTitles(message: string): string[] { const usable = new Set(this.usable().map(entry => entry.name)); return calledSkills(message).filter(name => usable.has(name)).map(skillTitle); }
-  /** Names for the / menu of the Ros bar. */
+  /** Names for the / menu of the ROS bar. */
   menu(): { name: string; title: string; description: string }[] { return this.usable().filter(entry => entry.parsed.menu).map(entry => ({ name: entry.name, title: skillTitle(entry.name), description: entry.parsed.description })); }
 
   /** A skill's instructions as an agent reads them, a page at a time. tool: whether the agent can call

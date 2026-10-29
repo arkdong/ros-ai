@@ -108,7 +108,7 @@ function EvaluationPane({ read }: { read: TrainingRead }) {
 }
 
 function ModelPane({ read }: { read: TrainingRead }) {
-  if (!read.model) return <p className="live-block-empty">The 4-bit GGUF for Local Ros appears here once to_gguf.sh has made it.</p>;
+  if (!read.model) return <p className="live-block-empty">The 4-bit GGUF for Local ROS appears here once to_gguf.sh has made it.</p>;
   return <Stats items={[['File', read.model.file], ['Size', `${(read.model.bytes / 2 ** 30).toFixed(1)} GB`]]}/>;
 }
 

@@ -90,7 +90,7 @@ export function AssistantAnswerDialog({ projectId, turnId, questions, composerTe
   };
   return <div ref={panel} className="ros-question" role="group" aria-labelledby={`${id}-question`} tabIndex={-1} onKeyDown={keyDown}>
     <header>
-      {multiple ? <nav className="ros-question-steps" aria-label="Questions">{questions.map((item, index) => <button key={item.id} type="button" className={`${index === step ? 'current' : ''} ${answered(answers[index]) ? 'answered' : ''}`} aria-current={index === step ? 'step' : undefined} aria-label={`Question ${index + 1}${answered(answers[index]) ? ', answered' : ''}`} onClick={() => go(index)}>{answered(answers[index]) && index !== step ? <Check size={11}/> : index + 1}</button>)}</nav> : <span className="ros-question-kicker">Ros asks</span>}
+      {multiple ? <nav className="ros-question-steps" aria-label="Questions">{questions.map((item, index) => <button key={item.id} type="button" className={`${index === step ? 'current' : ''} ${answered(answers[index]) ? 'answered' : ''}`} aria-current={index === step ? 'step' : undefined} aria-label={`Question ${index + 1}${answered(answers[index]) ? ', answered' : ''}`} onClick={() => go(index)}>{answered(answers[index]) && index !== step ? <Check size={11}/> : index + 1}</button>)}</nav> : <span className="ros-question-kicker">ROS asks</span>}
       <button className="icon-button" type="button" aria-label="Close questions" title="Close (Esc)" onClick={onClose}><X size={15}/></button>
     </header>
     <div className="ros-question-body">
@@ -103,7 +103,7 @@ export function AssistantAnswerDialog({ projectId, turnId, questions, composerTe
         <label className={`ros-question-other ${answer.custom.trim() ? 'selected' : ''}`}><Pencil size={13} aria-hidden="true"/><textarea key={question.id} rows={1} maxLength={2000} value={answer.custom} placeholder={question.options.length ? 'Something else…' : 'Type your answer…'} aria-label="Your own answer" onChange={event => { change(step, { custom: event.target.value, leaveOut: false }); grow(event.target); }} ref={grow} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); advance(); } }}/></label>
       </div>
       {question.options.length > 1 && <small className="ros-question-hint">Pick up to two{question.options.length < 10 ? ', or press 1–' + question.options.length : ''}</small>}
-      {answer.leaveOut && <small className="ros-question-hint">Skipped. Ros will leave this out.</small>}
+      {answer.leaveOut && <small className="ros-question-hint">Skipped. ROS will leave this out.</small>}
     </div>
     {error && <p className="ros-question-error" role="alert">{error}</p>}
     <footer>

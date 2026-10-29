@@ -19,9 +19,9 @@ export function acpState(status?: AcpAgentStatus) {
 }
 
 const works: Record<AcpAgentId, string> = {
-  gemini: 'ros.ai starts Gemini CLI for each Ros turn. It can read the project folder and works through ros.ai’s tools; ros.ai switches off its other tools and does not load the folder’s own Gemini CLI settings.',
-  opencode: 'ros.ai starts OpenCode for each Ros turn in the project folder. It can read the folder and works through ros.ai’s tools; ros.ai switches off its other tools and does not load the folder’s own OpenCode config.',
-  goose: 'ros.ai starts Goose for each Ros turn, in the mode where every tool asks first, and allows only ros.ai’s tools. It reads blocks through ros.ai, not the folder.',
+  gemini: 'ros.ai starts Gemini CLI for each ROS turn. It can read the project folder and works through ros.ai’s tools; ros.ai switches off its other tools and does not load the folder’s own Gemini CLI settings.',
+  opencode: 'ros.ai starts OpenCode for each ROS turn in the project folder. It can read the folder and works through ros.ai’s tools; ros.ai switches off its other tools and does not load the folder’s own OpenCode config.',
+  goose: 'ros.ai starts Goose for each ROS turn, in the mode where every tool asks first, and allows only ros.ai’s tools. It reads blocks through ros.ai, not the folder.',
 };
 
 /** One ACP agent on the Agents page: where it is, how to install and sign in, and a check that starts it without a prompt. */
@@ -40,6 +40,6 @@ export function AcpAgentCard({ status, onChanged }: { status?: AcpAgentStatus; o
     {status.checked && <p className={status.checked.ok ? 'connection-check' : 'inline-error'} role="status">{status.checked.detail} · {date(status.checked.at)}</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <div className="connection-actions"><button className="primary small" disabled={busy} onClick={() => void check()}>{busy && <LoaderCircle size={13} className="spin"/>}{busy ? 'Checking…' : 'Check'}</button></div>
-    {status.installed && !status.blocker && <p className="subtle">Choose {agent.label} from the model name in the Ros bar. Its provider bills its own account; what it spends does not show in Settings › Usage.</p>}
+    {status.installed && !status.blocker && <p className="subtle">Choose {agent.label} from the model name in the ROS bar. Its provider bills its own account; what it spends does not show in Settings › Usage.</p>}
   </ConnectionCard>;
 }

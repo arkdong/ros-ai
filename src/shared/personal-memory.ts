@@ -1,9 +1,9 @@
-/** What Ros remembers about the person across projects: taste and style, working habits, people and
+/** What ROS remembers about the person across projects: taste and style, working habits, people and
  * commitments. Kept lines live as Markdown files in the app data folder, one file per subject; a line
- * Ros proposes waits in the app until the person decides, under the project's permission choice. */
+ * ROS proposes waits in the app until the person decides, under the project's permission choice. */
 export type MemoryKind = 'style' | 'habit' | 'person' | 'commitment';
 export type MemoryEntry = { id: string; kind: MemoryKind; text: string; from: string; at: string; status: 'proposed' | 'kept'; projectId?: string; turnId?: string };
-/** One line as Ros proposes it in a reply or an agent receives it: what, and where it came from. */
+/** One line as ROS proposes it in a reply or an agent receives it: what, and where it came from. */
 export type MemoryLine = { kind: MemoryKind; text: string; from: string };
 export type MemoryPacket = { memory: MemoryLine[]; omitted: number; note: string };
 export type PersonalMemoryState = { enabled: boolean; folder: string; entries: MemoryEntry[]; waiting: number };

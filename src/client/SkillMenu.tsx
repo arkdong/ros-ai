@@ -11,8 +11,8 @@ const wordsStartWith = (text: string, query: string) => {
   return query.split('-').filter(Boolean).every(part => words.some(word => word.startsWith(part)));
 };
 
-/** The / menu of Ros's composers: typing / at the start of a request lists the skills that are on; picking one
- * puts /name in front, and Ros then follows that skill for the request. onKeyDown returns true when the menu
+/** The / menu of ROS's composers: typing / at the start of a request lists the skills that are on; picking one
+ * puts /name in front, and ROS then follows that skill for the request. onKeyDown returns true when the menu
  * used the key. */
 export function useSkillMenu(draft: string, setDraft: (value: string) => void, onManage?: () => void) {
   const [skills, setSkills] = useState<MenuSkill[] | null>(null), [index, setIndex] = useState(0), [dismissed, setDismissed] = useState<string | null>(null);

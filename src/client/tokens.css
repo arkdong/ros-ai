@@ -22,7 +22,7 @@
   --wait: #b45309;
   --fail: #b42318;
 
-  /* Signal, from the logo ring: only on Ros (mark, glow under the bar, edge of its open panel). */
+  /* Signal, from the logo ring: only on ROS (mark, glow under the bar, edge of its open panel). */
   --signal-start: #d6ff3c;
   --signal-mid: #7ad80c;
   --signal-end: #16901a;

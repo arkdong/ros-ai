@@ -131,8 +131,8 @@ function FirstRunSettings() {
   const options: { id: ResetOption; label: string; detail?: string }[] = plan ? [
     ...(plan.links.length ? [{ id: 'links' as const, label: 'Remove the ros-ai links in your agents', detail: plan.links.join(', ') }] : []),
     ...(plan.tokens.length ? [{ id: 'tokens' as const, label: 'Forget saved tokens', detail: plan.tokens.join(', ') }] : []),
-    ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted Ros' }] : []),
-    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the Ros download', detail: 'Ros on this computer, about 3 GB' }] : []),
+    ...(plan.cloud ? [{ id: 'cloud' as const, label: 'Sign out of hosted ROS' }] : []),
+    ...(plan.localRos ? [{ id: 'localRos' as const, label: 'Remove the ROS download', detail: 'ROS on this computer, about 3 GB' }] : []),
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
     <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
@@ -316,7 +316,7 @@ export function BalanceSettings({ publicDemo }: { publicDemo: boolean }) {
   const load = async () => { setBusy(true); try { setBalances((await api<{ balances: ProviderBalance[] }>('/api/usage/balances')).balances); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   useEffect(() => { if (!publicDemo) void load(); }, [publicDemo]);
   const mark = (id: ProviderBalance['id']) => id === 'ros-cloud' ? <span className="plugins-mark-small balance-ros"><RosMark/></span> : <BrandLogo id={id} size={20}/>;
-  // Ros cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
+  // ROS cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
   const typed = (item: ProviderBalance) => ['nebius', 'openai', 'claude'].includes(item.id);
   const saveCredit = async (id: string, amountUsd: number | null) => { await api(`/api/usage/credit/${id}`, { method: 'PUT', body: JSON.stringify({ amountUsd }) }); await load(); };
   const reports = (item: ProviderBalance) => ['ros-cloud', 'codex', 'tavily'].includes(item.id);

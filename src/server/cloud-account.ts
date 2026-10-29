@@ -17,7 +17,7 @@ const signInTab = (title: string, message: string, script = '') => `<!doctype ht
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
-/** Signs this computer in to ros.ai cloud in the person's browser, then registers the cloud as an ordinary model connection so Ros, the assistant and
+/** Signs this computer in to ros.ai cloud in the person's browser, then registers the cloud as an ordinary model connection so ROS, the assistant and
  * the agent loop use it like any other model. The session token stays on the local server in an
  * owner-only file, like the other keys; the browser page never sees it. */
 export class CloudAccount {
@@ -91,7 +91,7 @@ export class CloudAccount {
     const prior = this.account(), existing = prior && this.connections.statuses().find(item => item.id === prior.connectionId && !item.deleted);
     const fields = {
       name: 'ros.ai cloud', endpoint: `${this.url}/v1`, apiKey: token, enabled: true,
-      models: catalogue.map(item => ({ id: item.id, label: item.id === 'ros' ? 'Ros' : item.id === 'ros-deep' ? 'Ros, thinking deeper' : item.id, contextTokens: item.context_length, inputUsdPerMillion: loopback ? 0 : item.pricing.input_usd_per_million, outputUsdPerMillion: loopback ? 0 : item.pricing.output_usd_per_million, maker: { id: 'nvidia' as const, label: 'NVIDIA Nemotron', monogram: 'N' } })),
+      models: catalogue.map(item => ({ id: item.id, label: item.id === 'ros' ? 'ROS' : item.id === 'ros-deep' ? 'ROS, thinking deeper' : item.id, contextTokens: item.context_length, inputUsdPerMillion: loopback ? 0 : item.pricing.input_usd_per_million, outputUsdPerMillion: loopback ? 0 : item.pricing.output_usd_per_million, maker: { id: 'nvidia' as const, label: 'NVIDIA Nemotron', monogram: 'N' } })),
       caps: { maxInputBytes: 64000, maxOutputTokens: Math.min(...catalogue.map(item => item.max_output_tokens)), timeoutMs: 120000, maxConcurrent: 4, maxResponseBytes: 256000 },
     };
     const connection = existing ? this.connections.update(existing.id, fields) : this.connections.create(fields);

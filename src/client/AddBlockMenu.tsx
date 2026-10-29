@@ -17,7 +17,7 @@ export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { 
   const kinds = searching ? searchKinds(query, local) : mostUsedKinds(local);
   const rows: Row[] = [...kinds.map(kind => ({ id: kind.id, kind, label: kind.name, caption: kind.caption })), ...(searching ? [] : [{ id: 'all', label: 'All blocks', caption: String(BLOCK_KINDS.filter(kind => local || !kind.localOnly).length) }])];
   const current = rows[Math.min(active, rows.length - 1)];
-  // The menu stays above the Ros bar and inside the map: when it would run under either, it moves up by the overlap.
+  // The menu stays above the ROS bar and inside the map: when it would run under either, it moves up by the overlap.
   useLayoutEffect(() => {
     const menu = box.current;
     if (!menu) return;
@@ -43,7 +43,7 @@ export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { 
     }}>
     <label className="add-block-search"><Search size={13}/><input value={query} placeholder="Type to find a block" aria-label="Find a block" autoFocus onChange={event => { setQuery(event.target.value); setActive(0); setPreview(null); }}/></label>
     {!searching && <p>Most used</p>}
-    {searching && !rows.length && <p className="add-block-none">No block matches. Ros adds blocks too: ask in the bar.</p>}
+    {searching && !rows.length && <p className="add-block-none">No block matches. ROS adds blocks too: ask in the bar.</p>}
     <div className="add-block-rows" onPointerLeave={leaveRows}>
       {rows.map((row, index) => <span key={row.id} className="add-block-slot">
         {row.id === 'all' && <hr/>}

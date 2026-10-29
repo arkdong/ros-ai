@@ -8,7 +8,7 @@ import { Store, StoreError } from './store.js';
 import { MEMORY_KINDS, MEMORY_LIMITS, MEMORY_NOTE, memoryKind, type MemoryEntry, type MemoryKind, type MemoryLine, type MemoryPacket, type PersonalMemoryState } from '../shared/personal-memory.js';
 import type { ApprovalMode } from '../shared/research.js';
 
-/** Ros remembers: lines about the person, proposed from work on the map and kept as Markdown files.
+/** ROS remembers: lines about the person, proposed from work on the map and kept as Markdown files.
  * The files are the truth for kept lines, so a hand edit counts at the next turn; proposed lines wait
  * in a global record until the person decides. Every line reaches models labelled as the person's own
  * preferences, never as instructions, and nothing here leaves the computer. */
@@ -29,7 +29,7 @@ const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/g
 /** Stable across proposal and file: the same words in the same subject are the same line. */
 const lineId = (kind: MemoryKind, text: string) => createHash('sha256').update(`${kind}\n${normalize(text)}`).digest('hex').slice(0, 16);
 const day = (at: string) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-const header = (kind: MemoryKind) => `# ${memoryKind(kind).title}\n\n${memoryKind(kind).about} Ros adds a line when you keep one of its suggestions, with where it came from. Edit or delete lines freely; Ros reads this file again at the start of every turn.\n\n`;
+const header = (kind: MemoryKind) => `# ${memoryKind(kind).title}\n\n${memoryKind(kind).about} ROS adds a line when you keep one of its suggestions, with where it came from. Edit or delete lines freely; ROS reads this file again at the start of every turn.\n\n`;
 const INDEX = `# Memory\n\nRos reads these files at the start of every turn and shares the lines with the agents that work on your map, as your preferences. One file per subject; keep them short.\n\n${MEMORY_KINDS.map(item => `- ${item.file}: ${item.title.toLowerCase()}, ${item.about.charAt(0).toLowerCase()}${item.about.slice(1, -1)}`).join('\n')}\n`;
 
 export class PersonalMemory {
@@ -63,7 +63,7 @@ export class PersonalMemory {
     return { enabled: this.enabled(), folder: this.folder, entries: [...proposed, ...this.kept()], waiting: proposed.length };
   }
 
-  /** Lines Ros proposed at the end of a turn. Full access keeps them at once, with Forget as the undo;
+  /** Lines ROS proposed at the end of a turn. Full access keeps them at once, with Forget as the undo;
    * Ask and Approve for me put them in the waiting queue. Lines already kept or waiting are not repeated. */
   propose(lines: MemoryLine[], context: { projectId: string; projectTitle: string; turnId: string }, mode: ApprovalMode): MemoryEntry[] {
     if (!this.enabled()) return [];
