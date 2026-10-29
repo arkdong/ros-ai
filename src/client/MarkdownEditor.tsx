@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Annotation, EditorState, StateEffect, StateField, type Range } from '@codemirror/state';
+import { Annotation, EditorState, Facet, StateEffect, StateField, type Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as placeholderText, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, ensureSyntaxTree, syntaxHighlighting, syntaxTree } from '@codemirror/language';
@@ -76,7 +76,7 @@ function activeLines(view: EditorView) {
   return lines;
 }
 
-/** Live preview: render headings, emphasis, links, lists, tasks, quotes and rules in place and hide their marks away from the caret. */
+/** Live preview: render headings, emphasis, links, lists, tasks, quotes and rules (tables are the `tables` field) in place and hide their marks away from the caret. */
 function livePreview(view: EditorView): DecorationSet {
   const { state } = view, found: Range<Decoration>[] = [], active = activeLines(view);
   const isActive = (pos: number) => active.has(state.doc.lineAt(pos).number);
@@ -174,6 +174,163 @@ const math = StateField.define<DecorationSet>({
   provide: field => EditorView.decorations.from(field),
 });
 
+/** Where an embedded image's bytes come from. Web and data addresses load as written; other paths go to the project folder, when the editor has one. */
+const imageAddress = Facet.define<(src: string) => string | undefined, (src: string) => string | undefined>({ combine: values => values[0] ?? (() => undefined) });
+const webImage = (src: string) => /^(https?:|data:image\/)/iu.test(src);
+
+/** A picture written as ![alt](src) or Obsidian's ![[src|width]]. A broken one says what is missing instead of a broken-image icon. */
+class Picture extends WidgetType {
+  constructor(readonly src: string, readonly alt: string, readonly address: string | undefined, readonly width: number | undefined, readonly alone: boolean) { super(); }
+  eq(other: Picture) { return other.src === this.src && other.alt === this.alt && other.address === this.address && other.width === this.width && other.alone === this.alone; }
+  toDOM(view: EditorView) {
+    const holder = document.createElement('span');
+    holder.className = this.alone ? 'cm-md-image cm-md-image-block' : 'cm-md-image';
+    const missing = (why: string) => { holder.replaceChildren(); holder.classList.add('cm-md-image-missing'); holder.textContent = `${this.alt || this.src} · ${why}`; view.requestMeasure(); };
+    if (!this.address) { missing('no project folder to read it from'); return holder; }
+    const picture = document.createElement('img');
+    picture.src = this.address; picture.alt = this.alt; picture.loading = 'lazy'; picture.draggable = false;
+    if (this.alt) picture.title = this.alt;
+    if (this.width) picture.style.width = `${this.width}px`;
+    picture.addEventListener('load', () => view.requestMeasure());
+    picture.addEventListener('error', () => missing('image not found'));
+    holder.append(picture);
+    return holder;
+  }
+  // Let a click through, so it places the caret on the image and shows its source.
+  ignoreEvent() { return false; }
+}
+
+/** Embedded images: shown in place of their Markdown away from the caret, and under the line while it is being edited. A field, because the second is a block. */
+function pictures(state: EditorState): DecorationSet {
+  const found: Range<Decoration>[] = [], address = state.facet(imageAddress), text = state.doc.toString();
+  const editing = (from: number, to: number) => state.field(focus) && state.selection.ranges.some(range => range.from <= to && range.to >= from);
+  const embeds: { from: number; to: number; src: string; alt: string; width?: number }[] = [];
+  const tree = ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
+  tree.iterate({ enter: node => {
+    if (node.name === 'Table') return false;
+    if (node.name !== 'Image') return;
+    const url = node.node.getChild('URL'), marks = node.node.getChildren('LinkMark');
+    if (!url || marks.length < 2) return false;
+    const label = state.sliceDoc(marks[0].to, marks[1].from), sized = /^(.*?)\|\s*(\d{1,4})\s*$/su.exec(label);
+    embeds.push({ from: node.from, to: node.to, src: state.sliceDoc(url.from, url.to), alt: sized ? sized[1] : label, width: sized ? Number(sized[2]) : undefined });
+    return false;
+  } });
+  for (const match of text.matchAll(/!\[\[([^\]|\n]+?)(?:\|\s*(\d{1,4})\s*)?\]\]/gu)) {
+    const from = match.index!;
+    if (inCode(state, from)) continue;
+    const name = match[1].trim();
+    embeds.push({ from, to: from + match[0].length, src: name, alt: name.split('/').at(-1) ?? name, width: match[2] ? Number(match[2]) : undefined });
+  }
+  const under = new Map<number, Picture[]>();
+  for (const embed of embeds.sort((a, b) => a.from - b.from)) {
+    const line = state.doc.lineAt(embed.from), alone = !state.sliceDoc(line.from, embed.from).trim() && !state.sliceDoc(embed.to, line.to).trim();
+    const picture = new Picture(embed.src, embed.alt, webImage(embed.src) ? embed.src : address(embed.src), embed.width, alone);
+    if (!editing(line.from, line.to)) found.push(Decoration.replace({ widget: picture }).range(embed.from, embed.to));
+    else under.set(line.to, [...(under.get(line.to) ?? []), new Picture(embed.src, embed.alt, picture.address, embed.width, true)]);
+  }
+  for (const [at, shown] of under) for (const picture of shown) found.push(Decoration.widget({ widget: picture, block: true, side: 1 }).range(at));
+  return Decoration.set(found, true);
+}
+const images = StateField.define<DecorationSet>({
+  create: pictures,
+  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some(effect => effect.is(focused)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? pictures(tr.state) : value,
+  provide: field => EditorView.decorations.from(field),
+});
+
+/** One cell's Markdown as DOM, from the parse tree: bold, italic, strikethrough, code, links and $formulas$, with their marks left out. */
+function inlineDom(view: EditorView, state: EditorState, node: SyntaxNode, into: HTMLElement) {
+  const text = (from: number, to: number) => {
+    const value = state.sliceDoc(from, to);
+    let at = 0;
+    for (const match of value.matchAll(/(?<![\\$])\$(?![\s$])([^$\n]+?)(?<!\s)\$(?![$\d])/g)) {
+      into.append(value.slice(at, match.index));
+      const formula = document.createElement('span'); formula.className = 'cm-md-math';
+      katex.render(match[1], formula, { throwOnError: false }); into.append(formula);
+      at = match.index! + match[0].length;
+    }
+    into.append(value.slice(at));
+  };
+  const element = (tag: string, className?: string) => { const made = document.createElement(tag); if (className) made.className = className; into.append(made); return made; };
+  let at = node.from;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.from > at) text(at, child.from);
+    at = child.to;
+    switch (child.name) {
+      case 'URL':
+        // A bare address or email (GFM autolink) shows as written; inside [text](url) it is the hidden target.
+        if (node.name !== 'Link' && node.name !== 'Image') { const link = element('span', 'cm-md-link'); link.textContent = state.sliceDoc(child.from, child.to); }
+        break;
+      case 'EmphasisMark': case 'CodeMark': case 'LinkMark': case 'StrikethroughMark': case 'LinkTitle': case 'LinkLabel': break;
+      case 'StrongEmphasis': inlineDom(view, state, child, element('strong')); break;
+      case 'Emphasis': inlineDom(view, state, child, element('em')); break;
+      case 'Strikethrough': inlineDom(view, state, child, element('s')); break;
+      case 'InlineCode': inlineDom(view, state, child, element('code', 'cm-md-cell-code')); break;
+      case 'Link': {
+        const url = child.getChild('URL'), link = element('span', 'cm-md-link');
+        if (url) link.title = state.sliceDoc(url.from, url.to);
+        inlineDom(view, state, child, link);
+        break;
+      }
+      case 'Image': {
+        const url = child.getChild('URL'), marks = child.getChildren('LinkMark');
+        if (!url || marks.length < 2) { text(child.from, child.to); break; }
+        const src = state.sliceDoc(url.from, url.to), label = state.sliceDoc(marks[0].to, marks[1].from), sized = /^(.*?)\|\s*(\d{1,4})\s*$/su.exec(label);
+        into.append(new Picture(src, sized ? sized[1] : label, webImage(src) ? src : state.facet(imageAddress)(src), sized ? Number(sized[2]) : undefined, false).toDOM(view));
+        break;
+      }
+      case 'Escape': into.append(state.sliceDoc(child.from + 1, child.to)); break;
+      default: inlineDom(view, state, child, into);
+    }
+  }
+  if (node.to > at) text(at, node.to);
+}
+
+class Table extends WidgetType {
+  constructor(readonly source: string, readonly build: (view: EditorView) => HTMLElement) { super(); }
+  eq(other: Table) { return other.source === this.source; }
+  toDOM(view: EditorView) { return this.build(view); }
+  // Let a click through, so it places the caret in the table and shows its source.
+  ignoreEvent() { return false; }
+}
+
+/** GFM tables as a real table, unless the caret is inside one. A field, because a table spans lines. */
+function tableBlocks(state: EditorState): DecorationSet {
+  const found: Range<Decoration>[] = [], editing = (from: number, to: number) => state.field(focus) && state.selection.ranges.some(range => range.from <= to && range.to >= from);
+  (ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state)).iterate({ enter: node => {
+    if (node.name !== 'Table') return;
+    const from = state.doc.lineAt(node.from).from, to = state.doc.lineAt(node.to).to;
+    if (editing(from, to)) return false;
+    const table = node.node, delimiter = table.getChildren('TableDelimiter').find(mark => state.sliceDoc(mark.from, mark.to).includes('-'));
+    // Column alignment from the |:---|:--:|---:| row.
+    const align = delimiter ? state.sliceDoc(delimiter.from, delimiter.to).replace(/^\s*\|?|\|?\s*$/g, '').split('|').map(cell => { const value = cell.trim(); return value.startsWith(':') && value.endsWith(':') ? 'center' : value.endsWith(':') ? 'right' : value.startsWith(':') ? 'left' : ''; }) : [];
+    const build = (view: EditorView) => {
+      const wrap = document.createElement('div'); wrap.className = 'cm-md-table-wrap';
+      const grid = document.createElement('table'); grid.className = 'cm-md-table'; wrap.append(grid);
+      const head = grid.createTHead(), body = grid.createTBody();
+      for (let row = table.firstChild; row; row = row.nextSibling) {
+        if (row.name !== 'TableHeader' && row.name !== 'TableRow') continue;
+        const line = (row.name === 'TableHeader' ? head : body).insertRow(), cells = row.getChildren('TableCell');
+        // A row with fewer cells still gets every column, as GitHub draws it.
+        for (let column = 0; column < Math.max(cells.length, align.length); column++) {
+          const cell = document.createElement(row.name === 'TableHeader' ? 'th' : 'td');
+          if (align[column]) cell.style.textAlign = align[column];
+          if (cells[column]) inlineDom(view, state, cells[column], cell);
+          line.append(cell);
+        }
+      }
+      return wrap;
+    };
+    found.push(Decoration.replace({ widget: new Table(state.sliceDoc(from, to), build), block: true }).range(from, to));
+    return false;
+  } });
+  return Decoration.set(found, true);
+}
+const tables = StateField.define<DecorationSet>({
+  create: tableBlocks,
+  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some(effect => effect.is(focused)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? tableBlocks(tr.state) : value,
+  provide: field => EditorView.decorations.from(field),
+});
+
 const preview = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) { this.decorations = livePreview(view); }
@@ -181,14 +338,14 @@ const preview = ViewPlugin.fromClass(class {
 }, { decorations: value => value.decorations });
 
 /** A Markdown note you type into directly. Marks hide away from the caret, so the text reads like the rendered note. */
-export function MarkdownEditor({ value, onChange, onBlur, readOnly = false, placeholder = '', ariaLabel, autoFocus = false }: { value: string; onChange(value: string): void; onBlur?(): void; readOnly?: boolean; placeholder?: string; ariaLabel: string; autoFocus?: boolean }) {
+export function MarkdownEditor({ value, onChange, onBlur, imageUrl, readOnly = false, placeholder = '', ariaLabel, autoFocus = false }: { value: string; onChange(value: string): void; onBlur?(): void; /** The address of an embedded image that is not a web link, e.g. a file in the project folder. */ imageUrl?(src: string): string | undefined; readOnly?: boolean; placeholder?: string; ariaLabel: string; autoFocus?: boolean }) {
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
-  const handlers = useRef({ onChange, onBlur }); handlers.current = { onChange, onBlur };
+  const handlers = useRef({ onChange, onBlur, imageUrl }); handlers.current = { onChange, onBlur, imageUrl };
   useEffect(() => {
     const editor = new EditorView({
       parent: host.current!,
       state: EditorState.create({ doc: value, extensions: [
-        history(), EditorView.lineWrapping, markdown({ base: markdownLanguage }), syntaxHighlighting(style), preview, focus, math, EditorView.focusChangeEffect.of((_, focusing) => focused.of(focusing)),
+        history(), EditorView.lineWrapping, markdown({ base: markdownLanguage }), syntaxHighlighting(style), preview, focus, math, tables, images, imageAddress.of(src => handlers.current.imageUrl?.(src)), EditorView.focusChangeEffect.of((_, focusing) => focused.of(focusing)),
         keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         placeholderText(placeholder), EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly),
         EditorView.contentAttributes.of({ 'aria-label': ariaLabel, spellcheck: 'true' }),

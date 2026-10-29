@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
 import { CARD_DEFAULT_HEIGHT, cardWidth, setCardHeight } from '../shared/card-size.js';
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
-import { FILE_BYTES, fileMediaType, isPdfType } from '../shared/files.js';
+import { FILE_BYTES, fileMediaType, isPdfType, noteImageType } from '../shared/files.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
@@ -526,6 +526,25 @@ export class ProjectFolders implements NotebookFolders {
     if (info.size > FILE_BYTES) throw new StoreError(`${node.file.path} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB, the most a File block shows.`, 413);
     const entry = this.load(projectId)?.files[nodeId];
     return { absolute: files.resolve(node.file.path), name: posix.basename(node.file.path), mediaType, size: info.size, ...(entry && !entry.removed && entry.disk?.mtimeMs === info.mtimeMs && entry.disk.size === info.size ? { hash: entry.hash } : {}) };
+  }
+  /** An image a Text block's Markdown embeds. The path is read beside the block's own file first, then from the folder's top, and never leaves the folder. */
+  noteImage(projectId: string, nodeId: string, src: string): { absolute: string; mediaType: string; size: number; mtimeMs: number } {
+    const { record, files } = this.require(projectId);
+    let rel = src.trim().replace(/^<|>$/gu, '');
+    try { rel = decodeURIComponent(rel); } catch { /* used as written */ }
+    rel = rel.replace(/^\.\//u, '');
+    const mediaType = noteImageType(rel);
+    if (!mediaType) throw new StoreError('A Text block shows PNG, JPEG, GIF, WebP and AVIF images.', 415);
+    const own = record.files[nodeId]?.path, near = own && posix.dirname(own) !== '.' ? posix.normalize(posix.join(posix.dirname(own), rel)) : undefined;
+    for (const candidate of [near, rel]) {
+      if (!candidate || candidate.startsWith('../')) continue;
+      let info: Stats | null;
+      try { info = files.stat(candidate); } catch { continue; }
+      if (!info?.isFile()) continue;
+      if (info.size > FILE_BYTES) throw new StoreError(`${candidate} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB.`, 413);
+      return { absolute: files.resolve(candidate), mediaType, size: info.size, mtimeMs: info.mtimeMs };
+    }
+    throw new StoreError(`${rel} is not in the project folder.`, 404);
   }
   /** Checks a path an agent wants to show as a File block: a PDF or image in the folder that is not a block yet. */
   placeable(projectId: string, rel: string): void {
@@ -1101,6 +1120,20 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
     const name = z.string().trim().min(1).max(255).parse(req.query.name);
     if (!Buffer.isBuffer(req.body)) throw new StoreError('Send the file as the request body.');
     res.status(201).json(folders.saveFile(id.parse(req.params.id), name, req.body));
+  });
+  // An image a Text block embeds, read from the project folder.
+  app.get('/api/projects/:id/nodes/:nodeId/image', (req, res) => {
+    const image = folders.noteImage(id.parse(req.params.id), id.parse(req.params.nodeId), z.string().min(1).max(1000).parse(req.query.src));
+    const tag = `"${image.size.toString(36)}-${Math.round(image.mtimeMs).toString(36)}"`;
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('ETag', tag);
+    if (req.headers['if-none-match'] === tag) { res.status(304).end(); return; }
+    res.setHeader('Content-Type', image.mediaType);
+    res.setHeader('Content-Length', String(image.size));
+    const stream = createReadStream(image.absolute);
+    stream.on('error', () => { if (!res.headersSent) res.status(404); res.end(); });
+    stream.pipe(res);
   });
   // The file a File block shows, read from the project folder on every request. Browsers cache it by its content hash.
   app.get('/api/projects/:id/nodes/:nodeId/file', (req, res) => {
