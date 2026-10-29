@@ -14,6 +14,8 @@ const escape = (value: string) => value.replace(/[&<>"']/g, char => `&#${char.ch
 const signInTab = (title: string, message: string, script = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · ros.ai</title><link rel="icon" type="image/png" href="/brand/ros-ai-ring.png">
 <style>body{margin:0;min-height:100vh;display:flex;background:#fff;color:#0b0d10;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}main{width:100%;max-width:408px;margin:auto;padding:48px 16px}img{display:block;width:40px;height:40px;margin-bottom:28px}h1{margin:0 0 12px;font-size:26px;line-height:1.25;letter-spacing:-.4px}p{margin:0;color:#4a5059}</style></head>
 <body><main><img src="/brand/ros-ai-ring.png" alt="ros.ai"><h1>${escape(title)}</h1><p>${escape(message)}</p></main>${script}</body></html>`;
+/** Network errors where the request never left this computer, so trying again cannot repeat it. */
+const NOT_CONNECTED = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
 const accountSchema = z.object({ token: z.string().min(16).max(512), email: z.string(), connectionId: z.string() }).strict();
 const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context_length: z.number().int(), max_output_tokens: z.number().int(), pricing: z.object({ input_usd_per_million: z.number(), output_usd_per_million: z.number() }) })).min(1).max(16) });
 
@@ -38,9 +40,22 @@ export class CloudAccount {
     const temporary = `${this.file}.tmp`;
     writeFileSync(temporary, JSON.stringify(account), { mode: 0o600 }); chmodSync(temporary, 0o600); renameSync(temporary, this.file);
   }
+  /** One request to ros.ai cloud. A connection that never opened (no DNS answer, refused, timed out) is tried twice more,
+   * since nothing reached the cloud and the one-time sign-in code is still unused; what still fails says which address
+   * could not be reached and why, instead of Node's bare "fetch failed". */
   private async call(path: string, init: RequestInit = {}) {
-    const response = await fetch(`${this.url}${path}`, { ...init, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(15_000), headers: { 'Content-Type': 'application/json', ...init.headers } });
-    return { status: response.status, body: await response.json().catch(() => ({})) as any };
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await fetch(`${this.url}${path}`, { ...init, redirect: 'error', signal: init.signal ?? AbortSignal.timeout(15_000), headers: { 'Content-Type': 'application/json', ...init.headers } });
+        return { status: response.status, body: await response.json().catch(() => ({})) as any };
+      } catch (error) {
+        const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+        if (cause?.code && NOT_CONNECTED.has(cause.code) && attempt < 3) { await new Promise(resolve => setTimeout(resolve, attempt * 1000)); continue; }
+        if (!(error instanceof TypeError) || error.message !== 'fetch failed') throw error;
+        console.error(`ros.ai cloud: ${path} failed: ${cause?.code ?? ''} ${cause?.message ?? ''}`.trim());
+        throw new Error(`ros.ai could not reach ros.ai cloud at ${new URL(this.url!).host} (${cause?.code ?? cause?.message ?? 'no answer'}). Check the internet connection and try again.`);
+      }
+    }
   }
 
   async status(): Promise<CloudAccountStatus> {
