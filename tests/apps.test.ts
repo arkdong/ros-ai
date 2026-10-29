@@ -13,6 +13,7 @@ import type { ExperimentService } from '../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
 import express from 'express';
 import { attachAppRoutes, RemoteApps } from '../src/server/remote-apps.js';
+import { followScript } from '../src/server/sign-in-window.js';
 import { SlackApp } from '../src/server/slack.js';
 import type { TokenPluginId } from '../src/shared/plugins.js';
 
@@ -121,7 +122,7 @@ test('Linear signs in once in the browser, with ros.ai registering itself and PK
     assert.equal(linear.seen.resource, `${linear.base}/mcp`);
     // Another browser (no matching nonce) cannot finish it.
     await assert.rejects(f.apps.finish({ state: back.searchParams.get('state'), code: back.searchParams.get('code') }, 'x'.repeat(43)), /expired or was started in another browser/u);
-    assert.deepEqual(f.apps.waiting(back.searchParams.get('state')), { app: 'linear', window: false });
+    assert.deepEqual(f.apps.waiting(back.searchParams.get('state')), { app: 'linear', window: false, keep: false });
     assert.equal(await f.apps.finish({ state: back.searchParams.get('state'), code: back.searchParams.get('code') }, started.nonce), 'linear');
     assert.equal(f.apps.waiting(back.searchParams.get('state')), undefined, 'a state finishes once');
     assert.equal(f.apps.status('linear').connected, true);
@@ -183,6 +184,26 @@ test('a sign-in from a suggestion opens in its own window, whose page tells ros.
     const page = await back.text();
     assert.match(page, /<h1>Linear connected<\/h1><p>You can close this window\.<\/p>/u);
     assert.match(page, /new BroadcastChannel\('ros-ai-plugins'\)\.postMessage\(\{"connected":"linear"\}\)/u);
+    assert.equal(f.apps.status('linear').connected, true);
+  } finally { delete process.env.ROS_APP_LINEAR_URL; local.close(); await linear.close(); f.close(); }
+});
+
+test('a sign-in from Connect your tools keeps its window, whose page goes where ros.ai tells it next', async () => {
+  const calls: Call[] = [], linear = await signInServer(calls), f = fixture();
+  process.env.ROS_APP_LINEAR_URL = `${linear.base}/mcp`;
+  const app = express(); app.use(express.json()); attachAppRoutes(app, f.apps);
+  const local = await new Promise<import('node:http').Server>(done => { const server = app.listen(0, '127.0.0.1', () => done(server)); });
+  const base = `http://127.0.0.1:${(local.address() as AddressInfo).port}`;
+  try {
+    const started = await fetch(`${base}/api/apps/linear/connect`, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 Chrome/140' }, body: JSON.stringify({ window: true, keep: true }) });
+    const cookie = (started.headers.get('set-cookie') ?? '').split(';')[0];
+    const back = (await fetch((await started.json() as { authorizationUrl: string }).authorizationUrl, { redirect: 'manual' })).headers.get('location')!;
+    assert.deepEqual(f.apps.waiting(new URL(back).searchParams.get('state')), { app: 'linear', window: true, keep: true });
+    const page = await (await fetch(back, { headers: { cookie } })).text();
+    assert.match(page, /<h1>Linear connected<\/h1><p>ros\.ai goes on by itself\.<\/p>/u);
+    assert.match(page, /postMessage\(\{"connected":"linear"\}\)/u);
+    assert.doesNotMatch(page, /window\.close\(\),800/u, 'the window stays for the next sign-in');
+    assert.ok(page.includes(followScript), 'the page listens for where to go next');
     assert.equal(f.apps.status('linear').connected, true);
   } finally { delete process.env.ROS_APP_LINEAR_URL; local.close(); await linear.close(); f.close(); }
 });

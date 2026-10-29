@@ -62,10 +62,12 @@ export type LinkResult = { agent: AgentId; ok: boolean; message: string; command
 export type ModelLinkResult = { id: LocalModelId; ok: boolean; message: string; connectionId?: string };
 export type SetupLinkRequest = { agents?: AgentId[]; models?: LocalModelId[] };
 export type SetupLinkResponse = { agents: LinkResult[]; models: ModelLinkResult[] };
-/** Reset onboarding, for testing the first run again: what each option would undo on this computer. links: the agents
- * whose settings hold a link this ros.ai recorded; tokens: the plugins with a token saved here; cloud: signed in to
- * hosted ROS; localRos: ROS downloaded to this computer, downloading, or left from a download that stopped. */
-export type SetupResetPlan = { links: string[]; tokens: string[]; cloud: boolean; localRos: boolean };
-export type SetupResetRequest = { links?: boolean; tokens?: boolean; cloud?: boolean; localRos?: boolean };
+/** Reset all connections, for testing the first run again: what each option would undo on this computer. links: the
+ * agents whose settings hold a ros-ai entry, whichever ros.ai wrote it; tokens: the plugins with a token saved here;
+ * apps: the apps signed in to or turned on (Notion, Linear, Google Drive, Figma); models: the model servers connected
+ * (Ollama, LM Studio); cloud: signed in to hosted ROS; localRos: ROS downloaded to this computer, downloading, or left
+ * from a download that stopped. */
+export type SetupResetPlan = { links: string[]; tokens: string[]; apps: string[]; models: string[]; cloud: boolean; localRos: boolean };
+export type SetupResetRequest = { links?: boolean; tokens?: boolean; apps?: boolean; models?: boolean; cloud?: boolean; localRos?: boolean };
 /** What the reset did, in sentences, and what it could not do. The first run shows again either way. */
 export type SetupResetResponse = { done: string[]; failed: string[] };

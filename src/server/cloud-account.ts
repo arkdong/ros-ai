@@ -9,6 +9,7 @@ import type { CloudAccountStatus } from '../shared/cloud-account.js';
 import type { FeedbackNote } from '../shared/feedback.js';
 import type { InferenceConnections } from './inference-connections.js';
 import { StoreError } from './store.js';
+import { followScript } from './sign-in-window.js';
 
 const SIGN_IN_TTL_MS = 10 * 60_000;
 const escape = (value: string) => value.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
@@ -42,7 +43,8 @@ const modelsSchema = z.object({ data: z.array(z.object({ id: z.string(), context
  * owner-only file, like the other keys; the browser page never sees it. */
 export class CloudAccount {
   private readonly file: string;
-  private pending?: { state: string; verifier: string; verificationUrl: string; expiresAt: number };
+  /** keep: the tab stays open after the sign-in, because Connect your tools opens its next sign-in there. */
+  private pending?: { state: string; verifier: string; verificationUrl: string; expiresAt: number; keep?: boolean };
   private lastError = '';
   private readonly callbackUrl: string;
   constructor(private readonly url: string | undefined, dataDir: string, private readonly connections: InferenceConnections, port: number) {
@@ -98,18 +100,18 @@ export class CloudAccount {
   /** Opens one browser page: the person signs in at ros.ai cloud (GitHub, Google or email) and the
    * page sends them straight back to /api/cloud/callback here with a one-time code, which only this
    * server can swap for a token, because only it knows the PKCE verifier (RFC 8252, like CLI sign-ins). */
-  async signIn(): Promise<CloudAccountStatus> {
+  async signIn(keep = false): Promise<CloudAccountStatus> {
     if (!this.url) throw new StoreError('ros.ai cloud is not set up in this copy of ros.ai.', 404);
     const state = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const page = new URL(`${this.url}/app/sign-in`);
     for (const [key, value] of Object.entries({ redirect_uri: this.callbackUrl, state, code_challenge: challenge, code_challenge_method: 'S256' })) page.searchParams.set(key, value);
-    this.pending = { state, verifier, verificationUrl: page.href, expiresAt: Date.now() + SIGN_IN_TTL_MS };
+    this.pending = { state, verifier, verificationUrl: page.href, expiresAt: Date.now() + SIGN_IN_TTL_MS, ...(keep ? { keep } : {}) };
     this.lastError = '';
     return this.status();
   }
   /** The browser lands here after signing in; returns the page to show in that tab. */
-  async callback(query: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+  async callback(query: Record<string, unknown>): Promise<{ ok: boolean; message: string; keep?: boolean }> {
     const pending = this.pending;
     if (!pending || Date.now() > pending.expiresAt || typeof query.state !== 'string' || query.state !== pending.state) return { ok: false, message: 'This sign-in has expired. Start again from ros.ai.' };
     this.pending = undefined;
@@ -117,8 +119,8 @@ export class CloudAccount {
       const result = await this.call('/app/token', { method: 'POST', body: JSON.stringify({ code: query.code, code_verifier: pending.verifier, redirect_uri: this.callbackUrl }) });
       if (typeof result.body.access_token !== 'string') throw new Error(result.body.error_description || 'ros.ai cloud did not finish the sign-in.');
       await this.connect(result.body.access_token);
-      return { ok: true, message: 'You can close this tab and go back to ros.ai.' };
-    } catch (error) { this.lastError = error instanceof Error ? error.message : 'Sign-in failed.'; return { ok: false, message: this.lastError }; }
+      return pending.keep ? { ok: true, message: 'ros.ai goes on by itself.', keep: true } : { ok: true, message: 'You can close this tab and go back to ros.ai.' };
+    } catch (error) { this.lastError = error instanceof Error ? error.message : 'Sign-in failed.'; return { ok: false, message: this.lastError, ...(pending.keep ? { keep: true } : {}) }; }
   }
   /** Registers (or refreshes) the cloud as a model connection with the token as its key. */
   private async connect(token: string) {
@@ -178,16 +180,18 @@ export function attachCloudAccountRoutes(app: Express, cloud: CloudAccount) {
   app.post('/api/cloud/sign-in', async (_req, res) => { res.json(await cloud.signIn()); });
   // The sign-in button opens this in a new tab, which then goes on to ros.ai cloud. Opening a
   // local address straight from the click keeps browsers from blocking or blanking the tab.
-  app.get('/api/cloud/start', async (_req, res) => {
+  // ?keep=1: Connect your tools' window, which stays open for its next sign-in.
+  app.get('/api/cloud/start', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    try { const status = await cloud.signIn(); res.redirect(302, status.verificationUrl!); }
+    try { const status = await cloud.signIn(req.query.keep === '1'); res.redirect(302, status.verificationUrl!); }
     catch (error) { res.status(502).type('html').send(signInTab('Sign-in could not start', error instanceof Error ? error.message : 'Try again in a moment.')); }
   });
-  // The browser tab the sign-in opened lands here; it closes itself when it can.
+  // The browser tab the sign-in opened lands here; it closes itself when it can, unless Connect your tools keeps it, and
+  // then it goes where Connect your tools tells it next.
   app.get('/api/cloud/callback', async (req, res) => {
     const result = await cloud.callback(req.query);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(result.ok ? 200 : 400).type('html').send(result.ok ? signInTab("You're signed in", result.message, '<script>setTimeout(()=>window.close(),600)</script>') : signInTab('Sign-in did not finish', result.message));
+    res.status(result.ok ? 200 : 400).type('html').send(result.ok ? signInTab("You're signed in", result.message, result.keep ? followScript : '<script>setTimeout(()=>window.close(),600)</script>') : signInTab('Sign-in did not finish', result.message, result.keep ? followScript : ''));
   });
   app.post('/api/cloud/sign-out', async (_req, res) => { res.json(await cloud.signOut()); });
 }
