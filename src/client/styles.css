@@ -5197,3 +5197,9 @@ button.outline-title:hover {
 .app-crash { max-width: 560px; margin: 15vh auto; padding: 0 16px; font-family: inherit; color: #1f2420; }
 .app-crash pre { white-space: pre-wrap; background: #f4f5f2; padding: 12px; border-radius: 8px; font-size: 13px; }
 .app-crash button { margin-top: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid #c9cdc5; background: #fff; cursor: pointer; }
+
+/* Remove project: the choice to send the folder to the Trash too. */
+.remove-project-files { margin: 4px 0 16px; padding: 12px 14px; border: 1px solid #eee; border-radius: 12px; background: #fff; }
+.remove-project-files .settings-option input { width: 16px; height: 16px; min-height: 0; padding: 0; margin-top: 2px; }
+.remove-project-files small { word-break: break-all; }
+.remove-project-files p { margin: 8px 0 0 26px; font-size: 12px; line-height: 1.5; color: #6b6b6b; }

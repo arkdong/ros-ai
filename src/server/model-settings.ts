@@ -11,7 +11,7 @@ export class ModelSettings {
   constructor(private readonly store: Store, private readonly nebiusModel = process.env.ROS_NEBIUS_MODEL ?? DEFAULT_MODEL) {}
   settings(projectId: string): ProjectModelSettings {
     this.store.getProject(projectId);
-    return this.store.record<ProjectModelSettings>('model-settings', projectId) ?? { default: { provider: 'nebius', model: this.nebiusModel }, overrides: {} };
+    return this.store.record<ProjectModelSettings>('model-settings', projectId) ?? { default: this.lastModel() ?? { provider: 'nebius', model: this.nebiusModel }, overrides: {} };
   }
   resolve(projectId: string, nodeId?: string | null) {
     return resolveModelSetting(this.settings(projectId), this.store.getProject(projectId).canvas.nodes, nodeId);
@@ -36,9 +36,16 @@ export class ModelSettings {
     } else {
       if (!selection) throw new StoreError('Choose a project default model.');
       settings.default = selection;
+      this.store.rememberRosChoice({ model: selection });
     }
     this.store.saveRecord('model-settings', projectId, projectId, settings);
     return this.read(projectId);
+  }
+  /** The model last chosen for ROS in any project, while it is still on offer; a project that never chose starts from it. */
+  private lastModel(): ModelSelection | undefined {
+    const last = this.store.lastRosChoice().model;
+    if (!last) return undefined;
+    try { this.validate(last); return { ...last }; } catch { return undefined; }
   }
   /** The Nebius models on offer: the configured default (ROS_NEBIUS_MODEL may name one outside the list) and the catalogue. */
   private nebiusModels(): string[] {

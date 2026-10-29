@@ -18,6 +18,7 @@ import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
 import { paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
 const MANIFEST = '.ros-ai/project.json';
@@ -395,7 +396,8 @@ export class ProjectFolders implements NotebookFolders {
     if (!isAbsolute(path) || !existsSync(path) || !statSync(path).isDirectory()) throw new StoreError('Choose an existing folder.');
     const manifest = this.manifest(realpathSync(path));
     const owner = manifest && [...this.store.listProjects(), ...this.store.listTrashedProjects()].find(project => project.id === manifest.projectId);
-    if (owner && this.store.listTrashedProjects().some(project => project.id === owner.id)) throw new StoreError(`This folder belongs to “${owner.title}”, which is in Trash. Restore that project first.`, 409);
+    // A removed project whose folder was kept comes back when its folder is opened again.
+    if (owner && this.store.listTrashedProjects().some(project => project.id === owner.id)) this.store.restoreProject(owner.id);
     if (owner) {
       const real = this.prepare(path, owner.id);
       this.connect(owner.id, real, manifest);
@@ -406,6 +408,30 @@ export class ProjectFolders implements NotebookFolders {
     try { this.connect(project.id, real, manifest, true); }
     catch (error) { this.store.trashProject(project.id); throw error; }
     return this.store.getProject(project.id);
+  }
+
+  /** A removed project's folder stops syncing; it stays on disk unless moved to the Trash. */
+  release(projectId: string): void {
+    this.active.delete(projectId);
+    this.watchers.get(projectId)?.close(); this.watchers.delete(projectId);
+    clearTimeout(this.timers.get(projectId)); this.timers.delete(projectId);
+    this.exportDue.delete(projectId);
+  }
+  /** A restored project's folder syncs again. */
+  resume(projectId: string): void { if (this.load(projectId)) this.activate(projectId); }
+
+  /** Moves a removed project's folder, and every file in it, to the computer's Trash, then forgets the folder. */
+  async moveFolderToTrash(projectId: string): Promise<void> {
+    const record = this.load(projectId);
+    if (!record) return;
+    const root = this.verify(record);
+    if (typeof root !== 'string') throw new StoreError(`${root.reason} Nothing was moved to the Trash.`, 409);
+    this.release(projectId);
+    try { await moveToTrash(root); }
+    catch (error) { throw new StoreError(`The folder could not be moved to the Trash (${message(error)}). The project and its files were kept.`, 500); }
+    this.store.removeRecord(RECORD, projectId, projectId);
+    this.checked.delete(projectId);
+    this.pendingText.delete(projectId);
   }
 
   private manifest(root: string): Manifest | undefined {
