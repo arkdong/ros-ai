@@ -285,7 +285,7 @@ export class CodexAgentService implements AgentRuntime {
     const save = () => this.store.saveRecord('agent-attempt', requestId, request.projectId, attempt);
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
-    let thoughtMark = 0, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
+    let thoughtMark = 0, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, toolsSpent = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
     // What Codex said went wrong upstream, such as a model the ChatGPT plan no longer serves; shown when the turn fails.
     let upstreamError = '';
     // Codex passes the provider's error body through as JSON text; its inner message is the readable part.
@@ -355,7 +355,7 @@ export class CodexAgentService implements AgentRuntime {
       if (method === 'item/tool/call') {
         if (stopped || request.signal.aborted || Date.now() > Date.parse(attempt.at) + reservation.seconds * 1000) return { success: false, contentItems: [{ type: 'inputText', text: 'The authorized turn has stopped. No tool effect was applied.' }] };
         if (params.threadId !== threadId || (turnId && params.turnId !== turnId)) throw new StoreError('Tool request belongs to another agent context.', 403);
-        if (++toolCalls > reservation.toolCalls) { stop(); return { success: false, contentItems: [{ type: 'inputText', text: 'The cumulative tool-call reservation is exhausted. No effect was applied.' }] }; }
+        if (++toolCalls > reservation.toolCalls) { toolsSpent = true; stop(); return { success: false, contentItems: [{ type: 'inputText', text: 'The cumulative tool-call reservation is exhausted. No effect was applied.' }] }; }
         const name = String(params.tool ?? '');
         // What Codex wrote since its last tool call is shown as the reason for this one.
         const thought = attempt.reply.slice(thoughtMark).trim(); thoughtMark = attempt.reply.length;
@@ -401,13 +401,13 @@ export class CodexAgentService implements AgentRuntime {
       await terminal;
       settle(settlement ?? 'unknown');
       // A turn that finished just as it reached its cap still answers.
-      if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : `Codex turn failed${upstreamError ? `: ${upstreamError}` : '.'} Captured requests, tool activity and reservations remain saved; no automatic retry occurred.`, 503);
+      if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : toolsSpent ? `Codex used all ${reservation.toolCalls} tool calls this turn allows before finishing. Its work so far is saved; ask it to continue, or narrow the question.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : `Codex turn failed${upstreamError ? `: ${upstreamError}` : '.'} Captured requests, tool activity and reservations remain saved; no automatic retry occurred.`, 503);
       if (!attempt.reply.trim()) throw new StoreError('Codex completed without a readable reply. Inspect the captured tool/progress record; no automatic retry occurred.', 503);
       attempt.status = 'completed'; save();
       return { reply: attempt.reply, sessionId: threadId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) };
     } catch (error) {
       attempt.status = settlement === 'interrupted' ? 'interrupted' : inferenceSubmitted && !settlement ? 'uncertain' : 'failed';
-      attempt.error = timedOut ? 'Codex reached its granted wall-time. Cancellation was requested; unconfirmed outcomes and full reservations are preserved.' : error instanceof StoreError ? error.message : 'Codex failed locally. No automatic retry occurred.'; save();
+      attempt.error = timedOut ? `Codex reached this turn’s ${Math.round(reservation.seconds / 60)}-minute limit and was stopped. Its work so far is saved; ask it to continue, or narrow the question.` : error instanceof StoreError ? error.message : 'Codex failed locally. No automatic retry occurred.'; save();
       // Nothing was sent, or the turn ended and Codex reported its use: settle. Otherwise the whole cap stays counted.
       if (usage && !settled) {
         if (!inferenceSubmitted) { settled = true; attempt.costUsd = 0; save(); this.execution.connectionBudgets.settle('openai', usage.id, 0, { requestId, model, outcome: 'Codex did not start a turn; no model request was sent' }); }
