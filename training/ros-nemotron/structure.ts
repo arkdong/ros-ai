@@ -61,6 +61,31 @@ export async function makeMap(model: ChatAdapter, domain: string, index: number,
   return tidyMap(Array.isArray(answer?.maps) ? answer.maps[0] : answer, domain);
 }
 
+/** The teacher writes links more freely than it groups: about a third of a first run's links were a stretch ("ICU waits
+ * supports discharge paperwork waits"). So each map's links are checked once more, one map per request, before training. */
+const CHECK = `You check the links on a ros.ai research map before it is used to teach an assistant which blocks to link. A link reads "<from> <word> <to>", with one of the map's words: ${LINK_WORDS.join(', ')}.
+Keep a link only when a careful researcher would draw it: given the two blocks' titles and texts the sentence is plainly true, the word is the right one, and it tells the reader something. Drop a link that is vague, a stretch, the wrong way round or in the wrong word.
+Return JSON {"links":[{"from","to","why","keep"}]}, one entry per link in the order given, with "from" and "to" as the slugs given; "why" is a few words, "keep" is true or false.`;
+
+export type LinkCheck = { mapId: string; links: (StructureMap['links'][number] & { keep: boolean; why?: string })[] };
+
+/** The teacher's verdict on each of a map's links, matched by slugs or else by position; a link it does not answer for is kept. */
+export async function checkLinks(model: ChatAdapter, map: StructureMap): Promise<LinkCheck> {
+  const title = (slug: string) => map.blocks.find(block => block.slug === slug)!.title;
+  const ends = map.blocks.filter(block => map.links.some(link => link.from === block.slug || link.to === block.slug));
+  const answer = await ask<{ links?: { from?: unknown; to?: unknown; why?: unknown; keep?: unknown }[] }>(model, CHECK, `Map: ${map.title} (${map.domain})\n\nBlocks:\n${ends.map(block => `${block.slug}: ${block.title}\n${block.text}`).join('\n\n')}\n\nLinks:\n${map.links.map(link => `- ${link.from} ${link.word} ${link.to}: “${title(link.from)}” ${link.word} “${title(link.to)}”`).join('\n')}`, 2_000);
+  const verdicts = Array.isArray(answer?.links) ? answer.links : [];
+  return {
+    mapId: map.id,
+    links: map.links.map((link, index) => {
+      const verdict = verdicts.find(item => item?.from === link.from && item?.to === link.to) ?? (verdicts.length === map.links.length ? verdicts[index] : undefined);
+      return { ...link, keep: verdict?.keep !== false, ...(typeof verdict?.why === 'string' ? { why: verdict.why.slice(0, 200) } : {}) };
+    }),
+  };
+}
+/** The map with only the links its check kept; its id stays, so its split and its cases' seed do too. */
+export const keptLinks = (map: StructureMap, check?: LinkCheck): StructureMap => check ? { ...map, links: map.links.filter(link => check.links.find(item => item.from === link.from && item.to === link.to)?.keep !== false) } : map;
+
 /** A domain's maps count once per title. */
 export const mapKey = (map: Pick<StructureMap, 'domain' | 'title'>) => `${map.domain}\u0000${map.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`;
 export const uniqueMaps = (maps: StructureMap[]) => { const seen = new Set<string>(); return maps.filter(map => !seen.has(mapKey(map)) && Boolean(seen.add(mapKey(map)))); };

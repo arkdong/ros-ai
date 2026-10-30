@@ -11,7 +11,8 @@
  *   smoke      the whole path offline with a scripted teacher; spends nothing
  * Round 2's structure family (structure.ts): when, what to group and what to link after an agent's turn
  *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --concurrency=6 --max-usd=2
- *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure)
+ *   structure-check-links  teacher checks each map's links once more   --max-usd=1
+ *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure); --all-links skips the check
  *   structure-eval     scores a model on the held-out maps         --student-url=... --label=x, or --model=rules|teacher
  *   structure-smoke    the structure path offline on a hand-written map; spends nothing */
 import { createHash } from 'node:crypto';
@@ -33,14 +34,16 @@ import { web } from './world.js';
 import { check } from './check.js';
 import { isValidation, toSample } from './export.js';
 import { scriptedTeacher, scriptedWeb } from './smoke.js';
-import { SMOKE_MAP, answerFor, askFor, evaluate, makeCases, makeMap, mapKey, scoreCase, summarise, toStructureSample, uniqueMaps, type StructureCase, type StructureMap } from './structure.js';
+import { SMOKE_MAP, answerFor, askFor, checkLinks, evaluate, keptLinks, makeCases, makeMap, mapKey, scoreCase, summarise, toStructureSample, uniqueMaps, type LinkCheck, type StructureCase, type StructureMap } from './structure.js';
 import { landingPlan } from '../../src/server/ros-layer.js';
+import { LINK_WORDS } from '../../src/shared/links.js';
 
 const step = process.argv[2];
 const files = {
   snapshot: () => path('snapshot.json'), fixtures: () => path('fixtures.jsonl'), evalFixtures: () => path('eval-fixtures.jsonl'),
   tasks: () => path('tasks.jsonl'), evalTasks: () => path('eval-tasks.jsonl'), trajectories: () => path('trajectories.jsonl'),
   maps: () => path('structure', 'maps.jsonl'), evalMaps: () => path('structure', 'eval-maps.jsonl'), evalCases: () => path('structure', 'eval-cases.jsonl'),
+  linkChecks: () => path('structure', 'link-checks.jsonl'),
 };
 /** A map's cases come from a seed of its own, so every export takes the same shape away. */
 const casesOf = (map: StructureMap) => makeCases(map, seeded(parseInt(createHash('md5').update(map.id).digest('hex').slice(0, 8), 16)));
@@ -212,8 +215,22 @@ if (step === 'snapshot') {
     });
   }
   console.log(`${readJsonl(files.maps()).length} training maps, ${readJsonl(files.evalMaps()).length} evaluation maps. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
+} else if (step === 'structure-check-links') {
+  const ledger = new Ledger(Number(arg('max-usd', '1'))), model = teacher(ledger, 'structure-check-links', false);
+  const done = new Set(readJsonl<LinkCheck>(files.linkChecks()).map(check => check.mapId));
+  const todo = [...readJsonl<StructureMap>(files.maps()), ...readJsonl<StructureMap>(files.evalMaps())].filter(map => map.links.length && !done.has(map.id));
+  await pool(todo, Number(arg('concurrency', '6')), async map => {
+    const check = await checkLinks(model, map).catch(error => { if ((error as Error).message.startsWith('Spend cap')) throw error; console.warn(`${map.id}: ${(error as Error).message.slice(0, 200)}`); return null; });
+    if (check) appendJsonl(files.linkChecks(), check);
+  });
+  const links = readJsonl<LinkCheck>(files.linkChecks()).flatMap(check => check.links);
+  console.table(LINK_WORDS.map(word => ({ word, links: links.filter(link => link.word === word).length, kept: links.filter(link => link.word === word && link.keep).length })));
+  console.log(`${links.filter(link => link.keep).length} of ${links.length} links kept${todo.length ? '' : ' (nothing left to check)'}. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
 } else if (step === 'structure-export') {
-  const cases = uniqueMaps(readJsonl<StructureMap>(files.maps())).flatMap(casesOf), held = uniqueMaps(readJsonl<StructureMap>(files.evalMaps())).flatMap(casesOf);
+  // The links a check dropped stay out, unless --all-links asks for the maps as written.
+  const checks = new Map(readJsonl<LinkCheck>(files.linkChecks()).map(check => [check.mapId, check]));
+  const read = (file: string) => uniqueMaps(readJsonl<StructureMap>(file)).map(map => flag('all-links') ? map : keptLinks(map, checks.get(map.id)));
+  const cases = read(files.maps()).flatMap(casesOf), held = read(files.evalMaps()).flatMap(casesOf);
   const rows = cases.flatMap(item => { const sample = toStructureSample(item); return sample ? [{ item, sample }] : []; });
   for (const [split, keep] of [['train', false], ['val', true]] as const) writeFileSync(path('structure', `${split}.jsonl`), rows.filter(({ item }) => isValidation(item.mapId) === keep).map(({ sample }) => JSON.stringify(sample)).join('\n') + '\n');
   writeFileSync(files.evalCases(), held.map(item => JSON.stringify(item)).join('\n') + '\n');

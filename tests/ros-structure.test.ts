@@ -5,7 +5,7 @@ import test from 'node:test';
 import { landingPlan, type LandingPlan } from '../src/server/ros-layer.js';
 import { seeded } from '../training/ros-nemotron/generate.js';
 import { ChatAdapter } from '../training/ros-nemotron/lib.js';
-import { SMOKE_MAP, answerFor, askFor, makeCases, makeMap, scoreCase, summarise, tidyMap, toStructureSample, uniqueMaps } from '../training/ros-nemotron/structure.js';
+import { SMOKE_MAP, answerFor, askFor, checkLinks, keptLinks, makeCases, makeMap, scoreCase, summarise, tidyMap, toStructureSample, uniqueMaps } from '../training/ros-nemotron/structure.js';
 
 // Round 2's structure family: well-organised maps lose their shape, and ROS learns to give it back, or to change nothing.
 
@@ -74,6 +74,23 @@ test('the scores: the original shape is full marks, an empty answer only gets th
   assert.deepEqual([score.link.tp, score.link.direction], [links.target.links.length, 0]);
 });
 
+/** A teacher that answers from a list, and the user message of each request it got. */
+async function stubTeacher(replies: string[]) {
+  const asked: string[] = [];
+  const server = createServer((request, response) => {
+    let body = '';
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      asked.push(JSON.parse(body).messages.at(-1).content);
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: replies.shift() } }], usage: { prompt_tokens: 10, completion_tokens: 10 } }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const model = new ChatAdapter({ base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, key: 'test', model: 'teacher', contextTokens: 128_000, thinking: false, purpose: 'structure', usdPerMillion: { input: 0, output: 0 } });
+  return { model, asked, close: () => server.close() };
+}
+
 test('one map per request: Token Factory’s error text is tried again, a bare map is taken, and the request names the titles before it', async () => {
   const bare = {
     title: 'Shade and street heat',
@@ -87,24 +104,32 @@ test('one map per request: Token Factory’s error text is tried again, a bare m
     ],
     links: [{ from: 'logs', to: 'q', word: 'answers' }],
   };
-  const replies = ['[ERROR: Agent failed: request timed out after 90 seconds]', JSON.stringify(bare)], asked: string[] = [];
-  const server = createServer((request, response) => {
-    let body = '';
-    request.on('data', chunk => { body += chunk; });
-    request.on('end', () => {
-      asked.push(JSON.parse(body).messages.at(-1).content);
-      response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: replies.shift() } }], usage: { prompt_tokens: 10, completion_tokens: 10 } }));
-    });
-  });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const teacher = await stubTeacher(['[ERROR: Agent failed: request timed out after 90 seconds]', JSON.stringify(bare)]);
   try {
-    const model = new ChatAdapter({ base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, key: 'test', model: 'teacher', contextTokens: 128_000, thinking: false, purpose: 'structure-maps', usdPerMillion: { input: 0, output: 0 } });
-    const map = await makeMap(model, 'urban heat', 0, ['Heat in Amsterdam']);
+    const map = await makeMap(teacher.model, 'urban heat', 0, ['Heat in Amsterdam']);
     assert.equal(map?.title, 'Shade and street heat');
-    assert.equal(asked.length, 2);
-    assert.match(asked[1], /^Write one map in the domain: urban heat\. It .+\nTake another angle than the maps already written in this domain: Heat in Amsterdam\.$/su);
+    assert.equal(teacher.asked.length, 2);
+    assert.match(teacher.asked[1], /^Write one map in the domain: urban heat\. It .+\nTake another angle than the maps already written in this domain: Heat in Amsterdam\.$/su);
     // A title the domain already has, in other case or punctuation, counts once; the same title in another domain is its own map.
     assert.equal(uniqueMaps([map!, { ...map!, title: 'shade and street-heat!' }, { ...map!, domain: 'noise' }]).length, 2);
-  } finally { server.close(); }
+  } finally { teacher.close(); }
+});
+
+test('a link check drops the links the teacher calls a stretch, matched by slugs or by position, and keeps the map’s id', async () => {
+  const [one, two, three, four] = SMOKE_MAP.links;
+  const teacher = await stubTeacher([
+    JSON.stringify({ links: [{ from: two.from, to: two.to, why: 'a stretch', keep: false }, { from: one.from, to: one.to, why: 'true', keep: true }] }),
+    JSON.stringify({ links: [{ from: 'x', to: 'y', keep: true }, { from: 'x', to: 'y', keep: false }, { from: 'x', to: 'y', keep: true }, { from: 'x', to: 'y', keep: true }] }),
+  ]);
+  try {
+    const check = await checkLinks(teacher.model, SMOKE_MAP);
+    assert.deepEqual(check.links.map(link => link.keep), [true, false, true, true]);
+    assert.match(teacher.asked[0], new RegExp(`- ${one.from} ${one.word} ${one.to}: “`, 'u'));
+    const kept = keptLinks(SMOKE_MAP, check);
+    assert.deepEqual(kept.links, [one, three, four]);
+    assert.equal(kept.id, SMOKE_MAP.id);
+    // Slugs the teacher got wrong: its answers count by position when there is one per link.
+    assert.deepEqual((await checkLinks(teacher.model, SMOKE_MAP)).links.map(link => link.keep), [true, false, true, true]);
+    assert.equal(keptLinks(SMOKE_MAP).links.length, SMOKE_MAP.links.length);
+  } finally { teacher.close(); }
 });
