@@ -1,63 +1,236 @@
 {
   "title": "Date night · Friday 6 November",
-  "note": "Sample data made up for this demo: the restaurants, ratings and free tables are invented, and the photos are illustrations. No live search or booking happened.",
+  "note": "Real Amsterdam restaurants. Addresses, prices and booking details come from public guides and the Michelin Guide, read on 30 October 2026; each place links its source. Free tables were not checked in this recorded tour, and the pictures are illustrations, not the restaurants' own photos.",
   "idea": {
     "title": "Dinner date next Friday",
     "text": "Find a restaurant for a date next Friday, 6 November, around 19:30 in Amsterdam.\n\n- We like **Japanese, French, Asian and Spanish** food\n- Somewhere quiet enough to talk, about €50–90 a head\n- Show me which ones still have a table, where they are on a map, and plenty of photos of the food and the room"
   },
   "agents": [
-    { "key": "claude", "runtime": "claude", "title": "Find Japanese and French places", "cuisines": ["japanese", "french"],
-      "text": "Search for Japanese and French restaurants in central Amsterdam that suit a date: reviews, price, the room, and how to book." },
-    { "key": "codex", "runtime": "codex", "title": "Find Asian and Spanish places", "cuisines": ["asian", "spanish"],
-      "text": "Search for other Asian and Spanish restaurants in central Amsterdam that suit a date: reviews, price, the room, and how to book." }
+    {
+      "key": "claude",
+      "runtime": "claude",
+      "title": "Find Japanese and French places",
+      "cuisines": [
+        "japanese",
+        "french"
+      ],
+      "text": "Search for Japanese and French restaurants in Amsterdam that suit a date: price, the room, how to book, and a source for each."
+    },
+    {
+      "key": "codex",
+      "runtime": "codex",
+      "title": "Find Asian and Spanish places",
+      "cuisines": [
+        "asian",
+        "spanish"
+      ],
+      "text": "Search for other Asian and Spanish restaurants in Amsterdam that suit a date: price, the room, how to book, and a source for each."
+    }
   ],
   "cuisines": {
-    "japanese": { "title": "Japanese", "color": "#d1495b" },
-    "french":   { "title": "French",   "color": "#2e5aac" },
-    "asian":    { "title": "Asian",    "color": "#e09f3e" },
-    "spanish":  { "title": "Spanish",  "color": "#3a9d5d" }
+    "japanese": {
+      "title": "Japanese",
+      "color": "#d1495b"
+    },
+    "french": {
+      "title": "French",
+      "color": "#2e5aac"
+    },
+    "asian": {
+      "title": "Asian",
+      "color": "#e09f3e"
+    },
+    "spanish": {
+      "title": "Spanish",
+      "color": "#3a9d5d"
+    }
   },
-  "slots": ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00"],
   "places": [
-    { "id": "kumo", "name": "Kumo Izakaya", "cuisine": "japanese", "area": "De Pijp", "lat": 52.3545, "lon": 4.8935, "price": 55, "rating": 4.6,
-      "about": "A busy izakaya with a long counter and a few booths at the back. Small plates to share: grilled black cod, chicken skewers, chawanmushi.",
-      "date": "Ask for a booth: the counter is fun but loud.", "slots": ["full", "few", "open", "open", "few", "full"] },
-    { "id": "hana", "name": "Hana Omakase", "cuisine": "japanese", "area": "Jordaan", "lat": 52.3762, "lon": 4.8812, "price": 95, "rating": 4.8,
-      "about": "Ten seats around one chef. A fixed omakase of twelve courses, mostly nigiri.",
-      "date": "Special, but booked out four weeks ahead.", "slots": ["full", "full", "full", "full", "full", "full"] },
-    { "id": "sora", "name": "Sora Ramen & Sake", "cuisine": "japanese", "area": "Oud-West", "lat": 52.3648, "lon": 4.8695, "price": 35, "rating": 4.4,
-      "about": "Rich tonkotsu ramen and a long sake list. Quick, warm and casual.",
-      "date": "No bookings, walk in only; usually a queue on Fridays.", "slots": ["walk-in", "walk-in", "walk-in", "walk-in", "walk-in", "walk-in"] },
-    { "id": "canal", "name": "Le Petit Canal", "cuisine": "french", "area": "Prinsengracht", "lat": 52.3698, "lon": 4.8852, "price": 65, "rating": 4.6,
-      "about": "A candle-lit bistro in a canal-house basement. Steak frites, duck confit, a short list of Loire wines.",
-      "date": "Ask for the window table on the canal.", "slots": ["open", "open", "few", "open", "open", "full"] },
-    { "id": "lumiere", "name": "Maison Lumière", "cuisine": "french", "area": "Oud-Zuid", "lat": 52.3562, "lon": 4.8770, "price": 90, "rating": 4.7,
-      "about": "Modern French tasting menu in a bright room near the Museumplein.",
-      "date": "Only a 21:30 waitlist left for Friday.", "slots": ["full", "full", "full", "full", "full", "full"] },
-    { "id": "margaux", "name": "Café Margaux", "cuisine": "french", "area": "Plantage", "lat": 52.3664, "lon": 4.9108, "price": 50, "rating": 4.5,
-      "about": "A small wine bar and bistro by the Hortus. Cheese, terrine, and one dish of the day.",
-      "date": "Relaxed and quiet, good for talking.", "slots": ["open", "open", "open", "few", "open", "open"] },
-    { "id": "jade", "name": "Jade Garden", "cuisine": "asian", "area": "Nieuwmarkt", "lat": 52.3722, "lon": 4.9005, "price": 45, "rating": 4.5,
-      "about": "Cantonese, with dim sum served into the evening and a roast duck worth the trip.",
-      "date": "Lively, big round tables; ask for a table for two by the window.", "slots": ["open", "few", "few", "open", "open", "open"] },
-    { "id": "saigon", "name": "Saigon Lanterns", "cuisine": "asian", "area": "De Pijp", "lat": 52.3515, "lon": 4.8968, "price": 40, "rating": 4.4,
-      "about": "Vietnamese with paper lanterns and a small courtyard. Pho, crispy rice pancakes, lemongrass beef.",
-      "date": "Cosy and warm, good value.", "slots": ["open", "open", "open", "few", "full", "full"] },
-    { "id": "bangkok", "name": "Bangkok Kitchen Club", "cuisine": "asian", "area": "Oost", "lat": 52.3611, "lon": 4.9255, "price": 45, "rating": 4.6,
-      "about": "Thai, cooked over charcoal in an open kitchen. Green curry, grilled pork neck, mango sticky rice.",
-      "date": "A little further out, by tram 9 from Centraal.", "slots": ["few", "open", "open", "open", "open", "few"] },
-    { "id": "sol", "name": "Taberna Sol", "cuisine": "spanish", "area": "Jordaan", "lat": 52.3784, "lon": 4.8838, "price": 45, "rating": 4.5,
-      "about": "Tapas and vermouth in a narrow room with tiles from Seville. Croquetas, gambas al ajillo, Iberian ham.",
-      "date": "Book the 20:00 slot: the bar is calmer after the after-work crowd.", "slots": ["full", "full", "few", "open", "open", "open"] },
-    { "id": "casamar", "name": "Casa Mar", "cuisine": "spanish", "area": "Houthavens", "lat": 52.3885, "lon": 4.8862, "price": 60, "rating": 4.6,
-      "about": "Seafood and paella for two on the water, with a terrace heater outside.",
-      "date": "Fully booked on Friday; Saturday is open.", "slots": ["full", "full", "full", "full", "full", "full"] },
-    { "id": "luna", "name": "Bodega Luna", "cuisine": "spanish", "area": "De Pijp", "lat": 52.3570, "lon": 4.8905, "price": 50, "rating": 4.3,
-      "about": "Natural wine and small plates from northern Spain, in a corner bodega.",
-      "date": "Fine, though reviews mention slow service on busy nights.", "slots": ["open", "open", "open", "open", "few", "few"] }
+    {
+      "id": "yamazato",
+      "name": "Yamazato",
+      "cuisine": "japanese",
+      "area": "De Pijp, Hotel Okura",
+      "address": "Ferdinand Bolstraat 333",
+      "lat": 52.3497,
+      "lon": 4.8932,
+      "price": "kaiseki from about €140",
+      "about": "Kaiseki in Hotel Okura: a menu of nine or ten courses, with sake pairing.",
+      "date": "Guides suggest booking two to four weeks ahead.",
+      "book": "Phone +31 20 678 8300 or okura.nl",
+      "url": "https://okura.nl/yamazato-experience",
+      "source": "https://www.timeout.com/amsterdam/restaurants/yamazato",
+      "aside": "Over budget: the kaiseki menu starts at about €140 a head."
+    },
+    {
+      "id": "hosokawa",
+      "name": "Hosokawa",
+      "cuisine": "japanese",
+      "area": "Leidseplein",
+      "address": "Max Euweplein 22",
+      "lat": 52.3624,
+      "lon": 4.8815,
+      "price": "about €50–80",
+      "about": "Teppanyaki: the chef cooks on the iron plate in front of you.",
+      "date": "Ask for seats at the plate; guides recommend booking for weekends.",
+      "book": "Phone +31 20 638 8086 or hosokawa.nl",
+      "url": "https://www.hosokawa.nl",
+      "source": "https://restaurantsforkings.com/blog/best-japanese-restaurants-amsterdam-2026"
+    },
+    {
+      "id": "izakaya",
+      "name": "Izakaya",
+      "cuisine": "japanese",
+      "area": "De Pijp, Sir Albert Hotel",
+      "address": "Albert Cuypstraat 2-6",
+      "lat": 52.3568,
+      "lon": 4.8873,
+      "price": "see the menu",
+      "about": "Japanese small plates with South American touches, from a robata grill and a hibachi, made to share.",
+      "date": "Lively; good if you like to share many small plates.",
+      "book": "Their website",
+      "url": "https://www.iamsterdam.com/en/whats-on/calendar/eating-and-drinking/restaurants/izakaya",
+      "source": "https://www.amsterdamnow.com/en/eten-drinken/aziatisch/izakaya"
+    },
+    {
+      "id": "delamer",
+      "name": "Bistro de la Mer",
+      "cuisine": "french",
+      "area": "Utrechtsestraat",
+      "address": "Utrechtsestraat 57",
+      "lat": 52.364,
+      "lon": 4.8985,
+      "price": "about €75 for three courses",
+      "about": "A seafood bistro with a Michelin star: oysters, lobster and the day's fish, all à la carte.",
+      "date": "Guides say book three to four weeks ahead for Thursday to Saturday dinners.",
+      "book": "Phone +31 20 237 4790",
+      "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/bistro-de-la-mer",
+      "source": "https://nltimes.nl/2025/11/15/value-money-12-cheapest-one-michelin-star-restaurants-netherlands"
+    },
+    {
+      "id": "auberge",
+      "name": "Auberge",
+      "cuisine": "french",
+      "area": "De Pijp",
+      "address": "Albert Cuypstraat 58-60",
+      "lat": 52.3562,
+      "lon": 4.8907,
+      "price": "see the menu",
+      "about": "French cooking in a bistro room on the Albert Cuypstraat.",
+      "date": "A bistro setting, easy to talk.",
+      "book": "Phone +31 20 845 2005",
+      "url": "https://www.yourlittleblackbook.me/de/auberge-amsterdam/",
+      "source": "https://www.amsterdamfoodie.nl/2025/french-restaurants-in-amsterdam/"
+    },
+    {
+      "id": "garcon",
+      "name": "Café Garçon",
+      "cuisine": "french",
+      "area": "Oud-Zuid",
+      "address": "Johannes Verhulststraat 105",
+      "lat": 52.3541,
+      "lon": 4.878,
+      "price": "see the menu",
+      "about": "A Parisian-style bistro, open from breakfast to the aperitif, with classic French dishes.",
+      "date": "Cosy and small; sister of Brasserie Margaux.",
+      "book": "cafegarcon.nl",
+      "url": "https://www.horecatrends.com/en/?p=80316",
+      "source": "https://www.yourlittleblackbook.me/en/bistros-in-amsterdam/"
+    },
+    {
+      "id": "patanegra",
+      "name": "Pata Negra",
+      "cuisine": "spanish",
+      "area": "Utrechtsestraat",
+      "address": "Utrechtsestraat 124",
+      "lat": 52.3612,
+      "lon": 4.9002,
+      "price": "see the menu",
+      "about": "A busy tapas bar, open every day from noon until late.",
+      "date": "Lively rather than quiet; the kitchen stays open late at weekends.",
+      "book": "Phone +31 20 422 6250",
+      "url": "https://www.iamsterdam.com/uit/agenda/eten-en-drinken/restaurants/pata-negra",
+      "source": "https://www.amsterdamfoodie.nl/amsterdam-food-guide/tapas-amsterdam-guide/"
+    },
+    {
+      "id": "salgorda",
+      "name": "Sal Gorda",
+      "cuisine": "spanish",
+      "area": "Oud-Zuid",
+      "address": "Van Breestraat 107",
+      "lat": 52.3559,
+      "lon": 4.8743,
+      "price": "see the menu",
+      "about": "A Spanish restaurant in Oud-Zuid, with a terrace in the warmer months.",
+      "date": "Quieter streets around it; good for a slow dinner.",
+      "book": "salgorda.nl",
+      "url": "https://theculturetrip.com/europe/the-netherlands/articles/the-best-spanish-restaurants-in-amsterdam",
+      "source": "https://theculturetrip.com/europe/the-netherlands/articles/the-best-spanish-restaurants-in-amsterdam"
+    },
+    {
+      "id": "sagardi",
+      "name": "Sagardi",
+      "cuisine": "spanish",
+      "area": "Spuistraat",
+      "address": "Spuistraat 304",
+      "lat": 52.3702,
+      "lon": 4.8887,
+      "price": "see the menu",
+      "about": "A Basque grill and pintxos bar near the Singel and Dam Square.",
+      "date": "Grilled steak to share; book online.",
+      "book": "OpenTable",
+      "url": "https://www.opentable.com/r/sagardi-amsterdam",
+      "source": "https://www.amsterdamnow.com/en/restaurants/sagardi-basque-grill-center"
+    },
+    {
+      "id": "afusion",
+      "name": "A-Fusion",
+      "cuisine": "asian",
+      "area": "Zeedijk, Chinatown",
+      "address": "Zeedijk 130",
+      "lat": 52.3728,
+      "lon": 4.9007,
+      "price": "€ in the Michelin Guide",
+      "about": "Asian cooking in Chinatown, with a Michelin Bib Gourmand for good value.",
+      "date": "Open until late; casual.",
+      "book": "Their website",
+      "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/a-fusion",
+      "source": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/a-fusion"
+    },
+    {
+      "id": "bird",
+      "name": "Bird",
+      "cuisine": "asian",
+      "area": "Zeedijk, Chinatown",
+      "address": "Zeedijk 72-74",
+      "lat": 52.3753,
+      "lon": 4.9003,
+      "price": "see the menu",
+      "about": "A well-known Thai restaurant, with its own snack bar across the street.",
+      "date": "Busy; guides mention a 15–30 minute queue at rush hour.",
+      "book": "Phone 020 620 1442",
+      "url": "https://www.amsterdamoudestad.nl/en/suggestions/restaurants/bird-thai-restaurant",
+      "source": "https://www.timeout.com/amsterdam/restaurants-and-cafes/thaise-snackbar-bird",
+      "aside": "Hard to book for two: guides say it takes bookings only for groups, and there is often a queue."
+    },
+    {
+      "id": "blauw",
+      "name": "Blauw",
+      "cuisine": "asian",
+      "area": "Oud-Zuid",
+      "address": "Amstelveenseweg 158-160",
+      "lat": 52.3537,
+      "lon": 4.8577,
+      "price": "see the menu",
+      "about": "Indonesian rijsttafel: many small dishes shared at the table. Often called the reference for rijsttafel in Amsterdam.",
+      "date": "Guides say book about two weeks ahead for weekends.",
+      "book": "Phone +31 20 675 5000 or restaurantblauw.nl",
+      "url": "https://www.theinfatuation.com/amsterdam/reviews/restaurant-blauw",
+      "source": "https://mesprestiges.com/en/amsterdam/places/restaurant-blauw"
+    }
   ],
   "pick": {
-    "title": "Friday plan: Le Petit Canal at 19:30",
-    "text": "**First choice: Le Petit Canal, 19:30.** French bistro on the Prinsengracht, about €65 a head, rated 4.6. A few tables left at 19:30; ask for the window table on the canal. Quiet enough to talk.\n\n**If it goes: Kumo Izakaya, 19:30.** Japanese small plates in De Pijp, about €55, rated 4.6. Ask for a booth.\n\n**Something different: Taberna Sol, 20:00.** Spanish tapas in the Jordaan, about €45, rated 4.5.\n\n**Set aside:** Hana Omakase, Maison Lumière and Casa Mar are fully booked on Friday; Sora Ramen takes no bookings.\n\nIn the app, an agent with a booking plugin could reserve the table once you say which one."
+    "title": "Friday plan: Bistro de la Mer, then Hosokawa",
+    "text": "**First choice: Bistro de la Mer.** French seafood on the Utrechtsestraat, with a Michelin star, about €75 for three courses. Guides say it fills three to four weeks ahead for Friday, so ask for 19:30 today: phone +31 20 237 4790.\n\n**If it is full: Hosokawa.** Teppanyaki by the Leidseplein, about €50–80. Sit at the plate and watch the chef. Phone +31 20 638 8086.\n\n**Something different: Blauw.** Indonesian rijsttafel in Oud-Zuid, many small dishes to share. Book about two weeks ahead.\n\n**Set aside:** Yamazato is over budget (kaiseki from about €140); Bird is hard to book for two.\n\nThis recorded tour did not check Friday's tables. In the app, an agent opens each booking page, checks 19:30 on Friday 6 November live, and can book the one you choose."
   }
 }

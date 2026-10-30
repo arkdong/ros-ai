@@ -1,62 +1,82 @@
 {
- "kumo-1.jpg": {
-  "title": "Kumo Izakaya · grilled black cod"
+ "hosokawa-1.jpg": {
+  "title": "Hosokawa · grilled meat (illustration)",
+  "url": "https://www.hosokawa.nl"
  },
- "kumo-2.jpg": {
-  "title": "Kumo Izakaya · chicken skewers"
+ "hosokawa-2.jpg": {
+  "title": "Hosokawa · the room (illustration)",
+  "url": "https://www.hosokawa.nl"
  },
- "kumo-3.jpg": {
-  "title": "Kumo Izakaya · the room"
+ "izakaya-1.jpg": {
+  "title": "Izakaya · skewers (illustration)",
+  "url": "https://www.iamsterdam.com/en/whats-on/calendar/eating-and-drinking/restaurants/izakaya"
  },
- "canal-1.jpg": {
-  "title": "Le Petit Canal · steak frites"
+ "izakaya-2.jpg": {
+  "title": "Izakaya · the room (illustration)",
+  "url": "https://www.iamsterdam.com/en/whats-on/calendar/eating-and-drinking/restaurants/izakaya"
  },
- "canal-2.jpg": {
-  "title": "Le Petit Canal · duck confit"
+ "delamer-1.jpg": {
+  "title": "Bistro de la Mer · fish (illustration)",
+  "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/bistro-de-la-mer"
  },
- "canal-3.jpg": {
-  "title": "Le Petit Canal · the room"
+ "delamer-2.jpg": {
+  "title": "Bistro de la Mer · the room (illustration)",
+  "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/bistro-de-la-mer"
  },
- "margaux-1.jpg": {
-  "title": "Café Margaux · cheese and terrine"
+ "auberge-1.jpg": {
+  "title": "Auberge · duck (illustration)",
+  "url": "https://www.yourlittleblackbook.me/de/auberge-amsterdam/"
  },
- "margaux-2.jpg": {
-  "title": "Café Margaux · the room"
+ "auberge-2.jpg": {
+  "title": "Auberge · the room (illustration)",
+  "url": "https://www.yourlittleblackbook.me/de/auberge-amsterdam/"
  },
- "jade-1.jpg": {
-  "title": "Jade Garden · dim sum"
+ "garcon-1.jpg": {
+  "title": "Café Garçon · cheese (illustration)",
+  "url": "https://www.horecatrends.com/en/?p=80316"
  },
- "jade-2.jpg": {
-  "title": "Jade Garden · roast duck"
+ "garcon-2.jpg": {
+  "title": "Café Garçon · the room (illustration)",
+  "url": "https://www.horecatrends.com/en/?p=80316"
  },
- "jade-3.jpg": {
-  "title": "Jade Garden · the room"
+ "patanegra-1.jpg": {
+  "title": "Pata Negra · tapas (illustration)",
+  "url": "https://www.iamsterdam.com/uit/agenda/eten-en-drinken/restaurants/pata-negra"
  },
- "saigon-1.jpg": {
-  "title": "Saigon Lanterns · pho"
+ "patanegra-2.jpg": {
+  "title": "Pata Negra · the room (illustration)",
+  "url": "https://www.iamsterdam.com/uit/agenda/eten-en-drinken/restaurants/pata-negra"
  },
- "saigon-2.jpg": {
-  "title": "Saigon Lanterns · the room"
+ "salgorda-1.jpg": {
+  "title": "Sal Gorda · croquetas (illustration)",
+  "url": "https://theculturetrip.com/europe/the-netherlands/articles/the-best-spanish-restaurants-in-amsterdam"
  },
- "bangkok-1.jpg": {
-  "title": "Bangkok Kitchen Club · green curry"
+ "salgorda-2.jpg": {
+  "title": "Sal Gorda · the room (illustration)",
+  "url": "https://theculturetrip.com/europe/the-netherlands/articles/the-best-spanish-restaurants-in-amsterdam"
  },
- "bangkok-2.jpg": {
-  "title": "Bangkok Kitchen Club · the room"
+ "sagardi-1.jpg": {
+  "title": "Sagardi · grilled meat (illustration)",
+  "url": "https://www.opentable.com/r/sagardi-amsterdam"
  },
- "sol-1.jpg": {
-  "title": "Taberna Sol · tapas"
+ "sagardi-2.jpg": {
+  "title": "Sagardi · the room (illustration)",
+  "url": "https://www.opentable.com/r/sagardi-amsterdam"
  },
- "sol-2.jpg": {
-  "title": "Taberna Sol · croquetas"
+ "afusion-1.jpg": {
+  "title": "A-Fusion · dim sum (illustration)",
+  "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/a-fusion"
  },
- "sol-3.jpg": {
-  "title": "Taberna Sol · the room"
+ "afusion-2.jpg": {
+  "title": "A-Fusion · the room (illustration)",
+  "url": "https://guide.michelin.com/en/noord-holland/amsterdam/restaurant/a-fusion"
  },
- "luna-1.jpg": {
-  "title": "Bodega Luna · tapas"
+ "blauw-1.jpg": {
+  "title": "Blauw · rijsttafel dishes (illustration)",
+  "url": "https://www.theinfatuation.com/amsterdam/reviews/restaurant-blauw"
  },
- "luna-2.jpg": {
-  "title": "Bodega Luna · the room"
+ "blauw-2.jpg": {
+  "title": "Blauw · the room (illustration)",
+  "url": "https://www.theinfatuation.com/amsterdam/reviews/restaurant-blauw"
  }
 }

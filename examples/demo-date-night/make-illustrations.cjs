@@ -1,19 +1,21 @@
-// Draws stand-in pictures for the date-night demo (photos/<place>-<n>.jpg): a dish and the room for each place with a
-// table, in flat colours. Real photos with credits in photos/credits.json can replace them under the same names.
+// Draws stand-in pictures for the date-night demo (photos/<place>-<n>.jpg): a dish and a room for each place still in
+// the running, in flat colours. Real photos with credits in photos/credits.json can replace them under the same names.
 // Run from the repository root: node examples/demo-date-night/make-illustrations.cjs (needs Playwright's Chromium).
 const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { chromium } = require('playwright');
 const data = JSON.parse(readFileSync(join(__dirname, 'places.json'), 'utf8'));
 const W = 960, H = 640;
+// One dish and the room for each place still in the running; the kind only picks a drawing, it is not the restaurant's menu.
 const dishes = {
-  kumo: [['#2b2b2b', '#e8d5b0', 'cod'], ['#7a4a2a', '#c8743a', 'skewers']], canal: [['#f2efe8', '#7b3b2a', 'steak'], ['#f2efe8', '#b5652f', 'duck']],
-  margaux: [['#efe6d2', '#d9b26a', 'cheese']], jade: [['#ffffff', '#f3e3c3', 'dimsum'], ['#ffffff', '#a8452c', 'duck']],
-  saigon: [['#f6f1e4', '#c98b4b', 'pho']], bangkok: [['#efe7d6', '#5c8a3a', 'curry']], sol: [['#f3e9d6', '#c4612f', 'tapas'], ['#f3e9d6', '#d98a3c', 'croquetas']],
-  luna: [['#efe2cc', '#8c2f3a', 'tapas']],
+  hosokawa: [['#2b2b2b', '#8a3b2a', 'steak']], izakaya: [['#7a4a2a', '#c8743a', 'skewers']], delamer: [['#2b2b2b', '#e8d5b0', 'cod']],
+  auberge: [['#f2efe8', '#b5652f', 'duck']], garcon: [['#efe6d2', '#d9b26a', 'cheese']], patanegra: [['#f3e9d6', '#c4612f', 'tapas']],
+  salgorda: [['#f3e9d6', '#d98a3c', 'croquetas']], sagardi: [['#f2efe8', '#7b3b2a', 'steak']], afusion: [['#ffffff', '#f3e3c3', 'dimsum']],
+  blauw: [['#efe7d6', '#5c8a3a', 'curry']],
 };
-const rooms = { kumo: ['#2d2522', '#f0b35a'], canal: ['#3b2a22', '#f6c56b'], margaux: ['#3a3330', '#e9c27a'], jade: ['#4a1f1f', '#e8604a'],
-  saigon: ['#3b2b1f', '#f29d38'], bangkok: ['#26302a', '#f4a259'], sol: ['#41312a', '#e7b05a'], luna: ['#2f2630', '#e8b86b'] };
+const rooms = { hosokawa: ['#2d2522', '#f0b35a'], izakaya: ['#26302a', '#f4a259'], delamer: ['#22303b', '#e9d7a0'], auberge: ['#3b2a22', '#f6c56b'],
+  garcon: ['#3a3330', '#e9c27a'], patanegra: ['#41312a', '#e7b05a'], salgorda: ['#2f2630', '#e8b86b'], sagardi: ['#3b2b1f', '#f29d38'],
+  afusion: ['#4a1f1f', '#e8604a'], blauw: ['#1f2a3b', '#9cc3e8'] };
 const dots = (n, cx, cy, r, color, size) => Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2 + i, d = r * (0.25 + (i * 37 % 70) / 100);
   return `<circle cx="${(cx + Math.cos(a) * d).toFixed(1)}" cy="${(cy + Math.sin(a) * d * 0.8).toFixed(1)}" r="${size}" fill="${color}"/>`; }).join('');
 const dish = ([plate, food, kind], cuisine) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
@@ -29,7 +31,7 @@ const dish = ([plate, food, kind], cuisine) => `<svg xmlns="http://www.w3.org/20
     : kind === 'croquetas' ? [0, 1, 2, 3, 4, 5].map(i => `<ellipse cx="${360 + (i % 3) * 120}" cy="${280 + Math.floor(i / 3) * 90}" rx="52" ry="30" fill="${food}"/>`).join('')
     : kind === 'tapas' ? `<circle cx="390" cy="300" r="80" fill="${food}"/><circle cx="580" cy="290" r="70" fill="#e7c06a"/><circle cx="480" cy="400" r="60" fill="#4f7a3a"/>${dots(14, 390, 300, 60, '#f2d7a0', 9)}${dots(10, 580, 290, 50, '#c25a2f', 8)}`
     : `<rect x="360" y="250" width="${kind === 'cod' ? 240 : 250}" height="130" rx="${kind === 'cod' ? 30 : 18}" fill="${food}"/><rect x="360" y="250" width="${kind === 'cod' ? 240 : 250}" height="38" rx="18" fill="#000" opacity=".12"/>${dots(9, 600, 360, 70, '#4f8a3a', 10)}${kind === 'steak' ? [0, 1, 2, 3, 4, 5, 6].map(i => `<rect x="${600 + i * 9}" y="${230 + (i % 3) * 22}" width="14" height="90" rx="5" fill="#e9b65a" transform="rotate(${-20 + i * 6} 640 300)"/>`).join('') : ''}`}
-  <rect x="${W - 220}" y="${H - 54}" width="200" height="34" rx="17" fill="#000" opacity=".45"/><text x="${W - 120}" y="${H - 31}" fill="#fff" font-family="Inter, Arial" font-size="15" text-anchor="middle">Illustration</text>
+  <rect x="${W - 220}" y="${H - 54}" width="200" height="34" rx="17" fill="#000" opacity=".45"/><text x="${W - 120}" y="${H - 31}" fill="#fff" font-family="Inter, Arial" font-size="15" text-anchor="middle">Illustration, not a photo</text>
 </svg>`;
 const room = ([wall, light]) => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <rect width="${W}" height="${H}" fill="${wall}"/>
@@ -43,7 +45,7 @@ const room = ([wall, light]) => `<svg xmlns="http://www.w3.org/2000/svg" width="
     <rect x="${x - 40}" y="400" width="10" height="30" rx="4" fill="#f4ecd8"/><circle cx="${x - 35}" cy="396" r="6" fill="${light}"/><circle cx="${x + 30}" cy="420" r="16" fill="#f4ecd8"/>
     <rect x="${x - 170}" y="420" width="50" height="120" rx="10" fill="#5e3d2a"/><rect x="${x + 120}" y="420" width="50" height="120" rx="10" fill="#5e3d2a"/>`).join('')}
   <rect x="770" y="250" width="140" height="300" rx="10" fill="#000" opacity=".3"/>${[0, 1, 2, 3].map(i => `<rect x="785" y="${270 + i * 60}" width="110" height="10" rx="4" fill="#6b4a33"/>${dots(5, 840, 255 + i * 60, 40, '#8c2f3a', 7)}`).join('')}
-  <rect x="${W - 220}" y="${H - 54}" width="200" height="34" rx="17" fill="#000" opacity=".45"/><text x="${W - 120}" y="${H - 31}" fill="#fff" font-family="Inter, Arial" font-size="15" text-anchor="middle">Illustration</text>
+  <rect x="${W - 220}" y="${H - 54}" width="200" height="34" rx="17" fill="#000" opacity=".45"/><text x="${W - 120}" y="${H - 31}" fill="#fff" font-family="Inter, Arial" font-size="15" text-anchor="middle">Illustration, not a photo</text>
 </svg>`;
 (async () => {
   mkdirSync(join(__dirname, 'photos'), { recursive: true });
