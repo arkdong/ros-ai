@@ -12,7 +12,7 @@
  * Round 2's structure family (structure.ts): when, what to group and what to link after an agent's turn
  *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --concurrency=6 --max-usd=2
  *   structure-check-links  teacher checks each map's links once more   --max-usd=1
- *   structure-label-links  teacher, thinking, labels each kept pair's word and direction afresh   --max-usd=1
+ *   structure-label-links  teacher labels each kept pair's word and direction afresh   --max-usd=1
  *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure); --all-links skips the check
  *   structure-eval     scores a model on the held-out maps         --student-url=... --label=x, or --model=rules|teacher
  *   structure-smoke    the structure path offline on a hand-written map; spends nothing */
@@ -228,7 +228,7 @@ if (step === 'snapshot') {
   console.table(LINK_WORDS.map(word => ({ word, links: links.filter(link => link.word === word).length, kept: links.filter(link => link.word === word && link.keep).length })));
   console.log(`${links.filter(link => link.keep).length} of ${links.length} links kept${todo.length ? '' : ' (nothing left to check)'}. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
 } else if (step === 'structure-label-links') {
-  const ledger = new Ledger(Number(arg('max-usd', '1'))), model = teacher(ledger, 'structure-label-links');
+  const ledger = new Ledger(Number(arg('max-usd', '1'))), model = teacher(ledger, 'structure-label-links', false);
   const checks = new Map(readJsonl<LinkCheck>(files.linkChecks()).map(check => [check.mapId, check]));
   const kept = [...readJsonl<StructureMap>(files.maps()), ...readJsonl<StructureMap>(files.evalMaps())].map(map => keptLinks(map, checks.get(map.id)));
   const done = new Set(readJsonl<LinkLabels>(files.linkLabels()).map(labels => labels.mapId));

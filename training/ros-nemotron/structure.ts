@@ -88,8 +88,8 @@ export const keptLinks = (map: StructureMap, check?: LinkCheck): StructureMap =>
 
 /** The check keeps true links but not always in the right word or direction ("Collect Wi-Fi data supports Weekend
  * congestion 40% higher", where the finding uses data from the collection). So each kept pair is labelled once more from
- * scratch, by the teacher thinking it through against what each word means: the one link a careful researcher would
- * draw between the two blocks, or none. */
+ * scratch against what each word means: the one link a careful researcher would draw between the two blocks, or none.
+ * The teacher says in a few words how the blocks relate before it labels them (thinking mode leaves its text empty). */
 const MEANINGS: Record<(typeof LINK_WORDS)[number], string> = {
   'supports': 'from is evidence or an argument for to',
   'contradicts': 'from is evidence or an argument against to',
@@ -101,7 +101,7 @@ const MEANINGS: Record<(typeof LINK_WORDS)[number], string> = {
 const LABEL = `You label the links on a ros.ai research map before it is used to teach an assistant how to link blocks. A link is one sentence "<from> <word> <to>" with one of these words:
 ${LINK_WORDS.map(word => `- ${word}: ${MEANINGS[word]}.`).join('\n')}
 For each pair of blocks below, write the one link a careful researcher would draw between them, in the right direction with the right word, or none when no word fits plainly.
-Return JSON {"links":[{"pair","from","word","to"}]}, one entry per pair in the order given, with "from" and "to" as the slugs given; for none, {"pair","none":true}.`;
+Return JSON {"links":[{"pair","why","from","word","to"}]}, one entry per pair in the order given: "why" first, a few words on how the two blocks relate, then "from" and "to" as the slugs given; for none, {"pair","why","none":true}.`;
 
 export type LinkLabels = { mapId: string; links: StructureMap['links'] };
 
