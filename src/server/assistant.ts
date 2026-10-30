@@ -500,7 +500,7 @@ export class AssistantService {
     try{
       let turn=this.getTurn(projectId,turnId);
       if(layer.on())this.save({...turn,layer:{state:'running'}});
-      const result=await layer.land({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source,...(turn.model?{agent:turn.model}:{}),hint:glanceText(this.hint(turn,this.store.detail(projectId)))},controller.signal,()=>this.turns(projectId).some(item=>item.status==='running'&&item.id!==turnId),hurry.signal);
+      const result=await layer.land({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source,...(turn.model?{agent:turn.model}:{}),hint:glanceText(this.hint(turn,this.store.detail(projectId)))},controller.signal,()=>this.holdsChanges(projectId,turnId),hurry.signal,()=>{const current=this.getTurn(projectId,turnId);if(current.layer?.state==='running')this.save({...current,layer:{state:'running',note:'ROS waits for the other thread to finish, so the changes it has waiting for you stay valid.'}});});
       if(!result)return;
       turn=this.getTurn(projectId,turnId);
       this.save({...turn,layer:result.layer,actions:result.action?[...turn.actions,result.action]:turn.actions,events:result.event?[...turn.events,{at:now(),message:result.event}]:turn.events});
@@ -508,6 +508,15 @@ export class AssistantService {
       const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
       if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});
     }finally{this.layering.delete(turnId);}
+  }
+  /** Another thread of the project is still working and has changes waiting for the person on the map as it is now.
+   * ROS's row, once accepted, moves the map on and would make those stale, so ROS waits for them; a thread whose changes
+   * land at once, or that has proposed nothing yet, does not hold ROS up. */
+  private holdsChanges(projectId:string,turnId:string){
+    const others=this.turns(projectId).filter(item=>item.status==='running'&&item.id!==turnId);
+    if(!others.length)return false;
+    const pending=(id:string)=>{try{return this.store.proposalStatus(projectId,id)==='pending';}catch{return false;}};
+    return others.some(item=>item.actions.some(action=>action.by!=='ros'&&action.proposalId&&pending(action.proposalId)));
   }
   /** An agent working from outside ros.ai proposed a change: ROS arranges the turn once the agent has been quiet a while. */
   arrangeLater(projectId:string,turnId:string){

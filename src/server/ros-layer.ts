@@ -25,7 +25,7 @@ export type LandResult = { layer: TurnLayer; action?: AssistantAction; event?: s
 type Execution = Pick<ExecutionService, 'assistantProposal' | 'acceptGovernedProposal' | 'layerComplete'>;
 
 /** One counted agent turn (or, for an agent working from outside, one quiet spell of its calls). */
-type TurnRecord = { id: string; turnId: string; at: string; source: string; blocks: number; loose: number; chatOnly: boolean; outcome: 'arranged' | 'rescued' | 'nothing' | 'failed' | 'off'; proposals: string[]; engine?: LayerEngine; fallback?: boolean; ms?: number; proposalId?: string };
+type TurnRecord = { id: string; turnId: string; at: string; source: string; blocks: number; loose: number; chatOnly: boolean; outcome: 'arranged' | 'rescued' | 'nothing' | 'failed' | 'off'; proposals: string[]; engine?: LayerEngine; fallback?: boolean; ms?: number; askMs?: number; waitMs?: number; proposalId?: string };
 /** A ROS row as Undo needs it: where moved blocks were, and what ROS added. */
 type RowRecord = { proposalId: string; turnId: string; projectId: string; at: string; engine: LayerEngine; fallback: boolean; rescued: boolean; manual?: boolean; moved: { id: string; parentId: string | null; x: number; y: number; into: string }[]; groups: string[]; blocks: string[]; links: string[]; undone?: string };
 /** What ROS proposes, by block id; 'answer' and 'section:<n>' name blocks it adds for an answer given in chat. */
@@ -41,6 +41,8 @@ const MAX = { place: 12, groups: 3, links: 4, refs: 24, text: 280 } as const;
 const snap = (value: number) => Math.round(value / 24) * 24, snapUp = (value: number) => Math.ceil(value / 24) * 24;
 const now = () => new Date().toISOString();
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** A short duration for a turn's steps: "4 s", "2 min 50 s". */
+export const took = (ms: number) => { const seconds = Math.max(1, Math.round(ms / 1000)); return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ''}`; };
 /** Blocks an agent's research already shapes (its Agent block, Web and Search blocks, results and findings) keep their tree. */
 const shaped = (node: CanvasNode) => node.kind === 'group' || ['agent', 'web', 'search', 'finding'].includes(node.blockType ?? '') || node.label === 'result';
 const setAside = (node: CanvasNode) => node.title === SET_ASIDE.title && node.description.startsWith(SET_ASIDE.description);
@@ -102,36 +104,45 @@ export class RosLayer {
   }
 
   /** The landing pass after a turn. Counts the turn whatever happens; null while the switch is off. `busy` says another
-   * turn of the project is still working, which ROS waits out before it proposes. `hurry` fires when the person starts
-   * another turn: Local ROS serves one request at a time, so ROS stops asking it and ros.ai's own rules arrange. */
-  async land(input: LandInput, signal: AbortSignal, busy: () => boolean = () => false, hurry?: AbortSignal): Promise<LandResult | null> {
+   * turn of the project has changes waiting for the person that this row would make stale, which ROS waits out before it
+   * proposes; `waiting` is told once when that wait starts. `hurry` fires when the person starts another turn: Local ROS
+   * serves one request at a time, so ROS stops asking it and ros.ai's own rules arrange. */
+  async land(input: LandInput, signal: AbortSignal, busy: () => boolean = () => false, hurry?: AbortSignal, waiting?: () => void): Promise<LandResult | null> {
     const started = Date.now(), look = this.look(input, false), id = randomUUID();
     const record = (outcome: TurnRecord['outcome'], extra: Partial<TurnRecord> = {}) => this.store.saveRecord<TurnRecord>('ros-layer-turn', id, input.projectId, { id, turnId: input.turnId, at: now(), source: input.source, blocks: look.added.length, loose: look.added.filter(node => !node.parentId && !look.canvas.connections.some(edge => edge.source === node.id || edge.target === node.id)).length, chatOnly: look.chatOnly, outcome, proposals: look.proposals, ...extra });
     if (!this.on()) { record('off'); return null; }
     if (!look.candidates.length && !look.chatOnly) { record('nothing'); return { layer: { state: 'skipped', note: 'Nothing was left loose.' } }; }
     const choice = this.engine();
     let plan: Plan | null = null, fallback = false;
+    const asked = Date.now();
     if (choice.selection && choice.engine !== 'layout') {
       try { plan = await this.ask(input, look, choice, choice.engine === 'local' && hurry ? AbortSignal.any([signal, hurry]) : signal); }
       catch (error) { if (signal.aborted) throw error; fallback = true; console.error(`ROS layer: ${choice.engine} ROS did not arrange this turn: ${error instanceof Error ? error.message : error}`); }
     }
     plan ??= this.rules(input, look, false);
+    const askMs = Date.now() - asked;
     const engine: LayerEngine = fallback || !choice.selection ? 'layout' : choice.engine;
     if (!plan || (!plan.place.length && !plan.newGroups.length && !plan.links.length && !plan.rescue)) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Everything already had its place.' } }; }
     // Another thread still at work would find the canvas moved under its next change.
     let waited = false;
+    const waitFrom = Date.now();
     for (const until = Date.now() + WAIT_MS; busy(); waited = true) {
-      if (Date.now() > until) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Another thread kept working, so ROS left this turn as it was.' } }; }
+      if (Date.now() > until) { record('nothing', { engine, fallback, askMs, waitMs: Date.now() - waitFrom }); return { layer: { state: 'skipped', engine, note: 'Another thread kept working, so ROS left this turn as it was.' } }; }
+      if (!waited) waiting?.();
       await delay(1500, undefined, { signal });
     }
+    const waitMs = waited ? Date.now() - waitFrom : 0;
     // The person carried on before the answer went on the map, perhaps asking for just that: Put this on the map stays.
-    if (waited && plan.rescue) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'You carried on first, so the answer stays in chat.' } }; }
+    if (waited && plan.rescue) { record('nothing', { engine, fallback, askMs, waitMs }); return { layer: { state: 'skipped', engine, note: 'You carried on first, so the answer stays in chat.' } }; }
     try {
       const made = this.propose(input, this.look(input, false), plan, engine, fallback);
       if (!made) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Everything already had its place.' } }; }
       const ms = Date.now() - started;
-      record(plan.rescue ? 'rescued' : 'arranged', { engine, fallback, ms, proposalId: made.action.proposalId });
-      return { layer: { state: 'done', engine, proposalId: made.action.proposalId, ms }, action: made.action, event: made.event };
+      record(plan.rescue ? 'rescued' : 'arranged', { engine, fallback, ms, askMs, waitMs, proposalId: made.action.proposalId });
+      // The step says what the time went on, so a slow pass shows whether ROS thought or waited.
+      const who = (value: LayerEngine) => value === 'local' ? 'Local ROS' : value === 'hosted' ? 'hosted ROS' : 'ros.ai’s own rules';
+      const how = `${fallback ? `ros.ai’s own rules after ${who(choice.engine)} did not answer` : who(engine)}, ${took(askMs)}`;
+      return { layer: { state: 'done', engine, proposalId: made.action.proposalId, ms }, action: made.action, event: `${made.event.slice(0, -1)} (${how}${waited ? `; waited ${took(waitMs)} for another thread` : ''}).` };
     } catch (error) {
       record('failed', { engine, fallback });
       throw error;
