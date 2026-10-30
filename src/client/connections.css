@@ -19,6 +19,18 @@
 .tool-connection p { font-size:13px; line-height:1.5; color:var(--body); margin:0 0 10px; }
 .tool-connection .connection-limit { color:var(--muted); }
 .connection-caption { display:block; font-size:12px; color:var(--muted); margin:2px 0 6px; }
+/* Under More: the other ways to connect, a row each, the key or token last. */
+.alt-ways { display:flex; flex-direction:column; margin:2px 0 4px; border-top:1px solid #eee; }
+.alt-way { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #f1f1f1; }
+.alt-way:last-child { border-bottom:0; }
+.alt-way > span { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.alt-way strong { font-size:13px; font-weight:500; color:var(--ink); }
+.alt-way small { font-size:12px; color:var(--muted); line-height:1.45; }
+.alt-way small a { color:var(--ink); white-space:nowrap; }
+.alt-way small a svg { display:inline; vertical-align:middle; margin-left:3px; }
+.alt-ways .connection-key { display:flex; gap:8px; align-items:center; padding:0 0 8px; }
+.alt-ways .connection-key input { margin:0; flex:1; min-width:0; }
+.alt-ways .connection-setup { margin-top:0; border-top:0; padding-top:2px; }
 /* The footer line: grey text chips on the left, a white pill for a second action, the one black pill at the right end. */
 .connection-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-height:30px; margin:6px -8px 0; }
 .tool-connection-foot { margin:0; padding:4px 12px 12px 10px; }

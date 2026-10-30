@@ -84,5 +84,5 @@ test('the card says why in words about the message, and how each plugin connects
   assert.equal(suggestionReason({ id: 'openalex', signal: 'linked' }), 'To find the paper your message points to.');
   const kind = (id: PluginId) => suggestionConnect(PLUGINS.find(plugin => plugin.id === id)!);
   assert.deepEqual(['linear', 'sentry', 'notion', 'openalex', 'arxiv', 'tavily', 'zotero', 'github', 'slack', 'google-drive', 'google-sheets', 'figma', 'browser', 'overleaf'].map(id => kind(id as PluginId)),
-    ['sign-in', 'sign-in', 'sign-in', 'switch', 'switch', 'key', 'token', 'token', 'token', 'setup', 'setup', 'setup', 'setup', null]);
+    ['sign-in', 'sign-in', 'sign-in', 'switch', 'switch', 'key', 'setup', 'setup', 'token', 'setup', 'setup', 'setup', 'setup', null]);
 });

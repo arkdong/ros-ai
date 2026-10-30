@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import type { Express } from 'express';
 import { z } from 'zod';
 import { FILE_BYTES } from '../shared/files.js';
 import { DOI, PAPER_ID, PAPER_SOURCES, paperSourceName, type PaperSearch, type PaperSummary, type PapersStatus } from '../shared/papers.js';
 import type { CanvasNode, PaperRef, PaperSource } from '../shared/types.js';
+import { zoteroAppProblem, type ZoteroApp } from '../shared/plugins.js';
 import { privateAddress } from './private-address.js';
 import type { ProjectFolders } from './project-folders.js';
 import type { AppTool, BuiltInApp } from './remote-apps.js';
@@ -14,12 +17,31 @@ import { StoreError, type Store } from './store.js';
 
 /** Papers from three places: OpenAlex (an open index of scholarly works, with links to their open-access PDFs), arXiv
  * (preprints, each with its PDF) and the person's own Zotero library (with the PDFs Zotero stores). The person searches
- * them from Add block › Paper. Agents search them once OpenAlex or arXiv is turned on in Plugins, or Zotero's key is
- * saved there (PapersApp below). A paper becomes a File block with its open PDF, saved into the project folder so
+ * them from Add block › Paper. Agents search them once OpenAlex or arXiv is turned on in Plugins, or Zotero is
+ * connected there, through the Zotero app on this computer or with a key (PapersApp below). A paper becomes a File block with its open PDF, saved into the project folder so
  * agents read its text through the File block, or a Text block with the reference and abstract. */
 
 const USER_AGENT = 'ros.ai (https://github.com/arkdong/ros-ai)';
 const BASES = { openalex: 'https://api.openalex.org', arxiv: 'https://export.arxiv.org/api/query', arxivPdf: 'https://arxiv.org/pdf/', zotero: 'https://api.zotero.org' };
+/** The Zotero app's local API (Zotero 7 and later): the person's library with no key, while the app is open and lets
+ * other apps on this computer read it. It is not one of BASES, whose hosts PDF links may reach unchecked.
+ * ROS_ZOTERO_LOCAL_URL names a stand-in on this computer. */
+export function zoteroLocalBase() {
+  const set = process.env.ROS_ZOTERO_LOCAL_URL?.trim();
+  if (!set) return 'http://127.0.0.1:23119/api';
+  const url = new URL(set);
+  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('ROS_ZOTERO_LOCAL_URL must be an http address on this computer.');
+  return url.href.replace(/\/+$/u, '');
+}
+/** How the Zotero app answers one request for one item of its library: 403 while the setting is off, 404 before
+ * Zotero 7, nothing while it is closed. */
+export async function zoteroApp(fetcher: typeof fetch = fetch): Promise<ZoteroApp> {
+  try {
+    const response = await fetcher(`${zoteroLocalBase()}/users/0/items/top?${new URLSearchParams({ limit: '1', format: 'json' })}`, { headers: { 'User-Agent': USER_AGENT, 'Zotero-API-Version': '3', Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(2000) });
+    await response.body?.cancel().catch(() => undefined);
+    return response.ok ? 'ready' : response.status === 404 ? 'old' : 'locked';
+  } catch { return 'closed'; }
+}
 /** arXiv asks API clients for one request at a time, at least three seconds apart; its PDFs wait their turn too. */
 const ARXIV_SPACING = 3_000;
 const API_BYTES = 8_000_000, TIMEOUT = 20_000, PDF_TIMEOUT = 90_000;
@@ -33,7 +55,8 @@ const STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'in', 'on', 'for', 'to', 'an
  * key of the PDF attachment Zotero stores for it. */
 export type Paper = PaperSummary & { date: string | null; kind: string | null; pdfs: string[]; zoteroFile: string | null };
 type Options = { fetcher?: typeof fetch; lookup?: (host: string) => Promise<{ address: string }[]>; bases?: Partial<typeof BASES>; spacing?: number };
-type Keys = { openalex: () => string | undefined; zotero: () => string | undefined };
+/** zoteroApp: Zotero connects through the app on this computer, chosen on the Plugins page, instead of a key. */
+type Keys = { openalex: () => string | undefined; zotero: () => string | undefined; zoteroApp?: () => boolean };
 type Settings = { openalex: boolean; arxiv: boolean };
 export type SearchOptions = { limit: number; yearFrom?: number; yearTo?: number; openOnly?: boolean; sort?: 'relevance' | 'newest' | 'most_cited' };
 
@@ -158,13 +181,16 @@ export class Papers {
   }
 
   private settings(): Settings { const saved = this.store.globalRecord<Partial<Settings>>('papers', 'agents'); return { openalex: saved?.openalex === true, arxiv: saved?.arxiv === true }; }
-  /** Sources the person searches from Add block › Paper: OpenAlex and arXiv are public; Zotero needs its key. */
-  personSources(): PaperSource[] { return ['openalex', 'arxiv', ...(this.keys.zotero() ? ['zotero' as const] : [])]; }
-  /** Sources every agent uses: what the person turned on in Plugins, and Zotero once its key is saved. */
-  agentSources(): PaperSource[] { const on = this.settings(); return PAPER_SOURCES.map(item => item.id).filter(id => id === 'zotero' ? Boolean(this.keys.zotero()) : on[id]); }
+  /** Zotero through the app on this computer; otherwise through Zotero's web API, with a key. */
+  private zoteroLocal() { return this.keys.zoteroApp?.() === true; }
+  private zoteroOn() { return this.zoteroLocal() || Boolean(this.keys.zotero()); }
+  /** Sources the person searches from Add block › Paper: OpenAlex and arXiv are public; Zotero once it is connected. */
+  personSources(): PaperSource[] { return ['openalex', 'arxiv', ...(this.zoteroOn() ? ['zotero' as const] : [])]; }
+  /** Sources every agent uses: what the person turned on in Plugins, and Zotero once it is connected. */
+  agentSources(): PaperSource[] { const on = this.settings(); return PAPER_SOURCES.map(item => item.id).filter(id => id === 'zotero' ? this.zoteroOn() : on[id]); }
   status(): PapersStatus {
-    const on = this.settings(), zotero = Boolean(this.keys.zotero());
-    return { sources: PAPER_SOURCES.map(({ id, name }) => ({ id, name, available: id !== 'zotero' || zotero, agents: id === 'zotero' ? zotero : on[id], key: id === 'openalex' ? Boolean(this.keys.openalex()) : id === 'zotero' && zotero, account: id === 'zotero' && zotero && this.zoteroUser ? this.zoteroUser.username : null })) };
+    const on = this.settings(), zotero = this.zoteroOn(), key = !this.zoteroLocal() && Boolean(this.keys.zotero());
+    return { sources: PAPER_SOURCES.map(({ id, name }) => ({ id, name, available: id !== 'zotero' || zotero, agents: id === 'zotero' ? zotero : on[id], key: id === 'openalex' ? Boolean(this.keys.openalex()) : id === 'zotero' && key, account: id === 'zotero' && key && this.zoteroUser ? this.zoteroUser.username : null })) };
   }
   setAgents(source: 'openalex' | 'arxiv', on: boolean): PapersStatus {
     this.store.saveGlobalRecord('papers', 'agents', { ...this.settings(), [source]: on });
@@ -187,6 +213,7 @@ export class Papers {
   private refusal(source: PaperSource, response: Response, single = false): StoreError {
     const status = response.status, wait = Number(response.headers.get('retry-after'));
     if (source === 'zotero') {
+      if (this.zoteroLocal() && (status === 403 || (status === 404 && !single))) return new StoreError(zoteroAppProblem(status === 403 ? 'locked' : 'old'), 409);
       if (status === 403) return new StoreError('Zotero did not accept the key on its Plugins card, or the key cannot read your library. Replace it there.', 502);
       if (status === 404) return new StoreError(single ? 'That item is not in your Zotero library.' : 'Zotero could not find your library.', 404);
       if (status === 429 || status === 503) { this.zoteroWait = Date.now() + (wait > 0 ? wait : 30) * 1000; return new StoreError(`Zotero asks ros.ai to wait ${wait > 0 ? `${Math.ceil(wait)} seconds` : 'a moment'}; try again then.`, 503); }
@@ -201,7 +228,7 @@ export class Papers {
   private async json(source: PaperSource, url: string, headers: Record<string, string>, signal?: AbortSignal, single = false): Promise<{ body: unknown; response: Response }> {
     let response: Response;
     try { response = await this.request(url, { Accept: 'application/json', ...headers }, signal); }
-    catch (error) { if (signal?.aborted) throw error; throw new StoreError(`Could not reach ${paperSourceName(source)}. Check the connection and try again.`, 502); }
+    catch (error) { if (signal?.aborted) throw error; throw new StoreError(source === 'zotero' && this.zoteroLocal() ? zoteroAppProblem('closed') : `Could not reach ${paperSourceName(source)}. Check the connection and try again.`, 502); }
     if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw this.refusal(source, response, single); }
     try { return { body: JSON.parse(new TextDecoder().decode(await readLimited(response, API_BYTES))), response }; }
     catch (error) { if (signal?.aborted) throw error; throw new StoreError(`${paperSourceName(source)} returned an unreadable answer.`, 502); }
@@ -225,10 +252,12 @@ export class Papers {
       return arxivPapers(new TextDecoder().decode(await readLimited(response, API_BYTES)), this.bases.arxivPdf);
     }, signal);
   }
-  private zoteroKey() { const key = this.keys.zotero(); if (!key) throw new StoreError('Zotero is not connected. Save a Zotero API key on the Plugins page.', 409); return key; }
-  private zoteroHeaders(key: string) { return { 'Zotero-API-Key': key, 'Zotero-API-Version': '3' }; }
-  /** Whose library the key reads: asked once per key. */
-  private async zoteroLibrary(signal?: AbortSignal) {
+  private zoteroKey() { const key = this.keys.zotero(); if (!key) throw new StoreError('Zotero is not connected. Connect it on the Plugins page.', 409); return key; }
+  /** key: none for the Zotero app, which asks for none. */
+  private zoteroHeaders(key: string | null): Record<string, string> { return key ? { 'Zotero-API-Key': key, 'Zotero-API-Version': '3' } : { 'Zotero-API-Version': '3' }; }
+  /** Whose library the key reads: asked once per key. The Zotero app's own library is users/0, with no key. */
+  private async zoteroLibrary(signal?: AbortSignal): Promise<{ key: string | null; base: string }> {
+    if (this.zoteroLocal()) return { key: null, base: `${zoteroLocalBase()}/users/0` };
     if (Date.now() < this.zoteroWait) throw new StoreError(`Zotero asked ros.ai to wait; try again in ${Math.ceil((this.zoteroWait - Date.now()) / 1000)} seconds.`, 503);
     const key = this.zoteroKey(), digest = createHash('sha256').update(key).digest('hex');
     if (this.zoteroUser?.digest !== digest) {
@@ -298,7 +327,8 @@ export class Papers {
     const { key, base } = await this.zoteroLibrary(signal), years = options.yearFrom || options.yearTo;
     // Zotero matches words in titles, creators and years, newest change first (no words lists the library); years and
     // open copies are filtered here.
-    const params = new URLSearchParams({ ...(words ? { q: words, qmode: 'titleCreatorYear' } : {}), itemType: '-attachment || note', limit: String(years || options.openOnly ? 100 : options.limit), format: 'json', include: 'data', ...(options.sort === 'newest' ? { sort: 'date', direction: 'desc' } : {}) });
+    // The Zotero app may not filter by item type; notes and files are left out below either way.
+    const params = new URLSearchParams({ ...(words ? { q: words, qmode: 'titleCreatorYear' } : {}), ...(key ? { itemType: '-attachment || note' } : {}), limit: String(years || options.openOnly ? 100 : options.limit), format: 'json', include: 'data', ...(options.sort === 'newest' ? { sort: 'date', direction: 'desc' } : {}) });
     const { body, response } = await this.json('zotero', `${base}/items/top?${params}`, this.zoteroHeaders(key), signal);
     const papers = (Array.isArray(body) ? body : []).flatMap(item => zoteroPaper(item) ?? []).filter(paper => (!options.yearFrom || (paper.year ?? 0) >= options.yearFrom) && (!options.yearTo || (paper.year ?? 9999) <= options.yearTo) && (!options.openOnly || paper.pdf));
     const total = Number(response.headers.get('total-results'));
@@ -312,7 +342,7 @@ export class Papers {
     return this.remember(paper);
   }
   private blocked(source: PaperSource) {
-    return new StoreError(source === 'zotero' ? 'Zotero is not connected. Save a Zotero API key on the Plugins page.' : `${paperSourceName(source)} is off for agents. The person turns it on on the Plugins page.`, 409);
+    return new StoreError(source === 'zotero' ? 'Zotero is not connected. The person connects it on the Plugins page.' : `${paperSourceName(source)} is off for agents. The person turns it on on the Plugins page.`, 409);
   }
 
   /** One paper by its ID from a search, a DOI or an arXiv ID, from the sources allowed here. */
@@ -381,9 +411,11 @@ export class Papers {
     if (!addresses.length || addresses.some(privateAddress)) throw new Error('not on the public internet');
     return url;
   }
-  /** The PDF Zotero stores for an attachment: Zotero answers with a short-lived address that needs no key. */
+  /** The PDF Zotero stores for an attachment: Zotero answers with a short-lived address that needs no key, or the Zotero
+   * app with where the file is on this computer. */
   private async zoteroFile(attachment: string, signal?: AbortSignal): Promise<Buffer> {
     const { key, base } = await this.zoteroLibrary(signal), from = `${base}/items/${attachment}/file`;
+    if (!key) return this.zoteroAppFile(from, signal);
     const response = await this.request(from, this.zoteroHeaders(key), signal, 'manual', PDF_TIMEOUT);
     if (response.headers.get('zotero-file-compressed')?.toLowerCase() === 'yes') { await response.body?.cancel().catch(() => undefined); throw new Error('Zotero keeps it compressed'); }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
@@ -395,6 +427,27 @@ export class Papers {
     if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw response.status === 404 ? new Error('Zotero does not store this file (it may sync through WebDAV)') : this.refusal('zotero', response, true); }
     const bytes = await readLimited(response, FILE_BYTES);
     if (bytes.indexOf('%PDF-') < 0 || bytes.indexOf('%PDF-') > 1024) throw new Error('not a PDF');
+    return bytes;
+  }
+  /** The Zotero app names the file's address on this computer (file/view/url, or where file sends a browser), and ros.ai
+   * reads the file itself, only when it is a PDF. */
+  private async zoteroAppFile(from: string, signal?: AbortSignal): Promise<Buffer> {
+    let address: string | null = null;
+    const asked = await this.request(`${from}/view/url`, this.zoteroHeaders(null), signal, 'manual');
+    if (asked.ok) address = (await readLimited(asked, 16_000)).toString('utf8').trim().replace(/^"|"$/gu, '');
+    else {
+      await asked.body?.cancel().catch(() => undefined);
+      const sent = await this.request(from, this.zoteroHeaders(null), signal, 'manual');
+      await sent.body?.cancel().catch(() => undefined);
+      if ([301, 302, 303, 307, 308].includes(sent.status)) address = sent.headers.get('location');
+      else throw new Error(sent.status === 404 || sent.status === 400 ? 'Zotero keeps no file for it on this computer' : `Zotero answered with HTTP ${sent.status}`);
+    }
+    if (!address?.startsWith('file:')) throw new Error('Zotero keeps no file for it on this computer');
+    const path = fileURLToPath(address), info = await stat(path);
+    if (!info.isFile()) throw new Error('Zotero named something that is not a file');
+    if (info.size > FILE_BYTES) throw new TooLarge();
+    const bytes = await readFile(path), start = bytes.indexOf('%PDF-');
+    if (start < 0 || start > 1024) throw new Error('not a PDF');
     return bytes;
   }
 }
