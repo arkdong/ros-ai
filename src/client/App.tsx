@@ -23,6 +23,8 @@ import { arrivedGroups, groupMembers, isGroup, proposedGroups } from '../shared/
 import { AssistantPanel } from './AssistantPanel';
 import { RosBar, type RosMode } from './RosDock';
 import { shownThread, type ShownThread } from './RosThreads';
+import { reloadProjectModels } from './RosModelMenu';
+import { reloadAgentModels } from './AgentModelPicker';
 import { useLiveTurns, withLive } from './live-reply';
 import { NoteTree } from './NoteTree';
 import { Resources } from './Resources';
@@ -157,6 +159,11 @@ export function App(){
   // The ROS thread shown for this project: the one chosen here, else the one saved, else the newest; null is a new thread not yet started. chatBusy names the thread a message is being sent in.
   const threadChoice=useMemo(()=>{if(!projectId)return undefined;if(projectId in threadChoices)return threadChoices[projectId];const saved=readSaved<string|null>(`ros-thread:${projectId}`,null);return saved==='new'?null:saved??undefined;},[projectId,threadChoices]);
   const threadId=shownThread(liveAssistant,threadChoice),threadKey=threadId??'new';
+  // Opening a thread puts back the agent and model it last ran with, so it goes on as it was.
+  const restoredThread=useRef<string|null>(null),hasChoice=Boolean(threadId&&liveAssistant?.threads.find(item=>item.id===threadId)?.choice);
+  useEffect(()=>{if(!projectId||!threadId||!hasChoice)return;const key=`${projectId}:${threadId}`;if(restoredThread.current===key)return;restoredThread.current=key;const id=projectId;
+    void post<AssistantState>(`/api/projects/${id}/assistant/threads/${threadId}/restore`).then(value=>{if(projectRef.current!==id)return;setAssistant(value);reloadProjectModels();reloadAgentModels();}).catch(()=>undefined);
+  },[projectId,threadId,hasChoice]);
   const chooseThread=useCallback((thread:ShownThread|undefined)=>{const id=projectRef.current;if(!id)return;setThreadChoices(current=>({...current,[id]:thread}));saveLocal(`ros-thread:${id}`,thread===undefined?null:thread??'new');},[]);
   // A Web block's pages arrive a search at a time, so its card is read more often while it searches.
   const sweeping=Boolean(detail?.runs.some(run=>run.configuration.purpose==='web-sweep'&&['running','queued'].includes(run.status)));

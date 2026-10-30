@@ -14,6 +14,8 @@ import { api, post } from './api';
 import { openOnPress } from './press';
 
 const settingsChanged = 'ros-ai-model-settings';
+/** Reads the project's model again in the bar and the panel, as after a thread puts back the one it last ran with. */
+export const reloadProjectModels = () => window.dispatchEvent(new Event(settingsChanged));
 
 export type ModelChoice = { provider: string; providerLabel: string; model: string; label: string; maker: ModelMaker };
 
@@ -40,8 +42,8 @@ export function useProjectModels(projectId: string, revision: number) {
 
 /** What ROS runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel.
  * Claude Code and Codex show as their logo, followed by a chip with the model and effort they run on. */
-export function RosModelMenu({ state, detail, running, onRefresh, onConnections, onPermissions, onError }: {
-  state: AssistantState | null; detail: ProjectDetail; running: boolean; onRefresh: () => unknown;
+export function RosModelMenu({ state, detail, threadId, running, onRefresh, onConnections, onPermissions, onError }: {
+  state: AssistantState | null; detail: ProjectDetail; threadId?: string | null; running: boolean; onRefresh: () => unknown;
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
   const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
@@ -49,7 +51,10 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const backend = state?.backend, inApp = inAppAgent(backend), inAppId = inApp ? backend as InAppAgent : null;
-  const agentModel = useAgentModel(inAppId), compact = Boolean(agentModel.choice?.models.some(item => item.id === agentModel.choice?.model));
+  // The thread shown keeps what ROS runs with, so opening it again later goes on with the same agent and model.
+  const remember = () => threadId ? post(`/api/projects/${detail.project.id}/assistant/threads/${threadId}/choice`) : Promise.resolve();
+  const agentState = useAgentModel(inAppId), agentModel = { ...agentState, choose: async (change: Parameters<typeof agentState.choose>[0]) => { await agentState.choose(change); await remember().catch(() => undefined); } };
+  const compact = Boolean(agentModel.choice?.models.some(item => item.id === agentModel.choice?.model));
   const agentLabel = inApp ? inApp.label : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
   // Gemini CLI, Goose and OpenCode are offered once they are installed on this computer.
   useEffect(() => {
@@ -72,7 +77,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const switchTo = async (change: () => Promise<unknown>) => {
     if (switching || running) return;
     setSwitching(true);
-    try { await change(); await onRefresh(); setMenu(false); } catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); } finally { setSwitching(false); }
+    try { await change(); await remember(); await onRefresh(); setMenu(false); } catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); } finally { setSwitching(false); }
   };
   const setBackend = (next: AssistantBackend) => post(`/api/projects/${detail.project.id}/assistant/backend`, { backend: next });
   // Codex is checked the way the project now runs it, so the bar shows at once whether it can start.

@@ -6,7 +6,9 @@ import { api } from './api';
 import { openOnPress } from './press';
 import './agent-model.css';
 
-const changed = 'ros-ai-agent-model';
+const changed = 'ros-ai-agent-model', reload = 'ros-ai-agent-model-reload';
+/** Reads every shown agent's model and effort again, as after a thread puts back the ones it last ran with. */
+export const reloadAgentModels = () => window.dispatchEvent(new Event(reload));
 const modelPath = (agent: InAppAgent) => `/api/agents/${IN_APP_AGENTS[agent].agent}/model?billing=${IN_APP_AGENTS[agent].billing}`;
 // Codex lists many models; the first few show at once and the rest behind More models.
 const SHOWN = 4;
@@ -26,10 +28,11 @@ export function useAgentModel(agent: InAppAgent | null | undefined): AgentModelS
     setFailed('');
     if (!agent) return;
     let active = true;
-    void api<AgentModelChoice>(modelPath(agent)).then(value => { if (active) setHeld({ agent, choice: value }); }).catch(cause => { if (active) setFailed(cause instanceof Error ? cause.message : String(cause)); });
+    const load = () => void api<AgentModelChoice>(modelPath(agent)).then(value => { if (active) setHeld({ agent, choice: value }); }).catch(cause => { if (active) setFailed(cause instanceof Error ? cause.message : String(cause)); });
+    load();
     const update = (event: Event) => { const detail = (event as CustomEvent<{ agent: InAppAgent; choice: AgentModelChoice; from: object }>).detail; if (active && detail.agent === agent && detail.from !== self.current) setHeld({ agent, choice: detail.choice }); };
-    window.addEventListener(changed, update);
-    return () => { active = false; window.removeEventListener(changed, update); };
+    window.addEventListener(changed, update); window.addEventListener(reload, load);
+    return () => { active = false; window.removeEventListener(changed, update); window.removeEventListener(reload, load); };
   }, [agent]);
   const choose = async (change: Change) => {
     if (!agent || !choice) return;

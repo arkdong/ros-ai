@@ -6,6 +6,8 @@ import type { MemoryKind, PersonalMemoryState } from './personal-memory.js';
 import type { AcpAgentId } from './acp-agents.js';
 import type { PluginMatch } from './plugin-hints.js';
 import type { TurnLayer } from './ros-layer.js';
+import type { ModelSelection } from './model-settings.js';
+import type { EffortLevel } from './agent-models.js';
 
 /** 'agent' runs the selected model in ros.ai's own tool loop; gemini, goose and opencode are agents on
  * this computer that speak ACP (acp-agents.ts). Claude Code and Codex are two agents each (IN_APP_AGENTS). */
@@ -46,9 +48,12 @@ export type AssistantLive = {turnId:string;threadId?:string;reply:string;status:
 /** One conversation with ROS inside a project. A project holds many; each keeps its own history, agent session, running turn
  * and draft, while the map, its proposals, the approval mode and what ROS runs with are the project's. outsideSession: the
  * thread of the person's own agent connected over MCP, one per session, named after the agent. */
-export type AssistantThread = {id:string;projectId:string;title:string;createdAt:string;updatedAt:string;outsideSession?:string};
+export type AssistantThread = {id:string;projectId:string;title:string;createdAt:string;updatedAt:string;outsideSession?:string;choice?:ThreadChoice};
+/** What a thread last ran with: the agent or way (backend), the project model, and for Claude Code or Codex the model and effort
+ * the agent ran on. Opening the thread again puts this choice back in the ROS bar, so the thread goes on as it was. */
+export type ThreadChoice = {backend:AssistantBackend;model?:ModelSelection;agentModel?:{model:string;effort:EffortLevel|null}};
 /** A thread as the bar and the panel list it: its name and its state in one line. updatedAt moves with its turns. */
-export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean};
+export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean;choice?:ThreadChoice};
 /** threads: newest activity first. activeTurnId: a running turn in any thread. threadId: set on the state a new message
  * returns, naming the thread it went into (a new one when the message named none). */
 export type AssistantState = {projectId:string;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};
