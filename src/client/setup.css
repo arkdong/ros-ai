@@ -47,12 +47,9 @@
 /* What Connect does with what is ticked, in one line over the footer. */
 .setup-plan { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--line-soft); font-size: var(--text-xs); line-height: 1.5; color: var(--body); }
 .setup-plan + .setup-foot { border-top: 0; margin-top: 0; }
-/* The step waiting for the person: what to do, then its actions; a key is pasted in the field. */
+/* The step waiting for the person: what to do, then its actions. */
 .setup-step-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .setup-step-actions .chip-button, .setup-step-actions .primary { height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; border-radius: 13px; font-size: var(--text-xs); }
-.setup-key { display: flex; gap: 6px; width: 100%; margin-top: 8px; }
-.setup-key input { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: var(--text-sm); }
-.setup-key .primary { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 8px; font-size: var(--text-sm); }
 .setup-row.here { align-items: flex-start; }
 .setup-row.here .setup-state { margin-top: 6px; }
 .setup-note span { color: var(--ink); }

@@ -114,6 +114,11 @@ export type ProviderBalance = {
 };
 export type CodexRateLimit = { usedPercent: number; windowMinutes: number | null; resetsAt: string | null };
 export type CodexRateLimits = { primary: CodexRateLimit | null; secondary: CodexRateLimit | null };
+/** How much of a Claude or ChatGPT subscription's usage windows is used, as Claude Code and Codex report it on this computer. */
+export type PlanWindow = { label: string; usedPercent: number; resetsAt: string | null };
+export type PlanUsage = { id: 'claude' | 'codex'; name: string; plan: string | null; state: 'ready' | 'signed-out' | 'unavailable'; windows: PlanWindow[]; message: string | null; checkedAt: string };
+/** "5-hour", "Weekly": a rolling window named by its length. */
+export const windowLabel = (minutes: number | null) => minutes === null ? 'Plan' : minutes >= 1440 * 6 ? 'Weekly' : minutes >= 1440 ? `${Math.round(minutes / 1440)}-day` : minutes >= 60 ? `${Math.round(minutes / 60)}-hour` : `${minutes}-minute`;
 
 /** Spend this calendar month against an optional monthly budget. */
 export type BudgetLine = { monthlyUsd: number | null; spentUsd: number; leftUsd: number | null };

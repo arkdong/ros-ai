@@ -244,7 +244,7 @@ export class ClaudeAgentService {
     const scopeHash = createHash('sha256').update(JSON.stringify(onPlan ? { cwd, billing } : { cwd })).digest('hex');
     const prior = this.store.record<Session>('claude-session', key);
     const resume = prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
-    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
+    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
     const allowedTools = [...builtIn, ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, billing, usageId: usage?.id ?? null, reservedUsd, request: { prompt, model, effort, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, webSearch: ownSearch ? 'own' : 'ros', maxBudgetUsd: onPlan ? null : reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: onPlan ? 'Claude plan (Claude Code’s own sign-in)' : 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
@@ -298,6 +298,8 @@ export class ClaudeAgentService {
         } else if (item.type === 'assistant' && item.parent_tool_use_id === null) {
           if (item.error) apiError = item.error;
           for (const block of item.message.content) if (block.type === 'tool_use' && !block.name.startsWith(`mcp__${SERVER}__`)) event({ at: now(), type: 'progress', message: webStep(block.name, block.input) ?? `Claude Code asked to use ${block.name}.`, data: { name: block.name, input: block.input } });
+        } else if (item.type === 'rate_limit_event' && onPlan) {
+          this.plan.noteRateLimit(item.rate_limit_info);
         } else if (item.type === 'result') {
           finished = { cost: item.total_cost_usd, subtype: item.subtype, text: item.subtype === 'success' ? item.result : '', sessionId: item.session_id };
         }

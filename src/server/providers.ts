@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { ModelMessage } from '../shared/types.js';
 import { DEFAULT_NEBIUS_MODEL, ULTRA_MODEL } from '../shared/model-settings.js';
 import type { SearchProviderId } from '../shared/search.js';
@@ -30,9 +33,12 @@ export type ExtractResponse = { pages:{url:string;content:string;locator:string}
 export type SearchDepth = 'basic'|'advanced';
 /** A source of a Web block's sweep: its relevance to the query (0 to 1) and its site's icon, when the service gives them. */
 export type SweepResult = SearchResult & { score:number|null; favicon:string|null };
-export type SweepResponse = { results:SweepResult[]; credits:number|null; requestId:string|null };
+export type SweepResponse = { results:SweepResult[]; credits:number|null; requestId:string|null; costUsd?:number|null };
 export interface SearchAdapter {
+  /** It can search: with a key, or on the service's free allowance. */
   readonly configured:boolean;
+  /** It searches with no key, on the allowance the service gives anyone, and charges nothing. */
+  readonly free?:boolean;
   search(query:string,signal:AbortSignal,depth?:SearchDepth):Promise<SearchResponse>;
   /** The full text of pages a search found. */
   extract?(urls:string[],signal:AbortSignal):Promise<ExtractResponse>;
@@ -76,7 +82,10 @@ export function wireTools(tools:ModelTool[]):Record<string,unknown>[] {
 export const DEFAULT_MODEL = DEFAULT_NEBIUS_MODEL;
 export const NEBIUS_BASE = 'https://api.tokenfactory.us-central1.nebius.com/v1';
 // A Tavily-compatible gateway the person set up themselves can replace the public endpoint.
-const TAVILY_BASE = process.env.TAVILY_BASE_URL?.replace(/\/+$/u, '') || 'https://api.tavily.com';
+const tavilyBase = () => process.env.TAVILY_BASE_URL?.replace(/\/+$/u, '') || 'https://api.tavily.com';
+// Tavily answers searches and page reads with no key, within an allowance it gives anyone, when a request asks for its
+// keyless mode (as Tavily's own MCP server does without a key). One id for each run of ros.ai lets it count that allowance.
+const TAVILY_SESSION = randomUUID();
 
 /** Audited scalar-text shape only. NVIDIA Ultra's published tokenizer is
  * byte-level BPE with no normalizer: merging cannot add tokens beyond UTF-8
@@ -198,10 +207,22 @@ export const SWEEP_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One basic web 
 export const EXTRACT_PAGES_PER_CREDIT = 5, PAGE_CHARACTERS = 50_000;
 export const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
 export class TavilyAdapter implements SearchAdapter {
-  get configured():boolean { return Boolean(this.key ?? process.env.TAVILY_API_KEY); }
-  constructor(private readonly key?:string) {}
+  get configured():boolean { return Boolean(this.key ?? process.env.TAVILY_API_KEY) || this.free; }
+  /** With no key, the local app searches on Tavily's keyless allowance (options.free); it charges nothing. */
+  get free():boolean { return this.options.free === true && !(this.key ?? process.env.TAVILY_API_KEY); }
+  constructor(private readonly key?:string, private readonly options:{free?:boolean}={}) {}
+  private async post(path:string,body:Record<string,unknown>,signal:AbortSignal):Promise<any> {
+    const free=this.free;
+    try {
+      return await requestJson(`${tavilyBase()}${path}`,{method:'POST',headers:free?{'X-Tavily-Access-Mode':'keyless','X-Client-Source':'ros.ai','X-Session-Id':TAVILY_SESSION,'Content-Type':'application/json'}:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+    } catch (error) {
+      // Tavily refuses keyless requests past its allowance (or asks for payment); a key of the person's own goes further.
+      if (free && error instanceof Error && /^Provider returned HTTP (401|402|403|429)\b/u.test(error.message)) throw new Error(`Tavily’s free searches with no account are used up for now. Add a Tavily key under Plugins › Tavily web search › More to search more. (${error.message.replace(/\. Check account limits[\s\S]*$/u,'')}.)`);
+      throw error;
+    }
+  }
   async extract(urls:string[],signal:AbortSignal):Promise<ExtractResponse> {
-    const result = await requestJson(`${TAVILY_BASE}/extract`,{method:'POST',headers:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify({urls,...EXTRACT_SCHEMA.configuration}),signal});
+    const free=this.free,result = await this.post('/extract',{urls,...EXTRACT_SCHEMA.configuration},signal);
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid page text.');
     const pages = result.results.flatMap((page:any)=>{
       const url = typeof page.url === 'string' ? urls.find(asked=>samePage(asked,page.url)) : undefined;
@@ -210,7 +231,7 @@ export class TavilyAdapter implements SearchAdapter {
       return [{url,content,locator:`Tavily extract; page text characters 0–${content.length}${page.raw_content.length > content.length ? ` of ${page.raw_content.length} (truncated)` : ''}`}];
     });
     const failed = urls.filter(url=>!pages.some((page:{url:string})=>page.url===url));
-    return {pages,failed,credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null};
+    return {pages,failed,credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null,...(free?{costUsd:0}:{})};
   }
   private credential():string {
     if (!this.configured) throw new Error('Set TAVILY_API_KEY in the server-side .env.local, then restart; model-only work is available without search.');
@@ -224,7 +245,7 @@ export class TavilyAdapter implements SearchAdapter {
     return this.request(query,SWEEP_SEARCH_SCHEMA.configuration,signal);
   }
   private async request(query:string,configuration:Record<string,unknown>,signal:AbortSignal):Promise<SweepResponse> {
-    const result = await requestJson(`${TAVILY_BASE}/search`,{method:'POST',headers:{Authorization:`Bearer ${this.credential()}`,'Content-Type':'application/json'},body:JSON.stringify({query,...configuration}),signal});
+    const free=this.free,result = await this.post('/search',{query,...configuration},signal);
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
     return {results:result.results.slice(0,5).map((source:any,index:number)=>{
       if (typeof source.content !== 'string' || typeof source.url !== 'string') throw new Error('Search provider returned a malformed source.');
@@ -236,7 +257,7 @@ export class TavilyAdapter implements SearchAdapter {
       // A site icon is only ever shown as an image, so only a web address is kept.
       const favicon = typeof source.favicon === 'string' && /^https:\/\/[^\s"'<>]{1,500}$/u.test(source.favicon) ? source.favicon : null;
       return {title:String(source.title || url.hostname).slice(0,300),url:url.href,content,locator:`Tavily search result ${index+1}; content characters 0–${content.length}${source.content.length > content.length ? ` of ${source.content.length} (truncated)` : ''}`,score,favicon};
-    }),credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null};
+    }),credits:Number.isFinite(result.usage?.credits) && result.usage.credits >= 0 ? result.usage.credits : null,requestId:typeof result.request_id === 'string' ? result.request_id : null,...(free?{costUsd:0}:{})};
   }
 }
 
@@ -261,14 +282,80 @@ const exaBase = () => process.env.EXA_BASE_URL?.replace(/\/+$/u, '') || 'https:/
 export const EXA_SEARCH_USD = 0.007, EXA_PAGE_USD = 0.001;
 export const EXA_SEARCH_SCHEMA = {name:'exa_search',description:'One user-enabled Exa web search. Captured passages of each page, not full documents.',parameters:SEARCH_SCHEMA.parameters,configuration:{type:'auto',numResults:3,contents:{highlights:{maxCharacters:4000}}}};
 export const EXA_CONTENTS_SCHEMA = {name:'exa_contents',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{text:{maxCharacters:PAGE_CHARACTERS}}};
+// Exa's hosted MCP server searches and reads pages for anyone, within its limits, with no key (as Exa's README says);
+// its web_search_exa and web_fetch_exa answer in text, read below. EXA_MCP_URL names a stand-in.
+const exaMcpUrl = () => process.env.EXA_MCP_URL?.trim() || 'https://mcp.exa.ai/mcp';
+const EXA_FREE_SPENT = 'Exa’s free searches with no account are used up for now. Add an Exa key under Plugins › Exa web search › More to search more.';
+/** web_search_exa's answer: a block for each page, apart by a line of ---, with "Title:", "URL:", "Published:" and
+ * "Author:" lines (N/A when unknown), then "Highlights:" and the passages that answer the search (or "Text:" and the
+ * page's text). */
+export function exaFreeResults(text:string):{title:string;url:string;passages:string}[] {
+  return text.split(/\n+---\n+/u).flatMap(block=>{
+    const url=/^URL: (\S+)[ \t]*$/mu.exec(block)?.[1];
+    if (!url) return [];
+    const passages=/^Highlights:\n([\s\S]*)$/mu.exec(block)?.[1] ?? /^Text: ([\s\S]*)$/mu.exec(block)?.[1] ?? '';
+    const title=/^Title: (.*)$/mu.exec(block)?.[1]?.trim() ?? '';
+    return [{title:title==='N/A'?'':title,url,passages:passages.trim()}];
+  });
+}
+/** web_fetch_exa's answer: for each page "# <title>", "URL:", "Published:" and "Author:" when known, a blank line and
+ * the page's text; then "Error fetching <address>: <reason>" for each page it could not read. */
+export function exaFreePages(text:string):{url:string;text:string}[] {
+  const heads=[...text.matchAll(/^# (.*)\nURL: (\S+)[ \t]*$/gmu)];
+  return heads.map((head,index)=>{
+    const body=text.slice(head.index!+head[0].length,index+1<heads.length?heads[index+1]!.index!:text.length);
+    return {url:head[2]!,text:body.replace(/^\n(?:Published: .*\n)?(?:Author: .*\n)?/u,'').replace(/(?:\nError fetching .*)+\s*$/u,'').trim()};
+  });
+}
+/** Exa's free search: one MCP session for each run of ros.ai, opened when first needed and again after it drops. */
+class ExaFree {
+  private session:Promise<Client>|null=null;
+  private open():Promise<Client> {
+    if (!this.session) {
+      const client=new Client({name:'ros.ai',version:'1'}),session=client.connect(new StreamableHTTPClientTransport(new URL(exaMcpUrl()))).then(()=>client);
+      this.session=session;
+      session.catch(()=>{ if (this.session===session) this.session=null; });
+    }
+    return this.session;
+  }
+  async call(name:string,args:Record<string,unknown>,signal:AbortSignal):Promise<string> {
+    const stopped=()=>new Error('Request stopped; provider billing outcome may be unknown.');
+    let client:Client;
+    try { client=await this.open(); }
+    catch { if (signal.aborted) throw stopped(); throw new Error('Could not reach Exa’s free search. Check the connection, or add an Exa key under Plugins › Exa web search › More.'); }
+    let result:Awaited<ReturnType<Client['callTool']>>;
+    try { result=await client.callTool({name,arguments:args},undefined,{signal,timeout:60_000}); }
+    catch {
+      // A dropped session opens again for the next search.
+      if (this.session) { this.session=null; void client.close().catch(()=>undefined); }
+      if (signal.aborted) throw stopped();
+      throw new Error('Exa’s free search did not answer. Try again, or add an Exa key under Plugins › Exa web search › More.');
+    }
+    const text=(Array.isArray(result.content)?result.content as {type:string;text?:unknown}[]:[]).flatMap(item=>item.type==='text'&&typeof item.text==='string'?[item.text]:[]).join('\n');
+    if (result.isError) throw new Error(/rate limit/iu.test(text)?EXA_FREE_SPENT:`Exa’s free search refused: ${text.replace(/[\r\n\x00-\x1f]+/gu,' ').slice(0,240)}`);
+    return text;
+  }
+}
 export class ExaAdapter implements SearchAdapter {
-  get configured():boolean { return Boolean(this.key ?? process.env.EXA_API_KEY); }
-  constructor(private readonly key?:string) {}
+  get configured():boolean { return Boolean(this.key ?? process.env.EXA_API_KEY) || this.free; }
+  /** With no key, the local app searches through Exa's hosted MCP server, free within its limits (options.free). */
+  get free():boolean { return this.options.free === true && !(this.key ?? process.env.EXA_API_KEY); }
+  private readonly hosted=new ExaFree();
+  constructor(private readonly key?:string, private readonly options:{free?:boolean}={}) {}
   private headers() {
-    if (!this.configured) throw new Error('Add an Exa key on the Plugins page; model-only work is available without search.');
-    return {'x-api-key':this.key ?? process.env.EXA_API_KEY ?? '','Content-Type':'application/json'};
+    const key=this.key ?? process.env.EXA_API_KEY;
+    if (!key) throw new Error('Add an Exa key on the Plugins page; model-only work is available without search.');
+    return {'x-api-key':key,'Content-Type':'application/json'};
   }
   async search(query:string,signal:AbortSignal):Promise<SearchResponse> {
+    if (this.free) {
+      const found=exaFreeResults(await this.hosted.call('web_search_exa',{query,numResults:EXA_SEARCH_SCHEMA.configuration.numResults},signal));
+      const results=found.slice(0,3).flatMap((source,index)=>{
+        const url=sourceUrl(source.url),saved=excerpt('Exa',index,[source.passages]);
+        return saved.content?[{title:String(source.title || url.hostname).slice(0,300),url:url.href,...saved}]:[];
+      });
+      return {results,credits:null,requestId:null,costUsd:0};
+    }
     const result = await requestJson(`${exaBase()}/search`,{method:'POST',headers:this.headers(),body:JSON.stringify({query,...EXA_SEARCH_SCHEMA.configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid results.');
     const results = result.results.slice(0,3).flatMap((source:any,index:number)=>{
@@ -280,6 +367,15 @@ export class ExaAdapter implements SearchAdapter {
     return {results,credits:null,requestId:typeof result.requestId === 'string' ? result.requestId : null,costUsd:usd(result.costDollars?.total)};
   }
   async extract(urls:string[],signal:AbortSignal):Promise<ExtractResponse> {
+    if (this.free) {
+      const pages=exaFreePages(await this.hosted.call('web_fetch_exa',{urls,maxCharacters:PAGE_CHARACTERS},signal)).flatMap(page=>{
+        const url=urls.find(asked=>samePage(asked,page.url));
+        if (!url || !page.text) return [];
+        const content=page.text.slice(0,PAGE_CHARACTERS);
+        return [{url,content,locator:`Exa contents; page text characters 0–${content.length}${page.text.length > content.length ? ` of ${page.text.length} (truncated)` : ''}`}];
+      });
+      return {pages,failed:urls.filter(url=>!pages.some(page=>page.url===url)),credits:null,requestId:null,costUsd:0};
+    }
     const result = await requestJson(`${exaBase()}/contents`,{method:'POST',headers:this.headers(),body:JSON.stringify({urls,...EXA_CONTENTS_SCHEMA.configuration}),signal});
     if (!Array.isArray(result.results)) throw new Error('Search provider returned invalid page text.');
     const pages = result.results.flatMap((page:any)=>{

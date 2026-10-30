@@ -38,6 +38,7 @@ import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
 import { attachSuggestionRoutes, pluginReadiness, type PluginSuggestions } from './plugin-suggestions.js';
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
 import { NotionFileSaver } from './notion-files.js';
+import { WebFileFetcher } from './web-files.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
@@ -74,7 +75,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
       const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
-      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg'].includes(type);
+      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type);
       if (type !== 'application/json' && !file) return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -99,7 +100,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(!options.publicDemo&&options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
   if(!options.publicDemo&&options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
-  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;folders.start();}
+  if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;AgentWorkspaceTools.webFiles=new WebFileFetcher();folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
@@ -197,6 +198,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   const spendingBudget = new SpendingBudget(store);
   if (!options.publicDemo) attachSpendingBudgetRoutes(app, spendingBudget);
   if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
+  // How much of the Claude and ChatGPT subscriptions' windows is used, as Claude Code and Codex report it. Local app only.
+  if (!options.publicDemo) app.get('/api/usage/plans', async (_req, res) => res.json({ plans: (await Promise.all([tools?.claude?.plan.usage(), agent?.planUsage()].map(item => item?.catch(() => null)))).filter(Boolean) }));
   app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
@@ -232,7 +235,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
   if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
   // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now. The demo cannot connect tools, so it has none.
-  if (tools?.suggestions && !options.publicDemo) { const sources=tools; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
+  if (tools?.suggestions && !options.publicDemo) { const sources={...tools,...(execution.searchStatus?{search:()=>execution.searchStatus!()}:{})}; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;

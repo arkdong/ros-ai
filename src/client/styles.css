@@ -4443,16 +4443,6 @@ a {
   font-size: 13px;
   color: #6b6b6b;
 }
-.assistant-message .turn-focus {
-  font-size: 13px;
-  font-weight: 400;
-  max-width: 145px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-left: auto;
-  color: #6b6b6b;
-}
 .assistant-previous {
   margin-bottom: 20px;
 }
