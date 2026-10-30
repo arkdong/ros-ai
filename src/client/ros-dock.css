@@ -162,6 +162,9 @@
 .assistant-panel.ros-panel .assistant-message.response { max-width: 94%; }
 .ros-turn-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: var(--text-xs); color: var(--muted); }
 .ros-turn-meta > span + span::before { content: '·'; margin-right: 10px; color: var(--line); }
+/* Under an answer an agent gave only in chat: put it on the map as blocks. */
+.ros-turn-meta .ros-to-map { margin-left: auto; padding: 0; font-size: var(--text-xs); color: var(--muted); }
+.ros-turn-meta .ros-to-map:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
 .assistant-compact .ros-turn-meta .assistant-turn-events { margin: 0; }
 .assistant-compact .ros-turn-meta .assistant-turn-events summary { font-size: var(--text-xs); color: var(--muted); cursor: pointer; }
 .assistant-panel.ros-panel .assistant-working { margin-top: 10px; padding: 9px 12px; border-radius: 10px; background: var(--canvas); color: var(--body); font-size: var(--text-sm); }

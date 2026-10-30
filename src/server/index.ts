@@ -37,6 +37,7 @@ import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
 import { trustSystemCertificates } from './system-certificates.js';
 import { LocalRos } from './local-ros.js';
+import { RosLayer, type LayerChoice } from './ros-layer.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WorkspaceGuideService } from './workspace-guide.js';
@@ -160,7 +161,16 @@ try {
     // One skill library every agent reads; looking skills up on GitHub uses the GitHub plugin's token when there is one.
     const skills=new SkillLibrary(store,dataDir,{githubToken:()=>plugins.token('github')});
     AgentWorkspaceTools.skills=skills;
-    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills,acp);
+    // ROS on top of whichever agent the person picked: it arranges what a turn leaves loose, on Local ROS once it is
+    // downloaded and running, else on hosted ROS while the person is signed in, else by ros.ai's own rules.
+    const connection=(id:string|undefined)=>{try{const status=id?inference.status(id):undefined;return status?.ready&&!status.deleted?status:undefined;}catch{return undefined;}};
+    const rosLayer=new RosLayer(store,execution,():LayerChoice=>{
+      const local=localRos?.status(),hosted=connection(cloud?.connectionId());
+      if(local?.state==='ready'&&connection(local.connectionId))return {engine:'local',selection:{provider:local.connectionId!,model:'ros-local'}};
+      if(hosted)return {engine:'hosted',selection:{provider:hosted.id,model:hosted.models.some(model=>model.id==='ros-deep')?'ros-deep':'ros'}};
+      return {engine:'layout'};
+    });
+    assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills,acp,rosLayer);
     guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
@@ -185,7 +195,7 @@ try {
     updates = new Updates(store,root,shutdown);
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
     const suggestions = new PluginSuggestions(dataDir);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,setup,memory:personal,skills,updates,suggestions,appFrames},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

@@ -14,6 +14,7 @@ import { projectFolderRoot } from './project-folders.js';
 import { findBinary, pretty } from './setup-detect.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { ACP_AGENTS, ACP_AGENT_IDS, isAcpAgent, type AcpAgentId, type AcpAgentStatus } from '../shared/acp-agents.js';
+import { CANVAS_GRAMMAR } from './canvas-grammar.js';
 
 /** Gemini CLI, Goose and OpenCode as ROS, through the Agent Client Protocol: ros.ai starts the agent for
  * one turn, gives it ros.ai's tools over a per-turn MCP endpoint, and refuses everything else it asks
@@ -44,7 +45,8 @@ export const CLAUDE_CODE_READ = 'Read them with Read, Glob and Grep.';
 export function acpInstructions(id: AcpAgentId) {
   const read = id === 'goose' ? 'Your own tools are off while you work in ros.ai, reading files included: read blocks with ros_read_canvas and ros_read_selected.' : 'Read them with your own read, list and search tools; your other tools are off while you work in ros.ai.';
   return `${CLAUDE_CODE_INSTRUCTIONS.replace(CLAUDE_CODE_READ, read)}
-- ros.ai's tools may carry a prefix in your tool list (for example mcp_rosai_ros_read_canvas, rosai_ros_read_canvas or rosai__ros_read_canvas); they are the ros_* tools named here.`;
+- ros.ai's tools may carry a prefix in your tool list (for example mcp_rosai_ros_read_canvas, rosai_ros_read_canvas or rosai__ros_read_canvas); they are the ros_* tools named here.
+${CANVAS_GRAMMAR}`;
 }
 const MCP_INSTRUCTIONS = 'ros.ai is the researcher\'s workspace. These tools read its map and propose changes; every change follows the researcher\'s permission choice in ros.ai.';
 /** The one tool a check offers: listing it shows the agent reaches ros.ai's tools. */

@@ -378,6 +378,14 @@ export class ExecutionService {
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Continuous project assistant',undefined,projectId,1,selection);}
     finally{this.chats.delete(key);}
   }
+  /** One call of ROS arranging what an agent's turn left (ros-layer.ts), in a lane of its own so it never waits on a
+   * thread or holds one up. */
+  async layerComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection:ModelSelection){
+    this.store.getProject(projectId);this.admitWork(true,selection);
+    const key=this.chatKey(projectId,`ros-layer:${randomUUID()}`),controller=new AbortController();this.chats.set(key,controller);
+    try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'ROS arranging an agent turn',undefined,projectId,1,selection);}
+    finally{this.chats.delete(key);}
+  }
   async guideComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection:ModelSelection){
     this.store.getProject(projectId);this.admitWork(true,selection);
     if(this.chatting(projectId))throw new Error('Finish or stop the current project response before a guide review.');
