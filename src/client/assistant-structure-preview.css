@@ -100,3 +100,5 @@
 .turn-review-more { margin-top:2px; }
 @media (prefers-reduced-motion: reduce) { .turn-review-toggle>svg { transition:none; } }
 .turn-review-status { flex-shrink:0; font-size:12px; color:#6b6b6b; padding-right:4px; }
+/* Undo on a row ROS added: quiet, beside the row's own word. */
+.turn-review-undo { flex-shrink:0; font-size:12px; padding:2px 4px; }

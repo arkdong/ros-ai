@@ -17,6 +17,7 @@ import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type Claud
 import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { ClaudePlan, planAllowed, planEnvironment } from './claude-plan.js';
 import { privateAddress } from './private-address.js';
+import { CANVAS_GRAMMAR } from './canvas-grammar.js';
 
 const now = () => new Date().toISOString();
 const SERVER = 'ros';
@@ -277,7 +278,7 @@ export class ClaudeAgentService {
         permissionMode: 'dontAsk', settingSources: [], skills: [], strictMcpConfig: true,
         mcpServers: { [SERVER]: createSdkMcpServer({ name: SERVER, version: '0.1.0', tools, alwaysLoad: true }) },
         hooks: { PreToolUse: [{ hooks: [toolGuard(root, ownSearch)] }] },
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: `${CLAUDE_CODE_INSTRUCTIONS}\n${ownSearch ? `${OWN_SEARCH_INSTRUCTIONS}\n` : ''}${REPLY_INSTRUCTIONS}` },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: `${CLAUDE_CODE_INSTRUCTIONS}\n${ownSearch ? `${OWN_SEARCH_INSTRUCTIONS}\n` : ''}${REPLY_INSTRUCTIONS}\n${CANVAS_GRAMMAR}` },
         ...(onPlan ? {} : { maxBudgetUsd: reservedUsd }), maxTurns: MAX_MODEL_TURNS, includePartialMessages: true,
         ...(resume ? { resume: resume.sessionId } : {}),
         stderr: () => {},
