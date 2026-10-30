@@ -45,7 +45,7 @@ const placePinsSchema = z.object({
   summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800),
   nodeId: id.optional().describe('A Map block on the canvas, or one this turn proposed, to add the pins to. Leave out to make a new Map block'),
   title: z.string().trim().min(1).max(200).optional().describe('The new Map block\'s title, such as "Date night in Amsterdam". Needed without nodeId'),
-  on: z.enum(['google', 'openstreetmap']).optional().describe('A new map only: "google" makes a Google Maps block, which draws Google\'s own map; "openstreetmap" a Map block on OpenStreetMap. Leave out for Google Maps when the person has a Google Maps key, OpenStreetMap otherwise'),
+  on: z.enum(['google', 'openstreetmap']).optional().describe('A new map only: "google" makes a Google Maps block, which shows Google\'s own map (every pin with a Google Maps key, one place at a time without); "openstreetmap" a Map block that shows every pin on OpenStreetMap. Leave out for Google Maps when the person has a Google Maps key, OpenStreetMap otherwise'),
   replace: z.boolean().default(false).describe('true: the pins replace every pin on the map. false: they are added, and a pin with the name of one already there moves or updates it'),
   pins: z.array(z.object({
     name: z.string().trim().min(1).max(200).describe('What the place is, as the person would say it: "Rijksmuseum", "Café de Jaren"'),
@@ -575,7 +575,7 @@ export class AgentWorkspaceTools {
       action: made.action, committed: made.status === 'accepted', nodeId,
       placed: placed.map(pin => ({ name: pin.name, lat: Number(pin.lat.toFixed(6)), lng: Number(pin.lng.toFixed(6)), ...(pin.place ? { foundAs: pin.place } : {}), google: googleMapsLink(pin) })),
       ...(notFound.length ? { notFound } : {}),
-      ...(!target && value.on === 'google' && !googleMapsKeySaved() ? { googleMaps: 'No Google Maps key is saved, so the block shows OpenStreetMap until the person adds one in Plugins › Google Maps. Say so.' } : {}),
+      ...(!target && value.on === 'google' && !googleMapsKeySaved() ? { googleMaps: 'No Google Maps key is saved, so the block shows Google\'s map one place at a time; a key in Plugins › Google Maps shows every pin at once.' } : {}),
       instruction: `${made.status === 'accepted' ? 'The pins are on the map.' : 'Wait for exact user approval. Do not describe the pins as placed yet.'} Looked-up pins land where OpenStreetMap puts the place: check foundAs, and fix a wrong one by calling again with the same name and a fuller place or lat and lng.${notFound.length ? ' Some places were not found (notFound); say which.' : ''}`,
     };
   }

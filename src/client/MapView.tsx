@@ -29,8 +29,8 @@ export function MapBlock({ view, full = false, onPins }: { view: MapView; full?:
   const surface = { pins, active, full, onPick: setActive };
   const route = googleRouteLink(pins);
   return <div className={`map-block${full ? ' full' : ''}`}>
-    {google.maps ? <GoogleSurface {...surface} maps={google.maps}/> : <OsmSurface {...surface}/>}
-    {google.problem && <p className="map-block-notice">{google.problem}</p>}
+    {google.maps ? <GoogleSurface {...surface} maps={google.maps}/> : google.embed ? <GoogleEmbed {...surface}/> : <OsmSurface {...surface}/>}
+    {google.problem && (full || !google.embed) && <p className="map-block-notice">{google.problem}</p>}
     {!pins.length && !full && <p className="map-block-empty">No places yet. Ask ROS to pin some, or open the block to add them.</p>}
     {full && onPins && <AddPlace pins={pins} onAdd={pin => { setActive(pin.id); return onPins([...pins, pin]); }}/>}
     {full && pins.length > 0 && <ol className="map-block-pins">{pins.map((pin, index) => <li key={pin.id} className={pin.id === active ? 'active' : undefined}>
@@ -146,23 +146,34 @@ function loadGoogle(key: string): Promise<Maps> {
   });
   return googleScript;
 }
-/** Google's map for a Google Maps block, or why it shows OpenStreetMap instead. */
-function useGoogleMaps(wanted: boolean): { maps?: Maps; problem?: string } {
-  const [state, setState] = useState<{ maps?: Maps; problem?: string }>({});
+/** Google's map for a Google Maps block: its full map with every pin when a key is saved, else Google's keyless embed of
+ * one place at a time (`embed`), with a line on why. */
+function useGoogleMaps(wanted: boolean): { maps?: Maps; embed?: boolean; problem?: string } {
+  const [state, setState] = useState<{ maps?: Maps; embed?: boolean; problem?: string }>({});
   useEffect(() => {
     if (!wanted) { setState({}); return; }
     let live = true;
-    const refused = () => { if (live) setState({ problem: 'Google refused the Maps key, so this shows OpenStreetMap. Check in Google Cloud that the Maps JavaScript API and billing are on, and that the key allows this address.' }); };
+    const refused = () => { if (live) setState({ embed: true, problem: 'Google refused the Maps key, so this shows one place at a time. Check in Google Cloud that the Maps JavaScript API and billing are on, and that the key allows this address.' }); };
     refusedListeners.add(refused);
     if (googleRefused) refused();
     else void api<{ key: string | null }>('/api/maps/google').then(async ({ key }) => {
-      if (!key) { if (live) setState({ problem: 'Add a Google Maps key in Plugins › Google Maps to see Google’s map here. Until then it shows OpenStreetMap.' }); return; }
+      if (!key) { if (live) setState({ embed: true, problem: 'Google’s map without a key shows one place at a time: pick one in the list. A Google Maps key in Plugins shows them all at once.' }); return; }
       const maps = await loadGoogle(key);
       if (live && !googleRefused) setState({ maps });
-    }).catch(reason => { if (live) setState({ problem: reason instanceof Error ? reason.message : String(reason) }); });
+    }).catch(reason => { if (live) setState({ embed: true, problem: reason instanceof Error ? reason.message : String(reason) }); });
     return () => { live = false; refusedListeners.delete(refused); };
   }, [wanted]);
   return state;
+}
+
+/** Google's keyless embed, the one Google's own Share › Embed a map gives: the chosen place, else the first. It cannot
+ * draw the other pins; on a card it is still, so the card drags. */
+function GoogleEmbed({ pins, active, full }: Surface) {
+  const pin = pins.find(item => item.id === active) ?? pins[0];
+  if (!pin) return <div className={`map-block-map google${full ? ' nodrag nowheel' : ''}`} aria-label={mapLabel(pins)}><iframe title="Google Maps" src="https://www.google.com/maps?q=&z=2&output=embed" loading="lazy" referrerPolicy="no-referrer-when-downgrade"/></div>;
+  const query = `${pin.place?.trim() || pin.name} @${pin.lat.toFixed(6)},${pin.lng.toFixed(6)}`;
+  const src = `https://www.google.com/maps?${new URLSearchParams({ q: `${pin.lat.toFixed(6)},${pin.lng.toFixed(6)} (${pin.name})`, z: '16', output: 'embed' })}`;
+  return <div className={`map-block-map google${full ? ' nodrag nowheel' : ' still'}`} aria-label={`Google Maps at ${query}`}><iframe key={src} title={`${pin.name} on Google Maps`} src={src} loading="lazy" referrerPolicy="no-referrer-when-downgrade"/></div>;
 }
 
 /** Google's own map, with the same numbered pins. */

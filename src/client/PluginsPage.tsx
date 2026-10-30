@@ -69,7 +69,7 @@ export const searchKeys: Record<SearchProviderId, { link: string; description: s
 /** Where a Google Maps key comes from, and how to keep it to this app: Google's map runs in the page, so the key reaches it. */
 export const GOOGLE_MAPS_KEY = {
   link: 'https://console.cloud.google.com/google/maps-apis/credentials',
-  description: 'Google Maps blocks show Google’s own map with their pins. The key stays on this computer and is handed only to ros.ai’s own page, which Google’s map script needs. Google gives 10,000 map loads a month free.',
+  description: 'With a key, Google Maps blocks show every pin at once on Google’s map; without one they show one place at a time. The key stays on this computer and is handed only to ros.ai’s own page, which Google’s map script needs. Google gives 10,000 map loads a month free.',
   steps: [
     'In Google Cloud, pick or create a project and turn on billing (Google asks for it even inside the free loads).',
     'Enable the Maps JavaScript API.',
