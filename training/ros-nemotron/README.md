@@ -104,6 +104,37 @@ The 95 held-out tasks, on Adam's Mac. Both small models are Q4_K_M GGUFs in llam
 
 The first run gave the student 32,768 tokens and scored 12 and 15. The harness injects the student like a hosted model, whose admission counts a token per byte plus 4,096 and the 8,000-token output cap, so it refused most requests over about 20 KB. The app admits Local Ros at three bytes a token up to its 64 KB request cap. The table comes from the rerun with `--student-context=65536`, which is slightly stricter than the app. `student()` now defaults to 76,096 tokens (64,000 + 4,096 + 8,000), so it admits what the app admits.
 
+## Round 2: the structure family (30 October)
+
+Round 2 teaches ROS the job it does on top of any agent (`src/server/ros-layer.ts`): after an agent's turn, decide **when** to give its work the map's shape, **which blocks to group** (into a group already there or a new one, with a short title) and **which to link**, in the map's six link words (supports, contradicts, answers, uses data from, builds on, part of).
+
+How the data is made (`structure.ts`): the teacher writes well-organised maps, with groups of two to six blocks under a theme title, one to three blocks outside every group, three to ten links, and for each group the request and reply of the agent turn that added it. Each map then gives several turns, each with the map's original shape as the answer:
+
+- **regroup:** a group's blocks came loose and the group is gone; the answer is the group again, under its own title.
+- **place:** one or two blocks came out of a group that is still there; the answer puts them back.
+- **mixed:** both in one turn.
+- **links:** a block that fits no group came without its links; the answer is the links only.
+- **leave:** a block that fits no group and has no links; the answer is to change nothing.
+
+Up to four of the moved blocks' links are taken away and belong to the answer; any others stay, as links the agent made itself. The landing request is built by the app's own functions (`seeTurn`, `landingAsk`) and every answer is read back by the app's own parser (`landingPlan`), so a sample is exactly what Local ROS gets and what the app keeps. Training and evaluation use round 1's domains, which never mix, and nothing comes from Claude, Codex or anyone's own projects.
+
+Steps, from the repository root on Adam's Mac. `ROS_TRAINING_DATA` points at round 1's data folder, so the round 2 sets include round 1's turns and `--max-usd` (which caps the total in `spend.jsonl`, US$33.08 after round 1) counts everything.
+
+```sh
+export ROS_TRAINING_DATA=~/code/ros-nemotron-run/training/ros-nemotron/data
+npx tsx training/ros-nemotron/run.ts structure-smoke                      # offline on a hand-written map; spends nothing
+npx tsx training/ros-nemotron/run.ts structure-maps --per-domain=8 --eval-per-domain=3 --max-usd=36
+npx tsx training/ros-nemotron/run.ts structure-export                     # structure/ and round2/train.jsonl, round2/val.jsonl
+npx tsx training/ros-nemotron/run.ts structure-eval --model=rules --label=rules
+llama-server -m <model>.gguf --jinja --reasoning-budget 0 -c 32768 --parallel 2 --port 4339 --alias ros-local
+npx tsx training/ros-nemotron/run.ts structure-eval --label=ros-nemotron --student-url=http://127.0.0.1:4339/v1
+npx tsx training/ros-nemotron/run.ts structure-eval --model=teacher --label=super --max-usd=37
+```
+
+`structure-eval` prints and saves (`structure/eval/<label>.summary.json`): valid answers, group precision, recall and F1 (a block in the right group, and each pair of blocks put together in a new one), link F1 with the share of right words and directions among the right pairs, `leftAlone` (maps that needed nothing and got nothing), `missed` (maps that needed something and got nothing), title overlap and speed. Training is round 1's recipe on `round2/train.jsonl` and `round2/val.jsonl` (structure samples carry no tools); then the 95 round 1 tasks again, to check nothing dropped.
+
+Targets for the new model: valid at least 98%, group F1 at least 0.8, left alone at least 9 times in 10, no drop on the 95 tasks, and a landing answer in 10 seconds or less (p50) on Adam's Mac. Expected cost: maps about US$1 to 3 of Token Factory credit, the H100 about 3 to 5 hours (US$9 to 15 of AI Cloud credit), Super's evaluation about US$1; about US$15 to 25 in all, capped at US$30.
+
 ## Known risks
 
 - **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns were refused before they reached the model. Fixed in #67: loopback servers now estimate input as bytes/3.

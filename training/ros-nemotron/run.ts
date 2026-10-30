@@ -8,10 +8,15 @@
  *   report     checks every trajectory and prints the pass rates
  *   export     writes train.jsonl and val.jsonl from the passing trajectories
  *   eval       a model under test works the held-out tasks         --student-url=http://127.0.0.1:4319/v1 --label=baseline
- *   smoke      the whole path offline with a scripted teacher; spends nothing */
+ *   smoke      the whole path offline with a scripted teacher; spends nothing
+ * Round 2's structure family (structure.ts): when, what to group and what to link after an agent's turn
+ *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --max-usd=2
+ *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure)
+ *   structure-eval     scores a model on the held-out maps         --student-url=... --label=x, or --model=rules|teacher
+ *   structure-smoke    the structure path offline on a hand-written map; spends nothing */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../../src/server/store.js';
@@ -20,7 +25,7 @@ import { ExperimentService } from '../../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../../src/server/agent-tools.js';
 import { AGENT_LOOP_INSTRUCTIONS } from '../../src/server/agent-prompt.js';
 import type { ModelAdapter } from '../../src/server/providers.js';
-import { Ledger, dataDir, flag, appendJsonl, arg, path, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
+import { Ledger, dataDir, flag, appendJsonl, arg, path, pool, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
 import { rollout, type Fixture, type Task, type Trajectory } from './env.js';
 import { FAMILIES } from './families.js';
 import { EVAL_DOMAINS, TRAIN_DOMAINS, makeProjects, makeTasks, seeded } from './generate.js';
@@ -28,12 +33,17 @@ import { web } from './world.js';
 import { check } from './check.js';
 import { isValidation, toSample } from './export.js';
 import { scriptedTeacher, scriptedWeb } from './smoke.js';
+import { SMOKE_MAP, answerFor, askFor, evaluate, makeCases, makeMaps, scoreCase, summarise, toStructureSample, type StructureCase, type StructureMap } from './structure.js';
+import { landingPlan } from '../../src/server/ros-layer.js';
 
 const step = process.argv[2];
 const files = {
   snapshot: () => path('snapshot.json'), fixtures: () => path('fixtures.jsonl'), evalFixtures: () => path('eval-fixtures.jsonl'),
   tasks: () => path('tasks.jsonl'), evalTasks: () => path('eval-tasks.jsonl'), trajectories: () => path('trajectories.jsonl'),
+  maps: () => path('structure', 'maps.jsonl'), evalMaps: () => path('structure', 'eval-maps.jsonl'), evalCases: () => path('structure', 'eval-cases.jsonl'),
 };
+/** A map's cases come from a seed of its own, so every export takes the same shape away. */
+const casesOf = (map: StructureMap) => makeCases(map, seeded(parseInt(createHash('md5').update(map.id).digest('hex').slice(0, 8), 16)));
 
 type Snapshot = { at: string; commit: string; hash: string; system: string; tools: { base: unknown[]; notion: unknown[] } };
 /** The prompt and tool list exactly as the loop sends them, with and without Notion connected. */
@@ -56,11 +66,6 @@ function requireSnapshot() {
   const saved = readJson<Snapshot>(files.snapshot()), hash = contractHash(currentContract());
   if (saved.hash !== hash) throw new Error(`The prompt or tools changed since the snapshot of ${saved.at} (commit ${saved.commit}). Check out that commit, or take a new snapshot and start the data again.`);
   return saved;
-}
-
-async function pool<T>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<void>) {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => { for (let index = next++; index < items.length; index = next++) await work(items[index], index); }));
 }
 
 /** The 19 October comparison's ten tasks on the bundled KNMI weather demo, so ros-nemotron's score compares with Nano's 6/10 and Super's 7.5/10. */
@@ -181,6 +186,42 @@ if (step === 'snapshot') {
   writeFileSync(path('train.jsonl'), samples.map(item => JSON.stringify(item)).join('\n') + '\n');
   console.log(`${samples.length}/${trajectories.length} smoke trajectories pass and export.`);
   if (samples.length !== tasks.length) process.exitCode = 1;
+} else if (step === 'structure-maps') {
+  const ledger = new Ledger(Number(arg('max-usd', '2'))), model = teacher(ledger, 'structure-maps', false);
+  for (const [domains, file, count] of [[TRAIN_DOMAINS, files.maps(), Number(arg('per-domain', '8'))], [EVAL_DOMAINS, files.evalMaps(), Number(arg('eval-per-domain', '3'))]] as const) {
+    const have = new Map<string, number>();
+    for (const map of readJsonl<StructureMap>(file)) have.set(map.domain, (have.get(map.domain) ?? 0) + 1);
+    await pool(domains.filter(domain => (have.get(domain) ?? 0) < count), 4, async domain => { const maps = await makeMaps(model, domain, count - (have.get(domain) ?? 0)); maps.forEach(map => appendJsonl(file, map)); console.log(`maps: ${domain} (${maps.length})`); });
+  }
+  console.log(`${readJsonl(files.maps()).length} training maps, ${readJsonl(files.evalMaps()).length} evaluation maps. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
+} else if (step === 'structure-export') {
+  const cases = readJsonl<StructureMap>(files.maps()).flatMap(casesOf), held = readJsonl<StructureMap>(files.evalMaps()).flatMap(casesOf);
+  const rows = cases.flatMap(item => { const sample = toStructureSample(item); return sample ? [{ item, sample }] : []; });
+  for (const [split, keep] of [['train', false], ['val', true]] as const) writeFileSync(path('structure', `${split}.jsonl`), rows.filter(({ item }) => isValidation(item.mapId) === keep).map(({ sample }) => JSON.stringify(sample)).join('\n') + '\n');
+  writeFileSync(files.evalCases(), held.map(item => JSON.stringify(item)).join('\n') + '\n');
+  // Round 2 trains on round 1's turns and the structure family together, so Local ROS keeps working as an agent too.
+  for (const split of ['train', 'val']) {
+    const round1 = existsSync(path(`${split}.jsonl`)) ? readFileSync(path(`${split}.jsonl`), 'utf8').trim() : '';
+    writeFileSync(path('round2', `${split}.jsonl`), [round1, readFileSync(path('structure', `${split}.jsonl`), 'utf8').trim()].filter(Boolean).join('\n') + '\n');
+  }
+  console.table([...new Set(rows.map(({ item }) => item.kind))].map(kind => ({ kind, samples: rows.filter(({ item }) => item.kind === kind).length })));
+  console.log(`${rows.length} structure samples (${cases.length - rows.length} cut from the packet), ${held.length} evaluation cases. Round 2 sets in ${dataDir()}/round2/.`);
+} else if (step === 'structure-eval') {
+  const label = arg('label', 'baseline')!, cases = readJsonl<StructureCase>(files.evalCases());
+  if (!cases.length) throw new Error('Run structure-export first.');
+  const model = arg('model') === 'rules' ? 'rules' : arg('model') === 'teacher' ? teacher(new Ledger(Number(arg('max-usd', '3'))), 'structure-eval', false) : student();
+  const summary = await evaluate(cases, model, path('structure', 'eval', `${label}.jsonl`), Number(arg('concurrency', '2')));
+  writeJson(path('structure', 'eval', `${label}.summary.json`), { at: new Date().toISOString(), label, ...summary });
+  console.log(`${label}: ${JSON.stringify(summary, null, 2)}`);
+} else if (step === 'structure-smoke') {
+  process.env.ROS_TRAINING_DATA ??= mkdtempSync(join(tmpdir(), 'ros-structure-smoke-'));
+  const cases = makeCases(SMOKE_MAP, seeded(7)), samples = cases.map(toStructureSample).filter(Boolean);
+  // The original shape, read back by the app's own parser, has to score full marks; ros.ai's own rules show the floor.
+  const original = summarise(cases.map(item => { const { view, asked } = askFor(item); return scoreCase(item, landingPlan(JSON.stringify(answerFor(item.target, asked)), asked, view, item.request)); }));
+  const rules = await evaluate(cases, 'rules', path('structure', 'eval', 'smoke-rules.jsonl'));
+  console.log(`${cases.length} cases (${[...new Set(cases.map(item => item.kind))].join(', ')}), ${samples.length} samples in ${dataDir()}`);
+  console.log(`original shape: ${JSON.stringify(original)}\nros.ai's rules: ${JSON.stringify(rules)}`);
+  if (samples.length !== cases.length || original.group.f1 !== 1 || original.link.f1 !== 1 || original.leftAlone !== 1) process.exitCode = 1;
 } else {
-  console.log('Steps: snapshot, projects, tasks, rollout, report, export, eval, smoke. See README.md.');
+  console.log('Steps: snapshot, projects, tasks, rollout, report, export, eval, smoke, structure-maps, structure-export, structure-eval, structure-smoke. See README.md.');
 }

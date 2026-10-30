@@ -45,7 +45,7 @@ skipped = {"template": 0, "long": 0}
 def encode(sample):
     """Token ids and labels; None when the template does not render turn by turn or the sample is too long."""
     messages = [{key: value for key, value in message.items() if key != "train"} for message in sample["messages"]]
-    tools = sample["tools"]
+    tools = sample.get("tools") or None
     full = render(messages, tools)
     spans = []
     for index, message in enumerate(sample["messages"]):

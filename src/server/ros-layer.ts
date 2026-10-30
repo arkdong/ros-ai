@@ -14,7 +14,8 @@ import { LAYOUT_GAP, freeSpot, groupContentRight, openGroupSize } from '../share
 import { CARD_MAX_HEIGHT, cardFootprintHeight, cardWidth, estimatedCardHeight } from '../shared/card-size.js';
 import { SET_ASIDE } from '../shared/groups.js';
 import { kindName } from '../shared/vocabulary.js';
-import { layerSummary, plainTitle, replyHasContent, requestTitle, splitReply, type LayerBench, type LayerEngine, type LayerStats, type LayerStatus, type SplitBlock, type TurnLayer } from '../shared/ros-layer.js';
+import { LINK_WORDS } from '../shared/links.js';
+import { layerSummary, plainTitle, replyHasContent, requestTitle, splitReply, type LayerBench, type LayerEngine, type LayerStats, type LayerStatus, type SplitBlock, type SplitReply, type TurnLayer } from '../shared/ros-layer.js';
 
 /** What arranges right now: Local ROS when it is downloaded and running, hosted ROS when the person is signed in to it,
  * otherwise ros.ai's own rules (index.ts decides from the Local ROS and cloud account state). */
@@ -28,16 +29,21 @@ type Execution = Pick<ExecutionService, 'assistantProposal' | 'acceptGovernedPro
 type TurnRecord = { id: string; turnId: string; at: string; source: string; blocks: number; loose: number; chatOnly: boolean; outcome: 'arranged' | 'rescued' | 'nothing' | 'failed' | 'off'; proposals: string[]; engine?: LayerEngine; fallback?: boolean; ms?: number; proposalId?: string };
 /** A ROS row as Undo needs it: where moved blocks were, and what ROS added. */
 type RowRecord = { proposalId: string; turnId: string; projectId: string; at: string; engine: LayerEngine; fallback: boolean; rescued: boolean; manual?: boolean; moved: { id: string; parentId: string | null; x: number; y: number; into: string }[]; groups: string[]; blocks: string[]; links: string[]; undone?: string };
-/** What ROS proposes, by block id; 'answer' and 'section:<n>' name blocks it adds for an answer given in chat. */
-type Plan = { place: { block: string; group: string }[]; newGroups: { title: string; blocks: string[] }[]; links: { from: string; to: string; label: string }[]; rescue?: { title: string; blocks: SplitBlock[]; group?: string } };
-type Look = { canvas: Canvas; pending: Proposal[]; added: CanvasNode[]; candidates: CanvasNode[]; groups: CanvasNode[]; others: CanvasNode[]; named?: CanvasNode; chatOnly: boolean; proposals: string[] };
+/** What ROS proposes, by block id; 'answer' and 'section:<n>' name blocks it adds for an answer given in chat, 'group:<n>'
+ * the new groups in order. */
+export type LandingPlan = { place: { block: string; group: string }[]; newGroups: { title: string; blocks: string[] }[]; links: { from: string; to: string; label: string }[]; rescue?: { title: string; blocks: SplitBlock[]; group?: string } };
+/** What a landing pass sees of the map: the canvas as the turn left it, the blocks the turn added, those of them still
+ * loose (the candidates), the groups, every other block as a link end (inside groups too, the turn's own placed blocks
+ * included), and the block or group the request names. */
+export type TurnView = { canvas: Canvas; added: CanvasNode[]; candidates: CanvasNode[]; groups: CanvasNode[]; others: CanvasNode[]; named?: CanvasNode };
+type Look = TurnView & { pending: Proposal[]; chatOnly: boolean; proposals: string[] };
 
 const SETTINGS = 'ros-layer';
 /** Budgets for one landing call: hosted ROS answers in seconds; Local ROS on a laptop reads the packet first. */
 const BUDGET_MS: Record<Exclude<LayerEngine, 'layout'>, number> = { hosted: 30_000, local: 60_000 };
 /** How long ROS waits for another thread of the project to finish before proposing, so its canvas does not move under it. */
 const WAIT_MS = 15 * 60_000;
-const MAX = { place: 12, groups: 3, links: 4, refs: 24, text: 280 } as const;
+const MAX = { place: 12, groups: 3, links: 4, refs: 24, blocks: 40, text: 280 } as const;
 const snap = (value: number) => Math.round(value / 24) * 24, snapUp = (value: number) => Math.ceil(value / 24) * 24;
 const now = () => new Date().toISOString();
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -52,8 +58,8 @@ You get the researcher's request, the agent's reply, the blocks the turn left ou
 
 Return one JSON object:
 - place: put a loose block into an existing group when it clearly belongs to that group's theme, as {"block":"n1","group":"g2"}.
-- newGroups: when two or more loose blocks share a theme no existing group has, gather them under a short title of two to five words, as {"title":"Methods","blocks":["n1","n2"]}.
-- links: at most four links that say how this turn's blocks relate to each other or to blocks already on the map, each labelled with one or two words such as informs, answers, supports, contradicts, summarises, next step or example of, as {"from":"b3","to":"n1","label":"informs"}. Every link touches an n or s ref.
+- newGroups: when two or more loose blocks share a theme no existing group has, gather them under a short title of one to five words that names the theme, as {"title":"Methods","blocks":["n1","n2"]}. A block that fits no group stays loose.
+- links: at most four links that say how this turn's blocks relate to each other or to blocks already on the map, each with one of the map's link words: ${LINK_WORDS.join(', ')}. A link reads from "from" to "to": {"from":"n1","to":"b3","label":"builds on"} says n1 builds on b3. Link only blocks that clearly relate; every link touches an n or s ref.
 - toMap: only when sections are given. {"keep":true,"title":"..."} puts the answer on the map as a group of those sections under that title; {"keep":false,"title":""} leaves a reply that is only conversation (a greeting, a status, a how-to about ros.ai) in chat. Otherwise null.
 Leave a list empty when nothing fits; an empty answer is often right. Use only refs from the packet.`;
 const responseShape = z.object({
@@ -63,13 +69,109 @@ const responseShape = z.object({
   toMap: z.object({ keep: z.boolean(), title: z.string() }).nullable(),
 });
 // The contract goes in ROS's own instructions: one system message, which every chat template takes.
-const SYSTEM = `${LANDING_PROMPT}\nReturn only the JSON object, without Markdown fences. Its JSON Schema: ${JSON.stringify(z.toJSONSchema(responseShape))}`;
+export const LANDING_SYSTEM = `${LANDING_PROMPT}\nReturn only the JSON object, without Markdown fences. Its JSON Schema: ${JSON.stringify(z.toJSONSchema(responseShape))}`;
+const WORDS = new Set<string>(LINK_WORDS);
 const ref = z.string().trim().min(2).max(16);
 const placeItem = z.object({ block: ref, group: ref });
 const groupItem = z.object({ title: z.string().trim().min(1).max(300), blocks: z.array(ref).min(1).max(MAX.refs) });
 const linkItem = z.object({ from: ref, to: ref, label: z.string().trim().min(1).max(300) });
 const toMapItem = z.object({ keep: z.boolean(), title: z.string().max(300).optional() });
 const items = <T>(schema: z.ZodType<T>, value: unknown) => Array.isArray(value) ? value.flatMap(item => { const parsed = schema.safeParse(item); return parsed.success ? [parsed.data] : []; }) : [];
+
+/** What a landing pass sees after a turn, from the canvas and the ids of the blocks the turn added. Blocks an agent's
+ * research already shapes, and blocks linked to an Agent block, keep their place; the block or group the request names
+ * by its title (else the one in focus) is the named one. Shared with ROS's training data
+ * (training/ros-nemotron/structure.ts), so ROS learns from what the app shows it. */
+export function seeTurn(canvas: Canvas, addedIds: ReadonlySet<string>, request: string, focusId?: string | null): TurnView {
+  const byId = new Map(canvas.nodes.map(node => [node.id, node]));
+  const added = [...addedIds].flatMap(id => { const node = byId.get(id); return node && node.kind !== 'group' ? [node] : []; });
+  const nearAgent = (node: CanvasNode) => canvas.connections.some(edge => (edge.source === node.id && byId.get(edge.target)?.blockType === 'agent') || (edge.target === node.id && byId.get(edge.source)?.blockType === 'agent'));
+  const candidates = added.filter(node => !node.parentId && !shaped(node) && !nearAgent(node)), loose = new Set(candidates.map(node => node.id));
+  const groups = canvas.nodes.filter(node => node.kind === 'group' && !setAside(node));
+  const others = canvas.nodes.filter(node => node.kind !== 'group' && node.blockType !== 'agent' && !loose.has(node.id));
+  const lower = request.toLowerCase();
+  const named = canvas.nodes.filter(node => !addedIds.has(node.id) && node.title.trim().length >= 5 && new RegExp(`(^|[^\\p{L}\\p{N}])${escaped(node.title.trim().toLowerCase())}($|[^\\p{L}\\p{N}])`, 'u').test(lower)).sort((a, b) => b.title.length - a.title.length)[0]
+    ?? (focusId ? byId.get(focusId) : undefined);
+  return { canvas, added, candidates, groups, others, ...(named ? { named } : {}) };
+}
+
+/** ros.ai's own rules, used when ROS is not there: loose blocks go into the group the request names (or the group of
+ * the block it names), three or more go into a group of their own named after the request, and one link joins the work
+ * to the named block. An answer given in chat becomes blocks cut at its own headings. */
+export function landingRules(input: Pick<LandInput, 'request' | 'reply' | 'agent'>, look: TurnView, chatOnly: boolean, manual: boolean): LandingPlan | null {
+  const named = look.named, group = named?.kind === 'group' ? named : named?.parentId ? look.canvas.nodes.find(node => node.id === named.parentId && node.kind === 'group') : undefined;
+  const link = named && named.kind !== 'group' ? named : undefined;
+  // The work builds on the block the request names, or answers it when that block is a question.
+  const word = link?.label === 'question' ? 'answers' : 'builds on';
+  if (chatOnly && (manual || !look.candidates.length)) {
+    const split = splitReply(input.reply);
+    if (!split.blocks.length) return null;
+    const title = split.title || requestTitle(input.request);
+    return { place: [], newGroups: [], links: link ? [{ from: 'answer', to: link.id, label: word }] : [], rescue: { title, blocks: split.blocks.map(block => ({ ...block, title: block.title || title })), ...(group && split.blocks.length === 1 ? { group: group.id } : {}) } };
+  }
+  const blocks = look.candidates.slice(0, MAX.place).map(node => node.id);
+  const plan: LandingPlan = { place: [], newGroups: [], links: [] };
+  if (group && !setAside(group)) plan.place = blocks.map(block => ({ block, group: group.id }));
+  else if (blocks.length >= 3) plan.newGroups = [{ title: input.request.trim() ? requestTitle(input.request) : `Added by ${input.agent ?? 'your agent'}`, blocks }];
+  if (link && blocks.length && !look.canvas.connections.some(edge => [edge.source, edge.target].includes(link.id) && look.added.some(node => node.id === edge.source || node.id === edge.target))) plan.links = [{ from: plan.newGroups.length ? 'group:0' : blocks[0], to: link.id, label: word }];
+  return plan;
+}
+
+/** The landing request as ROS gets it, with short refs in place of ids: n for the loose blocks, g for the groups (the
+ * named one first), b for the other blocks and s for the sections of an answer given only in chat. */
+export type LandingAsk = { messages: ModelRequest['messages']; refs: Map<string, string>; split?: SplitReply };
+export function landingAsk(input: Pick<LandInput, 'request' | 'reply' | 'hint'>, view: TurnView, chatOnly: boolean): LandingAsk {
+  const refs = new Map<string, string>(), packet: Record<string, unknown> = { request: input.request.slice(0, 1500) };
+  const text = (node: CanvasNode) => node.description.replace(/\s+/gu, ' ').trim().slice(0, MAX.text);
+  const named = (prefix: string, nodes: CanvasNode[], limit: number = MAX.refs) => nodes.slice(0, limit).map((node, index) => { const key = `${prefix}${index + 1}`; refs.set(key, node.id); return { key, node }; });
+  const loose = named('n', view.candidates), groups = named('g', [...view.groups].sort((a, b) => Number(b.id === view.named?.id || b.id === view.named?.parentId) - Number(a.id === view.named?.id || a.id === view.named?.parentId)));
+  // Other blocks as link ends: the named one first, then those on the map's top level, then those inside groups.
+  const rank = (node: CanvasNode) => node.id === view.named?.id ? 0 : node.parentId ? 2 : 1;
+  const others = named('b', [...view.others].sort((a, b) => rank(a) - rank(b)), MAX.blocks), groupKey = new Map(groups.map(({ key, node }) => [node.id, key]));
+  packet.loose = loose.map(({ key, node }) => ({ ref: key, title: node.title, kind: kindName(node), ...(node.label ? { label: node.label } : {}), text: text(node) }));
+  packet.groups = groups.map(({ key, node }) => ({ ref: key, title: node.title, holds: view.canvas.nodes.filter(child => child.parentId === node.id).slice(0, 4).map(child => child.title) }));
+  packet.blocks = others.map(({ key, node }) => ({ ref: key, title: node.title, ...(node.parentId && groupKey.has(node.parentId) ? { in: groupKey.get(node.parentId) } : {}) }));
+  const split = chatOnly && !view.candidates.length ? splitReply(input.reply) : undefined;
+  if (split?.blocks.length) packet.sections = split.blocks.map((block, index) => { refs.set(`s${index + 1}`, `section:${index}`); return { ref: `s${index + 1}`, title: block.title, text: block.text.replace(/\s+/gu, ' ').slice(0, 240) }; });
+  packet.reply = input.reply.slice(0, split ? 1500 : 3000);
+  if (input.hint) packet.hint = input.hint.slice(0, 1200);
+  return { messages: [{ role: 'system', content: LANDING_SYSTEM }, { role: 'user', content: JSON.stringify(packet) }], refs, ...(split ? { split } : {}) };
+}
+
+/** ROS's answer as a plan, keeping only what checks out: refs from the packet, each loose block placed once, new groups
+ * of two or more, and links with one of the map's words that touch the turn's work and are not on the map yet. Throws
+ * when the answer holds no JSON object. */
+export function landingPlan(content: string, asked: LandingAsk, view: TurnView, request: string): LandingPlan {
+  const answer = parseWholeJsonObject(content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/u, '')) as Record<string, unknown>;
+  if (!answer || typeof answer !== 'object') throw new Error('ROS answered without a JSON object.');
+  const keyed = (prefix: string) => new Set([...asked.refs].flatMap(([key, id]) => key.startsWith(prefix) ? [id] : []));
+  const looseIds = keyed('n'), groupIds = keyed('g'), used = new Set<string>(), split = asked.split;
+  const resolve = (key: string) => asked.refs.get(key.trim());
+  const plan: LandingPlan = { place: [], newGroups: [], links: [] };
+  for (const item of items(placeItem, answer.place)) {
+    const block = resolve(item.block), group = resolve(item.group);
+    if (block && group && looseIds.has(block) && groupIds.has(group) && !used.has(block) && plan.place.length < MAX.place) { used.add(block); plan.place.push({ block, group }); }
+  }
+  for (const item of items(groupItem, answer.newGroups)) {
+    const blocks = [...new Set(item.blocks.map(resolve).filter((id): id is string => Boolean(id && looseIds.has(id) && !used.has(id))))];
+    const title = plainTitle(item.title, 80);
+    if (blocks.length >= 2 && title && plan.newGroups.length < MAX.groups) { blocks.forEach(id => used.add(id)); plan.newGroups.push({ title, blocks }); }
+  }
+  const work = (id: string) => looseIds.has(id) || id.startsWith('section:') || view.added.some(node => node.id === id), pairs = new Set<string>();
+  for (const item of items(linkItem, answer.links)) {
+    const from = resolve(item.from), to = resolve(item.to), label = plainTitle(item.label, 40).toLowerCase();
+    if (!from || !to || from === to || !WORDS.has(label) || !(work(from) || work(to)) || plan.links.length >= MAX.links) continue;
+    const pair = [from, to].sort().join('\u0000');
+    if (pairs.has(pair) || view.canvas.connections.some(edge => (edge.source === from && edge.target === to) || (edge.source === to && edge.target === from))) continue;
+    pairs.add(pair); plan.links.push({ from, to, label });
+  }
+  if (split?.blocks.length) {
+    const toMap = toMapItem.safeParse(answer.toMap);
+    if (!toMap.success || toMap.data.keep) plan.rescue = { title: plainTitle(toMap.success ? toMap.data.title ?? '' : '', 80) || split.title || requestTitle(request), blocks: split.blocks.map(block => ({ ...block, title: block.title || split.title || requestTitle(request) })) };
+    else plan.links = plan.links.filter(link => !link.from.startsWith('section:') && !link.to.startsWith('section:'));
+  }
+  return plan;
+}
 
 /** ROS as the canvas layer on top of whichever agent the person picked (docs: research/ros-layer-direction-2026-10-30).
  * After a turn it reads what the turn left loose (blocks outside any group, without links) or an answer given only in
@@ -110,12 +212,12 @@ export class RosLayer {
     if (!this.on()) { record('off'); return null; }
     if (!look.candidates.length && !look.chatOnly) { record('nothing'); return { layer: { state: 'skipped', note: 'Nothing was left loose.' } }; }
     const choice = this.engine();
-    let plan: Plan | null = null, fallback = false;
+    let plan: LandingPlan | null = null, fallback = false;
     if (choice.selection && choice.engine !== 'layout') {
       try { plan = await this.ask(input, look, choice, choice.engine === 'local' && hurry ? AbortSignal.any([signal, hurry]) : signal); }
       catch (error) { if (signal.aborted) throw error; fallback = true; console.error(`ROS layer: ${choice.engine} ROS did not arrange this turn: ${error instanceof Error ? error.message : error}`); }
     }
-    plan ??= this.rules(input, look, false);
+    plan ??= landingRules(input, look, look.chatOnly, false);
     const engine: LayerEngine = fallback || !choice.selection ? 'layout' : choice.engine;
     if (!plan || (!plan.place.length && !plan.newGroups.length && !plan.links.length && !plan.rescue)) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Everything already had its place.' } }; }
     // Another thread still at work would find the canvas moved under its next change.
@@ -140,7 +242,7 @@ export class RosLayer {
 
   /** "Put this on the map" under an answer: the person's own click, so it lands at once, cut by ros.ai's own rules. */
   toMap(input: LandInput): AssistantAction {
-    const look = this.look(input, true), plan = this.rules(input, look, true);
+    const look = this.look(input, true), plan = landingRules(input, look, look.chatOnly, true);
     if (!plan?.rescue) throw new StoreError('This answer has no text to put on the map.', 409);
     const made = this.propose(input, look, plan, 'layout', false, true);
     if (!made) throw new StoreError('This answer has no text to put on the map.', 409);
@@ -192,90 +294,23 @@ export class RosLayer {
     const pending = proposals.filter(proposal => proposal.status === 'pending');
     const canvas = canvasAfter(detail.project.canvas, pending.flatMap(proposal => proposal.operations));
     const addedIds = new Set(proposals.flatMap(proposal => proposal.operations.flatMap(op => op.type === 'addNode' ? [op.node.id] : [])));
-    const byId = new Map(canvas.nodes.map(node => [node.id, node]));
-    const added = [...addedIds].flatMap(id => { const node = byId.get(id); return node && node.kind !== 'group' ? [node] : []; });
-    const nearAgent = (node: CanvasNode) => canvas.connections.some(edge => (edge.source === node.id && byId.get(edge.target)?.blockType === 'agent') || (edge.target === node.id && byId.get(edge.source)?.blockType === 'agent'));
-    const candidates = added.filter(node => !node.parentId && !shaped(node) && !nearAgent(node));
-    const groups = canvas.nodes.filter(node => node.kind === 'group' && !setAside(node));
-    const others = canvas.nodes.filter(node => !node.parentId && node.kind !== 'group' && !addedIds.has(node.id));
-    const request = input.request.toLowerCase();
-    const named = canvas.nodes.filter(node => !addedIds.has(node.id) && node.title.trim().length >= 5 && new RegExp(`(^|[^\\p{L}\\p{N}])${escaped(node.title.trim().toLowerCase())}($|[^\\p{L}\\p{N}])`, 'u').test(request)).sort((a, b) => b.title.length - a.title.length)[0]
-      ?? (input.focusId ? byId.get(input.focusId) : undefined);
     const worked = input.actions.some(action => action.by !== 'ros' && (action.proposalId || action.reportProposalId || action.runId));
     const chatOnly = input.source !== 'outside-agent' && Boolean(input.reply.trim()) && (manual || (!worked && replyHasContent(input.reply)));
-    return { canvas, pending, added, candidates, groups, others, ...(named ? { named } : {}), chatOnly, proposals: proposals.map(proposal => proposal.id) };
+    return { ...seeTurn(canvas, addedIds, input.request, input.focusId), pending, chatOnly, proposals: proposals.map(proposal => proposal.id) };
   }
 
-  /** ros.ai's own rules, used when ROS is not there: loose blocks go into the group the request names (or the group of
-   * the block it names), three or more go into a group of their own named after the request, and one link joins the
-   * named block to the work. An answer given in chat becomes blocks cut at its own headings. */
-  private rules(input: LandInput, look: Look, manual: boolean): Plan | null {
-    const named = look.named, group = named?.kind === 'group' ? named : named?.parentId ? look.canvas.nodes.find(node => node.id === named.parentId && node.kind === 'group') : undefined;
-    const link = named && named.kind !== 'group' ? named : undefined;
-    if (look.chatOnly && (manual || !look.candidates.length)) {
-      const split = splitReply(input.reply);
-      if (!split.blocks.length) return null;
-      const title = split.title || requestTitle(input.request);
-      return { place: [], newGroups: [], links: link ? [{ from: link.id, to: 'answer', label: 'informs' }] : [], rescue: { title, blocks: split.blocks.map(block => ({ ...block, title: block.title || title })), ...(group && split.blocks.length === 1 ? { group: group.id } : {}) } };
-    }
-    const blocks = look.candidates.slice(0, MAX.place).map(node => node.id);
-    const plan: Plan = { place: [], newGroups: [], links: [] };
-    if (group && !setAside(group)) plan.place = blocks.map(block => ({ block, group: group.id }));
-    else if (blocks.length >= 3) plan.newGroups = [{ title: input.request.trim() ? requestTitle(input.request) : `Added by ${input.agent ?? 'your agent'}`, blocks }];
-    if (link && blocks.length && !look.canvas.connections.some(edge => [edge.source, edge.target].includes(link.id) && look.added.some(node => node.id === edge.source || node.id === edge.target))) plan.links = [{ from: link.id, to: plan.newGroups.length ? 'group:0' : blocks[0], label: 'informs' }];
-    return plan;
-  }
-
-  /** Asks ROS for the shape under a strict contract, and keeps only what checks out: refs from the packet, each block
-   * placed once, links that touch the turn's work. A reply that does not parse throws, and ros.ai's rules step in. */
-  private async ask(input: LandInput, look: Look, choice: LayerChoice, signal: AbortSignal): Promise<Plan> {
-    const refs = new Map<string, string>(), packet: Record<string, unknown> = { request: input.request.slice(0, 1500) };
-    const text = (node: CanvasNode) => node.description.replace(/\s+/gu, ' ').trim().slice(0, MAX.text);
-    const named = (prefix: string, nodes: CanvasNode[]) => nodes.slice(0, MAX.refs).map((node, index) => { const key = `${prefix}${index + 1}`; refs.set(key, node.id); return { key, node }; });
-    const loose = named('n', look.candidates), groups = named('g', [...look.groups].sort((a, b) => Number(b.id === look.named?.id || b.id === look.named?.parentId) - Number(a.id === look.named?.id || a.id === look.named?.parentId)));
-    const others = named('b', [...look.others].sort((a, b) => Number(b.id === look.named?.id) - Number(a.id === look.named?.id)));
-    packet.loose = loose.map(({ key, node }) => ({ ref: key, title: node.title, kind: kindName(node), ...(node.label ? { label: node.label } : {}), text: text(node) }));
-    packet.groups = groups.map(({ key, node }) => ({ ref: key, title: node.title, holds: look.canvas.nodes.filter(child => child.parentId === node.id).slice(0, 4).map(child => child.title) }));
-    packet.blocks = others.map(({ key, node }) => ({ ref: key, title: node.title }));
-    const split = look.chatOnly && !look.candidates.length ? splitReply(input.reply) : undefined;
-    if (split?.blocks.length) packet.sections = split.blocks.map((block, index) => { refs.set(`s${index + 1}`, `section:${index}`); return { ref: `s${index + 1}`, title: block.title, text: block.text.replace(/\s+/gu, ' ').slice(0, 240) }; });
-    packet.reply = input.reply.slice(0, split ? 1500 : 3000);
-    if (input.hint) packet.hint = input.hint.slice(0, 1200);
-    const request: ModelRequest = { messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: JSON.stringify(packet) }], maxOutputTokens: choice.engine === 'hosted' ? 2000 : 900 };
+  /** Asks ROS for the shape under its contract (landingAsk) and keeps what checks out (landingPlan). A reply that does
+   * not parse throws, and ros.ai's rules step in. */
+  private async ask(input: LandInput, look: Look, choice: LayerChoice, signal: AbortSignal): Promise<LandingPlan> {
+    const asked = landingAsk(input, look, look.chatOnly);
+    const request: ModelRequest = { messages: asked.messages, maxOutputTokens: choice.engine === 'hosted' ? 2000 : 900 };
     const { response } = await this.execution.layerComplete(input.projectId, request, AbortSignal.any([signal, AbortSignal.timeout(BUDGET_MS[choice.engine as 'local' | 'hosted'])]), choice.selection!);
-    const answer = parseWholeJsonObject(response.content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/u, '')) as Record<string, unknown>;
-    if (!answer || typeof answer !== 'object') throw new Error('ROS answered without a JSON object.');
-    const looseIds = new Set(loose.map(item => item.node.id)), groupIds = new Set(groups.map(item => item.node.id)), used = new Set<string>();
-    const resolve = (key: string) => refs.get(key.trim());
-    const plan: Plan = { place: [], newGroups: [], links: [] };
-    for (const item of items(placeItem, answer.place)) {
-      const block = resolve(item.block), group = resolve(item.group);
-      if (block && group && looseIds.has(block) && groupIds.has(group) && !used.has(block) && plan.place.length < MAX.place) { used.add(block); plan.place.push({ block, group }); }
-    }
-    for (const item of items(groupItem, answer.newGroups)) {
-      const blocks = [...new Set(item.blocks.map(resolve).filter((id): id is string => Boolean(id && looseIds.has(id) && !used.has(id))))];
-      const title = plainTitle(item.title, 80);
-      if (blocks.length >= 2 && title && plan.newGroups.length < MAX.groups) { blocks.forEach(id => used.add(id)); plan.newGroups.push({ title, blocks }); }
-    }
-    const work = (id: string) => looseIds.has(id) || id.startsWith('section:') || look.added.some(node => node.id === id), pairs = new Set<string>();
-    for (const item of items(linkItem, answer.links)) {
-      const from = resolve(item.from), to = resolve(item.to), label = plainTitle(item.label, 40).toLowerCase();
-      if (!from || !to || from === to || !label || !(work(from) || work(to)) || plan.links.length >= MAX.links) continue;
-      const pair = [from, to].sort().join('\u0000');
-      if (pairs.has(pair) || look.canvas.connections.some(edge => (edge.source === from && edge.target === to) || (edge.source === to && edge.target === from))) continue;
-      pairs.add(pair); plan.links.push({ from, to, label });
-    }
-    if (split?.blocks.length) {
-      const toMap = toMapItem.safeParse(answer.toMap);
-      if (!toMap.success || toMap.data.keep) plan.rescue = { title: plainTitle(toMap.success ? toMap.data.title ?? '' : '', 80) || split.title || requestTitle(input.request), blocks: split.blocks.map(block => ({ ...block, title: block.title || split.title || requestTitle(input.request) })) };
-      else plan.links = plan.links.filter(link => !link.from.startsWith('section:') && !link.to.startsWith('section:'));
-    }
-    return plan;
+    return landingPlan(response.content, asked, look, input.request);
   }
 
   /** Turns a plan into one proposal on the map as it is now, laid out by ros.ai: blocks go into free spots inside their
    * group, a new group sits where its blocks were, an answer goes beside the block it is about or right of the map. */
-  private propose(input: LandInput, look: Look, plan: Plan, engine: LayerEngine, fallback: boolean, manual = false): { proposal: Proposal; action: AssistantAction; event: string } | null {
+  private propose(input: LandInput, look: Look, plan: LandingPlan, engine: LayerEngine, fallback: boolean, manual = false): { proposal: Proposal; action: AssistantAction; event: string } | null {
     const canvas = look.canvas, byId = new Map(canvas.nodes.map(node => [node.id, node])), operations: Mutation[] = [];
     const row: RowRecord = { proposalId: '', turnId: input.turnId, projectId: input.projectId, at: now(), engine, fallback, rescued: Boolean(plan.rescue), ...(manual ? { manual } : {}), moved: [], groups: [], blocks: [], links: [] };
     const loose = (id: string) => { const node = byId.get(id); return node && !node.parentId && node.kind !== 'group' ? node : undefined; };

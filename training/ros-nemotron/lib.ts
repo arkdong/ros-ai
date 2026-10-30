@@ -20,6 +20,12 @@ export const appendJsonl = (file: string, value: unknown) => { mkdirSync(dirname
 export const arg = (name: string, fallback?: string) => { const found = process.argv.find(item => item.startsWith(`--${name}=`)); return found ? found.slice(name.length + 3) : fallback; };
 export const flag = (name: string) => process.argv.includes(`--${name}`);
 
+/** Runs work over items, at most `concurrency` at a time. */
+export async function pool<T>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<void>) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => { for (let index = next++; index < items.length; index = next++) await work(items[index], index); }));
+}
+
 /** Every paid request in the pipeline settles here; a request that would pass the cap is never sent. */
 export class Ledger {
   private readonly file = path('spend.jsonl');
