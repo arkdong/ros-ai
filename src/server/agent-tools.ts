@@ -5,7 +5,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantAction } from '../shared/assistant.js';
 import type { AgentScope } from '../shared/agent-runtime.js';
-import type { Artifact, Canvas, CanvasNode, CheckedClaim, MapPin, MetricView, Mutation, Run, TrainingView, WebDirection } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, CheckedClaim, MapPin, MetricRead, MetricView, Mutation, Run, TrainingView, WebDirection } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import { EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, type SearchDepth } from './providers.js';
 import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
@@ -15,8 +15,8 @@ import { SET_ASIDE } from '../shared/groups.js';
 import type { NotionApi, NotionWrite } from './notion.js';
 import type { NotionViews } from './notion-view.js';
 import type { GoogleWorkspace } from './google-workspace.js';
-import type { MetricViews } from './metric-view.js';
-import { metricSummary } from '../shared/metrics.js';
+import { metricViewKey, type MetricViews } from './metric-view.js';
+import { METRIC_TOOLS, metricSummary } from '../shared/metrics.js';
 import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AgentApp, type AppId, type AppTool, type RemoteApps } from './remote-apps.js';
 import { projectFolderRoot, type ProjectFolders } from './project-folders.js';
@@ -56,6 +56,17 @@ const placePinsSchema = z.object({
     note: z.string().max(2000).optional().describe('One or two lines shown with the pin: why it is there, opening hours, a price'),
     url: z.string().trim().url().max(2000).optional().describe('The place\'s own website or a page about it'),
   }).strict()).min(1).max(50),
+}).strict();
+/** Metrics blocks, one per source. An Umami website or Railway project may be named by its domain or name, or left out when the key reaches one. */
+const addMetricsSchema = z.object({
+  summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800),
+  blocks: z.array(z.object({
+    source: z.enum(['cloud', 'github', 'umami', 'railway']).describe('cloud: ros.ai\'s own accounts, sign-ups, hosted ROS use, downloads and feedback. github: a repository\'s stars, release downloads, visitors and cloners. umami: a website\'s visitors, page views and tracked clicks and downloads. railway: whether each service of a project is up'),
+    repo: z.string().trim().min(1).max(300).optional().describe('github only: owner/name or the repository\'s link, such as arkdong/ros-ai'),
+    website: z.string().trim().min(1).max(300).optional().describe('umami only: the website\'s domain (such as ros-ai.io), name, ID or link. Leave out when the key reaches one website'),
+    project: z.string().trim().min(1).max(300).optional().describe('railway only: the project\'s name, ID or link. Leave out when the token reaches one project'),
+    title: z.string().trim().min(1).max(200).optional().describe('Leave out to title the block with what it reads: the repository, the website or the Railway project'),
+  }).strict()).min(1).max(8),
 }).strict();
 const appGuideSchema = z.object({}).strict();
 const checkAppSchema = z.object({
@@ -152,7 +163,7 @@ const NOTION_ACCOUNTS = ' Each Notion account is its own app, one workspace each
  * gemini, goose and opencode are agents on this computer that ros.ai starts as Ros over ACP. */
 export type AgentName = 'codex' | 'claude' | 'outside' | 'model' | AcpAgentId;
 /** Tool input contracts, shared by every agent transport. */
-export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema, ros_place_pins: placePinsSchema };
+export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema, ros_place_pins: placePinsSchema, ros_add_metrics: addMetricsSchema };
 /** The tools that change while Apps are on for agents: the canvas tool takes App blocks, and two tools join it. */
 export const appToolSchemas = { ros_propose_canvas: appCanvasSchema, ros_app_guide: appGuideSchema, ros_check_app: checkAppSchema };
 /** What the canvas tool says about App blocks; the check is named only where a browser can run it. */
@@ -247,6 +258,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_write_verdicts', description: 'Mark the claims of this turn\'s ros_check_claims as backed or contradicted by a source, quoting it word for word (copy the sentence from ros_read_pages, or from the search passage), or as unsupported when no source found settles it. Give each a one-line note: for a contradiction, what the source says instead. ros.ai checks every quote against the saved text and refuses verdicts it cannot find there; the marks appear on the block, and each contradiction is also saved as a Finding note. Send verdicts again for a claim to replace them.', inputSchema: z.toJSONSchema(verdictsSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_propose_report', description: 'Propose a report: the title and the full Markdown text, as an immutable revision of a block. nodeId is the selected report or text block (or a block this turn added); leave it out when nothing is selected and ros.ai adds a report block for it. evidenceIds are exact selected artifact versions and may be empty when the evidence is in blocks you name in the text. The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_place_pins', description: `Put places on a map on the canvas: a Map block shows pins on OpenStreetMap, a Google Maps block on Google's own map, and each pin opens in Google Maps with one click. When the person asks for Google Maps, set on: "google". Use it whenever places matter to the work (a trip, venues, field sites, offices, a route), rather than listing addresses in a note or drawing a map in code. Give nodeId to add to a Map block already there (ros_read_canvas lists its pins), or a title for a new one. Give each pin a name and either lat and lng you are sure of, or place: an address or a name with its town, which ros.ai looks up on OpenStreetMap (at most ${MAX_LOOKUPS} lookups a call, about one a second). Put every pin of a map in one call, in the order the person should see them; each call is a round trip the person waits for. Pins that cannot be found are reported in notFound and left off; try a fuller address for them. The change follows the project approval mode. At most ${MAX_MAP_PINS} pins on one map.`, inputSchema: z.toJSONSchema(placePinsSchema, { io: 'input' }) },
+    { type: 'function', name: 'ros_add_metrics', description: 'Put launch numbers on the canvas as Metrics blocks, one per source, read live and again every 15 minutes, each number with how it moved today and this week. Sources: cloud (ros.ai\'s own accounts, sign-ups, hosted ROS use, downloads and feedback, read with the person\'s ros.ai cloud sign-in), github (a repository\'s stars, release downloads, visitors and cloners), umami (a website\'s visitors, page views, tracked clicks and downloads), railway (whether each service of a project is up). Umami and Railway read with the keys the person saved in Plugins › Launch numbers; they have no tools of their own, and Metrics blocks are made only with this tool. Name an Umami website by its domain and a Railway project by its name, or leave them out when the key reaches only one. ros.ai reads every source before proposing: one that cannot be read comes back in notAdded with what the person needs to do, and the rest still goes ahead; a source already on the canvas is not added twice. The answer gives each block\'s numbers. The change follows the project approval mode.', inputSchema: z.toJSONSchema(addMetricsSchema, { io: 'input' }) },
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
@@ -398,6 +410,7 @@ export class AgentWorkspaceTools {
     if (name === 'ros_app_guide') { lenient(appGuideSchema, supplied ?? {}); this.frames(); return { guide: APP_GUIDE }; }
     if (name === 'ros_check_app') return this.checkApp(lenient(checkAppSchema, supplied));
     if (name === 'ros_place_pins') return this.placePins(lenient(placePinsSchema, supplied));
+    if (name === 'ros_add_metrics') return this.addMetrics(lenient(addMetricsSchema, supplied));
     let action: AssistantAction, apps: string[] = [];
     if (name === 'ros_propose_canvas') {
       const value: z.infer<typeof appCanvasSchema> = this.appsOn ? lenient(appCanvasSchema, supplied) : lenient(canvasSchema, supplied); this.current();
@@ -581,6 +594,41 @@ export class AgentWorkspaceTools {
       ...(notFound.length ? { notFound } : {}),
       ...(!target && value.on === 'google' && !googleMapsKeySaved() ? { googleMaps: 'No Google Maps key is saved, so the block shows Google\'s map one place at a time; a key in Plugins › Google Maps shows every pin at once.' } : {}),
       instruction: `${made.status === 'accepted' ? 'The pins are on the map.' : 'Wait for exact user approval. Do not describe the pins as placed yet.'} Looked-up pins land where OpenStreetMap puts the place: check foundAs, and fix a wrong one by calling again with the same name and a fuller place or lat and lng.${notFound.length ? ' Some places were not found (notFound); say which.' : ''}`,
+    };
+  }
+  /** ros_add_metrics: every source read once (an Umami website or Railway project found by name where one was given), then
+   * one change that adds a Metrics block for each source that answered, under the project's approval mode. A source that
+   * cannot be read is reported with what the person needs to do, and one already on the canvas is left as it is. */
+  private async addMetrics(value: z.infer<typeof addMetricsSchema>) {
+    const views = AgentWorkspaceTools.metrics;
+    if (!views) throw new StoreError('Metrics blocks are only in the local app.', 403);
+    const canvas = this.store.getProject(this.scope.projectId).canvas, there = new Map(canvas.nodes.flatMap(node => node.metric ? [[metricViewKey(node.metric), node] as const] : []));
+    const ready: { id: string; view: MetricView; read: MetricRead; title: string }[] = [], already: { nodeId: string; title: string }[] = [], notAdded: { source: string; asked?: string; problem: string }[] = [];
+    for (const block of value.blocks) {
+      const asked = block.source === 'github' ? block.repo : block.source === 'umami' ? block.website : block.source === 'railway' ? block.project : undefined;
+      try {
+        const found = await views.find(block), key = metricViewKey(found), on = there.get(key);
+        if (on) { already.push({ nodeId: on.id, title: on.title }); continue; }
+        if (ready.some(item => metricViewKey(item.view) === key)) continue;
+        const read = await views.read(found, true, this.scope.projectId), view = found.source === 'github' ? { ...found, repo: read.title } : found;
+        ready.push({ id: randomUUID(), view, read, title: block.title ?? (view.source === 'cloud' ? 'Accounts and downloads' : read.title.slice(0, 200)) });
+      } catch (error) {
+        if (this.signal?.aborted) throw new StoreError('The turn was stopped.', 409);
+        notAdded.push({ source: METRIC_TOOLS[block.source], ...(asked ? { asked } : {}), problem: error instanceof Error ? error.message.slice(0, 600) : String(error) });
+      }
+    }
+    const apps = AgentWorkspaceTools.appFrames?.agentsOn() === true;
+    const together = apps ? 'To chart them together (a funnel, a dashboard), propose an App block that names their nodeIds as inputs; ros_app_guide says how Apps read Metrics blocks.' : 'An App block could chart them together once the person turns on Settings › General › Apps.';
+    if (!ready.length) return { committed: false, ...(already.length ? { alreadyOnCanvas: already } : {}), ...(notAdded.length ? { notAdded } : {}), instruction: notAdded.length ? 'No new source could be read, so nothing was proposed. Tell the person what each source in notAdded needs: a key in Plugins › Launch numbers, a sign-in, or which website or project to use (call again with one of the choices it lists).' : `Every source is on the canvas already (alreadyOnCanvas); ros_read_canvas reads their numbers. ${together}` };
+    const origin = this.layout(ready.map(() => snapUp(CARD_DEFAULT_HEIGHT + LAYOUT_GAP)), CARD_DEFAULT_WIDTH, { title: ready[0].title, description: '' }), left = origin.x + (this.agentNodeId ? COLUMN : 0);
+    const operations: Mutation[] = ready.map((item, index) => ({ type: 'addNode', node: { id: item.id, title: item.title, description: '', kind: 'topic', blockType: 'metric', metric: item.view, x: left, y: origin.tops[index] } }));
+    if (this.agentNodeId) for (const item of ready) operations.push({ type: 'addConnection', connection: { id: randomUUID(), source: this.agentNodeId, target: item.id, label: 'added' } });
+    const made = this.propose(`${value.summary}\nWhy: ${value.rationale}`, operations, { rationale: value.rationale });
+    return {
+      action: made.action, committed: made.status === 'accepted',
+      added: ready.map(item => ({ nodeId: item.id, title: item.title, metric: metricSummary(item.read) })),
+      ...(already.length ? { alreadyOnCanvas: already } : {}), ...(notAdded.length ? { notAdded } : {}),
+      instruction: `${made.status === 'accepted' ? 'The Metrics blocks are on the canvas.' : 'Wait for exact user approval. Do not describe the blocks as added yet.'} The numbers in added were read just now; ros_read_canvas reads them again later. ${together}${notAdded.length ? ' Say which sources could not be read and what the person needs to do for each (notAdded).' : ''}`,
     };
   }
   /** File blocks given a web address: each file is downloaded into the project folder's files/ and the block then shows

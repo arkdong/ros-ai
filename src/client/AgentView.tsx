@@ -75,6 +75,7 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
     const app = title(step.target) ?? 'a new App page';
     return step.outcome === 'failed' ? `Could not check ${app}` : step.outcome === 'requested' ? `Checking ${app}` : `Checked ${app}`;
   }
+  if (step.tool === 'ros_add_metrics') return step.outcome === 'waiting' ? 'Proposed Metrics blocks · waiting for your review' : step.outcome === 'declined' ? 'Metrics blocks declined' : step.outcome === 'failed' ? 'Could not add Metrics blocks' : step.outcome === 'requested' ? 'Reading the launch numbers' : 'Added Metrics blocks';
   if (step.tool === 'ros_propose_canvas') return step.outcome === 'waiting' ? 'Proposed canvas changes · waiting for your review' : step.outcome === 'declined' ? 'Canvas changes declined' : step.outcome === 'failed' ? 'Canvas changes failed' : step.outcome === 'requested' ? 'Proposing canvas changes' : 'Changed the canvas';
   const labels: Record<string, string> = { ros_read_selected: 'Read the selected blocks', ros_propose_analysis: 'Proposed analysis code', ros_propose_report: 'Proposed a report', ros_propose_reuse: 'Proposed reusing a result' };
   return labels[step.tool] ?? title(step.target) ?? step.tool;

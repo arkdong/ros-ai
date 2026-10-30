@@ -15,7 +15,7 @@ type Props = {
   compact?: boolean;
 };
 type PreviewNote = StructurePreview['notes'][number];
-const kindLabel = (note: PreviewNote) => kindName({ kind: note.kind, blockType: note.blockType as CanvasNode['blockType'] });
+const kindLabel = (note: PreviewNote) => note.kindName ?? kindName({ kind: note.kind, blockType: note.blockType as CanvasNode['blockType'] });
 /** Rows a long review shows before "Show all". */
 const COMPACT_ROWS = 12;
 
@@ -44,7 +44,7 @@ export function proposalStructurePreview(proposal: Proposal, existingNodes: read
   for (const id of changedIds) {
     const node = nodes.get(id);
     if (!node) continue;
-    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', ...(node.blockType ? { blockType: node.blockType } : {}), parentId: node.parentId ?? null, ...(updates.has(id) ? { rationale: updates.get(id) } : {}) });
+    notes.push({ id, title: node.title, description: node.description, kind: node.kind === 'group' ? 'group' : node.kind === 'activity' ? 'activity' : 'topic', ...(node.blockType ? { blockType: node.blockType } : {}), kindName: kindName(node), parentId: node.parentId ?? null, ...(updates.has(id) ? { rationale: updates.get(id) } : {}) });
   }
   return notes.length || relationships.length ? { summary: proposal.summary, validated: false, notes, relationships } : null;
 }
