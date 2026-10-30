@@ -20,7 +20,15 @@ export const IN_APP_AGENTS = {
 } as const;
 export type InAppAgent = keyof typeof IN_APP_AGENTS;
 export const inAppAgent = (backend?:AssistantBackend) => backend&&backend in IN_APP_AGENTS?IN_APP_AGENTS[backend as InAppAgent]:undefined;
+/** A block (and saved version) a request is about on purpose, such as Check sources on a block: it arrives in full and the tools start
+ * from it. A message typed in the bar has none; where the person was on the map comes with it as a glance instead. */
 export type AssistantFocus = {nodeId:string|null;artifactId?:string|null};
+/** Where the person was on the map when they sent a message, made by the app at Send and sent quietly with it, never shown.
+ * open: the block, or a saved version of it, open in its view. clicked: the blocks selected on the map, with when that selection was made.
+ * lookedAt: blocks clicked or opened before, newest first. onScreen: the blocks inside the visible part of the map, nearest the middle
+ * first, or 'all' when the whole map is in view. ROS reads it as a weak hint for words like "this" or "here"; it never limits or picks
+ * what ROS works on (glance.ts on the server). */
+export type AssistantGlance = {open?:{nodeId:string;artifactId?:string|null}|null;clicked?:{nodeId:string;at:string}[];lookedAt?:{nodeId:string;at:string}[];onScreen?:string[]|'all'};
 export type AssistantReference = {kind:'node'|'artifact'|'run'|'proposal'|'message';id:string;label:string;nodeId?:string};
 export type AssistantMemoryEntry = {id:string;text:string;at:string;kind:'decision'|'finding'|'hypothesis'|'gap';references:AssistantReference[];status:'recorded'|'observed'|'proposed'|'unverified'};
 export type ResearchMemory = {originalQuestion:string|null;questionHistory:{id:string;text:string;at:string}[];decisions:AssistantMemoryEntry[];findings:AssistantMemoryEntry[];hypotheses:AssistantMemoryEntry[];gaps:AssistantMemoryEntry[]};
@@ -41,4 +49,4 @@ export type AssistantThread = {id:string;projectId:string;title:string;createdAt
 export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean};
 /** threads: newest activity first. activeTurnId: a running turn in any thread. threadId: set on the state a new message
  * returns, naming the thread it went into (a new one when the message named none). */
-export type AssistantState = {projectId:string;focus:AssistantFocus;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};
+export type AssistantState = {projectId:string;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};

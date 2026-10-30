@@ -75,24 +75,15 @@
 }
 .ros-bar-footer .ros-chip-button { max-width: min(220px, 100%); }
 .ros-chip-button > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ros-chip-button > :not(span), .ros-context > :not(span) { flex-shrink: 0; }
+.ros-chip-button > :not(span) { flex-shrink: 0; }
 .ros-chip-button:hover:not(:disabled), .ros-chip-button[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
 .ros-chip-button:disabled, .single-canvas-shell .ros-chip-button:disabled { cursor: default; color: var(--body); opacity: 1; }
-/* The focus chip's shrink weight is large enough that the other chips lose not even a fraction of a pixel while it gives way; a fraction would cut their labels to an ellipsis. */
-.ros-context { display: inline-flex; flex: 0 1000000 auto; align-items: center; gap: 6px; min-width: 28px; max-width: 240px; height: 26px; padding: 0 8px; border-radius: var(--radius-control); color: var(--muted); }
-.ros-context > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ros-context.focused { min-width: 56px; }
-@container ros-bar (min-width: 548px) { .ros-context, .ros-context.focused { min-width: 96px; } }
 @container ros-bar (max-width: 547px) { .ros-bar-footer .ros-approval .ros-chip-button > span { display: none; } }
 @container ros-bar (max-width: 439px) {
   .ros-bar .ros-bar-footer { flex-wrap: wrap; height: auto; row-gap: 4px; }
-  .ros-bar .ros-context { flex: 1 1 0; max-width: none; }
   .ros-bar .ros-footer-spacer { flex-basis: 100%; height: 0; }
   .ros-bar .ros-footer-spacer + * { margin-left: auto; }
 }
-.ros-context.focused { background: var(--canvas); color: var(--body); padding-right: 3px; }
-.ros-context button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
-.ros-context button:hover { color: var(--ink); background: var(--line-soft); }
 .ros-model-menu {
   position: absolute; left: 0; bottom: calc(100% + 10px); width: 280px; max-height: 360px; overflow-y: auto; z-index: 2;
   display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-view);
@@ -168,7 +159,6 @@
 .assistant-panel.ros-panel .assistant-message { padding: 0; border: 0; background: transparent; }
 .assistant-panel.ros-panel .assistant-message.user { align-self: flex-end; max-width: 82%; padding: 9px 14px; border-radius: 14px 14px 4px 14px; background: var(--canvas); }
 .assistant-panel.ros-panel .assistant-message.user .rich-text, .assistant-panel.ros-panel .assistant-message .rich-text { background: transparent; padding: 0; border: 0; font-size: var(--text-md); line-height: 1.55; color: var(--ink); }
-.assistant-panel.ros-panel .assistant-message.user .turn-focus { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 4px; font-size: var(--text-xs); color: var(--muted); }
 .assistant-panel.ros-panel .assistant-message.response { max-width: 94%; }
 .ros-turn-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: var(--text-xs); color: var(--muted); }
 .ros-turn-meta > span + span::before { content: '·'; margin-right: 10px; color: var(--line); }
@@ -183,14 +173,11 @@
 .assistant-panel.ros-panel .ros-composer .ros-model { margin-left: -8px; }
 .assistant-panel.ros-panel .ros-composer .ros-send { margin-left: 4px; }
 /* The panel's composer keeps the bar's one footer line. Squeezed under about 510 px (a window too narrow for the side panel's full
-   width, or the half sheet on a phone) the footer takes two rows: what ROS runs with above, where it looks and Send below.
-   The query measures the composer's content box, 50 px less than the panel. */
-.ros-footer-break { display: none; }
+   width, or the half sheet on a phone) the footer may wrap, Send staying at the end. The query measures the composer's content
+   box, 50 px less than the panel. */
 .assistant-panel.ros-panel .ros-composer { container: ros-composer / inline-size; }
 @container ros-composer (max-width: 459px) {
   .ros-bar-footer { flex-wrap: wrap; height: auto; row-gap: 2px; }
-  .ros-footer-break { display: block; flex-basis: 100%; height: 0; }
-  .ros-context { margin-left: -6px; }
 }
 .assistant-panel.ros-panel .assistant-admission { margin: 0 12px 4px; }
 
@@ -217,8 +204,6 @@
 .single-canvas-shell .assistant-open .canvas-stage:after { display: none; }
 /* Keep the map's top-right controls clear of the floating panel. */
 .single-canvas-shell .assistant-open .canvas-header { right: calc(var(--ros-side) + 36px); }
-
-@media (max-width: 560px) { .ros-context { display: none; } }
 
 /* Threads: one button in the bar's footer and one chip in the panel's header open the same 280 px menu.
    The badge counts the threads working elsewhere; the dot is a reply not read yet. */

@@ -575,7 +575,7 @@ export class AcpAgentService {
       this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'uncertain', at: now() } satisfies Session);
       if (stopped) throw new StoreError(`${label} was stopped before the prompt was sent.`, 409);
       const place = !root ? 'This project has no folder on disk, so no files are available; use the selected material and the ros.ai tools.' : id === 'gemini' ? `The project folder is in your workspace: ${root}\nUse full paths to read its files.` : `The project folder is your working directory: ${root}`;
-      const prompt = `${opened.resumed ? 'ros.ai’s instructions from the start of this conversation still apply.' : acpInstructions(id)}\n\n${place}\n\n${selectionText(toolkit.preview())}\n\n${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
+      const prompt = `${opened.resumed ? 'ros.ai’s instructions from the start of this conversation still apply.' : acpInstructions(id)}\n\n${place}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
       attempt.request = { ...object(attempt.request), prompt }; save();
       const exited = new Promise<never>((_, reject) => { connection.onExit = reject; });
       sent = true;
