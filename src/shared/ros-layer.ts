@@ -69,7 +69,7 @@ export function replyHasContent(reply: string): boolean {
 }
 
 /** Openings of a request that say nothing about its topic. */
-const OPENER = /^(?:(?:please|can you|could you|would you)\s+)?(?:what (?:do|does) (?:we|the literature|the research|research|studies) (?:know|say) (?:about|on)|what is known about|tell me (?:more )?about|give me an overview of)\s+/iu;
+const OPENER = /^(?:(?:please|can you|could you|would you)\s+)?(?:what (?:do|does) (?:we|the literature|the research|research|studies) (?:know|say) (?:about|on)|what is known about|tell me (?:more )?about|give me an overview of|(?:add|create|make|put|write|draft) (?:(?:a|an|some|a few|several|\d+|two|three|four|five|six|seven|eight|nine|ten) )?(?:(?:new|short|small|separate) )?(?:blocks?|notes?|cards?|nodes?)(?: (?:with|about|on|for|of|covering|listing))?(?: the)?)\s+/iu;
 /** A short title for what the person asked, for a group that holds the answer. */
 export function requestTitle(request: string, limit = 80): string {
   const line = request.replace(/^\/\S+\s*/u, '').split('\n').map(part => part.trim()).find(Boolean) ?? '';

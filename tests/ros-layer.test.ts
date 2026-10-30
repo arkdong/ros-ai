@@ -64,6 +64,8 @@ test('only answers with content go on the map by themselves; titles and row word
   assert.equal(requestTitle('what does the literature say about remote work? Keep it short.'), 'Remote work');
   assert.equal(requestTitle('What do we know about it?'), 'What do we know about it');
   assert.equal(requestTitle('/research   compare the three survey designs'), 'Compare the three survey designs');
+  assert.equal(requestTitle('Add five blocks with the main methods for measuring sleep quality'), 'Main methods for measuring sleep quality');
+  assert.equal(requestTitle('Add a block'), 'Add a block');
   assert.equal(layerSummary({ blocks: 4, into: ['Methods'], links: 2 }), 'Arranged by ROS: 4 blocks into Methods, 2 links');
   assert.equal(layerSummary({ blocks: 0, into: [], links: 1, rescued: { blocks: 3, title: 'Remote work' } }), 'Put the answer on the map: 3 blocks in “Remote work”, 1 link');
 });
