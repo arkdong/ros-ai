@@ -12,6 +12,28 @@
 /* With ROS's side panel open the sheet centres on the map left of the panel, narrowing to fit there down to 560 px. On a map too
    narrow for even that (under about 1170 px) it keeps 560 px from the left edge and the panel covers its right side. */
 .workspace-body:has(.ros-full) .block-sheet { left: 16px; right: calc(var(--ros-side) + 34px); max-width: min(calc(100% - 32px), max(560px, calc(100% - var(--ros-side) - 50px))); margin: 0 auto; transform: none; animation-name: rise-beside; }
+/* A picture's sheet hugs the picture: as large as the map allows (the scrim is the ruler for the map's size), no larger
+   than the picture itself, and in the picture's shape; its text is a caption under the picture. A picture whose size is
+   not known gets a sheet as large as the map allows. With the block's conversation open, the sheet is large and the
+   picture takes the room left beside it. */
+.block-scrim { container-type: size; }
+.block-sheet.picture-block, .block-sheet.picture-large { --pad: 20px; --chrome: 100px; --caption: 0px; --fit-h: calc(100cqh - 136px - var(--chrome) - 2 * var(--pad) - var(--caption)); }
+.block-sheet.picture-block.has-caption, .block-sheet.picture-large.has-caption { --caption: 96px; }
+.block-sheet.picture-block { height: auto; width: clamp(560px, min(calc(var(--fit-h) * var(--picture-ratio, 1.5) + 2 * var(--pad)), calc(var(--picture-w, 4000) * 1px + 2 * var(--pad))), calc(100cqw - 32px)); }
+.block-sheet.picture-block .picture-stage { flex: none; width: 100%; aspect-ratio: var(--picture-ratio, 1.5); max-height: min(var(--fit-h), calc(var(--picture-h, 4000) * 1px)); }
+.block-sheet.picture-large, .block-sheet.picture-block:has(.note-view:not(.chat-closed)) { width: min(1200px, calc(100cqw - 32px)); height: calc(100cqh - 136px); }
+.block-sheet.picture-block:has(.note-view:not(.chat-closed)) .picture-stage { flex: 1 1 auto; aspect-ratio: auto; max-height: none; }
+.block-view .picture-view .note-main { display: flex; flex-direction: column; gap: 12px; padding: var(--pad, 20px); overflow: hidden; }
+.block-panel .picture-view .note-main { padding: 18px; }
+.block-view .picture-view .note-main > .file-viewer.picture { flex: 1 1 auto; min-height: 0; }
+.block-view .picture-view .picture-caption-text { flex: none; max-height: 84px; overflow: auto; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.block-view .picture-view .picture-caption-text p { margin: 0 0 4px; }
+.block-view .picture-view .picture-caption-text p:last-child { margin-bottom: 0; }
+/* Open in and Download as footer chips; the menu opens upward, over the picture. */
+.bv-foot .open-in-trigger { height: 26px; min-height: 0; padding: 0 10px; gap: 5px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--canvas); color: var(--body); font-size: var(--text-xs); line-height: 1; box-shadow: none; }
+.bv-foot .open-in-trigger:hover, .bv-foot .open-in-trigger[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
+.bv-foot .open-in-menu { top: auto; bottom: calc(100% + 6px); }
+.bv-foot a.chip-button { text-decoration: none; }
 @keyframes rise-beside { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .block-sheet, .block-panel { animation: none; } .block-sheet { transform: translateX(-50%); } .workspace-body:has(.ros-full) .block-sheet { transform: none; } }
 

@@ -9,6 +9,14 @@ export function fileMediaType(path: string): string | undefined {
   return dot > 0 ? FILE_TYPES[name.slice(dot).toLowerCase()] : undefined;
 }
 export const isPdfType = (mediaType: string | undefined) => mediaType === 'application/pdf';
+export const isImageType = (mediaType: string | undefined) => Boolean(mediaType?.startsWith('image/'));
+/** PDF, PNG, JPEG, WebP or GIF: the file's type as a card or footer names it. */
+export const fileTypeName = (mediaType: string) => isPdfType(mediaType) ? 'PDF' : ({ 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WebP', 'image/gif': 'GIF' } as Record<string, string>)[mediaType] ?? 'File';
+/** The pixel size of an image as a browser shows it, so after any rotation its EXIF data asks for. */
+export type ImageSize = { width: number; height: number };
+/** A File block that shows a picture. On the map it is the picture itself, with no frame of its own, and it keeps
+ * the picture's shape: its height follows its width, so a saved height is not used. */
+export const isPictureNode = (node: { kind?: string; blockType?: string; file?: { path: string } | null }) => node.kind !== 'group' && node.blockType === 'file' && isImageType(fileMediaType(node.file?.path ?? ''));
 /** The address a File block's bytes are read from. */
 export const fileUrl = (projectId: string, nodeId: string) => `/api/projects/${encodeURIComponent(projectId)}/nodes/${encodeURIComponent(nodeId)}/file`;
 /** 1.2 MB, 340 KB: the size line on a card. */
