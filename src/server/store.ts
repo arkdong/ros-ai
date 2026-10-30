@@ -51,8 +51,10 @@ const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','d
 export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
 /** A Notion block with the account the person chose to read it with (see NotionView), by its key in ros.ai. Kept out
  * of what agents may propose and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
+/** A Metric block's source (see MetricView). Kept out of what agents may propose and out of nodeFields, like a training run. */
+export const metricViewSchema = z.object({ source: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/u) }).strict();
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
-const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','metric']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);

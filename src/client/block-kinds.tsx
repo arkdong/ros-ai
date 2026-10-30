@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { AppWindow, Braces, Database, File as FileIcon, GraduationCap, LayoutGrid, NotebookPen, Text as TextIcon } from 'lucide-react';
+import { Activity, AppWindow, Braces, Database, File as FileIcon, GraduationCap, LayoutGrid, NotebookPen, Text as TextIcon } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { NodeKind } from '../shared/types';
 import { readSaved, saveLocal } from './persistence';
 
-export type KindId = 'text' | 'code' | 'notebook' | 'data' | 'file' | 'paper' | 'notion' | 'google' | 'app' | 'training' | 'group';
-export type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion' | 'file' | 'google' | 'app' | 'training';
+export type KindId = 'text' | 'code' | 'notebook' | 'data' | 'file' | 'paper' | 'notion' | 'google' | 'app' | 'training' | 'metric' | 'group';
+export type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion' | 'file' | 'google' | 'app' | 'training' | 'metric';
 export type KindGroup = 'Write' | 'Bring in' | 'Build';
 /** One kind of block a person can add. `asks` kinds need something first (a file, a link, a paper), so they open the
  *  All blocks window; the others land on the map at once. `needs` names what must be in place, in the person's words. */
@@ -20,6 +20,7 @@ export const BLOCK_KINDS: BlockKind[] = [
   { id: 'paper', name: 'Paper', caption: 'DOI, arXiv', group: 'Bring in', kind: 'topic', needs: 'Nothing', asks: true, line: 'A paper found on OpenAlex, arXiv or Zotero, with its reference and its open PDF when there is one.', facts: ['Searches OpenAlex, arXiv and Zotero', 'An open PDF becomes a File block'], icon: size => <GraduationCap size={size}/> },
   { id: 'notion', name: 'Notion', caption: 'Page, database', group: 'Bring in', kind: 'topic', blockType: 'notion', needs: 'Notion connected', asks: true, line: 'A Notion page or database shown live through your Notion connection. Rows can be filtered.', facts: ['Reads live, nothing is copied', 'Database rows can be filtered'], icon: size => <BrandLogo id="notion" size={size}/> },
   { id: 'google', name: 'Google Drive', caption: 'Sheet, Doc', group: 'Bring in', kind: 'topic', blockType: 'google', needs: 'Google signed in', asks: true, line: 'A Google Sheet or Doc read live through your Google sign-in, which only reads.', facts: ['Reads live, nothing is copied', 'The link picks the tab'], icon: size => <BrandLogo id="google-drive" size={size}/> },
+  { id: 'metric', name: 'Metrics', caption: 'Live numbers', group: 'Bring in', kind: 'topic', blockType: 'metric', needs: 'Nothing', asks: true, localOnly: true, line: 'Launch numbers read live from GitHub: stars, release downloads and two weeks of visitors, with how each moved today.', facts: ['Reads again every 15 minutes', 'Keeps a trend in the project folder'], icon: size => <Activity size={size}/> },
   { id: 'app', name: 'App', caption: 'Interactive', group: 'Build', kind: 'topic', blockType: 'app', needs: 'Apps on in Settings', line: 'A small page an agent builds for you, sealed on its card. It reads only the blocks you name as inputs.', facts: ['Reads only the inputs you name', 'An agent writes the page'], icon: size => <AppWindow size={size}/> },
   { id: 'training', name: 'Training run', caption: 'GPU', group: 'Build', kind: 'topic', blockType: 'training', needs: 'An ssh host', asks: true, localOnly: true, line: 'Follows a model training run: the data from a folder here, the loss curve from the GPU machine over your own ssh.', facts: ['Data from a folder on this computer', 'The loss curve over your own ssh'], icon: size => <BrandLogo id="nebius" size={size}/> },
   { id: 'group', name: 'Group', caption: 'Frame', group: 'Build', kind: 'group', needs: 'Nothing', line: 'A frame for blocks that belong together. Closes to one card; opens to show its blocks.', facts: ['Closes to one card', 'Agents can work inside it'], icon: size => <LayoutGrid size={size}/> },

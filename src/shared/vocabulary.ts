@@ -8,7 +8,7 @@ export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'de
 export const sentence = (word: string) => word ? word[0].toUpperCase() + word.slice(1) : word;
 
 /** What a block is on screen: nine kinds plus Group. Storage keeps the older blockType and kind words as aliases
- * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
+ * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google, training and metric are External).
  * A Web block is External too, named for what it reads. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
 export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
@@ -18,7 +18,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'notebook': return 'Notebook';
     case 'dataset': return 'Data';
     case 'figure': case 'file': return 'File';
-    case 'notion': case 'google': case 'training': return 'External';
+    case 'notion': case 'google': case 'training': case 'metric': return 'External';
     case 'web': return 'Web';
     case 'agent': return 'Agent';
     case 'app': return 'App';

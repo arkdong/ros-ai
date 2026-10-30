@@ -1,0 +1,19 @@
+/* Launch numbers: one row per number on the card, a grid of them in the block view. Changes stay neutral grey. */
+.livestat-values { display: grid; gap: 6px; margin: 0; font-size: 12px; line-height: 1.4; }
+.livestat-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12px; line-height: 1.4; }
+.livestat-value dt { flex: 1; min-width: 0; font-size: 12px; color: #6b6b6b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.livestat-value dd { flex: none; display: flex; align-items: center; gap: 6px; margin: 0; }
+.livestat-value strong { font-size: 13px; font-weight: 600; color: #171717; font-variant-numeric: tabular-nums; }
+.livestat-change { font-size: 11px; color: #8a8a8a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.livestat-spark { display: block; flex: none; }
+.livestat-spark path { fill: none; stroke: #171717; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.livestat-missing { font-size: 11px; color: #8a8a8a; white-space: normal; text-align: right; max-width: 60%; }
+.livestat-note { margin: 0; font-size: 12px; line-height: 1.5; color: #6b6b6b; }
+.livestat-block.full { gap: 12px; }
+.livestat-block.full .livestat-values { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.livestat-block.full .livestat-value { display: grid; align-content: start; gap: 4px; padding: 10px 12px; border: 1px solid #ececec; border-radius: 8px; }
+.livestat-block.full .livestat-value dt { font-size: 12px; }
+.livestat-block.full .livestat-value dd { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
+.livestat-block.full .livestat-value strong { font-size: 22px; grid-row: span 2; }
+.livestat-block.full .livestat-spark { grid-column: 1 / -1; margin-top: 4px; }
+.livestat-block.full .livestat-missing { max-width: none; text-align: left; }

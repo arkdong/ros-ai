@@ -1,6 +1,6 @@
 import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'metric';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
@@ -42,6 +42,14 @@ export type GoogleRead = GoogleSheet | GoogleDoc;
 /** A model training run shown live (training/ros-nemotron): the run's folder on this computer, and optionally the
  * GPU machine it trains on, reached with this computer's own ssh. ros.ai only reads; it starts and stops nothing. */
 export type TrainingView = { folder:string; host?:string; remote?:string };
+/** Launch numbers read live from a service (for now GitHub: one repository's stars, downloads and traffic). Only where
+ * to read is saved; each read is also kept in the project's cache, so the card can show how the numbers move. */
+export type MetricSource = 'github';
+export type MetricView = { source:MetricSource; repo:string };
+/** One number a Metric block shows; null when the service would not give it (a note says why). */
+export type MetricValue = { key:string; label:string; value:number|null; note?:string };
+export type MetricPoint = { at:string; values:Record<string,number> };
+export type MetricRead = { source:MetricSource; title:string; link:string; values:MetricValue[]; history:MetricPoint[]; fetchedAt:string; notice?:string };
 export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
 export type TrainingRead = {
   stage:TrainingStage; running:boolean; fetchedAt:string; notice?:string;
@@ -78,7 +86,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; metric?:MetricView; file?:FileView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };

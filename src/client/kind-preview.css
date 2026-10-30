@@ -29,3 +29,8 @@
 .kind-preview .bp-frame { display: flex; gap: 6px; padding: 8px; border: 1px dashed #c9c9c9; border-radius: 8px; }
 .kind-preview .bp-frame span { flex: 1; height: 34px; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; }
 @media (prefers-reduced-motion: reduce) { .kind-preview .bp-ring { animation: none; } }
+.kind-preview .bp-metrics { display: grid; gap: 4px; margin: 0; }
+.kind-preview .bp-metrics div { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.kind-preview .bp-metrics dt { color: #6b6b6b; }
+.kind-preview .bp-metrics dd { margin: 0; font-weight: 600; color: #171717; font-variant-numeric: tabular-nums; }
+.kind-preview .bp-metrics small { font-weight: 400; color: #8a8a8a; margin-left: 4px; }

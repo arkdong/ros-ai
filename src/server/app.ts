@@ -18,6 +18,7 @@ import { attachAcpAgentRoutes,type AcpAgentService } from './acp-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachTrainingRoutes, readTraining, trainingSummary } from './training-view.js';
+import { attachMetricRoutes, metricSummary, MetricViews } from './metric-view.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
@@ -107,7 +108,9 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
   if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.rosLayer)attachRosLayerRoutes(app,tools.rosLayer);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
-  if(!options.publicDemo){attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));}
+  if(!options.publicDemo){attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));
+    // Metric blocks read GitHub with the GitHub plugin's sign-in when there is one.
+    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github')});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metric=async(view,projectId)=>metricSummary(await metrics.read(view,false,projectId));}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.
