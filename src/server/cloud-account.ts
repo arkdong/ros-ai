@@ -51,6 +51,8 @@ export class CloudAccount {
     this.file = join(dataDir, 'cloud-account.json');
     this.callbackUrl = `http://127.0.0.1:${port}/api/cloud/callback`;
   }
+  /** The inference connection hosted ROS runs on while the person is signed in, without asking ros.ai cloud. */
+  connectionId(): string | undefined { return this.account()?.connectionId; }
   private account() {
     if (!existsSync(this.file)) return undefined;
     try { return accountSchema.parse(JSON.parse(readFileSync(this.file, 'utf8'))); } catch { return undefined; }

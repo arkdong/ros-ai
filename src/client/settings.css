@@ -131,3 +131,6 @@
   .plan-windows li { grid-template-columns: 84px minmax(40px, 1fr) 36px; }
   .plan-windows small { display: none; }
 }
+/* More under a card: the numbers and measurements behind a setting. */
+.settings-more { margin: 6px 0 0 6px; font-size: var(--text-xs); color: var(--muted); }
+.settings-more:hover { color: var(--ink); }
