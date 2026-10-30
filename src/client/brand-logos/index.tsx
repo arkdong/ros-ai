@@ -8,6 +8,7 @@ import geminiCli from './gemini-cli.svg';
 import github from './github.svg';
 import googleDocs from './google-docs.svg';
 import googleDrive from './google-drive.svg';
+import googleMaps from './google-maps.svg';
 import googleSheets from './google-sheets.svg';
 import goose from './goose.svg';
 import hermes from './hermes.svg';
@@ -30,7 +31,7 @@ import umami from './umami.svg';
 import zotero from './zotero.svg';
 
 /** Official company marks, copied unchanged from their sources (see SOURCES.md); each belongs to its owner. */
-const logos = { arxiv, brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-sheets': googleSheets, goose, hermes, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, openalex, opencode, overleaf, pi, railway, sentry, slack, tavily, umami, zotero };
+const logos = { arxiv, brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-maps': googleMaps, 'google-sheets': googleSheets, goose, hermes, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, openalex, opencode, overleaf, pi, railway, sentry, slack, tavily, umami, zotero };
 export type BrandId = keyof typeof logos;
 export const hasBrandLogo = (id: string): id is BrandId => id in logos;
 

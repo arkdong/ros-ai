@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Check, ChevronDown, PanelRight, RectangleHorizontal, X } from 'lucide-react';
 import type { CanvasNode } from '../shared/types';
+import type { ImageSize } from '../shared/files';
 import { TEXT_LABELS, kindName, sentence, textLabel } from '../shared/vocabulary';
 import { readSaved, saveLocal } from './persistence';
 import { KindIcon } from './Canvas';
@@ -20,12 +21,15 @@ type Props = {
   head?: ReactNode;
   /** The footer's chips, and the word at its right end. */
   foot?: ReactNode; status?: ReactNode;
+  /** Set when the block is a picture: its pixel size, or null when that is not known. As a sheet, the frame then takes
+   * the picture's shape, as large as the map allows and no larger than the picture; `pictureCaption` leaves room for its text. */
+  picture?: ImageSize | null; pictureCaption?: boolean;
   children: ReactNode;
 };
 
 /** An open block: a kind chip, its title and the view switch on top, the block itself, and one footer line.
  *  As a sheet it floats over the map with the ROS bar still below it; as a panel it stands beside the map. */
-export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, status, children }: Props) {
+export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, status, picture, pictureCaption = false, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   // Focus moves into the block when it opens, and back where it was when it closes, as the dialog did.
   useEffect(() => {
@@ -33,9 +37,10 @@ export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, 
     if (!box.current?.contains(document.activeElement)) box.current?.querySelector<HTMLElement>('[data-autofocus], .cm-content, textarea, input:not([type="file"]):not(.bv-title), button')?.focus();
     return () => previous?.focus();
   }, [node.id, mode]);
-  const view = <div ref={box} className={`block-view ${mode === 'sheet' ? 'block-sheet' : 'block-panel'}`} role={mode === 'sheet' ? 'dialog' : 'complementary'} aria-label={`${kindName(node)} · ${node.title}`} data-testid="block-view">
+  const shape = picture ? { '--picture-ratio': String(picture.width / Math.max(1, picture.height)), '--picture-w': String(picture.width), '--picture-h': String(picture.height) } as CSSProperties : undefined;
+  const view = <div ref={box} className={`block-view ${mode === 'sheet' ? 'block-sheet' : 'block-panel'}${picture ? ' picture-block' : picture === null ? ' picture-large' : ''}${picture !== undefined && pictureCaption ? ' has-caption' : ''}`} style={shape} role={mode === 'sheet' ? 'dialog' : 'complementary'} aria-label={`${kindName(node)} · ${node.title}`} data-testid="block-view">
     <header className="bv-head">
-      <span className="bv-kind"><KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} size={13}/>{kindName(node)}</span>
+      <span className="bv-kind"><KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} map={node.map?.provider} size={13}/>{kindName(node)}</span>
       {onRename ? <TitleField key={node.id} title={node.title} onRename={onRename}/> : <h2 className="bv-title" title={node.title}>{node.title}</h2>}
       {head}
       <span className="bv-views" role="group" aria-label="Show the block as">

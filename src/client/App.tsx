@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, BookOpen, Check, ChevronDown, ChevronRight, FileText, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeft, PanelLeftClose, PanelLeftOpen, Pin, Plus, Square, Trash2, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, ChevronDown, ChevronRight, Download, FileText, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeft, PanelLeftClose, PanelLeftOpen, Pin, Plus, Square, Trash2, X } from 'lucide-react';
 import type { Artifact, Canvas, CanvasNode, Change, ConnectionStatus, GoogleRead, GoogleView, MetricInput, MetricRead, MetricView, TrainingRead, TrainingView, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import { checkSourcesRequest } from '../shared/source-check';
 import type { ResearchPolicy } from '../shared/research';
 import { api, post, upload } from './api';
 import { emptyPosition, previewCanvas, ResearchCanvas, shownFile, type CanvasView } from './Canvas';
-import { fileMediaType } from '../shared/files';
+import { fileMediaType, fileSize, fileTypeName, isPictureNode } from '../shared/files';
 import { BrandLogo } from './brand-logos';
 import { kindName, labelFixed, labelPatch } from '../shared/vocabulary';
 import { ArtifactViewer } from './ArtifactViewer';
@@ -59,7 +59,7 @@ import { AppView } from './AppView';
 import { APP_STARTER } from '../shared/apps';
 import { ModelPage } from './ModelPage';
 import { CanvasHistory } from './CanvasHistory';
-import { FileBar, FolderChip, FolderPanel, useProjectFolder } from './ProjectFolder';
+import { FileBar, FolderChip, FolderPanel, OpenIn, useProjectFolder } from './ProjectFolder';
 import './demo-polish.css';
 import type { AssistantState, AssistantFocus, AssistantGlance, AssistantReference } from '../shared/assistant';
 import type { OutsideAgentsStatus } from '../shared/outside-agents';
@@ -204,10 +204,12 @@ export function App(){
       }catch(reason){report(reason);return;}
     }
   };
-  const addNode=async(kind:NodeKind,scope:string|null,title:string,blockType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView,metricInput?:MetricInput)=>{
+  const addNode=async(kind:NodeKind,scope:string|null,title:string,chosenType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView,metricInput?:MetricInput)=>{
     if(!detail)return;
+    // A Google Maps block is a Map block that draws Google's map.
+    const onGoogle=chosenType==='google-map',blockType=onGoogle?'map' as const:chosenType;
     const id=crypto.randomUUID();
-    let display=blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
+    let display=onGoogle?'Google Maps':blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
     // A Notion link is read once first, so a wrong link or filter is caught before the block exists,
     // and the block learns whether it shows a page or a database.
     let read:NotionRead|GoogleRead|undefined;
@@ -229,12 +231,12 @@ export function App(){
       name=display;
       for(let suffix=2;titles.has(name.toLocaleLowerCase());suffix++)name=`${display} ${suffix}`;
     }
-    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(metric?{metric}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
+    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(blockType==='map'?{map:{pins:[],...(onGoogle?{provider:'google' as const}:{})}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(metric?{metric}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
       setAddWindow(null);
       if(notebookFile&&blockType==='notebook')await post(`/api/projects/${detail.project.id}/nodes/${id}/notebook/import`,{name:notebookFile.name,content:await notebookFile.text()}).catch(report);
       // Code and notebooks open straight into their editors once the block exists on the canvas; an App on its inputs.
       if(blockType==='app')saveLocal(`app-tab:${id}`,'inputs');
-      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'?id:null);
+      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'||blockType==='map'?id:null);
       selectBlock(id);
       if(scope)setExpandedIds(current=>[...new Set([...current,scope])]);
       setFocusId(id);
@@ -316,18 +318,23 @@ export function App(){
   // Hiding or showing the sidebar by its button hands focus to the button that undoes it.
   const toggleSidebar=(open:boolean)=>{setSidebarOpen(open);requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>(`[aria-label="${open?'Hide sidebar':'Show sidebar'}"]`)?.focus({preventScroll:true}));};
   // An open block in its frame. Code puts Run in the header; a Text block gets its label and its conversation as footer chips.
-  const blockFrame=(parts:{head?:ReactNode;foot?:ReactNode;status?:ReactNode;body:ReactNode})=>detail&&inspectorNode?<BlockSheet key={inspectorNode.id} node={inspectorNode} mode={blockView} onMode={setBlockView} onClose={()=>setInspectorId(null)} onRename={!historical&&!proposedNode&&!inspectorNode.notion&&inspectorNode.blockType!=='agent'?title=>void mutate([{type:'updateNode',id:inspectorNode.id,patch:{title}}],'Rename block'):undefined} head={parts.head} foot={parts.foot} status={parts.status}>{inspectorFile&&!historical&&!proposedNode&&inspectorNode.blockType!=='agent'&&<FileBar projectId={detail.project.id} file={inspectorFile} onError={report}/>}{parts.body}</BlockSheet>:null;
+  // A picture's frame takes the picture's shape and shows no path row: Open in, Download and the file line sit in its footer.
+  const inspectorPicture=Boolean(detail&&inspectorNode&&isPictureNode(inspectorNode));
+  const pictureFile=inspectorPicture&&detail&&inspectorNode?shownFile(detail.project.id,inspectorNode,inspectorFile):undefined;
+  const pictureChips=pictureFile&&detail&&inspectorNode&&!inspectorFile?.missing?<>{inspectorFile&&!historical&&!proposedNode&&<OpenIn projectId={detail.project.id} nodeId={inspectorNode.id} onError={report}/>}<a className="chip-button" href={pictureFile.src} download={`${inspectorNode.title.replace(/[\\/:]+/gu,'-')}${/\.[a-z0-9]+$/iu.exec(inspectorNode.file?.path??'')?.[0]??''}`} title="Save a copy"><Download size={12}/>Download</a></>:null;
+  const pictureStatus=pictureFile?inspectorFile?.missing?'File missing':[fileTypeName(pictureFile.mediaType),pictureFile.image?`${pictureFile.image.width} × ${pictureFile.image.height}`:'',pictureFile.bytes?fileSize(pictureFile.bytes):''].filter(Boolean).join(' · '):undefined;
+  const blockFrame=(parts:{head?:ReactNode;foot?:ReactNode;status?:ReactNode;body:ReactNode})=>detail&&inspectorNode?<BlockSheet key={inspectorNode.id} node={inspectorNode} mode={blockView} onMode={setBlockView} onClose={()=>setInspectorId(null)} onRename={!historical&&!proposedNode&&!inspectorNode.notion&&inspectorNode.blockType!=='agent'?title=>void mutate([{type:'updateNode',id:inspectorNode.id,patch:{title}}],'Rename block'):undefined} head={parts.head} foot={parts.foot} status={parts.status} picture={inspectorPicture?inspectorFile?.image??null:undefined} pictureCaption={Boolean(inspectorNode.description)}>{inspectorFile&&!inspectorPicture&&!historical&&!proposedNode&&inspectorNode.blockType!=='agent'&&<FileBar projectId={detail.project.id} file={inspectorFile} onError={report}/>}{parts.body}</BlockSheet>:null;
   const blockTalk=detail&&inspectorNode?{messages:detail.messages.filter(message=>message.nodeId===inspectorNode.id).length,runs:detail.runs.filter(run=>run.nodeId===inspectorNode.id).length}:{messages:0,runs:0};
   const talkChip=(blockTalk.messages>0||blockTalk.runs>0)&&<button type="button" className={`chip-button${blockChat?' set':''}`} aria-pressed={blockChat} onClick={()=>setBlockChat(!blockChat)}><MessageSquare size={12}/>Conversation{blockTalk.messages>0&&` · ${blockTalk.messages}`}</button>;
   const labelChip=detail&&inspectorNode&&!historical&&!proposedNode&&kindName(inspectorNode)==='Text'&&!labelFixed(inspectorNode)&&<LabelChip node={inspectorNode} onPick={value=>void mutate([{type:'updateNode',id:inspectorNode.id,patch:labelPatch(inspectorNode,value)}],value?`Label ${inspectorNode.title} as ${value}`:`Remove the label of ${inspectorNode.title}`)}/>;
   const openBlock=detail&&inspectorNode&&!notebookNode?(
     proposedNode&&previewed&&preview&&proposedNode.blockType==='app'?blockFrame({body:<AppView key={`proposed:${proposedNode.id}`} node={proposedNode} detail={{...detail,project:{...detail.project,canvas:previewed.canvas}}} proposalId={preview.id} readOnly onUpdate={async()=>false} onReveal={nodeId=>{setInspectorId(null);revealNode(nodeId);}}/>})
-    :proposedNode&&previewed?blockFrame({foot:talkChip,body:<Inspector key={`proposed:${proposedNode.id}`} node={proposedNode} detail={{...detail,project:{...detail.project,canvas:previewed.canvas}}} mutate={mutate} file={proposedNode.file?shownFile(detail.project.id,proposedNode,folderFiles.get(proposedNode.id)):undefined} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onOpenNote={nodeId=>setInspectorId(nodeId)} onCancel={async()=>false} onRetry={async()=>false} onAttach={()=>undefined} readOnly readOnlyNote="Proposed change · accept it to make edits." conversation={blockChat} onConversation={setBlockChat}/>})
+    :proposedNode&&previewed?blockFrame({foot:<>{pictureChips}{talkChip}</>,status:pictureStatus,body:<Inspector key={`proposed:${proposedNode.id}`} node={proposedNode} detail={{...detail,project:{...detail.project,canvas:previewed.canvas}}} mutate={mutate} file={proposedNode.file?shownFile(detail.project.id,proposedNode,folderFiles.get(proposedNode.id)):undefined} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onOpenNote={nodeId=>setInspectorId(nodeId)} onCancel={async()=>false} onRetry={async()=>false} onAttach={()=>undefined} readOnly readOnlyNote="Proposed change · accept it to make edits." conversation={blockChat} onConversation={setBlockChat}/>})
     :inspectorNode.blockType==='agent'?blockFrame({body:<AgentView node={inspectorNode} turn={inspectorNode.agent?assistant?.turns.find(item=>item.id===inspectorNode.agent!.turnId):undefined} detail={detail} onOpenNode={nodeId=>{setInspectorId(null);revealNode(nodeId,true);}} onReveal={nodeId=>{setInspectorId(null);revealNode(nodeId);}} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onReview={id=>{setInspectorId(null);setPreviewId(id);}}/>})
     :inspectorNode.blockType==='app'?blockFrame({body:<AppView key={inspectorNode.id} node={inspectorNode} detail={detail} readOnly={Boolean(historical)} still={historical?'An App from a saved canvas. It runs on the current canvas.':undefined} onUpdate={(patch,label)=>mutate([{type:'updateNode',id:inspectorNode.id,patch}],label)} onReveal={nodeId=>{setInspectorId(null);revealNode(nodeId);}}/>})
     :inspectorNode.blockType==='code'?<CodeBlock key={`${inspectorNode.id}:${codeAttempt?.nodeId===inspectorNode.id?codeAttempt.runId:''}`} initialRunId={codeAttempt?.nodeId===inspectorNode.id?codeAttempt.runId:undefined} node={inspectorNode} detail={detail} policy={policy} onRefresh={()=>refresh()} onUpdate={patch=>mutate([{type:'updateNode',id:inspectorNode.id,patch}],'Edit Code source and settings')} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onReport={value=>{setInspectorId(null);setReportEditor({artifact:value});}} onInterpret={(value,destinationId)=>{setInspectorId(null);setOutputGuide({artifact:value,destinationId});}} onClose={()=>setInspectorId(null)} frame={blockFrame}/>
     :inspectorNode.blockType==='report'&&!inspectorNode.artifactId?blockFrame({body:<ReportEditor key={inspectorNode.id} nodeId={inspectorNode.id} detail={detail} onSaved={(value,nodeId)=>{setInspectorId(null);openArtifact(value,nodeId);}} onChanged={()=>refresh()} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onCancel={()=>setInspectorId(null)}/>})
-    :blockFrame({foot:<>{labelChip}{talkChip}</>,body:<Inspector key={inspectorNode.id} node={inspectorNode} detail={detail} mutate={mutate} onCheckSources={()=>void checkSources(inspectorNode)} file={inspectorNode.file?shownFile(detail.project.id,inspectorNode,folderFiles.get(inspectorNode.id)):undefined} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onOpenNote={nodeId=>{saveLocal(`node-tab:${nodeId}`,'overview');revealNode(nodeId,true);}} onCancel={runId=>action(()=>post(`/api/runs/${runId}/cancel`))} onRetry={runId=>action(()=>post(`/api/runs/${runId}/retry`))} onAttach={(value,nodeId)=>setAttachment({artifact:value,nodeId})} readOnly={Boolean(historical)} sql={publicDemo?undefined:{onChanged:()=>refresh()}} onGoogleCopy={historical?undefined:()=>copyGoogle(inspectorNode.id,true)} conversation={blockChat} onConversation={setBlockChat}/>})
+    :blockFrame({foot:<>{labelChip}{pictureChips}{talkChip}</>,status:pictureStatus,body:<Inspector key={inspectorNode.id} node={inspectorNode} detail={detail} mutate={mutate} onCheckSources={()=>void checkSources(inspectorNode)} file={inspectorNode.file?shownFile(detail.project.id,inspectorNode,folderFiles.get(inspectorNode.id)):undefined} onOpenArtifact={value=>{setInspectorId(null);openArtifact(value,value.nodeId);}} onOpenNote={nodeId=>{saveLocal(`node-tab:${nodeId}`,'overview');revealNode(nodeId,true);}} onCancel={runId=>action(()=>post(`/api/runs/${runId}/cancel`))} onRetry={runId=>action(()=>post(`/api/runs/${runId}/retry`))} onAttach={(value,nodeId)=>setAttachment({artifact:value,nodeId})} readOnly={Boolean(historical)} sql={publicDemo?undefined:{onChanged:()=>refresh()}} onGoogleCopy={historical?undefined:()=>copyGoogle(inspectorNode.id,true)} conversation={blockChat} onConversation={setBlockChat}/>})
   ):null;
   if(firstRun&&setup)return <>{macApp&&<div className="mac-titlebar"/>}<FirstRun key={setupRun} status={setup} onDone={()=>void finishSetup()} onAgents={()=>void finishSetup('model')} onChanged={reloadConnections}/></>;
   return <div className={`app-shell single-canvas-shell ${sidebarOpen?'':'sidebar-hidden'}`}>

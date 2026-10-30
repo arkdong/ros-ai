@@ -5,10 +5,10 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantAction } from '../shared/assistant.js';
 import type { AgentScope } from '../shared/agent-runtime.js';
-import type { Artifact, Canvas, CanvasNode, CheckedClaim, MetricView, Mutation, Run, TrainingView, WebDirection } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, CheckedClaim, MapPin, MetricView, Mutation, Run, TrainingView, WebDirection } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import { EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, type SearchDepth } from './providers.js';
-import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
+import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
 import { LAYOUT_GAP, arrangeCanvas } from '../shared/layout.js';
 import { WEB_BLOCK_SIZE, describeWeb, formatSources, pageKey } from '../shared/agent-work.js';
 import { SET_ASIDE } from '../shared/groups.js';
@@ -27,6 +27,8 @@ import { isAcpAgent, type AcpAgentId } from '../shared/acp-agents.js';
 import type { AppFrames } from './app-frames.js';
 import { APP_GUIDE } from './app-guide.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, appVersion, isHtmlLanguage } from '../shared/apps.js';
+import { MAX_MAP_PINS, googleMapsLink } from '../shared/maps.js';
+import { MAX_LOOKUPS, type Geocoder } from './geocode.js';
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const canvasReadSchema = z.object({ nodeIds: z.array(id).max(10).default([]) }).strict();
@@ -38,6 +40,21 @@ const snapshotCanvasSchema = z.object({ summary: z.string().trim().min(1).max(24
 /** The canvas tool while Apps are on for agents (Settings › General): App blocks too, with and without Google blocks. */
 const appCanvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(appProposalMutationSchema).min(1).max(120) }).strict();
 const snapshotAppCanvasSchema = z.object({ summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800), operations: z.array(snapshotAppProposalMutationSchema).min(1).max(120) }).strict();
+/** Pins on a Map block: a new map (title) or one on the canvas (nodeId). A pin without lat and lng is looked up on OpenStreetMap by place (or its name). */
+const placePinsSchema = z.object({
+  summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800),
+  nodeId: id.optional().describe('A Map block on the canvas, or one this turn proposed, to add the pins to. Leave out to make a new Map block'),
+  title: z.string().trim().min(1).max(200).optional().describe('The new Map block\'s title, such as "Date night in Amsterdam". Needed without nodeId'),
+  on: z.enum(['google', 'openstreetmap']).optional().describe('A new map only: "google" makes a Google Maps block, which shows Google\'s own map (every pin with a Google Maps key, one place at a time without); "openstreetmap" a Map block that shows every pin on OpenStreetMap. Leave out for Google Maps when the person has a Google Maps key, OpenStreetMap otherwise'),
+  replace: z.boolean().default(false).describe('true: the pins replace every pin on the map. false: they are added, and a pin with the name of one already there moves or updates it'),
+  pins: z.array(z.object({
+    name: z.string().trim().min(1).max(200).describe('What the place is, as the person would say it: "Rijksmuseum", "Café de Jaren"'),
+    place: z.string().trim().min(1).max(300).optional().describe('An address or a name with its town to look up, such as "Café de Jaren, Nieuwe Doelenstraat, Amsterdam". Used when lat and lng are left out; without it the name is looked up'),
+    lat: z.number().finite().min(-90).max(90).optional(), lng: z.number().finite().min(-180).max(180).optional(),
+    note: z.string().max(2000).optional().describe('One or two lines shown with the pin: why it is there, opening hours, a price'),
+    url: z.string().trim().url().max(2000).optional().describe('The place\'s own website or a page about it'),
+  }).strict()).min(1).max(50),
+}).strict();
 const appGuideSchema = z.object({}).strict();
 const checkAppSchema = z.object({
   nodeId: id.optional().describe('An App on the canvas, or one your pending proposal adds or changes'),
@@ -133,7 +150,7 @@ const NOTION_ACCOUNTS = ' Each Notion account is its own app, one workspace each
  * gemini, goose and opencode are agents on this computer that ros.ai starts as Ros over ACP. */
 export type AgentName = 'codex' | 'claude' | 'outside' | 'model' | AcpAgentId;
 /** Tool input contracts, shared by every agent transport. */
-export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema };
+export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema, ros_place_pins: placePinsSchema };
 /** The tools that change while Apps are on for agents: the canvas tool takes App blocks, and two tools join it. */
 export const appToolSchemas = { ros_propose_canvas: appCanvasSchema, ros_app_guide: appGuideSchema, ros_check_app: checkAppSchema };
 /** What the canvas tool says about App blocks; the check is named only where a browser can run it. */
@@ -203,6 +220,8 @@ export class AgentWorkspaceTools {
   static notionFiles?: NotionFileSaver;
   /** Downloads pictures and PDFs from the web into the project folder when a File block is given a web address. */
   static webFiles?: WebFileFetcher;
+  /** Looks places up on OpenStreetMap for Map block pins; unset in the public demo, where pins need lat and lng. */
+  static geocoder?: Geocoder;
   /** The person's skill library (Skills page); its tool is offered while at least one skill is on. */
   static skills?: SkillLibrary;
   /** The browser agents use (Plugins › Browser); its tool is offered while it is on and a browser can run it. */
@@ -225,6 +244,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_check_claims', description: `Check what a block says against the web, for example an answer pasted from another assistant or a draft. Name the block in nodeId and list every checkable factual claim in it, up to ${MAX_CLAIMS}: dates, numbers, thresholds, names, who or what a rule covers, how something is classified. Include the claims that look doubtful or wrong, since finding those is the point. Give each in the block's own words, with one or two ${CHECK_TERMS}. Skip opinions, advice and claims about the researcher. The check starts at once; its searches run and their passages come back here, numbered per claim. Read the most promising pages with ros_read_pages (use the claim's claimId as resultNodeId), then mark every claim with ros_write_verdicts.`, inputSchema: z.toJSONSchema(checkSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_write_verdicts', description: 'Mark the claims of this turn\'s ros_check_claims as backed or contradicted by a source, quoting it word for word (copy the sentence from ros_read_pages, or from the search passage), or as unsupported when no source found settles it. Give each a one-line note: for a contradiction, what the source says instead. ros.ai checks every quote against the saved text and refuses verdicts it cannot find there; the marks appear on the block, and each contradiction is also saved as a Finding note. Send verdicts again for a claim to replace them.', inputSchema: z.toJSONSchema(verdictsSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_propose_report', description: 'Propose a report: the title and the full Markdown text, as an immutable revision of a block. nodeId is the selected report or text block (or a block this turn added); leave it out when nothing is selected and ros.ai adds a report block for it. evidenceIds are exact selected artifact versions and may be empty when the evidence is in blocks you name in the text. The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
+    { type: 'function', name: 'ros_place_pins', description: `Put places on a map on the canvas: a Map block shows pins on OpenStreetMap, a Google Maps block on Google's own map, and each pin opens in Google Maps with one click. When the person asks for Google Maps, set on: "google". Use it whenever places matter to the work (a trip, venues, field sites, offices, a route), rather than listing addresses in a note or drawing a map in code. Give nodeId to add to a Map block already there (ros_read_canvas lists its pins), or a title for a new one. Give each pin a name and either lat and lng you are sure of, or place: an address or a name with its town, which ros.ai looks up on OpenStreetMap (at most ${MAX_LOOKUPS} lookups a call, about one a second). Pins that cannot be found are reported in notFound and left off; try a fuller address for them. The change follows the project approval mode. At most ${MAX_MAP_PINS} pins on one map.`, inputSchema: z.toJSONSchema(placePinsSchema, { io: 'input' }) },
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
@@ -375,6 +395,7 @@ export class AgentWorkspaceTools {
     }
     if (name === 'ros_app_guide') { lenient(appGuideSchema, supplied ?? {}); this.frames(); return { guide: APP_GUIDE }; }
     if (name === 'ros_check_app') return this.checkApp(lenient(checkAppSchema, supplied));
+    if (name === 'ros_place_pins') return this.placePins(lenient(placePinsSchema, supplied));
     let action: AssistantAction, apps: string[] = [];
     if (name === 'ros_propose_canvas') {
       const value: z.infer<typeof appCanvasSchema> = this.appsOn ? lenient(appCanvasSchema, supplied) : lenient(canvasSchema, supplied); this.current();
@@ -505,6 +526,61 @@ export class AgentWorkspaceTools {
     if (isWebAddress(node.file.path)) return;
     AgentWorkspaceTools.folders.placeable(this.scope.projectId, node.file.path);
   }
+  /** ros_place_pins: the pins looked up where they need it, then one change that adds the Map block or its pins, under
+   * the project's approval mode. A pin that cannot be found is left off and reported, so the rest still goes to the person. */
+  private async placePins(value: z.infer<typeof placePinsSchema>) {
+    const canvas = this.store.getProject(this.scope.projectId).canvas;
+    let target: CanvasNode | undefined;
+    if (value.nodeId) {
+      target = canvas.nodes.find(n => n.id === value.nodeId) ?? this.pendingNode(value.nodeId);
+      if (!target) this.onCanvas(value.nodeId, canvas);
+      if (target!.blockType !== 'map') throw new StoreError(`${target!.title} is not a Map block. Leave nodeId out to make a new map.`);
+      if (canvas.nodes.some(n => n.id === value.nodeId)) this.node(value.nodeId);
+    } else if (!value.title) throw new StoreError('Give a title for a new Map block, or nodeId for one on the canvas.');
+    const lookups = value.pins.filter(pin => pin.lat === undefined || pin.lng === undefined);
+    if (lookups.length > MAX_LOOKUPS) throw new StoreError(`One call looks up at most ${MAX_LOOKUPS} places; this one asks for ${lookups.length}. Give lat and lng where you know them, or place the pins in several calls.`);
+    if (lookups.length && !AgentWorkspaceTools.geocoder) throw new StoreError('Places cannot be looked up here. Give each pin lat and lng.', 403);
+    const placed: MapPin[] = [], notFound: { name: string; looked: string; problem: string }[] = [];
+    for (const pin of value.pins) {
+      const extra = { ...(pin.note ? { note: pin.note } : {}), ...(pin.url ? { url: pin.url } : {}) };
+      if (pin.lat !== undefined && pin.lng !== undefined) { placed.push({ id: randomUUID(), name: pin.name, lat: pin.lat, lng: pin.lng, ...(pin.place ? { place: pin.place } : {}), ...extra }); continue; }
+      const looked = pin.place ?? pin.name;
+      try {
+        const found = await AgentWorkspaceTools.geocoder!.first(looked, this.signal);
+        if (found) placed.push({ id: randomUUID(), name: pin.name, lat: found.lat, lng: found.lng, place: found.address || looked, ...extra });
+        else notFound.push({ name: pin.name, looked, problem: 'OpenStreetMap knows no place by that name' });
+      } catch (error) {
+        if (this.signal?.aborted) throw new StoreError('The turn was stopped.', 409);
+        notFound.push({ name: pin.name, looked, problem: error instanceof Error ? error.message.slice(0, 200) : 'the lookup failed' });
+      }
+    }
+    if (!placed.length) return { committed: false, notFound, instruction: 'No pin could be placed, so nothing was proposed. Try fuller addresses (street, town, country) or give lat and lng.' };
+    const before = value.replace ? [] : target?.map?.pins ?? [];
+    const pins = [...before];
+    for (const pin of placed) {
+      const same = pins.findIndex(item => item.name.toLocaleLowerCase() === pin.name.toLocaleLowerCase());
+      if (same === -1) pins.push(pin); else pins[same] = { ...pin, id: pins[same].id };
+    }
+    if (pins.length > MAX_MAP_PINS) throw new StoreError(`A map holds at most ${MAX_MAP_PINS} pins; this would make ${pins.length}. Start another Map block.`);
+    let nodeId = target?.id, operations: Mutation[];
+    if (target) operations = [{ type: 'updateNode', id: target.id, patch: { map: { pins, ...(target.map?.provider ? { provider: target.map.provider } : {}) } } }];
+    else {
+      nodeId = randomUUID();
+      const card = { title: value.title!, description: '' }, width = 520;
+      const onGoogle = (value.on ?? (googleMapsKeySaved() ? 'google' : 'openstreetmap')) === 'google';
+      const origin = this.layout([snapUp(CARD_MAX_HEIGHT + LAYOUT_GAP)], width, card);
+      operations = [{ type: 'addNode', node: { id: nodeId, ...card, kind: 'topic', blockType: 'map', map: { pins, ...(onGoogle ? { provider: 'google' as const } : {}) }, width, x: origin.x + (this.agentNodeId ? COLUMN : 0), y: origin.tops[0] } }];
+      if (this.agentNodeId) operations.push({ type: 'addConnection', connection: { id: randomUUID(), source: this.agentNodeId, target: nodeId, label: 'added' } });
+    }
+    const made = this.propose(`${value.summary}\nWhy: ${value.rationale}`, operations, { rationale: value.rationale });
+    return {
+      action: made.action, committed: made.status === 'accepted', nodeId,
+      placed: placed.map(pin => ({ name: pin.name, lat: Number(pin.lat.toFixed(6)), lng: Number(pin.lng.toFixed(6)), ...(pin.place ? { foundAs: pin.place } : {}), google: googleMapsLink(pin) })),
+      ...(notFound.length ? { notFound } : {}),
+      ...(!target && value.on === 'google' && !googleMapsKeySaved() ? { googleMaps: 'No Google Maps key is saved, so the block shows Google\'s map one place at a time; a key in Plugins › Google Maps shows every pin at once.' } : {}),
+      instruction: `${made.status === 'accepted' ? 'The pins are on the map.' : 'Wait for exact user approval. Do not describe the pins as placed yet.'} Looked-up pins land where OpenStreetMap puts the place: check foundAs, and fix a wrong one by calling again with the same name and a fuller place or lat and lng.${notFound.length ? ' Some places were not found (notFound); say which.' : ''}`,
+    };
+  }
   /** File blocks given a web address: each file is downloaded into the project folder's files/ and the block then shows
    * it, with its source noted. A file that cannot be downloaded drops its block (and that block's links) from the change
    * and is reported, so the rest still goes to the person. Files are saved before the review, as Notion files are, so a
@@ -564,7 +640,7 @@ export class AgentWorkspaceTools {
       const folderFiles = AgentWorkspaceTools.folders?.placeableFiles(this.scope.projectId) ?? [];
       return {
         projectTitle: detail.project.title, revision: detail.project.revision, selected: this.scope.nodeIds,
-        blocks: listed.map(n => ({ id: n.id, title: n.title, kind: n.kind ?? 'topic', blockType: n.blockType, ...(n.label ? { label: n.label } : {}), ...(n.notion ? { notion: n.notion } : {}), ...(n.google ? { google: n.google } : {}), ...(n.file ? { file: n.file } : {}), ...(n.paper ? { paper: n.paper } : {}), ...(n.app ? { app: { inputs: n.app.inputs, characters: n.app.source.length, version: appVersion(n.app.source) } } : {}), parentId: n.parentId ?? null, characters: n.description.length, artifacts: artifactsOf(n.id).map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) })),
+        blocks: listed.map(n => ({ id: n.id, title: n.title, kind: n.kind ?? 'topic', blockType: n.blockType, ...(n.label ? { label: n.label } : {}), ...(n.notion ? { notion: n.notion } : {}), ...(n.google ? { google: n.google } : {}), ...(n.file ? { file: n.file } : {}), ...(n.map ? { pins: n.map.pins.length } : {}), ...(n.paper ? { paper: n.paper } : {}), ...(n.app ? { app: { inputs: n.app.inputs, characters: n.app.source.length, version: appVersion(n.app.source) } } : {}), parentId: n.parentId ?? null, characters: n.description.length, artifacts: artifactsOf(n.id).map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) })),
         links: detail.project.canvas.connections.filter(c => ids.has(c.source) && ids.has(c.target)).slice(0, MAX_MAP_BLOCKS * 2).map(c => ({ source: c.source, target: c.target, label: c.label })),
         ...(folderFiles.length ? { folderFiles: folderFiles.map(file => ({ path: file.path, kind: file.kind, bytes: file.bytes })), folderFilesNote: 'PDFs and images in the project folder that are not on the canvas yet. Show one with ros_propose_canvas: addNode with blockType "file" and file {path}.' } : {}),
         ...(nodes.length > listed.length ? { note: `Only the first ${listed.length} of ${nodes.length} blocks are listed.` } : {}),
@@ -575,7 +651,7 @@ export class AgentWorkspaceTools {
       if (!node) return { id: nodeId, missing: true };
       const artifacts = artifactsOf(node.id);
       for (const a of artifacts) if (!this.capture.artifacts.some(c => c.id === a.id)) this.opened.set(a.id, { id: a.id, nodeId: a.nodeId, runId: a.runId, kind: a.kind, title: a.title, hash: a.hash, content: a.content, createdAt: a.createdAt, capture: a.capture, mediaType: a.mediaType });
-      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.google ? await this.googleBlock(node) : {}), ...(node.training ? await this.trainingBlock(node.training) : {}), ...(node.metric ? await this.metricBlock(node.metric) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.app ? this.appBlock(node) : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
+      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.google ? await this.googleBlock(node) : {}), ...(node.training ? await this.trainingBlock(node.training) : {}), ...(node.metric ? await this.metricBlock(node.metric) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: { on: node.map.provider === 'google' ? 'Google Maps' : 'OpenStreetMap', pins: node.map.pins.map(({ id: _id, ...pin }) => pin), note: 'A Map block. Add, move or replace pins with ros_place_pins and this nodeId.' } } : {}), ...(node.app ? this.appBlock(node) : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
     })) };
   }
   /** An App block as the agent reads it: its page, the blocks it reads, and what the page reported and kept lately. */
@@ -1340,6 +1416,8 @@ export class AgentWorkspaceTools {
   }
 }
 
+/** Whether a Google Maps key is saved (Plugins › Google Maps), so a new map can draw Google's map. */
+const googleMapsKeySaved = () => Boolean(process.env.GOOGLE_MAPS_API_KEY);
 const snap = (value: number) => Math.round(value / 24) * 24, snapUp = (value: number) => Math.ceil(value / 24) * 24;
 const COLUMN = snapUp(CARD_DEFAULT_WIDTH + LAYOUT_GAP);
 const findingCard = (finding: z.infer<typeof findingsSchema>['findings'][number], source: { title: string; url?: string }) => ({

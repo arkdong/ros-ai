@@ -65,6 +65,8 @@ function typedTable(data: TableData, extra?: (index: number) => Record<string, s
 }
 const imageAddress = (artifact: Artifact) => artifact.mediaType === 'image/png' ? `data:image/png;base64,${artifact.content}` : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`;
 
+/** Where Google's keyless map embed lives: the path itself and below it. */
+const GOOGLE_EMBED = 'https://www.google.com/maps https://www.google.com/maps/';
 export class AppFrames {
   private readonly servers: Server[] = [];
   private port = 0;
@@ -103,8 +105,9 @@ export class AppFrames {
   stop() { for (const server of this.servers) server.close(); this.servers.length = 0; this.port = 0; }
 
   /** The policy ros.ai's own pages carry: frames load only from here. The browser checks it before any navigation of an
-   * App's frame, so a page that sends its frame elsewhere (a link, a refresh, a script) is stopped before it asks. */
-  framePolicy(): string { return this.port ? `frame-src ${['localhost', '127.0.0.1'].map(host => `http://${host}:${this.port}`).join(' ')}` : "frame-src 'none'"; }
+   * App's frame, so a page that sends its frame elsewhere (a link, a refresh, a script) is stopped before it asks. Google's
+   * keyless map embed (Google Maps blocks without a key) is the one page elsewhere, and only under google.com/maps. */
+  framePolicy(): string { return `frame-src ${this.port ? ['localhost', '127.0.0.1'].map(host => `http://${host}:${this.port}`).join(' ') : ''} ${GOOGLE_EMBED}`.replace(/\s+/gu, ' '); }
   /** The other loopback name than the one ros.ai's page is on, so App pages are another site to the browser. */
   private frameHost(mainHost?: string) { return /^localhost(:\d+)?$/iu.test(mainHost ?? '') ? '127.0.0.1' : 'localhost'; }
   private policy(): string {
