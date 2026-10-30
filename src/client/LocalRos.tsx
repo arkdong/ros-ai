@@ -20,7 +20,7 @@ export function LocalRos({ onChanged }: { onChanged: () => Promise<unknown> }) {
   const left = state === 'downloading' ? timeLeft(status) : '';
   const subtitle = state === 'downloading' ? (status.totalBytes ? `${gb(status.doneBytes)} of ${gb(status.totalBytes)}${left ? ` · ${left}` : ''}` : 'Finding the files…')
     : state === 'starting' ? 'Loading the model…'
-    : state === 'ready' ? `${status.model?.startsWith('ros-nemotron') ? 'ros-nemotron 4B' : 'Nemotron 3 Nano 4B'} · ${gb(status.totalBytes)} on disk`
+    : state === 'ready' ? `${status.model?.startsWith('ros-nemotron') ? `ros-nemotron 4B${/-r2b?-/u.test(status.model) ? ', round 2' : ''}` : 'Nemotron 3 Nano 4B'} · ${gb(status.totalBytes)} on disk`
     : 'Works offline, free, nothing leaves this computer';
   const label = { 'not-downloaded': 'Not downloaded', downloading: 'Downloading', starting: 'Starting', ready: 'Ready', failed: 'Stopped' }[state];
   const percent = percentOf(status);

@@ -51,8 +51,9 @@ test('ROS on this computer downloads through a dropped connection, then starts a
     if (url.endsWith('nightly-tag.txt')) return new Response('b42\n');
     if (url.endsWith('/releases/tags/b42')) return Response.json({ tag_name: 'b42', assets: [asset] });
     if (url === asset.browser_download_url) return new Response(engine);
-    if (url.includes('/api/models/')) return Response.json([{ type: 'file', path: 'ros-q4_k_m.gguf', size: 140, lfs: { oid: sha(model), size: model.length } }, { type: 'file', path: 'README.md', size: 10 }]);
-    if (url.includes('/resolve/main/ros-q4_k_m.gguf')) {
+    // Round 1's file comes first in the listing, as on Hugging Face; this version takes round 2's.
+    if (url.includes('/api/models/')) return Response.json([{ type: 'file', path: 'ros-nemotron-4b-Q4_K_M.gguf', size: 140, lfs: { oid: sha(model), size: model.length } }, { type: 'file', path: 'ros-nemotron-4b-r2b-Q4_K_M.gguf', size: 140, lfs: { oid: sha(model), size: model.length } }, { type: 'file', path: 'README.md', size: 10 }]);
+    if (url.includes('/resolve/main/ros-nemotron-4b-r2b-Q4_K_M.gguf')) {
       const from = range ? Number(/bytes=(\d+)-/u.exec(range)![1]) : 0;
       if (!dropped) {
         // The first answer breaks off half way, as a dropped connection does; the next asks for the rest.
@@ -82,11 +83,11 @@ test('ROS on this computer downloads through a dropped connection, then starts a
     assert.ok(existsSync(join(dir, 'local-ros', 'wanted')), 'the wish to have ROS outlives a restart until the files are in');
     await until(() => local.status().state === 'ready', 'ROS to be ready');
     status = local.status();
-    assert.equal(status.model, 'ros-q4_k_m.gguf');
+    assert.equal(status.model, 'ros-nemotron-4b-r2b-Q4_K_M.gguf');
     assert.equal(status.totalBytes, model.length);
     assert.equal(created.length, 1);
     assert.match(created[0]!.endpoint, /^http:\/\/127\.0\.0\.1:\d+\/v1$/u);
-    assert.ok(seen.some(line => line.includes('/resolve/main/ros-q4_k_m.gguf bytes=120000-')), 'the second try resumed where the first stopped');
+    assert.ok(seen.some(line => line.includes('/resolve/main/ros-nemotron-4b-r2b-Q4_K_M.gguf bytes=120000-')), 'the second try resumed where the first stopped');
     assert.ok(!existsSync(join(dir, 'local-ros', 'wanted')), 'nothing left to resume once ROS is on disk');
     const installed = JSON.parse(readFileSync(join(dir, 'local-ros', 'installed.json'), 'utf8')) as { engineTag: string; server: string };
     assert.equal(installed.engineTag, 'b42', 'the stable release led to the build that holds the programs');

@@ -11,9 +11,12 @@ import type { InferenceConnections } from './inference-connections.js';
 import { StoreError } from './store.js';
 
 const run = promisify(execFile);
-// ros-nemotron: Nemotron 3 Nano 4B fine-tuned on ros.ai's own agent turns (training/ros-nemotron). A computer that already
-// downloaded NVIDIA's GGUF keeps it until ROS is removed and downloaded again.
+// ros-nemotron: Nemotron 3 Nano 4B fine-tuned on ros.ai's own agent turns (training/ros-nemotron). Round 2 (30 October,
+// the r2b run) also learned when and what to group and link after an agent's turn, from the landing packet this version
+// sends. The repo keeps round 1's file, which earlier versions pick; a computer that already downloaded a model keeps it
+// until ROS is removed and downloaded again.
 const MODEL_REPO = process.env.ROS_LOCAL_MODEL_REPO || 'arkdong/ros-nemotron-4b-GGUF';
+const MODEL_FILE = process.env.ROS_LOCAL_MODEL_FILE || 'ros-nemotron-4b-r2b-Q4_K_M.gguf';
 const ENGINE_REPO = 'ggml-org/llama.cpp';
 /** llama.cpp's server, pinned to b11960: the build behind llama.cpp's stable release v0.8.0 (28 October 2026). Since
  * v0.7.0 a stable release holds no programs, only nightly-tag.txt naming the build that does, so asking GitHub for the
@@ -169,7 +172,7 @@ export class LocalRos {
     const { tag, download: engine } = await this.again(() => this.engine(signal), signal);
     const tree = await this.again(() => json(`https://huggingface.co/api/models/${MODEL_REPO}/tree/main`, signal), signal) as { type: string; path: string; size: number; lfs?: { oid: string; size: number } }[];
     const ggufs = tree.filter(item => item.type === 'file' && item.path.endsWith('.gguf'));
-    const chosen = ggufs.find(item => item.path === process.env.ROS_LOCAL_MODEL_FILE) ?? ggufs.find(item => /q4_k_m/iu.test(item.path)) ?? [...ggufs].sort((a, b) => (a.lfs?.size ?? a.size) - (b.lfs?.size ?? b.size))[0];
+    const chosen = ggufs.find(item => item.path === MODEL_FILE) ?? ggufs.find(item => /q4_k_m/iu.test(item.path)) ?? [...ggufs].sort((a, b) => (a.lfs?.size ?? a.size) - (b.lfs?.size ?? b.size))[0];
     if (!chosen) throw new Error(`${MODEL_REPO} has no GGUF file.`);
     const model: Download = { url: `https://huggingface.co/${MODEL_REPO}/resolve/main/${chosen.path}`, file: join(this.dir, 'models', chosen.path.split('/').pop()!), bytes: chosen.lfs?.size ?? chosen.size, ...(chosen.lfs?.oid ? { sha256: chosen.lfs.oid } : {}) };
     const job = this.job;
