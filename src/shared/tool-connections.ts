@@ -1,4 +1,4 @@
-export type CredentialProvider = 'nebius' | 'claude' | 'openai' | 'tavily' | 'exa' | 'brave';
+export type CredentialProvider = 'nebius' | 'claude' | 'openai' | 'tavily' | 'exa' | 'brave' | 'google-maps';
 export type CredentialStatus = {
   provider: CredentialProvider;
   configured: boolean;

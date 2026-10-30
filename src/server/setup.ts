@@ -17,13 +17,13 @@ import type { AgentId, DetectedAgent, DetectedApp, DetectedKey, DetectedModel, L
 /** First launch: what ros.ai found on this computer, the links it made for the person, and whether
  * the screen has been seen. Everything here is read from this computer and stays on it. */
 
-const AGENTS = ['claude-code', 'codex', 'cursor', 'gemini-cli', 'pi', 'hermes'] as const;
+const AGENTS = ['claude-code', 'claude-app', 'codex', 'cursor', 'gemini-cli', 'pi', 'hermes'] as const;
 const MODELS = ['ollama', 'lm-studio'] as const;
 /** The context Ollama gives a model below 24 GB of graphics memory, and LM Studio's usual load: assumed while unknown. */
 const LOCAL_DEFAULT_CONTEXT = 4096;
-const agentLabels: Record<AgentId, string> = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
+const agentLabels: Record<AgentId, string> = { 'claude-code': 'Claude Code', 'claude-app': 'Claude app', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
 const keyLabels: Record<string, string> = { nebius: 'Nebius Token Factory key', claude: 'Claude API key', openai: 'OpenAI key', tavily: 'Tavily key', exa: 'Exa key', brave: 'Brave Search key' };
-const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, Codex, Cursor, Gemini CLI, Pi and Hermes Agent (names only)', 'model servers on 127.0.0.1'];
+const lookedAt = ['the Applications folder', 'your PATH', 'the settings of Claude Code, the Claude app, Codex, Cursor, Gemini CLI, Pi and Hermes Agent (names only)', 'model servers on 127.0.0.1'];
 type Scan = { at: string; agents: Found[]; models: Omit<DetectedModel, 'connectionId'>[]; apps: DetectedApp[]; docker: { found: boolean; running: boolean } };
 /** localRos: the ROS download on this computer; apps: the app sign-ins and desktop apps turned on; googleDrive: the
  * Google Drive sign-in. Reset all connections can undo each. */

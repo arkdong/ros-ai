@@ -7,6 +7,8 @@ import './app-block.css';
 
 type FrameState = { kind: 'starting' } | { kind: 'running' } | { kind: 'stopped'; reason: 'frozen' | 'left' } | { kind: 'failed'; message: string };
 const STOPPED = { frozen: 'This App stopped answering, so ros.ai unloaded it.', left: 'This App tried to leave its page, so ros.ai unloaded it.' };
+/** Live inputs (Notion, Google, Metrics) change without the project changing: a running page gets what it watches read again this often. */
+const AGAIN_MS = 15 * 60_000;
 
 /** An App's page in its sealed frame. A new frame opens when the page (version) or the proposal it previews changes;
  * watchKey changes when the project does, and the page gets fresh copies of the blocks it watches. */
@@ -40,6 +42,7 @@ export function AppFrame({ projectId, nodeId, title, version, proposalId, watchK
     // The title only names the frame for screen readers; renaming the block keeps the running page.
   }, [projectId, nodeId, proposalId, version, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { host.current?.changed(); }, [watchKey]);
+  useEffect(() => { const timer = window.setInterval(() => host.current?.changed(), AGAIN_MS); return () => window.clearInterval(timer); }, []);
   return <div className={`app-frame-box app-${state.kind}`}>
     <div ref={box} className="app-frame-slot"/>
     {state.kind === 'stopped' || state.kind === 'failed' ? <div className="app-frame-notice" role="status">

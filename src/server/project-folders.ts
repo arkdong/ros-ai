@@ -8,16 +8,18 @@ import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
 import { CARD_DEFAULT_HEIGHT, cardWidth, setCardHeight } from '../shared/card-size.js';
 import { artifactTable, parseCsv, tableCsv } from '../shared/data-view.js';
-import { FILE_BYTES, fileMediaType, isPdfType, noteImageType } from '../shared/files.js';
+import { FILE_BYTES, fileMediaType, isImageType, isPdfType, noteImageType, type ImageSize } from '../shared/files.js';
+import { IMAGE_HEAD_BYTES, imageSize } from './image-size.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
+import { MAX_MAP_PINS } from '../shared/maps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { mapPinSchema, metricViewSchema, paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -181,6 +183,17 @@ class FolderFiles {
       return { bytes: content, observed: { hash: sha(content), mtimeMs: info.mtimeMs, size: length } };
     } finally { closeSync(descriptor); }
   }
+  /** The first bytes of a file, for its headers. */
+  head(rel: string, length: number): Buffer {
+    const descriptor = openSync(this.resolve(rel), constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      if (!fstatSync(descriptor).isFile()) throw new StoreError(`${rel} is not a normal file.`);
+      const bytes = Buffer.alloc(length);
+      let read = 0;
+      while (read < length) { const got = readSync(descriptor, bytes, read, length - read, null); if (!got) break; read += got; }
+      return bytes.subarray(0, read);
+    } finally { closeSync(descriptor); }
+  }
   write(rel: string, bytes: Buffer): Observed {
     const target = this.resolve(rel, true), temporary = join(dirname(target), `.ros-ai-${randomUUID()}.tmp`);
     writeFileSync(temporary, bytes, { flag: 'wx' });
@@ -217,9 +230,11 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
+    // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
+    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional(),
     // The blocks an App reads; an entry ros.ai cannot read is left out rather than failing the manifest.
     inputs: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u)).max(MAX_APP_INPUTS).optional().catch(undefined) })).max(500),
@@ -252,6 +267,8 @@ export class ProjectFolders implements NotebookFolders {
   /** File blocks whose PDF text is still to be read, per project; reading runs after the folder pass that found them. */
   private readonly pendingText = new Map<string, Set<string>>();
   private readingText = new Set<string>();
+  /** Picture sizes by file version, read once each; null for a file whose size could not be read. */
+  private readonly pictureSizes = new Map<string, ImageSize | null>();
   private readonly editing: ArtifactEditingService;
   private readonly reserved: string[];
   private readonly stopListening: () => void;
@@ -318,12 +335,24 @@ export class ProjectFolders implements NotebookFolders {
     const checked = this.checked.get(projectId), live = new Set(project.canvas.nodes.map(node => node.id));
     const entries = Object.entries(record.files).filter(([nodeId, entry]) => !entry.removed && live.has(nodeId));
     return { attached: true, path: record.path, available: checked?.available ?? true, ...(checked?.reason ? { reason: checked.reason } : {}), revision: project.revision,
-      files: entries.map(([nodeId, entry]) => ({ nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}), ...(entry.kind === 'file' && entry.disk ? { bytes: entry.disk.size, version: entry.hash.slice(0, 12) } : {}) })),
+      files: entries.map(([nodeId, entry]) => { const image = this.pictureSize(record, entry); return { nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}), ...(entry.kind === 'file' && entry.disk ? { bytes: entry.disk.size, version: entry.hash.slice(0, 12) } : {}), ...(image ? { image } : {}) }; }),
       unplaced: checked?.unplaced ?? [],
       problems: [...entries.filter(([, entry]) => entry.problem).map(([, entry]) => ({ path: entry.path, message: entry.problem! })), ...(checked?.problems ?? [])],
       ...(checked ? { checkedAt: checked.checkedAt } : {}) };
   }
 
+  /** The pixel size of a File block's picture, read from the file's first bytes once per version of the file, so
+   * its card can take the picture's shape before the picture itself loads. */
+  private pictureSize(record: FolderRecord, entry: FileEntry): ImageSize | undefined {
+    if (entry.kind !== 'file' || entry.missing || !isImageType(fileMediaType(entry.path))) return undefined;
+    const key = `${entry.hash}\u0000${entry.path}`, known = this.pictureSizes.get(key);
+    if (known !== undefined) return known ?? undefined;
+    let size: ImageSize | null = null;
+    try { size = imageSize(new FolderFiles(record.path).head(entry.path, IMAGE_HEAD_BYTES)) ?? null; } catch { size = null; }
+    if (this.pictureSizes.size >= 4000) this.pictureSizes.clear();
+    this.pictureSizes.set(key, size);
+    return size ?? undefined;
+  }
   /** The block's .ipynb, relative to the project folder. */
   notebookFile(projectId: string, nodeId: string): string | null {
     const entry = this.load(projectId)?.files[nodeId];
@@ -480,6 +509,12 @@ export class ProjectFolders implements NotebookFolders {
         this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, label: block.label, paper: block.paper, parentId: parentOf(block), x: block.x, y: block.y, width: block.width, height: block.height });
         placed.push(block.id);
       } catch { /* listed as an unplaced file instead */ }
+    }
+    // A Map block keeps its pins in the manifest; its text, when it has some, came back above as a note.
+    for (const block of manifest.blocks.filter(item => item.kind !== 'group' && item.blockType === 'map' && item.map)) {
+      const patch = { blockType: 'map' as const, map: block.map! };
+      try { this.store.mutate(projectId, [placed.includes(block.id) ? { type: 'updateNode', id: block.id, patch } : { type: 'addNode', node: { id: block.id, title: block.title, description: '', kind: 'topic', ...patch, parentId: parentOf(block), x: block.x, y: block.y, ...(block.width === undefined ? {} : { width: block.width }) } }], 'Map from the project folder'); if (!placed.includes(block.id)) placed.push(block.id); }
+      catch { /* a map ros.ai cannot keep is left out */ }
     }
     // Adding a block finds it a free spot; the saved arrangement is put back afterwards.
     const positions: Mutation[] = manifest.blocks.filter(block => placed.includes(block.id)).map(block => ({ type: 'updateNode', id: block.id, patch: { x: block.x, y: block.y } }));
@@ -836,7 +871,7 @@ export class ProjectFolders implements NotebookFolders {
       entry.missing = false;
       if (seen.observed.hash === entry.hash) { delete entry.problem; continue; }
       // A PDF or image replaced on disk: the card shows the new file, and a PDF's text is read again.
-      if (entry.kind === 'file') { entry.hash = seen.observed.hash; delete entry.problem; this.queueText(record.projectId, nodeId); continue; }
+      if (entry.kind === 'file') { entry.hash = seen.observed.hash; entry.disk = seen.observed; delete entry.problem; this.queueText(record.projectId, nodeId); continue; }
       // A version already seen and refused keeps its problem until the file changes again.
       if (!seen.bytes || !TWO_WAY.has(entry.kind)) continue;
       try {
@@ -1024,7 +1059,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.label ? { label: node.label } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.metric ? { metric: node.metric } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));

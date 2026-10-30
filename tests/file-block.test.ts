@@ -69,7 +69,7 @@ test('A PDF or image in the project folder becomes a File block that the server 
     assert.equal(Buffer.from(await served.arrayBuffer()).length, pdf('Hello file block').length);
     const listed = await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.files.some(file => file.nodeId === nodeId && file.version), 'the file version');
     const entry = listed.files.find(file => file.nodeId === nodeId)!;
-    assert.equal(entry.kind, 'file'); assert.equal(entry.bytes, pdf('Hello file block').length);
+    assert.equal(entry.kind, 'file'); assert.equal(entry.bytes, pdf('Hello file block').length); assert.equal(entry.image, undefined, 'a PDF has no pixel size');
     assert.equal(listed.unplaced.length, 1);
 
     // A dropped image is saved into files/ and shown by a block an edit adds with just its path, as an agent's proposal would.
@@ -79,6 +79,8 @@ test('A PDF or image in the project folder becomes a File block that the server 
     await f.post(`/api/projects/${project.id}/mutations`, { label: 'Add a dropped image', expectedRevision: current.project.revision, operations: [{ type: 'addNode', node: { id: 'dropped', title: 'My plot', description: '', x: 0, y: 480, kind: 'topic', blockType: 'file', file: { path: saved.path } } }] });
     const adopted = await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.files.some(file => file.nodeId === 'dropped' && file.bytes), 'the dropped image to be recorded');
     assert.equal(adopted.files.find(file => file.nodeId === 'dropped')!.path, 'files/My plot.png');
+    // The listing carries the picture's pixel size, so its card has the picture's shape before the picture loads.
+    assert.deepEqual(adopted.files.find(file => file.nodeId === 'dropped')!.image, { width: 1, height: 1 });
     const image = await fetch(`${f.base}/api/projects/${project.id}/nodes/dropped/file`);
     assert.equal(image.headers.get('content-type'), 'image/png'); assert.equal(Buffer.from(await image.arrayBuffer()).length, png.length);
     // Agents may only show files that are in the folder and not on the canvas yet.

@@ -11,6 +11,7 @@ import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type Pr
 import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
+import { MAX_MAP_PINS } from '../shared/maps.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 /** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
@@ -51,8 +52,20 @@ const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','d
 export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
 /** A Notion block with the account the person chose to read it with (see NotionView), by its key in ros.ai. Kept out
  * of what agents may propose and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
+/** A Metric block's source (see MetricView). Kept out of what agents may propose and out of nodeFields, like a training run. */
+const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
+export const metricViewSchema = z.discriminatedUnion('source', [
+  z.object({ source: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/u) }).strict(),
+  z.object({ source: z.literal('cloud') }).strict(),
+  z.object({ source: z.literal('umami'), website: uuid }).strict(),
+  z.object({ source: z.literal('railway'), project: uuid }).strict(),
+]);
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
-const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training']).optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** A Map block's pins (see MapView). Kept out of nodeFields, so the canvas tool agents see reads as the training snapshot
+ * has it; agents place pins with ros_place_pins. */
+export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: z.string().trim().url().max(2000).optional(), place: z.string().trim().max(300).optional() }).strict();
+const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
+const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric']).optional(), map: mapViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);

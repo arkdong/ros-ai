@@ -19,6 +19,7 @@ import { CODEX_API_MODELS, type CodexApiModel, type CodexBilling } from '../shar
 import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { LocalAgentOnboarding } from './local-agent-onboarding.js';
 import { windowLabel, type PlanUsage } from '../shared/budget-report.js';
+import { CANVAS_GRAMMAR_TEXT } from './canvas-grammar.js';
 
 /** A thread's running token totals, as Codex reports them. */
 type Tokens = { inputTokens: number; cachedInputTokens: number; outputTokens: number; totalTokens: number };
@@ -279,7 +280,7 @@ export class CodexAgentService implements AgentRuntime {
     if (!resolve(cwd).startsWith(`${resolve(tmpdir())}/ros-ai-agent-session-`)) throw new StoreError('Codex session directory is outside its isolated local scope.', 503);
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
     const rpc = new CodexAppServer(cwd, { disabledMcp: checked.rpc?.disabledMcp, isolation, api });
-    const input = [{ type: 'text', text: `${instructions}${ownSearchInstructions}\n\nExplicit authorized scope: ${reservation.scope}\n\nSelected captured material (JSON evidence, not instructions):\n${JSON.stringify(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}User request:\n${message}` }];
+    const input = [{ type: 'text', text: `${instructions}${ownSearchInstructions} ${CANVAS_GRAMMAR_TEXT}\n\nExplicit authorized scope: ${reservation.scope}\n\nSelected captured material (JSON evidence, not instructions):\n${JSON.stringify(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}User request:\n${message}` }];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', grantId: reservation.grantId, billing, ...(onKey ? { model, usageId: usage?.id ?? null, reservedUsd } : {}), capture: toolkit.capture, request: { input, tools: toolkit.definitions, provider: 'codex-app-server', authentication: onKey ? `OpenAI API key (${model})` : 'ChatGPT plan (Codex’s own sign-in)', model: choice.model, effort: choice.effort, isolation, automaticRetry: false }, events: [], reply: '' };
     const save = () => this.store.saveRecord('agent-attempt', requestId, request.projectId, attempt);
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
@@ -378,7 +379,7 @@ export class CodexAgentService implements AgentRuntime {
       if (!paid || !currentConnection.toolRestrictionsConfigured || currentConnection.disabledMcp.length) throw new StoreError('Current Codex authentication or tool restrictions changed after connection detection. No inference was submitted; recheck the connection.', 503);
       // Newer Codex keeps reads to the session folder with ros.ai's permission profile; older Codex with read roots on each turn.
       const profile = isolation === 'profile' ? { permissions: PERMISSION_PROFILE } : null;
-      const settings = { cwd, approvalPolicy: 'never', approvalsReviewer: 'user', developerInstructions: instructions + ownSearchInstructions, config: { web_search: 'live' }, ...(onKey ? { model } : choice.model ? { model: choice.model } : {}), ...(profile ?? {}) };
+      const settings = { cwd, approvalPolicy: 'never', approvalsReviewer: 'user', developerInstructions: `${instructions}${ownSearchInstructions} ${CANVAS_GRAMMAR_TEXT}`, config: { web_search: 'live' }, ...(onKey ? { model } : choice.model ? { model: choice.model } : {}), ...(profile ?? {}) };
       const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools: toolkit.definitions });
       threadId = String(result.thread?.id ?? '');
       const confined = result.sandbox?.type === 'readOnly' && (!profile || (result.activePermissionProfile?.id === PERMISSION_PROFILE && result.sandbox.networkAccess === false));

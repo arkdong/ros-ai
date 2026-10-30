@@ -3,7 +3,7 @@
  * `ros-ai` entry in the agent's own settings, with a record here and an Undo. */
 import type { ZoteroApp } from './plugins.js';
 
-export type AgentId = 'claude-code' | 'codex' | 'cursor' | 'gemini-cli' | 'pi' | 'hermes';
+export type AgentId = 'claude-code' | 'claude-app' | 'codex' | 'cursor' | 'gemini-cli' | 'pi' | 'hermes';
 export type LinkMethod = 'cli' | 'file';
 export type LinkRecord = { agent: AgentId; method: LinkMethod; target: string; bridge: string; writtenAt: string; backup?: string };
 export type DetectedAgent = {

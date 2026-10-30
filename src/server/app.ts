@@ -6,6 +6,7 @@ import { attachResultHandoffRoutes } from './result-handoff.js';
 import { attachCloudAccountRoutes, type CloudAccount } from './cloud-account.js';
 import { attachFeedbackRoutes } from './feedback.js';
 import { attachLocalRosRoutes, type LocalRos } from './local-ros.js';
+import { attachRosLayerRoutes, type RosLayer } from './ros-layer.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
 import { Authority, modeSchema } from './authority.js';
@@ -17,6 +18,7 @@ import { attachAcpAgentRoutes,type AcpAgentService } from './acp-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachTrainingRoutes, readTraining, trainingSummary } from './training-view.js';
+import { attachMetricRoutes, MetricViews } from './metric-view.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
@@ -39,6 +41,7 @@ import { attachSuggestionRoutes, pluginReadiness, type PluginSuggestions } from 
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
 import { NotionFileSaver } from './notion-files.js';
 import { WebFileFetcher } from './web-files.js';
+import { Geocoder } from './geocode.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
@@ -55,7 +58,7 @@ const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
 type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames},guide?:WorkspaceGuideService) {
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames},guide?:WorkspaceGuideService) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -105,8 +108,14 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
-  if(!options.publicDemo){attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));}
+  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.rosLayer)attachRosLayerRoutes(app,tools.rosLayer);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
+  // Map blocks look places up on OpenStreetMap when asked; the public demo leaves lookups out.
+  if(!options.publicDemo){const geocoder=new Geocoder();AgentWorkspaceTools.geocoder=geocoder;app.get('/api/places',async(req,res)=>res.json({places:await geocoder.search(String(req.query.q??''),5)}));}
+  if(!options.publicDemo){attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));
+    // Metric blocks read GitHub with the GitHub plugin's sign-in when there is one, Umami and Railway with their Plugins keys,
+    // and ros.ai cloud with the app's own cloud sign-in.
+    const cloud=tools?.cloud,cloudUrl=cloud?.address;
+    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metrics=metrics;}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.

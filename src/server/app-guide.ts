@@ -14,14 +14,15 @@ An App block is one HTML page that runs on its card in a sealed frame. The frame
 ## The kit: window.ros
 - await ros.ready resolves to { app, inputs, readable, state } once ros.ai has started the page. Start your code there.
 - ros.inputs: [{ id, title, kind }], the blocks named as inputs, in order.
-- await ros.read(idOrTitle) returns { id, title, kind, label?, text, version?, table?, image?, content?, members?, live?, truncated? }:
+- await ros.read(idOrTitle) returns { id, title, kind, label?, text, version?, table?, image?, content?, members?, history?, live?, truncated? }:
   - text: the block's own text, as Markdown.
   - content: the saved text of a report or result, a PDF's text, a Notion page or a Google Doc, as Markdown.
   - table: { columns, rows: [{ column: value }], truncated } for Data blocks, Notion databases and Google Sheets. A column whose cells all hold numbers has numbers; an empty cell is null.
   - image: a data: address for a figure or an image file; show it with an img element.
   - members: the blocks inside an input Group, each readable by its id.
-  - version: the saved version the value comes from. live: when a Notion or Google block was read, and any notice.
-- ros.watch(idOrTitle, content => ...) calls back now and again whenever the block changes (a Code run, an edit); it returns a function that stops watching.
+  - Metrics blocks (kind GitHub, Umami, Railway or ros.ai cloud: launch numbers read live) give table rows { key, label, value, today, week, state, note }. today and week are how value moved since about a day and a week ago, null until ros.ai has read the service that long; state is a service's status (Railway) and note why a value is missing. Find a number by its key, which stays the same; the label is for people. history: [{ at, values: { key: number } }], oldest first, for lines over time. To combine several (a funnel, a dashboard), name each as an input and read each.
+  - version: the saved version the value comes from. live: when a Notion, Google or Metrics block was read, and any notice.
+- ros.watch(idOrTitle, content => ...) calls back now and again whenever the block changes (a Code run, an edit, a new read of a live block; live blocks are read again about every 15 minutes while the App is open); it returns a function that stops watching.
 - ros.save(value) keeps a small JSON value (at most ${APP_STATE_BYTES / 1000} KB) on the block, such as filters or a selection; ros.state holds it the next time the page opens. A proposal's preview keeps nothing.
 - ros.focus(id) selects that block on the map.
 - ros.mode: "live", "preview" (a proposal not accepted yet) or "check" (ros_check_app).

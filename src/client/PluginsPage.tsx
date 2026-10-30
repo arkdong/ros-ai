@@ -50,9 +50,10 @@ export function CatalogueHero({crumb,onBack,mark,name,summary,state,uses,action}
   </>;
 }
 const groups: { title: string; ids: PluginId[] }[] = [
-  { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'openalex', 'arxiv', 'tavily', 'exa', 'brave'] },
+  { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'openalex', 'arxiv', 'tavily', 'exa', 'brave', 'google-maps'] },
   { title: 'Team', ids: ['notion', 'slack', 'linear'] },
   { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
+  { title: 'Launch numbers', ids: ['umami', 'railway'] },
   { title: 'Tools', ids: ['browser'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
@@ -64,6 +65,18 @@ export const searchKeys: Record<SearchProviderId, { link: string; description: s
   tavily: { link: 'https://app.tavily.com/', description: 'Web search for research you start. Each search spends Tavily credits; spend shows in Settings › Usage.' },
   exa: { link: 'https://dashboard.exa.ai/api-keys', description: 'Web search for research you start. Exa charges for each search and each page an agent reads; spend shows in Settings › Usage.' },
   brave: { link: 'https://api-dashboard.search.brave.com/app/keys', description: 'Web search for research you start, from Brave’s own index of the web. Each search is charged on your Brave Search plan; spend shows in Settings › Usage.' },
+};
+
+/** Where a Google Maps key comes from, and how to keep it to this app: Google's map runs in the page, so the key reaches it. */
+export const GOOGLE_MAPS_KEY = {
+  link: 'https://console.cloud.google.com/google/maps-apis/credentials',
+  description: 'With a key, Google Maps blocks show every pin at once on Google’s map; without one they show one place at a time. The key stays on this computer and is handed only to ros.ai’s own page, which Google’s map script needs. Google gives 10,000 map loads a month free.',
+  steps: [
+    'In Google Cloud, pick or create a project and turn on billing (Google asks for it even inside the free loads).',
+    'Enable the Maps JavaScript API.',
+    'Create an API key. Under Application restrictions choose Websites and add http://127.0.0.1:4310/*, http://localhost:4310/* (and :4311, which npm run try uses); under API restrictions choose Maps JavaScript API.',
+    'Paste the key here.',
+  ],
 };
 
 /** The sidebar lists the plugins connected on this computer. */
@@ -107,6 +120,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.id==='google-sheets'||plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
     if(plugin.connect==='public')return papers?.find(item=>item.id===plugin.id)?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
     if(plugin.connect==='browser')return browser?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
+    if(plugin.id==='google-maps')return credentials.find(item=>item.provider==='google-maps')?.configured?{label:'Key saved',connected:true}:{label:'Not connected',connected:false};
     if(isSearchProvider(plugin.id)){
       const key=credentials.find(item=>item.provider===plugin.id),active=search?.active===plugin.id;
       if(key?.configured)return {label:active?'Used for search':'Key saved',connected:true};
@@ -137,6 +151,9 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
         {credential?.configured&&search?.active===id&&<p>ROS and your agents search the web with {label}.</p>}
       </KeyConnection>;
     }
+    if(plugin.id==='google-maps')return <KeyConnection key={plugin.id} provider="google-maps" budgetless label={plugin.name} icon={<PluginMark id={plugin.id}/>} credential={credentials.find(item=>item.provider==='google-maps')} description={GOOGLE_MAPS_KEY.description} keyLink={GOOGLE_MAPS_KEY.link} loadError={errors.keys} onSave={async(_provider,key)=>{await api('/api/connections/credentials/google-maps',{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Google Maps key saved on this computer. Google Maps blocks now show Google’s map.');await changed();}} onDisconnect={async()=>{await api('/api/connections/credentials/google-maps',{method:'DELETE'});setNotice('Google Maps key removed. Google Maps blocks show OpenStreetMap until a key is saved again.');await changed();}}>
+      {!credentials.find(item=>item.provider==='google-maps')?.configured&&<ol className="key-steps">{GOOGLE_MAPS_KEY.steps.map(step=><li key={step}>{step}</li>)}</ol>}
+    </KeyConnection>;
     if(plugin.connect==='public')return <PaperSource key={plugin.id} plugin={plugin} source={papers?.find(item=>item.id===plugin.id)} token={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     if(plugin.connect==='browser')return <BrowserPlugin key={plugin.id} plugin={plugin} status={browser} onChanged={changed}/>;
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;

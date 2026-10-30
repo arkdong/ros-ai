@@ -103,8 +103,9 @@ test('Sessions are named after the agent: Pi from its client\'s name, Hermes Age
 });
 
 /** ros.ai's MCP endpoint as the app serves it, with the bridge copied to the data folder. */
-async function rosAi() {
-  const dataDir = mkdtempSync(join(home, 'ros-data-')), store = new Store(dataDir);
+async function rosAi() { return rosAiIn(mkdtempSync(join(home, 'ros-data-'))); }
+async function rosAiIn(dataDir: string) {
+  const store = new Store(dataDir);
   const outside = new OutsideAgents(store, {} as never, {} as never, {} as never, dataDir, root);
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -113,6 +114,54 @@ async function rosAi() {
   outside.publish((server.address() as AddressInfo).port);
   return { dataDir, outside, close: () => new Promise(done => server.close(done)) };
 }
+test('Linking the Claude app adds one ros-ai entry to its settings with a full path to node, and its sessions say Claude app', async () => {
+  const dir = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'Claude') : join(home, '.config', 'Claude');
+  assert.equal(found('claude-app').found, false);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'claude_desktop_config.json'), JSON.stringify({ mcpServers: { filesystem: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] } }, preferences: { x: 1 } }));
+  const app = found('claude-app');
+  assert.deepEqual([app.found, app.method, app.servers, app.entry], [true, 'file', ['filesystem'], false]);
+  const links = new SetupLinks(mkdtempSync(join(home, 'data-'))), bridge = '/data/bin/ros-ai-mcp.mjs';
+  const linked = await links.link(app, bridge);
+  assert.equal(linked.ok, true, linked.message);
+  const written = JSON.parse(readFileSync(join(dir, 'claude_desktop_config.json'), 'utf8'));
+  // The app starts its servers with a short PATH, so node is named by its full path.
+  assert.deepEqual(written.mcpServers['ros-ai'], { command: process.execPath, args: [bridge] });
+  assert.deepEqual([written.preferences, Object.keys(written.mcpServers)], [{ x: 1 }, ['filesystem', 'ros-ai']]);
+  assert.equal((await links.unlink(found('claude-app'))).ok, true);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, 'claude_desktop_config.json'), 'utf8')).mcpServers), ['filesystem']);
+  assert.equal(clientLabel({ name: 'claude-ai', version: '0.1.0' }), 'Claude app');
+  assert.equal(clientLabel({ name: 'claude-code', version: '2.1.0' }), 'Claude Code');
+});
+
+test('The bridge starts while ros.ai is off, offers ros_status, then connects and says its tools changed once ros.ai runs', async () => {
+  const { spawn } = await import('node:child_process');
+  const dataDir = mkdtempSync(join(home, 'bridge-data-'));
+  const bridge = spawn(process.execPath, [join(root, 'scripts', 'ros-ai-mcp.mjs')], { env: { ...process.env, ROS_DATA_DIR: dataDir }, stdio: ['pipe', 'pipe', 'inherit'] });
+  const seen: Record<string, unknown>[] = [];
+  let buffer = '';
+  bridge.stdout.on('data', chunk => { buffer += chunk; let at; while ((at = buffer.indexOf('\n')) >= 0) { seen.push(JSON.parse(buffer.slice(0, at))); buffer = buffer.slice(at + 1); } });
+  const send = (message: object) => bridge.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+  const wait = async (check: (message: Record<string, unknown>) => boolean, ms = 10_000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise(done => setTimeout(done, 50))) { const hit = seen.find(check); if (hit) return hit as { result?: { tools?: { name: string }[]; serverInfo?: unknown; capabilities?: unknown } }; }
+    throw new Error(`no answer: ${JSON.stringify(seen)}`);
+  };
+  let ros: Awaited<ReturnType<typeof rosAi>> | undefined;
+  try {
+    send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-ai' } } });
+    send({ id: 2, method: 'tools/list' });
+    const started = await wait(m => m.id === 1);
+    assert.deepEqual(started.result?.capabilities, { tools: { listChanged: true } });
+    assert.deepEqual((await wait(m => m.id === 2)).result?.tools?.map(tool => tool.name), ['ros_status']);
+    // ros.ai starts with this data folder, writing the mcp.json the bridge reads.
+    ros = await rosAiIn(dataDir);
+    await wait(m => m.method === 'notifications/tools/list_changed');
+    send({ id: 3, method: 'tools/list' });
+    assert.ok((await wait(m => m.id === 3)).result?.tools?.some(tool => tool.name === 'ros_read_canvas'));
+    assert.ok(Object.values(ros.outside.status().sessions).some(session => session.label === 'Claude app'));
+  } finally { bridge.kill(); await ros?.close(); }
+});
+
 /** Runs an agent's command line without blocking, so the endpoint in this process can answer it. */
 const run = (binary: string, args: string[]) => new Promise<{ code: number | null; output: string }>(done => {
   execFile(binary, args, { cwd: home, timeout: 60_000, env: { ...process.env, PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter) } },
