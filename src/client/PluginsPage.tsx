@@ -53,6 +53,7 @@ const groups: { title: string; ids: PluginId[] }[] = [
   { title: 'Sources', ids: ['google-drive', 'google-sheets', 'google-docs', 'zotero', 'openalex', 'arxiv', 'tavily', 'exa', 'brave', 'google-maps'] },
   { title: 'Team', ids: ['notion', 'slack', 'linear'] },
   { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
+  { title: 'Launch numbers', ids: ['umami', 'railway'] },
   { title: 'Tools', ids: ['browser'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];

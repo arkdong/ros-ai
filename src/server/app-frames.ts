@@ -9,6 +9,7 @@ import { APP_SOURCE_LIMIT, APP_STATE_BYTES, MAX_APP_INPUTS, appFlags, appInputs,
 import { primaryArtifact } from '../shared/blocks.js';
 import { artifactTable, columnSummary, type TableData } from '../shared/data-view.js';
 import { groupMembers } from '../shared/groups.js';
+import { METRIC_TOOLS, metricTable } from '../shared/metrics.js';
 import type { Artifact, Canvas, CanvasNode, ProjectDetail } from '../shared/types.js';
 import { kindName, textLabel } from '../shared/vocabulary.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
@@ -277,6 +278,14 @@ export class AppFrames {
         const table = typedTable({ columns: read.columns, rows: read.rows });
         return { ...base, table: { ...table, truncated: table.truncated || read.truncated }, live };
       } catch (error) { return { ...base, live: { notice: `Google Drive could not be read now: ${message(error)}` } }; }
+    }
+    if (node.metric) {
+      const tool = METRIC_TOOLS[node.metric.source];
+      try {
+        const read = await AgentWorkspaceTools.metrics?.read(node.metric, false, projectId);
+        if (!read) return { ...base, live: { notice: `${tool} numbers are read only in the local app.` } };
+        return { ...base, ...metricTable(read), live: { fetchedAt: read.fetchedAt, link: read.link, ...(read.notice ? { notice: read.notice } : {}) } };
+      } catch (error) { return { ...base, live: { notice: `${tool} could not be read now: ${message(error)}` } }; }
     }
     if (node.file) {
       const text = detail.artifacts.filter(artifact => artifact.nodeId === node.id && artifact.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];

@@ -19,7 +19,7 @@ import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '.
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { mapPinSchema, paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { mapPinSchema, metricViewSchema, paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -230,7 +230,7 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
     // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
@@ -1059,7 +1059,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.metric ? { metric: node.metric } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
