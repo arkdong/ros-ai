@@ -31,3 +31,21 @@
 .markdown-editor .cm-md-math { cursor: pointer; }
 .markdown-editor .cm-md-math-block { padding: 6px 0; text-align: center; }
 .markdown-editor .cm-md-math .katex-error { color: #b42318; }
+/* GFM tables, drawn as a table away from the caret. Wide ones scroll sideways inside their own box. */
+.markdown-editor .cm-md-table-wrap { margin: 6px 0 10px; overflow-x: auto; border: 1px solid #e6e6e6; border-radius: 8px; cursor: text; scrollbar-width: thin; }
+.markdown-editor .cm-md-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+.markdown-editor .cm-md-table th, .markdown-editor .cm-md-table td { padding: 7px 12px; border-bottom: 1px solid #ededed; text-align: left; vertical-align: top; }
+.markdown-editor .cm-md-table th + th, .markdown-editor .cm-md-table td + td { border-left: 1px solid #ededed; }
+.markdown-editor .cm-md-table th { background: #fafafa; font-weight: 600; color: #171717; }
+.markdown-editor .cm-md-table tbody tr:last-child td { border-bottom: 0; }
+.markdown-editor .cm-md-table strong { font-weight: 650; }
+.markdown-editor .cm-md-cell-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f4; border-radius: 4px; padding: 1px 4px; }
+/* Embedded images: a picture on its own line spans the text width, one inside a sentence or cell sits in the line. */
+.markdown-editor .cm-md-image { display: inline-block; max-width: 100%; vertical-align: middle; cursor: pointer; }
+.markdown-editor .cm-md-image img { display: block; max-width: 100%; height: auto; border-radius: 8px; }
+.markdown-editor .cm-md-image:not(.cm-md-image-block) img { max-height: 240px; }
+.markdown-editor .cm-md-table .cm-md-image img { max-height: 120px; }
+.markdown-editor .cm-md-image-block { display: block; padding: 6px 0; }
+.markdown-editor .cm-md-image-block img { max-height: 560px; }
+.markdown-editor .cm-md-image-missing { display: inline-block; padding: 2px 8px; border: 1px dashed #d4d4d4; border-radius: 6px; color: #8a8a8a; font-size: 13px; line-height: 1.6; }
+.markdown-editor .cm-md-image-block.cm-md-image-missing { display: inline-block; margin: 6px 0; }

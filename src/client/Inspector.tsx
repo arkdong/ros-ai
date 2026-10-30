@@ -6,6 +6,7 @@ import { useDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
 import { date, Evidence, RichText, time } from './Content';
 import { MarkdownEditor } from './MarkdownEditor';
+import { noteImageUrl } from '../shared/files';
 import './detail-polish.css';
 import { NotionBlock } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -83,7 +84,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onAccount={readOnly?undefined:account=>void mutate([{type:'updateNode',id:node.id,patch:{notion:{...node.notion!,account}}}],'Read with another Notion account')} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {node.training&&<section className="note-content"><TrainingBlock projectId={detail.project.id} nodeId={node.id} view={node.training} full/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
-      {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
+      {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
       {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.app&&!node.web&&node.blockType!=='agent'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
       {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
       {file&&description&&<div className="note-description"><RichText text={description}/></div>}
