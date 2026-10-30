@@ -2,7 +2,7 @@
  * or a token or key as the fallback.
  */
 export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex';
-export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser';
+export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser' | 'google-maps';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -46,6 +46,7 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'tavily', uses: ['Web search for research you start', 'Free with no account, up to Tavily’s limit; a key of your own searches more'], name: 'Tavily web search', summary: 'Web search for research you start.', connect: 'key' },
   { id: 'exa', uses: ['Web search that finds pages by what they mean, not only their words', 'Returns the passages of each page that answer the search, and reads whole pages', 'Free with no account, up to Exa’s limit; with a key, about US$0.007 a search'], name: 'Exa web search', summary: 'Web search that finds pages by meaning.', connect: 'key' },
   { id: 'brave', uses: ['Web search from Brave’s own index of the web', 'Returns the passages of each page that answer the search; it cannot read whole pages', 'About US$0.005 a search, with US$5 free each month'], name: 'Brave Search', summary: 'Web search from its own independent index.', connect: 'key' },
+  { id: 'google-maps', uses: ['Google Maps blocks show Google’s own map, with every pin on it', 'Agents put places on it by name or address', 'Google gives 10,000 map loads a month free; past that, about US$7 per 1,000'], name: 'Google Maps', summary: 'Google’s own map in Map blocks.', connect: 'key' },
   { id: 'browser', uses: ['Agents open websites, click through them and fill in forms', 'Screenshots land on the canvas as File blocks, and every step is listed there', 'A fresh browser each time: no cookies or logins, public websites only'], name: 'Browser', summary: 'Agents browse websites and take screenshots.', connect: 'browser' },
   { id: 'overleaf', uses: ['Write papers in LaTeX with your coauthors'], name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
 ];

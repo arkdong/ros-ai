@@ -9,9 +9,9 @@ export const sentence = (word: string) => word ? word[0].toUpperCase() + word.sl
 
 /** What a block is on screen: ten kinds plus Group. Storage keeps the older blockType and kind words as aliases
  * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google and training are External).
- * A Web block is External too, named for what it reads. A Map shows pinned places. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
-export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Group' | 'Search';
-export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName {
+ * A Web block is External too, named for what it reads. A Map shows pinned places, on OpenStreetMap or (a Google Maps block) on Google's map. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
+export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Google Maps' | 'Group' | 'Search';
+export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: { provider?: 'google' } }): KindName {
   if (node.kind === 'group') return 'Group';
   switch (node.blockType) {
     case 'code': return 'Code';
@@ -22,7 +22,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'>): KindName
     case 'web': return 'Web';
     case 'agent': return 'Agent';
     case 'app': return 'App';
-    case 'map': return 'Map';
+    case 'map': return node.map?.provider === 'google' ? 'Google Maps' : 'Map';
     case 'search': return 'Search';
     default: return 'Text';
   }

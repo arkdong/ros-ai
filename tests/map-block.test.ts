@@ -61,6 +61,7 @@ test('Agents put places on a new Map block by name, lat and lng, then add to it;
     store.acceptProposal(project.id, first.action.proposalId);
     const map = store.getProject(project.id).canvas.nodes.find(n => n.id === first.nodeId)!;
     assert.equal(map.blockType, 'map');
+    assert.equal(map.map!.provider, undefined);
     assert.deepEqual(map.map!.pins.map(pin => [pin.name, pin.lat, pin.lng]), [['Rijksmuseum', 52.36, 4.8852], ['Café de Jaren', 52.3681, 4.8955], ['Vondelpark bench', 52.358, 4.8686]]);
     assert.equal(map.map!.pins[1].url, 'https://cafedejaren.nl/');
 
@@ -77,6 +78,21 @@ test('Agents put places on a new Map block by name, lat and lng, then add to it;
     store.mutate(project.id, [{ type: 'addNode', node: { id: 'note', title: 'Plan', description: '', kind: 'topic', x: 0, y: 600 } }], 'Add note');
     await assert.rejects(toolkit(store, project.id).call('ros_place_pins', { summary: 'x', rationale: 'y', nodeId: 'note', pins: [{ name: 'A', lat: 1, lng: 1 }] }), /not a Map block/u);
     await assert.rejects(toolkit(store, project.id).call('ros_place_pins', { summary: 'x', rationale: 'y', pins: [{ name: 'A', lat: 1, lng: 1 }] }), /Give a title/u);
+
+    // A Google Maps block when asked for, or by default once a Google Maps key is saved; adding pins keeps it one.
+    const wanted = await toolkit(store, project.id).call('ros_place_pins', { summary: 'Google map', rationale: 'Asked for Google Maps.', title: 'On Google', on: 'google', pins: [{ name: 'Dam', lat: 52.373, lng: 4.8932 }] }) as { action: { proposalId: string }; nodeId: string; googleMaps?: string };
+    assert.match(wanted.googleMaps!, /No Google Maps key/u);
+    store.acceptProposal(project.id, wanted.action.proposalId);
+    const added = await toolkit(store, project.id).call('ros_place_pins', { summary: 'More', rationale: 'More.', nodeId: wanted.nodeId, pins: [{ name: 'Station', lat: 52.379, lng: 4.9 }] }) as { action: { proposalId: string } };
+    store.acceptProposal(project.id, added.action.proposalId);
+    assert.equal(store.getProject(project.id).canvas.nodes.find(n => n.id === wanted.nodeId)!.map!.provider, 'google');
+    process.env.GOOGLE_MAPS_API_KEY = 'AIza-test-key-0000';
+    try {
+      const keyed = await toolkit(store, project.id).call('ros_place_pins', { summary: 'Default', rationale: 'Key saved.', title: 'Default map', pins: [{ name: 'Dam', lat: 52.373, lng: 4.8932 }] }) as { action: { proposalId: string }; nodeId: string; googleMaps?: string };
+      assert.equal(keyed.googleMaps, undefined);
+      store.acceptProposal(project.id, keyed.action.proposalId);
+      assert.equal(store.getProject(project.id).canvas.nodes.find(n => n.id === keyed.nodeId)!.map!.provider, 'google');
+    } finally { delete process.env.GOOGLE_MAPS_API_KEY; }
   } finally { AgentWorkspaceTools.geocoder = undefined; store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -5,8 +5,9 @@ export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'re
 export type FileView = { path:string };
 /** One place on a Map block: where it is and what it is. `place` is the address or name it was looked up by, when it was. */
 export type MapPin = { id:string; name:string; lat:number; lng:number; note?:string; url?:string; place?:string };
-/** A Map block: pins on an OpenStreetMap map. Only the pins are saved; the map tiles come from OpenStreetMap as it is shown. */
-export type MapView = { pins:MapPin[] };
+/** A Map block: pins on a map. Only the pins are saved; the map itself comes from OpenStreetMap as it is shown, or,
+ * for a Google Maps block (`provider: 'google'`), from Google Maps with the key saved in Plugins. */
+export type MapView = { pins:MapPin[]; provider?:'google' };
 /** A Notion database or page shown live on the canvas: only where it is (and, for a database, which rows);
  * the content stays in Notion. `kind` is learnt at the first read; an older block without it is a database.
  * `account`: the Notion account the person chose to read it with, when they have several; without it the block

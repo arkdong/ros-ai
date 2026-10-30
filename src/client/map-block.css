@@ -41,3 +41,7 @@
 .map-block-links a { display: inline-flex; align-items: center; gap: 2px; color: #6b6b6b; text-decoration: none; white-space: nowrap; }
 .map-block-links a:hover { color: #171717; }
 .map-block-links .icon-button { width: 22px; height: 22px; color: #8a8a8a; }
+/* Why a Google Maps block shows OpenStreetMap: no key yet, or Google refused it. */
+.map-block-notice { margin: 0; font-size: 11px; line-height: 1.5; color: #6b6b6b; }
+.map-block-map.google { background: #e8eaed; }
+.key-steps { margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.6; color: #6b6b6b; }

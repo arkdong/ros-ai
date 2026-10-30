@@ -222,7 +222,7 @@ const manifestSchema = z.object({
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
     // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
-    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS) }).strict().optional().catch(undefined),
+    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional(),
     // The blocks an App reads; an entry ros.ai cannot read is left out rather than failing the manifest.
     inputs: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u)).max(MAX_APP_INPUTS).optional().catch(undefined) })).max(500),
