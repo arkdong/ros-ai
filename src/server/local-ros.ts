@@ -2,7 +2,7 @@ import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Express } from 'express';
 import { z } from 'zod';
@@ -13,8 +13,8 @@ import { StoreError } from './store.js';
 const run = promisify(execFile);
 // ros-nemotron: Nemotron 3 Nano 4B fine-tuned on ros.ai's own agent turns (training/ros-nemotron). Round 2 (30 October,
 // the r2b run) also learned when and what to group and link after an agent's turn, from the landing packet this version
-// sends. The repo keeps round 1's file, which earlier versions pick; a computer that already downloaded a model keeps it
-// until ROS is removed and downloaded again.
+// sends. The repo keeps round 1's file, which earlier versions pick; a computer that has another model gets this one in
+// the background and switches to it (updateModel).
 const MODEL_REPO = process.env.ROS_LOCAL_MODEL_REPO || 'arkdong/ros-nemotron-4b-GGUF';
 const MODEL_FILE = process.env.ROS_LOCAL_MODEL_FILE || 'ros-nemotron-4b-r2b-Q4_K_M.gguf';
 const ENGINE_REPO = 'ggml-org/llama.cpp';
@@ -42,17 +42,23 @@ const RETRY_WAITS = [3, 10, 30, 60];
 const MAX_TRIES = 30;
 /** Room left on the disk past the download: the engine unpacked, and some to spare. */
 const DISK_SPARE = 400e6;
+/** How often ros.ai looks again for the model this version wants while another is on disk: a laptop that started
+ * offline finds it later. */
+const LOOK_AGAIN_MS = 6 * 3600_000;
 const installedSchema = z.object({ engineTag: z.string(), server: z.string(), model: z.string(), modelFile: z.string(), apiKey: z.string().min(32), connectionId: z.string().optional() }).strict();
 type Installed = z.infer<typeof installedSchema>;
 type Download = { url: string; file: string; bytes: number; sha256?: string };
 type Release = { tag_name: string; assets: { name: string; size: number; browser_download_url: string; digest?: string | null }[] };
+type ModelItem = { type: string; path: string; size: number; lfs?: { oid: string; size: number } };
 type Job = { stop: AbortController; done: number; total: number; model: string; samples: [number, number][]; note?: string };
+type UpdateJob = Job & { switching?: boolean };
 
 /** A download that failed in a way trying again can fix: a dropped or stalled connection, a server error, a short file. */
 export class DownloadError extends Error {
   constructor(message: string, readonly retry: boolean) { super(message); this.name = 'DownloadError'; }
 }
 const gigabytes = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
+const fileName = (path: string) => path.split('/').pop()!;
 /** fetch reports a dropped or refused connection as a TypeError, and a request that ran out of time as a TimeoutError. */
 const transient = (error: unknown) => error instanceof DownloadError ? error.retry : error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError');
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -64,19 +70,31 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, r
 /** ROS on this computer: ros.ai downloads llama.cpp's server and a Nemotron GGUF, runs them on
  * loopback with a random key, and registers the result as an ordinary local model connection,
  * so ROS, the assistant and the agent loop use it like any other model. A download the person
- * started carries on by itself: through dropped connections, and after ros.ai restarts. */
+ * started carries on by itself: through dropped connections, and after ros.ai restarts. When a
+ * newer ros.ai wants another model than the one on disk, the new one comes the same way while the
+ * old one keeps answering, and ROS switches over once it is in. */
 export class LocalRos {
   private readonly dir: string;
   private child?: ChildProcess;
   private job?: Job;
   private starting?: Promise<void>;
   private lastError = '';
-  /** waits: the pauses between tries, in seconds (tests shorten them). */
-  constructor(dataDir: string, private readonly connections: InferenceConnections, private readonly waits = RETRY_WAITS) {
+  /** The model this version wants, when another is on disk and Hugging Face has it. */
+  private newer?: ModelItem;
+  private update?: UpdateJob;
+  private updateError = '';
+  /** The person stopped the update: it waits for them until ros.ai starts again. */
+  private held = false;
+  private lookTimer?: NodeJS.Timeout;
+  /** waits: the pauses between tries, in seconds (tests shorten them). automatic: whether a newer model may come by
+   * itself, as Settings › General › Updates says; when it may not, the person updates ROS from Agents › ROS. */
+  constructor(dataDir: string, private readonly connections: InferenceConnections, private readonly waits = RETRY_WAITS, private readonly automatic: () => boolean = () => true) {
     this.dir = join(dataDir, 'local-ros');
   }
   private get platform() { return `${process.platform}-${process.arch}`; }
   private get wantFile() { return join(this.dir, 'wanted'); }
+  /** Names the model that would not start after an update, so it is not fetched by itself again. */
+  private get failedFile() { return join(this.dir, 'update-failed'); }
   private installed(): Installed | undefined {
     try { return installedSchema.parse(JSON.parse(readFileSync(join(this.dir, 'installed.json'), 'utf8'))); } catch { return undefined; }
   }
@@ -88,22 +106,28 @@ export class LocalRos {
 
   status(): LocalRosStatus {
     const supported = Boolean(assetPattern[this.platform]);
-    if (this.job) {
-      const { samples } = this.job, first = samples[0], last = samples[samples.length - 1];
-      const rate = first && last && last[0] - first[0] >= 2000 ? Math.round(((last[1] - first[1]) / (last[0] - first[0])) * 1000) : undefined;
-      return { supported, state: 'downloading', model: this.job.model, doneBytes: this.job.done, totalBytes: this.job.total, ...(rate ? { bytesPerSecond: rate } : {}), ...(this.job.note ? { note: this.job.note } : {}) };
-    }
+    if (this.job) return { supported, state: 'downloading', model: this.job.model, doneBytes: this.job.done, totalBytes: this.job.total, ...speed(this.job.samples), ...(this.job.note ? { note: this.job.note } : {}) };
     const installed = this.installed();
     if (!installed) return { supported, state: this.lastError ? 'failed' : 'not-downloaded', ...(this.lastError ? { error: this.lastError } : {}) };
-    const size = existsSync(installed.modelFile) ? statSync(installed.modelFile).size : undefined;
-    const base = { supported, model: installed.model, ...(size ? { totalBytes: size } : {}), ...(installed.connectionId ? { connectionId: installed.connectionId } : {}) };
+    const size = existsSync(installed.modelFile) ? statSync(installed.modelFile).size : undefined, update = this.updateStatus();
+    const base = { supported, model: installed.model, ...(size ? { totalBytes: size } : {}), ...(installed.connectionId ? { connectionId: installed.connectionId } : {}), ...(update ? { update } : {}) };
     if (this.lastError) return { ...base, state: 'failed', error: this.lastError };
     return { ...base, state: this.child && !this.starting ? 'ready' : 'starting' };
+  }
+  private updateStatus(): LocalRosStatus['update'] {
+    const job = this.update;
+    if (job) return { state: job.switching ? 'switching' : 'downloading', model: job.model, doneBytes: job.done, totalBytes: job.total, ...speed(job.samples), ...(job.note ? { note: job.note } : {}) };
+    if (!this.newer) return undefined;
+    return { state: 'available', model: fileName(this.newer.path), totalBytes: this.newer.lfs?.size ?? this.newer.size, ...(this.updateError ? { error: this.updateError } : {}) };
   }
 
   /** At launch: runs ROS when it is downloaded, or carries on with a download the person started that did not finish. */
   resume(): Promise<void> {
-    if (this.installed()) return this.start();
+    if (this.installed()) {
+      const started = this.start();
+      void started.then(() => this.lookLater(10_000));
+      return started;
+    }
     if (existsSync(this.wantFile) && assetPattern[this.platform]) this.download();
     return Promise.resolve();
   }
@@ -112,6 +136,8 @@ export class LocalRos {
   download(): LocalRosStatus {
     if (!assetPattern[this.platform]) throw new StoreError('ROS on this computer needs a Mac or a Linux x64 computer for now.', 400);
     if (this.job) return this.status();
+    // A download from the start takes over from an update, which would fetch the same file.
+    if (this.update && !this.update.switching) { this.update.stop.abort(); this.update = undefined; }
     const stop = new AbortController();
     this.job = { stop, done: 0, total: 0, model: '', samples: [] };
     this.lastError = '';
@@ -119,30 +145,37 @@ export class LocalRos {
     void this.install(stop.signal).then(() => {
       if (this.job?.stop === stop) this.job = undefined;
       this.want(false);
-      return this.start();
+      // The model this version wants may not be on Hugging Face yet; it comes once it is.
+      return this.start().then(() => this.lookLater());
     }).catch(error => {
       this.lastError = stop.signal.aborted ? '' : error instanceof Error ? error.message : 'The download failed.';
     }).finally(() => { if (this.job?.stop === stop) this.job = undefined; });
     return this.status();
   }
-  cancel(): LocalRosStatus { this.job?.stop.abort(); this.job = undefined; this.want(false); return this.status(); }
+  /** Stops the download, or an update: that one waits for the person until ros.ai starts again, and what came in so far
+   * stays for it to resume. */
+  cancel(): LocalRosStatus {
+    this.job?.stop.abort(); this.job = undefined; this.want(false);
+    if (this.update && !this.update.switching) { this.update.stop.abort(); this.update = undefined; this.held = true; }
+    return this.status();
+  }
 
-  /** One step of the download, tried again after a dropped connection or a server error, while the status says so. */
-  private async again<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  /** One step of a download, tried again after a dropped connection or a server error, while the status says so. */
+  private async again<T>(work: () => Promise<T>, signal: AbortSignal, job = this.job): Promise<T> {
     for (let tries = 0; ; tries++) {
-      const before = this.job?.done ?? 0;
+      const before = job?.done ?? 0;
       try {
         const value = await work();
-        if (this.job) this.job.note = undefined;
+        if (job) job.note = undefined;
         return value;
       } catch (error) {
         // A try that got further than the one before starts the count again.
-        if ((this.job?.done ?? 0) > before) tries = 0;
+        if ((job?.done ?? 0) > before) tries = 0;
         const wait = tries < MAX_TRIES ? this.waits[Math.min(tries, this.waits.length - 1)] : undefined;
         if (signal.aborted || !transient(error) || wait === undefined) throw error;
-        if (this.job) { this.job.note = `The connection dropped. Trying again in ${wait} s.`; this.job.samples = []; }
+        if (job) { job.note = `The connection dropped. Trying again in ${wait} s.`; job.samples = []; }
         await sleep(wait * 1000, signal);
-        if (this.job) this.job.note = 'Trying again…';
+        if (job) job.note = 'Trying again…';
       }
     }
   }
@@ -170,23 +203,18 @@ export class LocalRos {
     // Which files to fetch: the engine for this computer, and the model's 4-bit file. Both sources state each file's
     // SHA-256, checked after the download.
     const { tag, download: engine } = await this.again(() => this.engine(signal), signal);
-    const tree = await this.again(() => json(`https://huggingface.co/api/models/${MODEL_REPO}/tree/main`, signal), signal) as { type: string; path: string; size: number; lfs?: { oid: string; size: number } }[];
-    const ggufs = tree.filter(item => item.type === 'file' && item.path.endsWith('.gguf'));
+    const ggufs = await this.again(() => modelFiles(signal), signal);
     const chosen = ggufs.find(item => item.path === MODEL_FILE) ?? ggufs.find(item => /q4_k_m/iu.test(item.path)) ?? [...ggufs].sort((a, b) => (a.lfs?.size ?? a.size) - (b.lfs?.size ?? b.size))[0];
     if (!chosen) throw new Error(`${MODEL_REPO} has no GGUF file.`);
-    const model: Download = { url: `https://huggingface.co/${MODEL_REPO}/resolve/main/${chosen.path}`, file: join(this.dir, 'models', chosen.path.split('/').pop()!), bytes: chosen.lfs?.size ?? chosen.size, ...(chosen.lfs?.oid ? { sha256: chosen.lfs.oid } : {}) };
+    const model = this.modelDownload(chosen);
     const job = this.job;
     if (!job || signal.aborted) throw new DOMException('Stopped', 'AbortError');
-    job.model = chosen.path.split('/').pop()!; job.total = engine.bytes + model.bytes;
+    job.model = fileName(chosen.path); job.total = engine.bytes + model.bytes;
     // Enough room for what is still to come, before any of it is fetched.
     const left = [engine, model].reduce((sum, item) => sum + item.bytes - have(item), 0);
     const free = freeBytes(this.dir);
     if (free !== null && free < left + DISK_SPARE) throw new Error(`ROS needs ${gigabytes(left + DISK_SPARE)} free on this computer and ${gigabytes(free)} is free. Make room, then try again.`);
-    const progress = (offset: number) => (done: number) => {
-      job.done = offset + done;
-      const now = Date.now(), last = job.samples[job.samples.length - 1];
-      if (!last || now - last[0] >= 500) { job.samples.push([now, job.done]); while (job.samples.length > 2 && now - job.samples[0]![0] > 10_000) job.samples.shift(); }
-    };
+    const progress = (offset: number) => (done: number) => track(job, offset + done);
     await this.again(() => fetchFile(engine, signal, progress(0)), signal);
     await this.again(() => fetchFile(model, signal, progress(engine.bytes)), signal);
 
@@ -201,6 +229,71 @@ export class LocalRos {
     if (!server) throw new Error(`llama.cpp ${tag} came without llama-server.`);
     const prior = this.installed();
     this.save({ engineTag: tag, server, model: job.model, modelFile: model.file, apiKey: prior?.apiKey ?? randomBytes(24).toString('hex'), ...(prior?.connectionId ? { connectionId: prior.connectionId } : {}) });
+    // A model this version no longer runs goes, as after an update.
+    if (prior && prior.modelFile !== model.file && dirname(prior.modelFile) === dirname(model.file)) rmSync(prior.modelFile, { force: true });
+  }
+  private modelDownload(item: ModelItem): Download {
+    return { url: `https://huggingface.co/${MODEL_REPO}/resolve/main/${item.path}`, file: join(this.dir, 'models', fileName(item.path)), bytes: item.lfs?.size ?? item.size, ...(item.lfs?.oid ? { sha256: item.lfs.oid } : {}) };
+  }
+
+  /** Looks for the model this version wants after delay, and again every six hours while another is on disk. */
+  private lookLater(delay = LOOK_AGAIN_MS) {
+    clearTimeout(this.lookTimer);
+    if (this.installed()?.model === fileName(MODEL_FILE)) return;
+    this.lookTimer = setTimeout(() => void this.look().finally(() => this.lookLater()), delay);
+    this.lookTimer.unref();
+  }
+  /** Asks Hugging Face for the model this version wants, when another is on disk. It comes by itself while updates are
+   * automatic, unless the person stopped it or it would not start before; otherwise Agents › ROS offers it. */
+  private async look() {
+    const installed = this.installed();
+    if (!installed || installed.model === fileName(MODEL_FILE) || this.job || this.update) return;
+    const found = await modelFiles(AbortSignal.timeout(30_000)).then(items => items.find(item => item.path === MODEL_FILE), () => undefined);
+    if (!found || !this.installed()) return;
+    this.newer = found;
+    const failed = existsSync(this.failedFile) && readFileSync(this.failedFile, 'utf8') === found.path;
+    if (failed) this.updateError ||= `${fileName(found.path)} would not start last time, so ROS stays on the model it had.`;
+    if (this.automatic() && !this.held && !failed) this.updateModel();
+  }
+
+  /** Brings in the model this version wants beside the one on disk, which keeps answering, then switches to it when no
+   * request is under way and deletes the old file. Agents › ROS starts it too, when updates are not automatic. */
+  updateModel(): LocalRosStatus {
+    const newer = this.newer;
+    if (!this.installed() || !newer || this.job || this.update) return this.status();
+    const stop = new AbortController(), job: UpdateJob = { stop, done: 0, total: newer.lfs?.size ?? newer.size, model: fileName(newer.path), samples: [] };
+    this.update = job; this.updateError = ''; this.held = false;
+    rmSync(this.failedFile, { force: true });
+    void this.bringIn(newer, job).catch(error => {
+      if (!stop.signal.aborted) this.updateError = error instanceof Error ? error.message : 'The update failed.';
+    }).finally(() => { if (this.update === job) this.update = undefined; });
+    return this.status();
+  }
+  private async bringIn(newer: ModelItem, job: UpdateJob) {
+    const { signal } = job.stop, download = this.modelDownload(newer);
+    const left = download.bytes - have(download), free = freeBytes(this.dir);
+    if (free !== null && free < left + DISK_SPARE) throw new Error(`The update needs ${gigabytes(left + DISK_SPARE)} free on this computer and ${gigabytes(free)} is free. ROS keeps the model it has.`);
+    await this.again(() => fetchFile(download, signal, done => track(job, done)), signal, job);
+    // Switching restarts the engine, so it waits for a moment when ROS is not loading or answering anything.
+    job.switching = true;
+    while (this.starting) await this.starting;
+    for (let id = this.installed()?.connectionId; id && this.connections.busy(id); id = this.installed()?.connectionId) await sleep(2000, signal);
+    const before = this.installed();
+    if (!before || signal.aborted) return;
+    this.save({ ...before, model: job.model, modelFile: download.file });
+    this.stop();
+    await this.start();
+    if (signal.aborted) return;
+    if (this.child) {
+      this.newer = undefined;
+      if (before.modelFile !== download.file && dirname(before.modelFile) === dirname(download.file)) rmSync(before.modelFile, { force: true });
+      return;
+    }
+    // It would not start: back to the model that did, and the new one is not fetched by itself again.
+    const why = this.lastError;
+    this.save(before); await this.start();
+    rmSync(download.file, { force: true }); writeFileSync(this.failedFile, newer.path);
+    throw new Error(`${job.model} would not start, so ROS stays on the model it had. ${why}`.trim());
   }
 
   /** Starts the engine when the model is on disk (at launch, and after a download). */
@@ -246,7 +339,8 @@ export class LocalRos {
   }
 
   remove(): LocalRosStatus {
-    this.cancel(); this.stop();
+    this.cancel(); this.update?.stop.abort(); this.update = undefined; this.stop();
+    clearTimeout(this.lookTimer); this.newer = undefined; this.updateError = ''; this.held = false;
     const installed = this.installed();
     if (installed?.connectionId && this.connections.statuses().some(item => item.id === installed.connectionId && !item.deleted)) this.connections.remove(installed.connectionId);
     rmSync(this.dir, { recursive: true, force: true });
@@ -254,7 +348,7 @@ export class LocalRos {
     return this.status();
   }
   private stop() { const child = this.child; this.child = undefined; child?.kill(); }
-  shutdown() { this.job?.stop.abort(); this.stop(); }
+  shutdown() { this.job?.stop.abort(); this.update?.stop.abort(); clearTimeout(this.lookTimer); this.stop(); }
 }
 
 async function json(url: string, signal: AbortSignal) {
@@ -266,6 +360,23 @@ async function text(url: string, signal: AbortSignal) {
   const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]), headers: { 'User-Agent': 'ros.ai' } });
   if (!response.ok) throw new DownloadError(`${new URL(url).host} answered ${response.status}.`, response.status >= 500 || response.status === 429);
   return response.text();
+}
+/** The model repo's GGUF files, as Hugging Face lists them with each file's size and SHA-256. */
+async function modelFiles(signal: AbortSignal) {
+  const tree = await json(`https://huggingface.co/api/models/${MODEL_REPO}/tree/main`, signal) as ModelItem[];
+  return tree.filter(item => item.type === 'file' && item.path.endsWith('.gguf'));
+}
+/** A download's speed over its last few seconds, once two seconds are in. */
+function speed(samples: [number, number][]) {
+  const first = samples[0], last = samples[samples.length - 1];
+  const rate = first && last && last[0] - first[0] >= 2000 ? Math.round(((last[1] - first[1]) / (last[0] - first[0])) * 1000) : undefined;
+  return rate ? { bytesPerSecond: rate } : {};
+}
+/** Counts what a download has done, keeping ten seconds of samples for its speed. */
+function track(job: Job, done: number) {
+  job.done = done;
+  const now = Date.now(), last = job.samples[job.samples.length - 1];
+  if (!last || now - last[0] >= 500) { job.samples.push([now, done]); while (job.samples.length > 2 && now - job.samples[0]![0] > 10_000) job.samples.shift(); }
 }
 /** What of a download is on disk already: the whole file, or the part a stopped download left. */
 function have(item: Download) {
@@ -339,5 +450,6 @@ export function attachLocalRosRoutes(app: Express, local: LocalRos) {
   app.get('/api/local-ros', (_req, res) => { res.json(local.status()); });
   app.post('/api/local-ros/download', (_req, res) => { res.json(local.download()); });
   app.post('/api/local-ros/cancel', (_req, res) => { res.json(local.cancel()); });
+  app.post('/api/local-ros/update', (_req, res) => { res.json(local.updateModel()); });
   app.post('/api/local-ros/remove', (_req, res) => { res.json(local.remove()); });
 }
