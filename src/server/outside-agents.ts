@@ -60,6 +60,8 @@ type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; par
 type Sessions = Record<string, OutsideSession>;
 
 function known(text: string) {
+  // The Claude desktop app's MCP client calls itself claude-ai.
+  if (/claude-ai|claude desktop/i.test(text)) return 'Claude app';
   if (/claude/i.test(text)) return 'Claude Code';
   if (/codex/i.test(text)) return 'Codex';
   if (/cursor/i.test(text)) return 'Cursor';

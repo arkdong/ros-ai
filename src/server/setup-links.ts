@@ -14,7 +14,7 @@ const quoted = (value: string) => `"${value}"`;
 const word = (value: string) => /\s/u.test(value) ? quoted(value) : value;
 /** The node an agent runs the bridge with. Inside the ros.ai app there may be no Node on this computer, so the app
  * hands over a small launcher (ROS_NODE_COMMAND) that runs its own Node; GUI apps see a short PATH, so Cursor gets a path. */
-const nodeCommand = (id?: AgentId) => process.env.ROS_NODE_COMMAND || (id === 'cursor' ? process.execPath : 'node');
+const nodeCommand = (id?: AgentId) => process.env.ROS_NODE_COMMAND || (id === 'cursor' || id === 'claude-app' ? process.execPath : 'node');
 /** The process an agent starts for ros.ai. Pi lists ros.ai's tools with its own rather than behind code it writes;
  * Hermes Agent's MCP client calls itself only "mcp", so its link names it to the bridge. */
 export function entryFor(id: AgentId, bridge: string): { command: string; args: string[]; exposure?: 'direct' } {
@@ -83,6 +83,7 @@ const servers = (value: Record<string, unknown>) => value.mcpServers && typeof v
 
 const ready: Record<AgentId, string> = {
   'claude-code': 'Ready in new Claude Code sessions. In an open session, type /mcp to reconnect.',
+  'claude-app': 'Quit and reopen the Claude app to load it. Its chats can then use ros.ai.',
   codex: 'Ready in new Codex sessions.',
   cursor: 'Ready in Cursor, which picks up the new entry on its own.',
   'gemini-cli': 'Ready in new Gemini CLI sessions.',
