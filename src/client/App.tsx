@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, BookOpen, Check, ChevronDown, ChevronRight, FileText, Clock3, FolderOpen, GitBranch, LoaderCircle, MessageSquare, MoreHorizontal, PanelLeft, PanelLeftClose, PanelLeftOpen, Pin, Plus, Square, Trash2, X } from 'lucide-react';
-import type { Artifact, Canvas, CanvasNode, Change, ConnectionStatus, GoogleRead, GoogleView, MetricRead, MetricView, TrainingRead, TrainingView, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
+import type { Artifact, Canvas, CanvasNode, Change, ConnectionStatus, GoogleRead, GoogleView, MetricInput, MetricRead, MetricView, TrainingRead, TrainingView, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import { checkSourcesRequest } from '../shared/source-check';
 import type { ResearchPolicy } from '../shared/research';
 import { api, post, upload } from './api';
@@ -204,7 +204,7 @@ export function App(){
       }catch(reason){report(reason);return;}
     }
   };
-  const addNode=async(kind:NodeKind,scope:string|null,title:string,blockType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView,metric?:MetricView)=>{
+  const addNode=async(kind:NodeKind,scope:string|null,title:string,blockType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView,metricInput?:MetricInput)=>{
     if(!detail)return;
     const id=crypto.randomUUID();
     let display=blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
@@ -218,12 +218,12 @@ export function App(){
     // A training run's folder (and GPU machine) is read once first, so a wrong path or ssh host is caught before the block exists.
     if(blockType==='training'){if(!training)return;try{({view:training}=await post<{view:TrainingView;read:TrainingRead}>('/api/training/preview',training));}catch(reason){report(reason);return;}display='Training run';}
     // A Metric block's repository is read once first, so a wrong name is caught before the block exists; its title is the repository.
-    let metricRead:MetricRead|undefined;
-    if(blockType==='metric'){if(!metric)return;try{({view:metric,read:metricRead}=await post<{view:MetricView;read:MetricRead}>('/api/metric/preview',metric));}catch(reason){report(reason);return;}display='Metrics';}
+    let metricRead:MetricRead|undefined,metric:MetricView|undefined;
+    if(blockType==='metric'){if(!metricInput)return;try{({view:metric,read:metricRead}=await post<{view:MetricView;read:MetricRead}>('/api/metric/preview',metricInput));}catch(reason){report(reason);return;}display='Metrics';}
     const notebookFile=blockType==='notebook'?chosenFile:undefined;
     let file:{path:string}|undefined;
     if(blockType==='file'){if(!chosenFile)return;try{file=await saveFile(chosenFile);}catch(reason){report(reason);return;}}
-    let name=title.trim()||read?.title.slice(0,200)||(metricRead?`${metricRead.title} on GitHub`.slice(0,200):'')||(notebookFile?.name.replace(/\.ipynb$/iu,'').trim().slice(0,200)??'')||(file?chosenFile!.name.replace(/\.[^.]+$/u,'').trim().slice(0,200):'');
+    let name=title.trim()||read?.title.slice(0,200)||(metricRead?(metricRead.source==='github'?`${metricRead.title} on GitHub`:metricRead.source==='cloud'?metricRead.title:`${metricRead.title} on ${metricRead.source==='umami'?'Umami':'Railway'}`).slice(0,200):'')||(notebookFile?.name.replace(/\.ipynb$/iu,'').trim().slice(0,200)??'')||(file?chosenFile!.name.replace(/\.[^.]+$/u,'').trim().slice(0,200):'');
     if(!name){
       const titles=new Set(detail.project.canvas.nodes.map(node=>node.title.toLocaleLowerCase()));
       name=display;

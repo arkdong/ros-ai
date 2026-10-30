@@ -147,6 +147,8 @@ export class CloudAccount {
   /** Whether this copy of ros.ai has a ros.ai cloud at all (ROS_CLOUD_URL is not off). */
   get available() { return Boolean(this.url); }
   /** Signed in on this computer, read from the saved account without asking ros.ai cloud. */
+  /** Where ros.ai cloud is, when it is on. */
+  get address() { return this.url; }
   get signedIn() { return Boolean(this.url && this.account()); }
   /** The signed-in email, read from this computer without asking ros.ai cloud. */
   signedInEmail() { return this.url ? this.account()?.email || undefined : undefined; }
@@ -162,6 +164,18 @@ export class CloudAccount {
     if (result.status === 404) throw new StoreError('ros.ai cloud does not take notes yet.', 502);
     if (result.status >= 300) throw new StoreError(typeof result.body?.error?.message === 'string' ? result.body.error.message : `ros.ai cloud did not take the note (${result.status}).`, result.status === 429 ? 429 : 502);
     return typeof result.body?.email === 'string' ? { email: result.body.email } : {};
+  }
+
+  /** ros.ai cloud's launch numbers (accounts, hosted ROS use, downloads, feedback) for a Metrics block. ros.ai cloud
+   * answers only accounts it lists as allowed to read them. */
+  async stats(): Promise<Record<string, unknown>> {
+    if (!this.url) throw new StoreError('ros.ai cloud is off in this copy of ros.ai.', 404);
+    const account = this.account();
+    if (!account) throw new StoreError('Sign in to ros.ai cloud first (Agents › ROS), with an account allowed to read its numbers.', 409);
+    const result = await this.call('/v1/stats', { headers: { Authorization: `Bearer ${account.token}` } }).catch(() => { throw new StoreError('ros.ai cloud could not be reached.', 502); });
+    if (result.status === 404) throw new StoreError('ros.ai cloud does not serve its numbers yet.', 502);
+    if (result.status >= 300) throw new StoreError(typeof result.body?.error?.message === 'string' ? result.body.error.message : `ros.ai cloud did not give its numbers (${result.status}).`, result.status === 401 || result.status === 403 ? 403 : 502);
+    return result.body as Record<string, unknown>;
   }
 
   async signOut(): Promise<CloudAccountStatus> {

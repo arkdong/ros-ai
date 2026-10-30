@@ -12,10 +12,10 @@ import { zoteroApp } from './papers.js';
 import { ghBinary, githubCliFound } from './setup-detect.js';
 import { zoteroAppProblem, type LocalPlugins, type PluginStatus, type PluginWay, type TokenPluginId } from '../shared/plugins.js';
 
-const ids = ['zotero', 'slack', 'notion', 'github', 'openalex'] as const satisfies readonly TokenPluginId[];
+const ids = ['zotero', 'slack', 'notion', 'github', 'openalex', 'umami', 'railway'] as const satisfies readonly TokenPluginId[];
 const idSchema = z.enum(ids);
 const tokenSchema = z.string().trim().min(8).max(4096).refine(value => !/\s|[\x00-\x1f\x7f]/.test(value), 'Enter a single token without spaces.');
-const savedSchema = z.object({ version: z.literal(1), tokens: z.object({ zotero: tokenSchema.optional(), slack: tokenSchema.optional(), notion: tokenSchema.optional(), github: tokenSchema.optional(), openalex: tokenSchema.optional() }).strict() }).strict();
+const savedSchema = z.object({ version: z.literal(1), tokens: z.object({ zotero: tokenSchema.optional(), slack: tokenSchema.optional(), notion: tokenSchema.optional(), github: tokenSchema.optional(), openalex: tokenSchema.optional(), umami: tokenSchema.optional(), railway: tokenSchema.optional() }).strict() }).strict();
 /** The plugins that connect through something on this computer, and how. */
 const localWay: Partial<Record<TokenPluginId, PluginWay>> = { github: 'github-cli', zotero: 'zotero-app' };
 const waysSchema = z.object({ version: z.literal(1), ways: z.object({ github: z.literal('github-cli').optional(), zotero: z.literal('zotero-app').optional() }).strict() }).strict();
@@ -23,11 +23,14 @@ type Ways = z.infer<typeof waysSchema>['ways'];
 type Check = Pick<PluginStatus, 'checkedAt' | 'verified' | 'checkMessage'>;
 /** Names from a provider are echoed back only as a short label. */
 /** Tokens a local keys file or the shell may provide instead of the Plugins page. */
-const environment: Partial<Record<TokenPluginId, string>> = { notion: 'NOTION_TOKEN', zotero: 'ZOTERO_API_KEY', openalex: 'OPENALEX_API_KEY' };
+const environment: Partial<Record<TokenPluginId, string>> = { notion: 'NOTION_TOKEN', zotero: 'ZOTERO_API_KEY', openalex: 'OPENALEX_API_KEY', umami: 'UMAMI_API_KEY', railway: 'RAILWAY_TOKEN' };
 const label = (value: unknown) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80) : '';
 /** The GitHub CLI's token is read again after this long, so a new `gh auth login` takes over. */
 const CLI_FRESH = 15 * 60_000;
 const run = promisify(execFile);
+/** Umami Cloud's API and Railway's public GraphQL API, which the Metrics block reads too. */
+export const UMAMI_API = 'https://api.umami.is/v1';
+export const RAILWAY_API = 'https://backboard.railway.com/graphql/v2';
 
 /** The GitHub CLI's sign-in for github.com, as `gh auth token` prints it. ros.ai keeps it in memory only. */
 async function githubCliToken(): Promise<string> {
@@ -166,6 +169,16 @@ export class PluginTokens {
         const response = await request(`https://api.openalex.org/rate-limit?${new URLSearchParams({ api_key: token })}`, { headers: { 'User-Agent': 'ros.ai (https://github.com/arkdong/ros-ai)' } });
         verified = response.ok;
         checkMessage = response.ok ? 'OpenAlex accepted the key.' : response.status === 401 || response.status === 403 ? 'OpenAlex rejected this key.' : `OpenAlex returned HTTP ${response.status}.`;
+      } else if (id === 'umami') {
+        const response = await request(`${UMAMI_API}/me`, { headers: { 'x-umami-api-key': token, Accept: 'application/json' } });
+        const body = response.ok ? await response.json() as { user?: { username?: unknown } } : null;
+        verified = response.ok;
+        checkMessage = response.ok ? `Umami accepted the key${label(body?.user?.username) ? ` for ${label(body?.user?.username)}` : ''}.` : response.status === 401 || response.status === 403 ? 'Umami rejected this key.' : `Umami returned HTTP ${response.status}.`;
+      } else if (id === 'railway') {
+        const response = await request(RAILWAY_API, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ me { name email } }' }) });
+        const body = response.ok ? await response.json() as { data?: { me?: { name?: unknown; email?: unknown } }; errors?: unknown[] } : null;
+        verified = Boolean(body?.data?.me);
+        checkMessage = verified ? `Railway accepted the token${label(body?.data?.me?.name ?? body?.data?.me?.email) ? ` for ${label(body?.data?.me?.name ?? body?.data?.me?.email)}` : ''}.` : response.ok ? 'Railway did not accept this as an account token. Create one with No workspace chosen.' : `Railway returned HTTP ${response.status}.`;
       } else if (id === 'notion') {
         const response = await request(`${notionBase()}/v1/users/me`, { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } });
         verified = response.ok;

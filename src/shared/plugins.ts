@@ -1,7 +1,7 @@
 /** Tools outside ros.ai that a person connects with something they already have: a sign-in, an app on this computer,
  * or a token or key as the fallback.
  */
-export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex';
+export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex' | 'umami' | 'railway';
 export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser';
 
 export type PluginDefinition = {
@@ -47,6 +47,8 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'exa', uses: ['Web search that finds pages by what they mean, not only their words', 'Returns the passages of each page that answer the search, and reads whole pages', 'Free with no account, up to Exa’s limit; with a key, about US$0.007 a search'], name: 'Exa web search', summary: 'Web search that finds pages by meaning.', connect: 'key' },
   { id: 'brave', uses: ['Web search from Brave’s own index of the web', 'Returns the passages of each page that answer the search; it cannot read whole pages', 'About US$0.005 a search, with US$5 free each month'], name: 'Brave Search', summary: 'Web search from its own independent index.', connect: 'key' },
   { id: 'browser', uses: ['Agents open websites, click through them and fill in forms', 'Screenshots land on the canvas as File blocks, and every step is listed there', 'A fresh browser each time: no cookies or logins, public websites only'], name: 'Browser', summary: 'Agents browse websites and take screenshots.', connect: 'browser' },
+  { id: 'umami', uses: ['Show your website’s visitors, page views and tracked clicks in a Metrics block', 'Reads the numbers only; nothing on your site changes', 'Uses an API key from your Umami Cloud account'], name: 'Umami', summary: 'Your website’s visitors and clicks, for launch numbers.', connect: 'token', tokenLabel: 'Umami API key', tokenHint: 'Create a key under Settings › API keys in Umami Cloud. It reads the websites your account can see.', tokenLink: 'https://cloud.umami.is/settings/api-keys' },
+  { id: 'railway', uses: ['Show whether each service of a Railway project is up, and when it last deployed, in a Metrics block', 'Reads only; it never deploys or changes anything', 'Uses an account token from your Railway settings'], name: 'Railway', summary: 'Whether your Railway services are up, for launch numbers.', connect: 'token', tokenLabel: 'Railway account token', tokenHint: 'Create a token under Account Settings › Tokens in Railway, with No workspace chosen so it can read your projects.', tokenLink: 'https://railway.com/account/tokens' },
   { id: 'overleaf', uses: ['Write papers in LaTeX with your coauthors'], name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
 ];
 

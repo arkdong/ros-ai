@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, LoaderCircle, RotateCw } from 'lucide-react';
+import { ArrowUpRight, Cloud, LoaderCircle, RotateCw } from 'lucide-react';
 import type { MetricPoint, MetricRead, MetricValue, MetricView } from '../shared/types';
 import { api } from './api';
 import { BrandLogo } from './brand-logos';
@@ -12,7 +12,12 @@ const AGAIN_MS = 15 * 60_000;
 const HOUR = 60 * 60_000;
 /** The card shows the first few numbers; the block view shows them all. */
 const ON_CARD = 4;
-const number = (value: number) => value.toLocaleString('en-US');
+const number = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+/** Where a block reads, in the person's words, until the first read names it. */
+export const metricSourceName = (view: MetricView) => view.source === 'github' ? view.repo : view.source === 'cloud' ? 'ros.ai cloud' : view.source === 'umami' ? 'Umami' : 'Railway';
+export function MetricLogo({ view, size }: { view: MetricView; size: number }) {
+  return view.source === 'cloud' ? <Cloud size={size}/> : <BrandLogo id={view.source} size={size}/>;
+}
 
 /** The value the history held about `ago` before the latest read, if ros.ai read the source that long ago. */
 function earlier(history: MetricPoint[], key: string, at: string, ago: number) {
@@ -37,7 +42,7 @@ function Spark({ history, item, width, height }: { history: MetricPoint[]; item:
   return <svg className="livestat-spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true"><path d={path}/></svg>;
 }
 
-/** Launch numbers read live from a service (GitHub for now): each number, how it moved today, and its line over two
+/** Launch numbers read live from a service (GitHub, ros.ai cloud, Umami, Railway): each number, how it moved today, and its line over two
  * weeks of ros.ai's own reads. The card shows the first few; the block view shows all, with the week's change too. */
 export function MetricBlock({ projectId, nodeId, view, full = false }: { projectId: string; nodeId: string; view: MetricView; full?: boolean }) {
   const [read, setRead] = useState<MetricRead | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
@@ -51,13 +56,14 @@ export function MetricBlock({ projectId, nodeId, view, full = false }: { project
   }, [projectId, nodeId, key]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const timer = window.setInterval(() => void load(), AGAIN_MS); return () => window.clearInterval(timer); }, [load]);
-  const shown = read ? (full ? read.values : read.values.filter(item => item.value !== null).slice(0, ON_CARD)) : [];
+  const shown = read ? (full ? read.values : read.values.filter(item => item.value !== null || item.text).slice(0, ON_CARD)) : [];
   return <div className={`live-block livestat-block${full ? ' full' : ''}`}>
     {error && !read ? <p className="live-block-error">{error}</p>
-      : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading {view.repo}…</p>
+      : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading {metricSourceName(view)}…</p>
       : <dl className="livestat-values">{shown.map(item => <div key={item.key} className="livestat-value">
           <dt>{item.label}</dt>
-          {item.value === null ? <dd className="livestat-missing">{item.note ?? 'Not available'}</dd>
+          {item.text ? <dd className="livestat-state"><span className={`livestat-dot${item.tone ? ` ${item.tone}` : ''}`} aria-hidden="true"/>{item.text}</dd>
+            : item.value === null ? <dd className="livestat-missing">{item.note ?? 'Not available'}</dd>
             : <dd>
               <strong>{number(item.value)}</strong>
               <Change value={item.value} before={earlier(read.history, item.key, read.fetchedAt, 20 * HOUR)} span="day"/>
@@ -68,8 +74,8 @@ export function MetricBlock({ projectId, nodeId, view, full = false }: { project
     {read?.notice && <p className="live-block-notice">{read.notice}</p>}
     {full && read && read.history.length < 2 && <p className="livestat-note">Lines and changes appear as ros.ai reads the numbers again: about once an hour while this project is open.</p>}
     <footer>
-      <BrandLogo id="github" size={12}/>
-      <span>{read ? `${read.title} · read ${clock(read.fetchedAt)}` : view.repo}</span>
+      <MetricLogo view={view} size={12}/>
+      <span>{read ? `${read.title} · read ${clock(read.fetchedAt)}` : metricSourceName(view)}</span>
       {read?.link && <a className="live-block-open" href={read.link} target="_blank" rel="noreferrer" onClick={stop}>Open <ArrowUpRight size={12}/></a>}
       <button className="icon-button" aria-label="Read the numbers again" title="Read the numbers again" disabled={loading} onClick={event => { stop(event); void load(true); }}>{loading ? <LoaderCircle size={13} className="spin"/> : <RotateCw size={13}/>}</button>
     </footer>

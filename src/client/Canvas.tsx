@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { Activity, AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -63,9 +63,8 @@ export function shownFile(projectId: string, node: CanvasNode, entry?: FolderFil
 export function KindIcon({ kind, blockType, google, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; size?: number }) {
   if (blockType === 'notion') return <BrandLogo id="notion" size={size}/>;
   if (blockType === 'training') return <BrandLogo id="nebius" size={size}/>;
-  if (blockType === 'metric') return <BrandLogo id="github" size={size}/>;
   if (blockType === 'google') return <BrandLogo id={google === 'sheet' ? 'google-sheets' : google === 'doc' ? 'google-docs' : 'google-drive'} size={size}/>;
-  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
+  const Icon = kind === 'group' ? LayoutGrid : blockType === 'metric' ? Activity : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
   return <Icon size={size}/>;
 }
 type Side = 'top' | 'right' | 'bottom' | 'left';
