@@ -7,10 +7,10 @@ import { StoreError } from './store.js';
 import { NEBIUS_BASE } from './providers.js';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections.js';
 
-const names = { nebius: 'NEBIUS_API_KEY', claude: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', tavily: 'TAVILY_API_KEY', exa: 'EXA_API_KEY', brave: 'BRAVE_API_KEY' } as const;
-const providerSchema = z.enum(['nebius', 'claude', 'openai', 'tavily', 'exa', 'brave']);
+const names = { nebius: 'NEBIUS_API_KEY', claude: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', tavily: 'TAVILY_API_KEY', exa: 'EXA_API_KEY', brave: 'BRAVE_API_KEY', 'google-maps': 'GOOGLE_MAPS_API_KEY' } as const;
+const providerSchema = z.enum(['nebius', 'claude', 'openai', 'tavily', 'exa', 'brave', 'google-maps']);
 const keySchema = z.string().trim().min(12).max(4096).refine(value => !/\s|[\x00-\x1f\x7f]/.test(value), 'Enter a single API key without spaces.');
-const savedSchema = z.object({ version: z.literal(1), keys: z.object({ nebius: keySchema.optional(), claude: keySchema.optional(), openai: keySchema.optional(), tavily: keySchema.optional(), exa: keySchema.optional(), brave: keySchema.optional() }).strict() }).strict();
+const savedSchema = z.object({ version: z.literal(1), keys: z.object({ nebius: keySchema.optional(), claude: keySchema.optional(), openai: keySchema.optional(), tavily: keySchema.optional(), exa: keySchema.optional(), brave: keySchema.optional(), 'google-maps': keySchema.optional() }).strict() }).strict();
 
 /** Local server credentials are deliberately separate from model spending grants.
  * The only browser-readable values are presence, source and a bounded check result.
@@ -67,6 +67,9 @@ export class ToolCredentials {
     this.persist(keys); this.apply(provider); this.checks.delete(provider);
     return this.status(provider);
   }
+  /** The Google Maps key, which the page itself needs: Google's map script runs in the browser and takes the key there.
+   * It is the only key ros.ai hands to its own page, so the key should be restricted in Google Cloud to this app's addresses. */
+  googleMapsKey(): string | undefined { return process.env.GOOGLE_MAPS_API_KEY || undefined; }
   async checkNebius() {
     const key = process.env.NEBIUS_API_KEY;
     if (!key) throw new StoreError('Connect a Nebius API key first.');
@@ -108,6 +111,7 @@ export function attachToolCredentialRoutes(app: Express, credentials: ToolCreden
     res.json(credentials.save(providerSchema.parse(req.params.provider), req.body));
   });
   app.delete('/api/connections/credentials/:provider', (req, res) => res.json(credentials.disconnect(providerSchema.parse(req.params.provider))));
+  app.get('/api/maps/google', (_req, res) => res.json({ key: credentials.googleMapsKey() ?? null }));
   app.post('/api/connections/nebius/check', async (_req, res) => res.json(await credentials.checkNebius()));
   app.post('/api/connections/claude/check', async (_req, res) => res.json(await credentials.checkClaude()));
 }

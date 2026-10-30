@@ -40,7 +40,7 @@ export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, 
   const shape = picture ? { '--picture-ratio': String(picture.width / Math.max(1, picture.height)), '--picture-w': String(picture.width), '--picture-h': String(picture.height) } as CSSProperties : undefined;
   const view = <div ref={box} className={`block-view ${mode === 'sheet' ? 'block-sheet' : 'block-panel'}${picture ? ' picture-block' : picture === null ? ' picture-large' : ''}${picture !== undefined && pictureCaption ? ' has-caption' : ''}`} style={shape} role={mode === 'sheet' ? 'dialog' : 'complementary'} aria-label={`${kindName(node)} · ${node.title}`} data-testid="block-view">
     <header className="bv-head">
-      <span className="bv-kind"><KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} size={13}/>{kindName(node)}</span>
+      <span className="bv-kind"><KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} map={node.map?.provider} size={13}/>{kindName(node)}</span>
       {onRename ? <TitleField key={node.id} title={node.title} onRename={onRename}/> : <h2 className="bv-title" title={node.title}>{node.title}</h2>}
       {head}
       <span className="bv-views" role="group" aria-label="Show the block as">

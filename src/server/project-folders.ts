@@ -13,12 +13,13 @@ import { IMAGE_HEAD_BYTES, imageSize } from './image-size.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
+import { MAX_MAP_PINS } from '../shared/maps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { mapPinSchema, paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -229,9 +230,11 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
+    // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
+    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), file: z.string().max(1000).optional(),
     // The blocks an App reads; an entry ros.ai cannot read is left out rather than failing the manifest.
     inputs: z.array(z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u)).max(MAX_APP_INPUTS).optional().catch(undefined) })).max(500),
@@ -506,6 +509,12 @@ export class ProjectFolders implements NotebookFolders {
         this.blockFromFile(record, files, block.file!, kind, { id: block.id, title: block.title, kind: block.kind, blockType: block.blockType, label: block.label, paper: block.paper, parentId: parentOf(block), x: block.x, y: block.y, width: block.width, height: block.height });
         placed.push(block.id);
       } catch { /* listed as an unplaced file instead */ }
+    }
+    // A Map block keeps its pins in the manifest; its text, when it has some, came back above as a note.
+    for (const block of manifest.blocks.filter(item => item.kind !== 'group' && item.blockType === 'map' && item.map)) {
+      const patch = { blockType: 'map' as const, map: block.map! };
+      try { this.store.mutate(projectId, [placed.includes(block.id) ? { type: 'updateNode', id: block.id, patch } : { type: 'addNode', node: { id: block.id, title: block.title, description: '', kind: 'topic', ...patch, parentId: parentOf(block), x: block.x, y: block.y, ...(block.width === undefined ? {} : { width: block.width }) } }], 'Map from the project folder'); if (!placed.includes(block.id)) placed.push(block.id); }
+      catch { /* a map ros.ai cannot keep is left out */ }
     }
     // Adding a block finds it a free spot; the saved arrangement is put back afterwards.
     const positions: Mutation[] = manifest.blocks.filter(block => placed.includes(block.id)).map(block => ({ type: 'updateNode', id: block.id, patch: { x: block.x, y: block.y } }));
@@ -1050,7 +1059,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.label ? { label: node.label } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));

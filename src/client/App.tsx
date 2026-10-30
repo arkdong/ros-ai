@@ -204,10 +204,12 @@ export function App(){
       }catch(reason){report(reason);return;}
     }
   };
-  const addNode=async(kind:NodeKind,scope:string|null,title:string,blockType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView)=>{
+  const addNode=async(kind:NodeKind,scope:string|null,title:string,chosenType?:NewBlockType,chosenFile?:File,notion?:NotionView,label?:string,googleLink?:string,training?:TrainingView)=>{
     if(!detail)return;
+    // A Google Maps block is a Map block that draws Google's map.
+    const onGoogle=chosenType==='google-map',blockType=onGoogle?'map' as const:chosenType;
     const id=crypto.randomUUID();
-    let display=blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
+    let display=onGoogle?'Google Maps':blockType==='notion'?'Notion':blockType==='dataset'?'Data':blockType&&blockType!=='report'?blockType[0].toUpperCase()+blockType.slice(1):kind==='group'?'Group':label?label[0].toUpperCase()+label.slice(1):'Text';
     // A Notion link is read once first, so a wrong link or filter is caught before the block exists,
     // and the block learns whether it shows a page or a database.
     let read:NotionRead|GoogleRead|undefined;
@@ -226,12 +228,12 @@ export function App(){
       name=display;
       for(let suffix=2;titles.has(name.toLocaleLowerCase());suffix++)name=`${display} ${suffix}`;
     }
-    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
+    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(blockType==='map'?{map:{pins:[],...(onGoogle?{provider:'google' as const}:{})}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
       setAddWindow(null);
       if(notebookFile&&blockType==='notebook')await post(`/api/projects/${detail.project.id}/nodes/${id}/notebook/import`,{name:notebookFile.name,content:await notebookFile.text()}).catch(report);
       // Code and notebooks open straight into their editors once the block exists on the canvas; an App on its inputs.
       if(blockType==='app')saveLocal(`app-tab:${id}`,'inputs');
-      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'?id:null);
+      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'||blockType==='map'?id:null);
       selectBlock(id);
       if(scope)setExpandedIds(current=>[...new Set([...current,scope])]);
       setFocusId(id);

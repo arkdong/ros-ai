@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { AppWindow, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
+import { MapBlock } from './MapView';
 import { TrainingBlock } from './TrainingView';
 import { rowBlockOperations } from '../shared/notion-rows';
 import { ArtifactContent } from './Experiment';
@@ -23,7 +24,7 @@ import { aggregateTopLevelRelationships, linkWord, type AggregateRelationship } 
 import { LINK_WORDS, LINK_WORD_LIMIT, chipPoint, facingSides, isTrail, linkCurve, sideAnchor, sideFraction, trailWording, type LinkBox, type LinkPoint, type LinkSide } from '../shared/links';
 import { readSaved, saveLocal } from './persistence';
 import { arrangeCanvas, freeSpot, groupContentRight, numberedStageOrder, openGroupSize, CARD_SIZE, GROUP_FOOTER, GROUP_INSET, LAYOUT_GAP, type CanvasSize } from '../shared/layout';
-import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
+import type { Artifact, Canvas, CanvasNode, ClaimVerdict, GoogleView, MapView, TrainingView, Mutation, NotionTable, NotionView, ProjectDetail, Proposal, RunStatus } from '../shared/types';
 import type { NotebookSummary } from '../shared/notebooks';
 import { textPreview } from '../shared/presentation';
 import './canvas-interactions.css';
@@ -61,11 +62,12 @@ export function shownFile(projectId: string, node: CanvasNode, entry?: FolderFil
   return { src: `${fileUrl(projectId, node.id)}${entry?.version ? `?v=${entry.version}` : ''}`, mediaType: fileMediaType(node.file?.path ?? '') ?? 'application/octet-stream', ...(entry?.bytes ? { bytes: entry.bytes } : {}), ...(image ? { image } : {}) };
 }
 /** One icon per kind of block; a Text block's label says what it means. A Google block shows its app's mark. */
-export function KindIcon({ kind, blockType, google, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; size?: number }) {
+export function KindIcon({ kind, blockType, google, map, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; map?: MapView['provider']; size?: number }) {
   if (blockType === 'notion') return <BrandLogo id="notion" size={size}/>;
   if (blockType === 'training') return <BrandLogo id="nebius" size={size}/>;
+  if (blockType === 'map' && map === 'google') return <BrandLogo id="google-maps" size={size}/>;
   if (blockType === 'google') return <BrandLogo id={google === 'sheet' ? 'google-sheets' : google === 'doc' ? 'google-docs' : 'google-drive'} size={size}/>;
-  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : TextIcon;
+  const Icon = kind === 'group' ? LayoutGrid : blockType === 'code' ? Braces : blockType === 'app' ? AppWindow : blockType === 'notebook' ? NotebookPen : blockType === 'dataset' ? Database : blockType === 'figure' || blockType === 'file' ? FileIcon : blockType === 'agent' ? Bot : blockType === 'search' ? SearchIcon : blockType === 'web' ? Globe : blockType === 'map' ? MapPinned : TextIcon;
   return <Icon size={size}/>;
 }
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -82,6 +84,8 @@ type CardData = {
   notion?: { projectId: string; view: NotionView; onRows?: (table: NotionTable) => Promise<RowBlocksOutcome | null> };
   /** A Google Sheet or Doc the card reads live; `onCopy` copies a sheet's tab into a new Data block. */
   google?: { projectId: string; view: GoogleView; onCopy?: () => Promise<boolean> };
+  /** A Map block's pins. */
+  map?: MapView;
   /** A model training run the card reads live from its folder and GPU machine. */
   training?: { projectId: string; view: TrainingView };
   /** The PDF or image a File block shows, read from the project folder. */
@@ -183,6 +187,7 @@ const ShownArtifact = memo(BlockPreview, (a, b) => a.artifact.id === b.artifact.
 const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes && a.file.image?.width === b.file.image?.width && a.file.image?.height === b.file.image?.height && a.missing === b.missing);
 const ShownNotion = memo(NotionBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onRows) === Boolean(b.onRows) && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownTraining = memo(TrainingBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view));
+const ShownMap = memo(MapBlock, (a, b) => a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownGoogle = memo(GoogleBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onCopy) === Boolean(b.onCopy) && JSON.stringify(a.view) === JSON.stringify(b.view));
 /** A checked block's marks, worst first: how many claims a source contradicts, how many none backs, how many hold. */
 function CheckTally({ tally }: { tally: Record<ClaimVerdict, number> }) {
@@ -251,7 +256,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const group=data.kind==='group';
   useEffect(() => {
     if (data.expanded || data.heightSet || !heading.current) return;
-    const element=heading.current, update=()=>measure.current(data.width,measuredCardHeight((data.notion||data.google||data.training||data.app?element.scrollHeight:element.offsetHeight)+2,Boolean(data.picture&&data.file?.image)));
+    const element=heading.current, update=()=>measure.current(data.width,measuredCardHeight((data.notion||data.google||data.training||data.app||data.map?element.scrollHeight:element.offsetHeight)+2,Boolean(data.picture&&data.file?.image)));
     const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();
   },[data.expanded,data.heightSet,data.width,data.primary,data.chosen,data.notebookFigure,data.file]);
   // The Notion preview keeps one row callback, which always reaches the latest canvas.
@@ -293,7 +298,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading">
-      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
+      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
         {openButton}
         {group&&<button className="icon-button group-expand-control" aria-label={`${data.expanded?'Collapse':'Expand'} ${data.title}`} title={data.expanded?'Collapse group':'Expand group'} onClick={event=>{event.stopPropagation();data.onExpand();}}>{data.expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</button>}
       </span></div>
@@ -311,7 +316,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
           :data.blockType==='search'?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}<ul className="search-queries">{data.description.split('\n').filter(Boolean).slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul></div>
           :data.label==='result'&&data.description===RESULT_PLACEHOLDER?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}{data.queries?.length?<ul className="search-queries">{data.queries.slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul>:<p className="block-empty-hint">{data.description}</p>}</div>
-          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.map?<ShownMap view={data.map}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
