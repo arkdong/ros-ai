@@ -1,9 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { query, type SDKControlGetUsageResponse, type SDKRateLimitInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudePlanLogin, ClaudePlanStatus } from '../shared/claude-agent.js';
+import type { PlanUsage, PlanWindow } from '../shared/budget-report.js';
 
-const LOGIN_SECONDS = 600, STATUS_SECONDS = 15, STATUS_CACHE_MS = 30_000;
+const LOGIN_SECONDS = 600, STATUS_SECONDS = 15, STATUS_CACHE_MS = 30_000, USAGE_SECONDS = 20, USAGE_CACHE_MS = 60_000;
 
 /** Claude Code on the person's own Claude plan. Anthropic allows a person to sign in to the
  * unmodified Claude Code program with their own subscription, including inside another product,
@@ -76,6 +78,41 @@ export class ClaudePlan {
     return this.checking;
   }
 
+  /** How much of the plan's windows is used: the numbers behind Claude Code's own /usage, asked of the program
+   * itself (its token stays with it). No request is sent to a model. Asked at most once a minute. */
+  usage(): Promise<PlanUsage> {
+    if (this.usageRead && Date.now() - this.usageRead.at <= USAGE_CACHE_MS) return Promise.resolve(this.usageRead.value);
+    this.reading ??= this.readUsage().then(value => { this.usageRead = { at: Date.now(), value }; return value; }).finally(() => { this.reading = null; });
+    return this.reading;
+  }
+  /** What a turn on the plan reported about its limits, kept for when /usage cannot answer. */
+  noteRateLimit(info: SDKRateLimitInfo) {
+    if (!info.rateLimitType || typeof info.utilization !== 'number') return;
+    // A share from 0 to 1 here, unlike /usage's percentages.
+    this.seen.set(info.rateLimitType, { usedPercent: Math.min(100, Math.max(0, info.utilization * 100)), resetsAt: info.resetsAt ? new Date(info.resetsAt * (info.resetsAt < 1e12 ? 1000 : 1)).toISOString() : null, at: Date.now() });
+  }
+  private usageRead: { at: number; value: PlanUsage } | null = null;
+  private reading: Promise<PlanUsage> | null = null;
+  private seen = new Map<string, { usedPercent: number; resetsAt: string | null; at: number }>();
+  private async readUsage(): Promise<PlanUsage> {
+    const status = await this.check(), at = new Date().toISOString();
+    const usage = (state: PlanUsage['state'], message: string | null, windows: PlanWindow[] = [], plan: string | null = status.state === 'signed-in' ? status.plan ?? null : null): PlanUsage => ({ id: 'claude', name: 'Claude Code', plan, state, windows, message, checkedAt: at });
+    if (status.state === 'unavailable') return usage('unavailable', status.message ?? 'Your Claude subscription cannot be used here.');
+    if (status.state !== 'signed-in') return usage('signed-out', status.message ?? 'Sign in with your Claude subscription on the Agents page to see its limits.');
+    let answer: SDKControlGetUsageResponse | null = null;
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), USAGE_SECONDS * 1000);
+    try {
+      const stream = query({ prompt: idle(controller.signal), options: { abortController: controller, env: planEnvironment(), settingSources: [], skills: [], tools: [], stderr: () => {} } });
+      // Experimental in the Agent SDK; if it changes, the limits seen on recent turns stand in.
+      answer = await stream.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+    } catch { answer = null; } finally { clearTimeout(timer); controller.abort(); }
+    const windows = answer?.rate_limits ? planWindows(answer.rate_limits) : [];
+    if (windows.length) return usage('ready', null, windows, answer?.subscription_type ?? status.plan);
+    const recent = [...this.seen.entries()].filter(([, value]) => Date.now() - value.at < 6 * 3600_000).map(([type, value]) => ({ label: SEEN_LABELS[type] ?? type, usedPercent: value.usedPercent, resetsAt: value.resetsAt }));
+    if (recent.length) return usage('ready', 'From your last turns in ros.ai; Claude Code did not answer just now.', recent);
+    return usage('unavailable', 'Claude Code did not share your plan’s limits. A sign-in made with claude setup-token cannot read them; signing in again on the Agents page can.');
+  }
+
   loginState(): ClaudePlanLogin | null {
     if (!this.login) return null;
     const { child: _child, ...state } = this.login;
@@ -122,4 +159,22 @@ export class ClaudePlan {
 
 function terminalCommand(binary: string) {
   return `${/[\s'"]/.test(binary) ? `"${binary}"` : binary} auth login`;
+}
+
+async function* idle(signal: AbortSignal): AsyncGenerator<never> { await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true })); }
+
+const SEEN_LABELS: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly', seven_day_opus: 'Weekly Opus', seven_day_sonnet: 'Weekly Sonnet' };
+/** The windows Claude Code's /usage shows, in its order; ones it leaves empty are skipped. */
+function planWindows(limits: NonNullable<SDKControlGetUsageResponse['rate_limits']>): PlanWindow[] {
+  const rows: PlanWindow[] = [];
+  const add = (label: string, item: { utilization: number | null; resets_at: string | null } | null | undefined) => {
+    if (item && typeof item.utilization === 'number' && Number.isFinite(item.utilization)) rows.push({ label, usedPercent: Math.min(100, Math.max(0, item.utilization)), resetsAt: item.resets_at });
+  };
+  add('5-hour', limits.five_hour);
+  add('Weekly', limits.seven_day);
+  add('Weekly Opus', limits.seven_day_opus);
+  add('Weekly Sonnet', limits.seven_day_sonnet);
+  for (const item of limits.model_scoped ?? []) add(`Weekly ${item.display_name}`, item);
+  if (limits.extra_usage?.is_enabled) add('Extra usage this month', { utilization: limits.extra_usage.utilization, resets_at: null });
+  return rows;
 }
