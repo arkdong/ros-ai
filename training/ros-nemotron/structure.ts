@@ -89,7 +89,8 @@ export const keptLinks = (map: StructureMap, check?: LinkCheck): StructureMap =>
 /** The check keeps true links but not always in the right word or direction ("Collect Wi-Fi data supports Weekend
  * congestion 40% higher", where the finding uses data from the collection). So each kept pair is labelled once more from
  * scratch against what each word means: the one link a careful researcher would draw between the two blocks, or none.
- * The teacher says in a few words how the blocks relate before it labels them (thinking mode leaves its text empty). */
+ * Thinking is off, as in the other structure steps, so answers stay short and cheap; the teacher says in a few words
+ * how the blocks relate before it labels them. */
 const MEANINGS: Record<(typeof LINK_WORDS)[number], string> = {
   'supports': 'from is evidence or an argument for to',
   'contradicts': 'from is evidence or an argument against to',
