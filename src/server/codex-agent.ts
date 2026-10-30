@@ -285,6 +285,15 @@ export class CodexAgentService implements AgentRuntime {
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
     let thoughtMark = 0, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
+    // What Codex said went wrong upstream, such as a model the ChatGPT plan no longer serves; shown when the turn fails.
+    let upstreamError = '';
+    // Codex passes the provider's error body through as JSON text; its inner message is the readable part.
+    const reported = (value: unknown) => {
+      const message = object(object(value).error).message;
+      if (typeof message !== 'string') return '';
+      let inner: unknown; try { inner = object(object(JSON.parse(message)).error).message; } catch { /* Already plain text. */ }
+      return (typeof inner === 'string' && inner ? inner : message).trim().slice(0, 600);
+    };
     // On an API key: the thread's token totals before this turn and now, the searches it ran, and whether it hit its cap.
     const base = reuse ? prior.tokens ?? null : null;
     let latest: Tokens | null = base, searches = 0, capped = false, settled = !usage;
@@ -337,8 +346,9 @@ export class CodexAgentService implements AgentRuntime {
         checkCap();
       } else if (method === 'turn/completed') {
         const turn = object(params.turn), state = String(turn.status ?? 'failed');
+        if (!upstreamError) upstreamError = reported(turn);
         settlement = state === 'completed' ? 'completed' : state === 'interrupted' ? 'interrupted' : 'failed'; finish();
-      } else if (method === 'error') { event({ at: now(), type: 'progress', message: 'Codex reported an upstream error. No automatic ros.ai retry will occur.' }); }
+      } else if (method === 'error') { upstreamError = reported(params) || upstreamError; event({ at: now(), type: 'progress', message: upstreamError ? `Codex reported an upstream error: ${upstreamError}` : 'Codex reported an upstream error. No automatic ros.ai retry will occur.' }); }
     };
     rpc.onRequest = async (_id, method, params) => {
       if (method === 'item/tool/call') {
@@ -390,7 +400,7 @@ export class CodexAgentService implements AgentRuntime {
       await terminal;
       settle(settlement ?? 'unknown');
       // A turn that finished just as it reached its cap still answers.
-      if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : 'Codex turn failed. Captured requests, tool activity and reservations remain saved; no automatic retry occurred.', 503);
+      if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : `Codex turn failed${upstreamError ? `: ${upstreamError}` : '.'} Captured requests, tool activity and reservations remain saved; no automatic retry occurred.`, 503);
       if (!attempt.reply.trim()) throw new StoreError('Codex completed without a readable reply. Inspect the captured tool/progress record; no automatic retry occurred.', 503);
       attempt.status = 'completed'; save();
       return { reply: attempt.reply, sessionId: threadId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) };
