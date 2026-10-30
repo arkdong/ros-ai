@@ -17,8 +17,8 @@ import './all-blocks.css';
 const METRIC_SOURCES: { id: MetricSource; label: string; detail: string; needs: string }[] = [
   { id: 'cloud', label: 'ros.ai cloud', detail: 'Accounts, sign-ups, downloads, feedback', needs: 'Reads with your ros.ai cloud sign-in (Agents › ROS). The server must list your email in ROS_CLOUD_STATS_EMAILS.' },
   { id: 'github', label: 'GitHub', detail: 'Stars, release downloads, visitors', needs: 'Visitors and cloners need GitHub connected on the Plugins page, with push access to the repository.' },
-  { id: 'umami', label: 'Umami', detail: 'Website visitors and clicks', needs: 'Needs Umami connected on the Plugins page with an API key.' },
-  { id: 'railway', label: 'Railway', detail: 'Whether each service is up', needs: 'Needs Railway connected on the Plugins page with an account token.' },
+  { id: 'umami', label: 'Umami', detail: 'Website visitors, clicks and downloads', needs: 'Needs Umami connected on the Plugins page with an API key. Leave the website empty when the key reaches only one.' },
+  { id: 'railway', label: 'Railway', detail: 'Whether each service is up', needs: 'Needs Railway connected on the Plugins page with an account token. Leave the project empty when the token reaches only one.' },
 ];
 export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput };
 type Props = { initial?: KindId; scope: string | null; groups: { id: string; title: string }[]; folder: boolean; local: boolean; onClose: () => void; onCreate: (kind: BlockKind, options: AddOptions) => Promise<void>; onPaper: (scope: string | null, paperId: string) => Promise<void> };
@@ -33,7 +33,7 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
   const [resting, setResting] = useState(false), rest = useRef<number | null>(null), foot = useRef<HTMLDivElement>(null);
   const kinds = searchKinds(query, local), kind = blockKind(selected), frames = PREVIEW_FRAMES[selected], frame = usePreviewLoop(selected, resting);
   const text = kind.id === 'text', papers = kind.id === 'paper';
-  const ready = papers ? Boolean(paper) : kind.id === 'file' ? Boolean(file) : kind.id === 'notion' ? Boolean(notionUrl.trim()) : kind.id === 'google' ? Boolean(googleUrl.trim()) : kind.id === 'training' ? Boolean(trainingFolder.trim()) : kind.id === 'metric' ? metricSource === 'cloud' || Boolean((metricSource === 'github' ? metricRepo : metricId).trim()) : true;
+  const ready = papers ? Boolean(paper) : kind.id === 'file' ? Boolean(file) : kind.id === 'notion' ? Boolean(notionUrl.trim()) : kind.id === 'google' ? Boolean(googleUrl.trim()) : kind.id === 'training' ? Boolean(trainingFolder.trim()) : kind.id === 'metric' ? metricSource !== 'github' || Boolean(metricRepo.trim()) : true;
   useEffect(() => { if (kinds.length && !kinds.some(item => item.id === selected)) setSelected(kinds[0].id); }, [query]);
   useEffect(() => {
     if (!menu) return;
@@ -80,8 +80,8 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
             {kind.id === 'metric' && <>
               <div className="ab-field"><span>Read from</span><ChipChoice label="Read from" value={metricSource} disabled={busy} options={METRIC_SOURCES.map(item => ({ id: item.id, label: item.label, detail: item.detail, icon: item.id === 'cloud' ? <Cloud size={13}/> : <BrandLogo id={item.id} size={13}/> }))} onChange={value => { setMetricSource(value); setMetricId(''); }}/></div>
               {metricSource === 'github' && <label className="ab-field"><span>GitHub repository</span><input id="ab-metric-repo" required value={metricRepo} maxLength={300} placeholder="owner/name or its link" disabled={busy} onChange={event => setMetricRepo(event.target.value)}/></label>}
-              {metricSource === 'umami' && <label className="ab-field"><span>Umami website ID <small>or a link to it</small></span><input id="ab-metric-id" required value={metricId} maxLength={300} placeholder="Websites › Edit › Website ID" disabled={busy} onChange={event => setMetricId(event.target.value)}/></label>}
-              {metricSource === 'railway' && <label className="ab-field"><span>Railway project ID <small>or a link to it</small></span><input id="ab-metric-id" required value={metricId} maxLength={300} placeholder="Project › Settings › Project ID" disabled={busy} onChange={event => setMetricId(event.target.value)}/></label>}
+              {metricSource === 'umami' && <label className="ab-field"><span>Umami website <small>its domain, ID or link</small></span><input id="ab-metric-id" value={metricId} maxLength={300} placeholder="ros-ai.io" disabled={busy} onChange={event => setMetricId(event.target.value)}/></label>}
+              {metricSource === 'railway' && <label className="ab-field"><span>Railway project <small>its name, ID or link</small></span><input id="ab-metric-id" value={metricId} maxLength={300} placeholder="Project name" disabled={busy} onChange={event => setMetricId(event.target.value)}/></label>}
               <p className="ab-note">{METRIC_SOURCES.find(item => item.id === metricSource)!.needs}</p>
             </>}
             {papers && <p className="ab-note">{folder ? 'Its open PDF, when there is one, is saved into files/ as a File block agents read. Otherwise a Text block holds the reference.' : 'This project has no folder, so the paper becomes a Text block with its reference. Choose a folder to keep PDFs.'}</p>}
