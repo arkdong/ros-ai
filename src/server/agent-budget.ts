@@ -27,6 +27,7 @@ type Reservation = { requestId: string; projectId: string; at: string; seconds: 
 type GrantLedger = { grant: AgentGrant; fingerprint: string; usedTurns: number; reservedSeconds: number; toolCalls: number; attempts: Reservation[] };
 type ProjectUsage = CodexAllowanceResources & { reservations: Reservation[]; legacyToolUncertainty: boolean };
 type AppAllowance = { version: 1; id: string; enabled: boolean; createdAt: string; updatedAt: string; acknowledgedAt: string | null; limits: CodexAllowanceLimits; scope: CodexAllowanceScope };
+const OPEN_TURN_SECONDS = 1800, OPEN_TURN_TOOL_CALLS = 150;
 const zero = (): CodexAllowanceResources => ({ turns: 0, runtimeSeconds: 0, toolCalls: 0 });
 const noScope = (): CodexAllowanceScope => ({ nodeIds: [], artifactIds: [], capturedAt: null, projectRevision: null });
 const now = () => new Date().toISOString();
@@ -96,9 +97,10 @@ export class AgentBudget {
     const used = { turns: usage.turns, runtimeSeconds: usage.runtimeSeconds, toolCalls: usage.toolCalls };
     const notes = usage.legacyToolUncertainty ? [...limitations, 'Some older admissions lack exact tool reservations; their maximum 20 calls remain conservatively reserved.'] : limitations;
     if (!spendingLimitsOn(this.store)) {
-      // No allowance to set: turns still count, each within the largest per-turn time and tool bounds, over the whole project.
+      // No allowance to set: turns still count, each within roomy per-turn time and tool bounds, over the whole project. Newer Codex reads in
+      // scripts that call several ros_* tools at once, so 20 calls and 5 minutes cut ordinary research turns short.
       const project = this.store.getProject(projectId), stopped = this.authority.policy(projectId).stopped;
-      const limits: CodexAllowanceLimits = { maxTurns: used.turns + 100, maxRuntimeSeconds: used.runtimeSeconds + 30000, maxToolCalls: used.toolCalls + 2000, perTurnSeconds: 300, perTurnToolCalls: 20 };
+      const limits: CodexAllowanceLimits = { maxTurns: used.turns + 100, maxRuntimeSeconds: used.runtimeSeconds + 30000, maxToolCalls: used.toolCalls + 2000, perTurnSeconds: OPEN_TURN_SECONDS, perTurnToolCalls: OPEN_TURN_TOOL_CALLS };
       return { projectId, source: 'app', enabled: true, ready: !stopped, reason: stopped ? 'Project research is stopped. Resume it deliberately before new Codex work.' : 'No usage limit is set. Every turn is recorded.', grantId: app?.id ?? `unlimited-${projectId}`, limits, used, remaining: remaining(limits, used), scope: { nodeIds: project.canvas.nodes.map(node => node.id), artifactIds: this.store.listArtifacts(projectId).map(artifact => artifact.id), capturedAt: null, projectRevision: project.revision }, createdAt: app?.createdAt ?? null, updatedAt: app?.updatedAt ?? null, expiresAt: null, limitations: notes };
     }
     if (app) {
