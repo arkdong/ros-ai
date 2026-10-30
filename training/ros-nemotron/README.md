@@ -108,7 +108,7 @@ The first run gave the student 32,768 tokens and scored 12 and 15. The harness i
 
 Round 2 teaches ROS the job it does on top of any agent (`src/server/ros-layer.ts`): after an agent's turn, decide **when** to give its work the map's shape, **which blocks to group** (into a group already there or a new one, with a short title) and **which to link**, in the map's six link words (supports, contradicts, answers, uses data from, builds on, part of).
 
-How the data is made (`structure.ts`): the teacher writes well-organised maps, with groups of two to six blocks under a theme title, one to three blocks outside every group, three to ten links, and for each group the request and reply of the agent turn that added it. Each map then gives several turns, each with the map's original shape as the answer:
+How the data is made (`structure.ts`): the teacher writes well-organised maps, one per request (each with its own stage, size and style, and the titles already written in its domain, so a domain's maps differ), with groups of two to six blocks under a theme title, one to three blocks outside every group, three to ten links, and for each group the request and reply of the agent turn that added it. Each map then gives several turns, each with the map's original shape as the answer:
 
 - **regroup:** a group's blocks came loose and the group is gone; the answer is the group again, under its own title.
 - **place:** one or two blocks came out of a group that is still there; the answer puts them back.
@@ -123,7 +123,7 @@ Steps, from the repository root on Adam's Mac. `ROS_TRAINING_DATA` points at rou
 ```sh
 export ROS_TRAINING_DATA=~/code/ros-nemotron-run/training/ros-nemotron/data
 npx tsx training/ros-nemotron/run.ts structure-smoke                      # offline on a hand-written map; spends nothing
-npx tsx training/ros-nemotron/run.ts structure-maps --per-domain=8 --eval-per-domain=3 --max-usd=36
+npx tsx training/ros-nemotron/run.ts structure-maps --per-domain=8 --eval-per-domain=3 --max-usd=36   # resumable; writes only what is missing
 npx tsx training/ros-nemotron/run.ts structure-export                     # structure/ and round2/train.jsonl, round2/val.jsonl
 npx tsx training/ros-nemotron/run.ts structure-eval --model=rules --label=rules
 llama-server -m <model>.gguf --jinja --reasoning-budget 0 -c 32768 --parallel 2 --port 4339 --alias ros-local
@@ -140,4 +140,5 @@ Targets for the new model: valid at least 98%, group F1 at least 0.8, left alone
 - **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns were refused before they reached the model. Fixed in #67: loopback servers now estimate input as bytes/3.
 - **Chat template.** `train_lora.py` labels each assistant turn by rendering the conversation turn by turn and stops if more than 5% of samples do not render that way. The 27 October pilot skipped none.
 - **Mamba kernels.** Nemotron 3 Nano 4B is a hybrid Mamba-2 model; `mamba-ssm` and `causal-conv1d` must install on the VM. `setup-vm.sh` pins versions with prebuilt wheels and checks the import first.
+- **Token Factory errors.** Now and then Token Factory answers with its own error as the reply text ("[ERROR: Agent failed ... timed out after 90 seconds]"), sometimes within a second. The adapter treats that as a failed request, `ask` tries again after 4 to 64 seconds, and a long answer (four maps at once) is split into one per request.
 - **A simulated web.** Facts in search results are plausible but written by the teacher. The student learns the method (quote what a tool returned, date it, name gaps), not the facts.

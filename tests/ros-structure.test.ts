@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import test from 'node:test';
 import { landingPlan, type LandingPlan } from '../src/server/ros-layer.js';
 import { seeded } from '../training/ros-nemotron/generate.js';
-import { SMOKE_MAP, answerFor, askFor, makeCases, scoreCase, summarise, tidyMap, toStructureSample } from '../training/ros-nemotron/structure.js';
+import { ChatAdapter } from '../training/ros-nemotron/lib.js';
+import { SMOKE_MAP, answerFor, askFor, makeCases, makeMap, scoreCase, summarise, tidyMap, toStructureSample, uniqueMaps } from '../training/ros-nemotron/structure.js';
 
 // Round 2's structure family: well-organised maps lose their shape, and ROS learns to give it back, or to change nothing.
 
@@ -69,4 +72,39 @@ test('the scores: the original shape is full marks, an empty answer only gets th
   const links = cases.find(item => item.kind === 'links')!, flipped = links.target.links.map(link => ({ from: link.to, to: link.from, label: 'supports' }));
   const score = scoreCase(links, { place: [], newGroups: [], links: flipped });
   assert.deepEqual([score.link.tp, score.link.direction], [links.target.links.length, 0]);
+});
+
+test('one map per request: Token Factory’s error text is tried again, a bare map is taken, and the request names the titles before it', async () => {
+  const bare = {
+    title: 'Shade and street heat',
+    groups: [{ slug: 'trees', title: 'Tree cover' }],
+    blocks: [
+      { slug: 'q', title: 'Does shade cool streets?', text: 'The question.', label: 'question' },
+      { slug: 'canopy', title: 'Tree canopy map', text: 'RIVM, 2022.', group: 'trees' },
+      { slug: 'logs', title: 'Street temperature logs', text: 'Two summers.', group: 'trees' },
+      { slug: 'mail', title: 'Ask the municipality', text: 'Mail them.' },
+      { slug: 'deaths', title: 'Heat deaths in 2019', text: 'CBS.' },
+    ],
+    links: [{ from: 'logs', to: 'q', word: 'answers' }],
+  };
+  const replies = ['[ERROR: Agent failed: request timed out after 90 seconds]', JSON.stringify(bare)], asked: string[] = [];
+  const server = createServer((request, response) => {
+    let body = '';
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      asked.push(JSON.parse(body).messages.at(-1).content);
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: replies.shift() } }], usage: { prompt_tokens: 10, completion_tokens: 10 } }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const model = new ChatAdapter({ base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, key: 'test', model: 'teacher', contextTokens: 128_000, thinking: false, purpose: 'structure-maps', usdPerMillion: { input: 0, output: 0 } });
+    const map = await makeMap(model, 'urban heat', 0, ['Heat in Amsterdam']);
+    assert.equal(map?.title, 'Shade and street heat');
+    assert.equal(asked.length, 2);
+    assert.match(asked[1], /^Write one map in the domain: urban heat\. It .+\nTake another angle than the maps already written in this domain: Heat in Amsterdam\.$/su);
+    // A title the domain already has, in other case or punctuation, counts once; the same title in another domain is its own map.
+    assert.equal(uniqueMaps([map!, { ...map!, title: 'shade and street-heat!' }, { ...map!, domain: 'noise' }]).length, 2);
+  } finally { server.close(); }
 });

@@ -10,7 +10,7 @@
  *   eval       a model under test works the held-out tasks         --student-url=http://127.0.0.1:4319/v1 --label=baseline
  *   smoke      the whole path offline with a scripted teacher; spends nothing
  * Round 2's structure family (structure.ts): when, what to group and what to link after an agent's turn
- *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --max-usd=2
+ *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --concurrency=6 --max-usd=2
  *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure)
  *   structure-eval     scores a model on the held-out maps         --student-url=... --label=x, or --model=rules|teacher
  *   structure-smoke    the structure path offline on a hand-written map; spends nothing */
@@ -33,7 +33,7 @@ import { web } from './world.js';
 import { check } from './check.js';
 import { isValidation, toSample } from './export.js';
 import { scriptedTeacher, scriptedWeb } from './smoke.js';
-import { SMOKE_MAP, answerFor, askFor, evaluate, makeCases, makeMaps, scoreCase, summarise, toStructureSample, type StructureCase, type StructureMap } from './structure.js';
+import { SMOKE_MAP, answerFor, askFor, evaluate, makeCases, makeMap, mapKey, scoreCase, summarise, toStructureSample, uniqueMaps, type StructureCase, type StructureMap } from './structure.js';
 import { landingPlan } from '../../src/server/ros-layer.js';
 
 const step = process.argv[2];
@@ -188,14 +188,32 @@ if (step === 'snapshot') {
   if (samples.length !== tasks.length) process.exitCode = 1;
 } else if (step === 'structure-maps') {
   const ledger = new Ledger(Number(arg('max-usd', '2'))), model = teacher(ledger, 'structure-maps', false);
+  let failing = 0;
   for (const [domains, file, count] of [[TRAIN_DOMAINS, files.maps(), Number(arg('per-domain', '8'))], [EVAL_DOMAINS, files.evalMaps(), Number(arg('eval-per-domain', '3'))]] as const) {
-    const have = new Map<string, number>();
-    for (const map of readJsonl<StructureMap>(file)) have.set(map.domain, (have.get(map.domain) ?? 0) + 1);
-    await pool(domains.filter(domain => (have.get(domain) ?? 0) < count), 4, async domain => { const maps = await makeMaps(model, domain, count - (have.get(domain) ?? 0)); maps.forEach(map => appendJsonl(file, map)); console.log(`maps: ${domain} (${maps.length})`); });
+    const written = readJsonl<StructureMap>(file), seen = new Set(written.map(mapKey));
+    // A domain's maps one after another, so each request knows the titles before it, and domains side by side. Every map
+    // is saved as it comes; one that fails is left for the next run, which writes only what is missing.
+    await pool(domains, Number(arg('concurrency', '6')), async domain => {
+      const titles = written.filter(map => map.domain === domain).map(map => map.title);
+      for (let index = titles.length, tries = 0; titles.length < count && tries < count * 2; index++, tries++) {
+        const map = await makeMap(model, domain, index, titles).catch(error => {
+          const message = (error as Error).message;
+          if (message.startsWith('Spend cap')) throw error;
+          if (++failing >= 5) throw new Error(`Five maps in a row failed, so the run stops. Last: ${message}`);
+          console.warn(`maps: ${domain}: ${message.slice(0, 200)}`);
+          return null;
+        });
+        if (!map) continue;
+        failing = 0;
+        if (seen.has(mapKey(map))) continue;
+        seen.add(mapKey(map)); appendJsonl(file, map); titles.push(map.title);
+      }
+      console.log(`maps: ${domain} (${titles.length} of ${count})`);
+    });
   }
   console.log(`${readJsonl(files.maps()).length} training maps, ${readJsonl(files.evalMaps()).length} evaluation maps. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
 } else if (step === 'structure-export') {
-  const cases = readJsonl<StructureMap>(files.maps()).flatMap(casesOf), held = readJsonl<StructureMap>(files.evalMaps()).flatMap(casesOf);
+  const cases = uniqueMaps(readJsonl<StructureMap>(files.maps())).flatMap(casesOf), held = uniqueMaps(readJsonl<StructureMap>(files.evalMaps())).flatMap(casesOf);
   const rows = cases.flatMap(item => { const sample = toStructureSample(item); return sample ? [{ item, sample }] : []; });
   for (const [split, keep] of [['train', false], ['val', true]] as const) writeFileSync(path('structure', `${split}.jsonl`), rows.filter(({ item }) => isValidation(item.mapId) === keep).map(({ sample }) => JSON.stringify(sample)).join('\n') + '\n');
   writeFileSync(files.evalCases(), held.map(item => JSON.stringify(item)).join('\n') + '\n');

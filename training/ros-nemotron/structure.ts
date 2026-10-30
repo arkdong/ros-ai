@@ -40,15 +40,30 @@ Return JSON {"maps":[{"title","blocks":[{"slug","title","text","label"?,"group"?
 - request: what the researcher typed to an AI agent that then added this group's blocks, as people write: short or long, sometimes vague, now and then in Dutch. reply: the agent's answer after adding them, one to three sentences.
 - Maps differ in stage (just started, well along), size and style. Slugs are short kebab-case and unique within a map.`;
 
-/** Maps for one domain, written by the teacher four at a time and tidied; the ones that do not hold up are dropped. */
-export async function makeMaps(model: ChatAdapter, domain: string, count: number): Promise<StructureMap[]> {
-  const maps: StructureMap[] = [];
-  for (let left = count; left > 0; left -= 4) {
-    const written = await ask<{ maps?: unknown[] }>(model, MAPS, `Write ${Math.min(4, left)} different maps in the domain: ${domain}. Make them differ in stage, size and style.`, 14_000);
-    for (const raw of written?.maps ?? []) { const map = tidyMap(raw, domain); if (map) maps.push(map); }
-  }
-  return maps;
+/** Each request's stage, size and style, so the maps of a domain differ although each request writes one. */
+const BRIEFS = [
+  'It has just started: 8 to 10 blocks in two groups, short notes.',
+  'It is well along: 16 to 20 blocks in four or five groups, careful notes with sources and numbers.',
+  'It is halfway: 11 to 14 blocks in three groups, some notes terse and some careful.',
+  'It is wrapping up: 12 to 16 blocks in three or four groups, with a decision and a draft.',
+  'It is early and a little messy: 9 to 12 blocks in two or three groups, with open questions and doubts.',
+  'It is a careful review: 14 to 18 blocks in four groups, each claim with its source and date.',
+  'It is a quick exploration: 8 to 11 blocks in two or three groups, mostly findings and to-dos.',
+  'It is a plan in progress: 12 to 15 blocks in three or four groups, with tasks, a plan and a report.',
+];
+
+/** One map, in a request of its own, which keeps each answer well inside Token Factory's 90-second limit. The request
+ * carries the domain's next brief and the titles already written there; asked for one map, the teacher often returns it
+ * bare, without the "maps" list. */
+export async function makeMap(model: ChatAdapter, domain: string, index: number, written: string[]): Promise<StructureMap | null> {
+  const brief = BRIEFS[(parseInt(createHash('md5').update(domain).digest('hex').slice(0, 8), 16) + index) % BRIEFS.length];
+  const answer = await ask<{ maps?: unknown[] }>(model, MAPS, `Write one map in the domain: ${domain}. ${brief}${written.length ? `\nTake another angle than the maps already written in this domain: ${written.join('; ')}.` : ''}`, 6_000);
+  return tidyMap(Array.isArray(answer?.maps) ? answer.maps[0] : answer, domain);
 }
+
+/** A domain's maps count once per title. */
+export const mapKey = (map: Pick<StructureMap, 'domain' | 'title'>) => `${map.domain}\u0000${map.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`;
+export const uniqueMaps = (maps: StructureMap[]) => { const seen = new Set<string>(); return maps.filter(map => !seen.has(mapKey(map)) && Boolean(seen.add(mapKey(map)))); };
 
 /** A written map as the pipeline needs it: unique slugs, groups of two or more blocks, labels from the list, and links
  * between blocks with one of the map's words, one per pair. Null when fewer than five blocks or no group are left. */
