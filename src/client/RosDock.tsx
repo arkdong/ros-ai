@@ -85,7 +85,7 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
       <input ref={input} aria-label="Ask ROS" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (!active) (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
-        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
+        <RosModelMenu state={state} detail={detail} threadId={threadId} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={() => onOpen('half')}/>
         <span className="ros-footer-spacer"/>
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}

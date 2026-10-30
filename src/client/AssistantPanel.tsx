@@ -149,7 +149,7 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
       {skills.menu}
       <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
-        <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what ROS runs with',at:new Date().toISOString(),status:'failed',error})}/>
+        <RosModelMenu state={state} detail={detail} threadId={threadId} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what ROS runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
         <span className="ros-footer-spacer"/>
         {active ? <StopButton armed={stopArmed} onStop={stop}/>

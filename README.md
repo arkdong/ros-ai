@@ -10,7 +10,7 @@ Your notes, code, data, files, papers and Notion pages sit on the canvas as bloc
 
 ## Install
 
-**Mac app:** download it for [Apple silicon](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg) or [Intel](https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so the first open says macOS could not verify it. Click Done, then open System Settings › Privacy & Security and choose Open Anyway. After that it opens as usual.
+**Mac app:** download it for [Apple silicon](https://ros-ai.io/download/ros.ai-mac-arm64.dmg) or [Intel](https://ros-ai.io/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so the first open says macOS could not verify it. Click Done, then open System Settings › Privacy & Security and choose Open Anyway. After that it opens as usual.
 
 **Terminal**, on a Mac, Linux or Windows under WSL:
 
