@@ -1,7 +1,7 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, Focus, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, X } from 'lucide-react';
-import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantFocus, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
 import { RichText, time } from './Content';
@@ -30,9 +30,9 @@ import './assistant-compact.css';
 const devBuild = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
 
 type Props = {
-  state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; loadError?:string;
+  state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; busy: boolean; loadError?:string;
   onSend: (message: string, suggest?: PluginId[]) => Promise<boolean>; onCancel: (turnId: string) => Promise<unknown>;
-  onClearFocus: () => void; onReference: (reference: AssistantReference) => void;
+  onReference: (reference: AssistantReference) => void;
   onRefresh: () => Promise<unknown>; onConnections: () => void; onPermissions: () => void; onClose: () => void; prefill: string; onPrefillUsed: () => void;
   onDecision: (actionId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
   onProposal: (proposalId: string, decision: 'accept' | 'dismiss') => Promise<unknown>;
@@ -50,7 +50,7 @@ type Props = {
   onRenameThread: (threadId: string, title: string) => Promise<unknown>; onDeleteThread: (threadId: string) => Promise<unknown>;
 };
 
-export function AssistantPanel({ state, detail, policy, focus, busy, loadError, onSend, onCancel, onClearFocus, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onProposals, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin, threadId, onThread, onRenameThread, onDeleteThread }: Props) {
+export function AssistantPanel({ state, detail, policy, busy, loadError, onSend, onCancel, onReference: navigateReference, onRefresh, onConnections, onPermissions, onClose, prefill, onPrefillUsed, onDecision, onProposal, onProposals, onInspectAction, mode = 'full', onMode, onSkills, onOpenPlugin, threadId, onThread, onRenameThread, onDeleteThread }: Props) {
   const [message, setMessage] = useDraft(`assistant-draft:${detail.project.id}:${threadId ?? 'new'}`);
   const skills = useSkillMenu(message, setMessage, onSkills);
   const [previousOpen,setPreviousOpen]=useState(!state?.turns.length);
@@ -69,9 +69,6 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
     return () => window.removeEventListener('keydown', key);
   }, [onClose]);
   const scroller = useRef<HTMLDivElement>(null); const textarea = useRef<HTMLTextAreaElement>(null); const followConversation=useRef(true);
-  const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
-  const focusedArtifact = detail.artifacts.find(artifact => artifact.id === focus.artifactId);
-  const blocks = detail.project.canvas.nodes.length;
   // The panel shows one thread: its turns and, from before turns existed, its saved messages.
   const allTurns = [...(state?.turns || [])].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)); const turns = threadId ? allTurns.filter(turn => turn.threadId === threadId) : []; const active = turns.findLast(turn => turn.status === 'running');
   const savedMessages = (state?.messages || []).filter(item => threadId !== null && item.threadId === threadId);
@@ -154,10 +151,6 @@ export function AssistantPanel({ state, detail, policy, focus, busy, loadError, 
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what ROS runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
-        <span className="ros-footer-break" aria-hidden="true"/>
-        {focusedNode || focusedArtifact
-          ? <span className="ros-context focused" title={`ROS is looking at ${focusedArtifact?.title || focusedNode?.title}`}><Focus size={12}/><span>{focusedArtifact?.title || focusedNode?.title}</span>{focusedNode && <button type="button" aria-label="Show ROS the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button>}</span>
-          : <span className="ros-context" title="Select a block to point ROS at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
         {active ? <StopButton armed={stopArmed} onStop={stop}/>
           : <button className="ros-send" data-testid="send-project-message" aria-label="Send to ROS" title={blocker?.summary||'Send to ROS'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
@@ -192,7 +185,6 @@ function ReferenceLinks({ references, onReference }: { references: AssistantRefe
 }
 
 function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, onInspectAction, onAnswer, person, onMemory, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
-  const focus = detail.project.canvas.nodes.find(node => node.id === turn.focus.nodeId);
   // The person's own Claude Code or Codex, connected over MCP: there is no message from them here.
   const outside = turn.source === 'outside-agent';
   // Admission failures retain one persistent alert. The stored reply/error
@@ -210,7 +202,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
   });
   return <section className="assistant-turn" data-turn-id={turn.id}>
-    {outside ? null : <article className="assistant-message user">{focus && <span className="turn-focus" title={focus.title}><Focus size={11}/>{focus.title}</span>}<RichText text={turn.userMessage}/></article>}
+    {outside ? null : <article className="assistant-message user"><RichText text={turn.userMessage}/></article>}
     <article className="assistant-message response">{outside&&<div className="message-meta"><span>{`Your ${turn.model ?? 'own agent'}`}</span><span className="response-source">Working from outside ros.ai</span></div>}{agentNode && <AgentWorkSummary node={agentNode} turn={turn} detail={detail} onReference={onReference}/>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
       {turn.warning&&<details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Reply saved · proposal details</span></summary><p>{turn.warning}</p><p>Unvalidated actions were not applied.</p></details>}
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
