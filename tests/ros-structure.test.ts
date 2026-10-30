@@ -5,7 +5,7 @@ import test from 'node:test';
 import { landingPlan, type LandingPlan } from '../src/server/ros-layer.js';
 import { seeded } from '../training/ros-nemotron/generate.js';
 import { ChatAdapter } from '../training/ros-nemotron/lib.js';
-import { SMOKE_MAP, answerFor, askFor, checkLinks, keptLinks, makeCases, makeMap, scoreCase, summarise, tidyMap, toStructureSample, uniqueMaps } from '../training/ros-nemotron/structure.js';
+import { SMOKE_MAP, answerFor, askFor, checkLinks, keptLinks, labelLinks, makeCases, makeMap, scoreCase, summarise, tidyMap, toStructureSample, uniqueMaps } from '../training/ros-nemotron/structure.js';
 
 // Round 2's structure family: well-organised maps lose their shape, and ROS learns to give it back, or to change nothing.
 
@@ -131,5 +131,24 @@ test('a link check drops the links the teacher calls a stretch, matched by slugs
     // Slugs the teacher got wrong: its answers count by position when there is one per link.
     assert.deepEqual((await checkLinks(teacher.model, SMOKE_MAP)).links.map(link => link.keep), [true, false, true, true]);
     assert.equal(keptLinks(SMOKE_MAP).links.length, SMOKE_MAP.links.length);
+  } finally { teacher.close(); }
+});
+
+test('labelling a pair afresh can turn its link round, change its word or drop it; an answer off the list keeps the link', async () => {
+  const teacher = await stubTeacher([JSON.stringify({ links: [
+    { pair: 2, from: 'meta', word: 'Uses data from', to: 'nap' },
+    { pair: 1, from: 'meta', word: 'answers', to: 'question' },
+    { pair: 3, none: true },
+    { pair: 4, from: 'approval', word: 'motivates', to: 'dmp' },
+  ] })]);
+  try {
+    const labels = await labelLinks(teacher.model, SMOKE_MAP);
+    assert.equal(labels.mapId, SMOKE_MAP.id);
+    assert.deepEqual(labels.links, [
+      { from: 'meta', to: 'question', word: 'answers' },
+      { from: 'meta', to: 'nap', word: 'uses data from' },
+      { from: 'approval', to: 'dmp', word: 'builds on' },
+    ]);
+    assert.match(teacher.asked[0], /\nPairs:\n1\. meta “[^”]+” and question “/u);
   } finally { teacher.close(); }
 });

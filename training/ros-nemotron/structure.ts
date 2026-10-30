@@ -86,6 +86,43 @@ export async function checkLinks(model: ChatAdapter, map: StructureMap): Promise
 /** The map with only the links its check kept; its id stays, so its split and its cases' seed do too. */
 export const keptLinks = (map: StructureMap, check?: LinkCheck): StructureMap => check ? { ...map, links: map.links.filter(link => check.links.find(item => item.from === link.from && item.to === link.to)?.keep !== false) } : map;
 
+/** The check keeps true links but not always in the right word or direction ("Collect Wi-Fi data supports Weekend
+ * congestion 40% higher", where the finding uses data from the collection). So each kept pair is labelled once more from
+ * scratch, by the teacher thinking it through against what each word means: the one link a careful researcher would
+ * draw between the two blocks, or none. */
+const MEANINGS: Record<(typeof LINK_WORDS)[number], string> = {
+  'supports': 'from is evidence or an argument for to',
+  'contradicts': 'from is evidence or an argument against to',
+  'answers': 'from answers the question or request in to',
+  'uses data from': 'from (a finding, analysis or chart) draws on the data or source in to',
+  'builds on': 'from extends, refines or takes forward to (a later draft, a next step, a sharper idea)',
+  'part of': 'from is a piece of to (a task of a plan, a section of a draft, an item of a list)',
+};
+const LABEL = `You label the links on a ros.ai research map before it is used to teach an assistant how to link blocks. A link is one sentence "<from> <word> <to>" with one of these words:
+${LINK_WORDS.map(word => `- ${word}: ${MEANINGS[word]}.`).join('\n')}
+For each pair of blocks below, write the one link a careful researcher would draw between them, in the right direction with the right word, or none when no word fits plainly.
+Return JSON {"links":[{"pair","from","word","to"}]}, one entry per pair in the order given, with "from" and "to" as the slugs given; for none, {"pair","none":true}.`;
+
+export type LinkLabels = { mapId: string; links: StructureMap['links'] };
+
+/** A map's links labelled once more, by pair number or else by position. A pair the teacher answers none for loses its
+ * link; one it does not answer for, or answers with other blocks or a word off the list, keeps it as it was. */
+export async function labelLinks(model: ChatAdapter, map: StructureMap): Promise<LinkLabels> {
+  const title = (slug: string) => map.blocks.find(block => block.slug === slug)!.title;
+  const ends = map.blocks.filter(block => map.links.some(link => link.from === block.slug || link.to === block.slug));
+  const answer = await ask<{ links?: { pair?: unknown; from?: unknown; word?: unknown; to?: unknown; none?: unknown }[] }>(model, LABEL, `Map: ${map.title} (${map.domain})\n\nBlocks:\n${ends.map(block => `${block.slug}: ${block.title}\n${block.text}`).join('\n\n')}\n\nPairs:\n${map.links.map((link, index) => `${index + 1}. ${link.from} “${title(link.from)}” and ${link.to} “${title(link.to)}”`).join('\n')}`, 6_000);
+  const verdicts = Array.isArray(answer?.links) ? answer.links : [];
+  return {
+    mapId: map.id,
+    links: map.links.flatMap((link, index) => {
+      const verdict = verdicts.find(item => Number(item?.pair) === index + 1) ?? (verdicts.length === map.links.length ? verdicts[index] : undefined);
+      if (verdict?.none === true) return [];
+      const word = typeof verdict?.word === 'string' ? verdict.word.toLowerCase().replace(/\s+/gu, ' ').trim() : '', pair = [link.from, link.to];
+      return verdict && WORDS.has(word) && verdict.from !== verdict.to && pair.includes(String(verdict.from)) && pair.includes(String(verdict.to)) ? [{ from: String(verdict.from), to: String(verdict.to), word }] : [link];
+    }),
+  };
+}
+
 /** A domain's maps count once per title. */
 export const mapKey = (map: Pick<StructureMap, 'domain' | 'title'>) => `${map.domain}\u0000${map.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`;
 export const uniqueMaps = (maps: StructureMap[]) => { const seen = new Set<string>(); return maps.filter(map => !seen.has(mapKey(map)) && Boolean(seen.add(mapKey(map)))); };
