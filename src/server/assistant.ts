@@ -12,9 +12,10 @@ import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
 import type {ModelMessage,Mutation,ProjectDetail,Run} from '../shared/types.js';
-import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
+import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type InAppAgent,type ThreadChoice,IN_APP_AGENTS,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
 import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
+import {isEffortLevel} from '../shared/agent-models.js';
 import {memoryLineSchema,type PersonalMemory} from './personal-memory.js';
 import type {SkillLibrary} from './skills.js';
 import type {ModelSelection} from '../shared/model-settings.js';
@@ -142,6 +143,35 @@ export class AssistantService {
     // A running turn keeps what it started with; the change applies to the next turn in any thread.
     this.store.saveRecord('assistant-backend',projectId,projectId,{backend});this.store.rememberRosChoice({backend});return this.state(projectId);
   }
+  /** Where Claude Code's or Codex's model and effort are kept, for every project, and the keys for the way it is paid. */
+  private static agentModelKeys(agent:InAppAgent){const {agent:runs,billing}=IN_APP_AGENTS[agent];return {namespace:`${runs}-agent-settings`,...(billing==='plan'?{model:'planModel',effort:'planEffort'}:{model:'model',effort:'effort'})} as const;}
+  /** What ROS runs with now in this project: the agent or way, the project model and the agent's own model and effort. */
+  private currentChoice(projectId:string):ThreadChoice{
+    const backend=this.backend(projectId),agent=inAppAgent(backend)?backend as InAppAgent:null;
+    let agentModel:ThreadChoice['agentModel'];
+    if(agent){const keys=AssistantService.agentModelKeys(agent),saved=this.store.globalRecord<Record<string,unknown>>(keys.namespace,'settings');const model=saved?.[keys.model],effort=saved?.[keys.effort];if(typeof model==='string')agentModel={model,effort:isEffortLevel(effort)?effort:null};}
+    return {backend,model:this.execution.modelSelection(projectId),...(agentModel?{agentModel}:{})};
+  }
+  /** The thread keeps what ROS runs with now: when a message goes into it, and when the person changes the choice while it is open. */
+  rememberChoice(projectId:string,threadId:string){
+    const thread=this.getThread(projectId,threadId);
+    this.store.saveRecord('assistant-thread',thread.id,projectId,{...thread,choice:this.currentChoice(projectId)});
+    return this.state(projectId);
+  }
+  /** Opening a thread puts back what it last ran with, so it goes on with the same agent and model. A model no longer on offer is
+   * passed over and the project's current one stays. */
+  restoreChoice(projectId:string,threadId:string){
+    const {choice}=this.getThread(projectId,threadId);
+    if(!choice)return this.state(projectId);
+    const backend=backendSchema.safeParse(choice.backend);
+    if(backend.success&&backend.data!==this.backend(projectId))this.store.saveRecord('assistant-backend',projectId,projectId,{backend:backend.data});
+    const model=this.execution.modelSelection(projectId);
+    if(choice.model&&(choice.model.provider!==model.provider||choice.model.model!==model.model)){try{this.execution.models.update(projectId,{nodeId:null,selection:choice.model});}catch{/* No longer offered. */}}
+    const agent=backend.success&&inAppAgent(backend.data)?backend.data as InAppAgent:null;
+    if(agent&&choice.agentModel){const keys=AssistantService.agentModelKeys(agent),saved=this.store.globalRecord<Record<string,unknown>>(keys.namespace,'settings')??{};
+      if(saved[keys.model]!==choice.agentModel.model||(saved[keys.effort]??null)!==choice.agentModel.effort)this.store.saveGlobalRecord(keys.namespace,'settings',{...saved,[keys.model]:choice.agentModel.model,[keys.effort]:choice.agentModel.effort??undefined});}
+    return this.state(projectId);
+  }
   /** The project's own choice, else the last one made in any project, else ROS on its model. */
   private backend(projectId:string):AssistantBackend{
     const own=this.store.record<{backend:AssistantBackend}>('assistant-backend',projectId)?.backend;
@@ -188,7 +218,7 @@ export class AssistantService {
       const own=turns.filter(turn=>turn.threadId===thread.id),running=own.findLast(turn=>turn.status==='running'),last=own.findLast(turn=>turn.status!=='running');
       const waiting=own.flatMap(turn=>turn.actions).filter(action=>action.status==='pending'&&(!action.proposalId||reviewable.has(action.proposalId))).length;
       const updatedAt=own.reduce((latest,turn)=>turn.updatedAt>latest?turn.updatedAt:latest,thread.updatedAt);
-      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{})};
+      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{}),...(thread.choice?{choice:thread.choice}:{})};
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     return {projectId,backend,memory,outline,turns,threads:summaries,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
   }
@@ -219,7 +249,7 @@ export class AssistantService {
       for(const earlier of this.turns(projectId))if(earlier.suggested?.status==='open'&&earlier.suggested.plugins.some(item=>suggested.some(match=>match.id===item.id)))this.amend({...earlier,suggested:{...earlier.suggested,status:'moved'}});
       turn.suggested={by:'ros.ai',plugins:suggested,status:'open'};
     }
-    this.save(turn);this.touchThread(thread);
+    this.save(turn);this.touchThread(thread);this.rememberChoice(projectId,thread.id);
     if(stopped){this.save({...turn,status:'failed',reply:'Project research is stopped. Open Permissions and resume deliberately before continuing.',error:'Project research is stopped. No model or tool was called.'});return done();}
     // A pass still asking Local ROS would hold the one request it serves at a time; ros.ai's own rules finish it instead.
     for(const pass of this.layering.values())pass.hurry.abort();
@@ -500,7 +530,7 @@ export class AssistantService {
     try{
       let turn=this.getTurn(projectId,turnId);
       if(layer.on())this.save({...turn,layer:{state:'running'}});
-      const result=await layer.land({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source,...(turn.model?{agent:turn.model}:{}),hint:glanceText(this.hint(turn,this.store.detail(projectId)))},controller.signal,()=>this.turns(projectId).some(item=>item.status==='running'&&item.id!==turnId),hurry.signal);
+      const result=await layer.land({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source,...(turn.model?{agent:turn.model}:{}),hint:glanceText(this.hint(turn,this.store.detail(projectId)))},controller.signal,()=>this.holdsChanges(projectId,turnId),hurry.signal,()=>{const current=this.getTurn(projectId,turnId);if(current.layer?.state==='running')this.save({...current,layer:{state:'running',note:'ROS waits for the other thread to finish, so the changes it has waiting for you stay valid.'}});});
       if(!result)return;
       turn=this.getTurn(projectId,turnId);
       this.save({...turn,layer:result.layer,actions:result.action?[...turn.actions,result.action]:turn.actions,events:result.event?[...turn.events,{at:now(),message:result.event}]:turn.events});
@@ -508,6 +538,15 @@ export class AssistantService {
       const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
       if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});
     }finally{this.layering.delete(turnId);}
+  }
+  /** Another thread of the project is still working and has changes waiting for the person on the map as it is now.
+   * ROS's row, once accepted, moves the map on and would make those stale, so ROS waits for them; a thread whose changes
+   * land at once, or that has proposed nothing yet, does not hold ROS up. */
+  private holdsChanges(projectId:string,turnId:string){
+    const others=this.turns(projectId).filter(item=>item.status==='running'&&item.id!==turnId);
+    if(!others.length)return false;
+    const pending=(id:string)=>{try{return this.store.proposalStatus(projectId,id)==='pending';}catch{return false;}};
+    return others.some(item=>item.actions.some(action=>action.by!=='ros'&&action.proposalId&&pending(action.proposalId)));
   }
   /** An agent working from outside ros.ai proposed a change: ROS arranges the turn once the agent has been quiet a while. */
   arrangeLater(projectId:string,turnId:string){
@@ -605,6 +644,8 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.post('/api/projects/:id/assistant/backend',(req,res)=>res.json(service.setBackend(String(req.params.id),req.body)));
   app.post('/api/projects/:id/assistant/messages',(req,res)=>res.status(202).json(service.start(String(req.params.id),req.body)));
   app.post('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.renameThread(String(req.params.id),String(req.params.threadId),req.body)));
+  app.post('/api/projects/:id/assistant/threads/:threadId/choice',(req,res)=>res.json(service.rememberChoice(String(req.params.id),String(req.params.threadId))));
+  app.post('/api/projects/:id/assistant/threads/:threadId/restore',(req,res)=>res.json(service.restoreChoice(String(req.params.id),String(req.params.threadId))));
   app.delete('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.deleteThread(String(req.params.id),String(req.params.threadId))));
   if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));

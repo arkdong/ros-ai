@@ -25,22 +25,22 @@ export function githubRepo(text: string) {
   return `${match[1]}/${match[2]}`;
 }
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu;
-/** An id pasted alone or inside a link: Umami's /websites/<id>/…, Railway's /project/<id>/…. */
-function idIn(text: string, what: string) {
-  const match = UUID.exec(text.trim());
-  if (!match) throw new StoreError(`Give the ${what}, or a link that holds it.`, 400);
-  return match[0].toLowerCase();
+type Choice = { id: string; name: string; domain?: string };
+/** A domain or a link as its bare host (ros-ai.io); a name as it is, in lower case. */
+const plain = (text: string) => { const lower = text.trim().toLowerCase(); return /^(?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#]|$)/u.test(lower) ? lower.replace(/^https?:\/\//u, '').replace(/^www\./u, '').replace(/[/:?#].*$/u, '') : lower; };
+/** The website or project someone means among those a key reaches: by its domain or name, a part of one, or the only one. */
+function choose(given: string, choices: Choice[], what: 'website' | 'project', where: 'Umami' | 'Railway'): string {
+  const wanted = plain(given), names = (choice: Choice) => [choice.domain, choice.name].flatMap(name => name ? [plain(name)] : []);
+  const exact = wanted ? choices.filter(choice => names(choice).includes(wanted)) : choices;
+  const found = exact.length || !wanted ? exact : choices.filter(choice => names(choice).some(name => name.includes(wanted)));
+  if (found.length === 1) return found[0].id;
+  const key = where === 'Umami' ? 'API key' : 'token';
+  if (!choices.length) throw new StoreError(`${where} lists no ${what}s for this ${key}. Give the ${what}'s ID instead.`, 404);
+  const list = choices.slice(0, 12).map(choice => `${choice.domain || choice.name} (${choice.id})`).join(', ');
+  throw new StoreError(`${wanted && !found.length ? `No ${what} matches "${given.trim().slice(0, 80)}". ` : ''}The ${where} ${key} reaches ${choices.length} ${what}${choices.length === 1 ? '' : 's'}: ${list}. Name one by its ${what === 'website' ? 'domain' : 'name'} or ID.`, 409);
 }
-/** The view a person typed into the Add block window, checked. */
-export function metricViewFrom(body: { source?: unknown; repo?: unknown; website?: unknown; project?: unknown }): MetricView {
-  switch (body.source) {
-    case 'cloud': return { source: 'cloud' };
-    case 'umami': return metricViewSchema.parse({ source: 'umami', website: idIn(String(body.website ?? ''), 'Umami website ID (Websites › Edit › Website ID)') }) as MetricView;
-    case 'railway': return metricViewSchema.parse({ source: 'railway', project: idIn(String(body.project ?? ''), 'Railway project ID (Project › Settings › Project ID)') }) as MetricView;
-    default: return metricViewSchema.parse({ source: 'github', repo: githubRepo(String(body.repo ?? '')) }) as MetricView;
-  }
-}
-const viewKey = (view: MetricView) => view.source === 'github' ? `github:${view.repo.toLowerCase()}` : view.source === 'umami' ? `umami:${view.website}` : view.source === 'railway' ? `railway:${view.project}` : 'cloud';
+/** Which Metrics block is which: one per repository, website, project, or ros.ai cloud. */
+export const metricViewKey = (view: MetricView) => view.source === 'github' ? `github:${view.repo.toLowerCase()}` : view.source === 'umami' ? `umami:${view.website}` : view.source === 'railway' ? `railway:${view.project}` : 'cloud';
 const DAY = 24 * 60 * 60_000;
 const ago = (at: string) => { const minutes = Math.round((Date.now() - Date.parse(at)) / 60_000); return minutes < 60 ? `${Math.max(1, minutes)} min ago` : minutes < 48 * 60 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`; };
 
@@ -51,7 +51,7 @@ export class MetricViews {
   constructor(private readonly cache?: ProjectCache, private readonly options: Options = {}) {}
 
   async read(view: MetricView, refresh = false, projectId?: string): Promise<MetricRead> {
-    const key = `${projectId ?? ''}:${viewKey(view)}`;
+    const key = `${projectId ?? ''}:${metricViewKey(view)}`;
     let held = this.reads.get(key);
     if (!held && projectId) {
       const saved = this.cache?.read<Saved>(projectId, 'metric', key);
@@ -66,6 +66,24 @@ export class MetricViews {
     } catch (error) {
       if (!held) throw error;
       return { ...held.saved.read, history: held.saved.history, notice: `${error instanceof Error ? error.message : 'The service did not answer.'} Showing the earlier read.` };
+    }
+  }
+
+  /** The view someone named: a repository as owner/name or its link; an Umami website or Railway project by its ID or link,
+   * its domain or name, or left out when the key reaches only one. */
+  async find(given: { source?: unknown; repo?: unknown; website?: unknown; project?: unknown }): Promise<MetricView> {
+    const text = (value: unknown) => typeof value === 'string' ? value : '';
+    switch (given.source) {
+      case 'cloud': return { source: 'cloud' };
+      case 'umami': {
+        const id = UUID.exec(text(given.website))?.[0];
+        return metricViewSchema.parse({ source: 'umami', website: id?.toLowerCase() ?? choose(text(given.website), await this.umamiSites(), 'website', 'Umami') }) as MetricView;
+      }
+      case 'railway': {
+        const id = UUID.exec(text(given.project))?.[0];
+        return metricViewSchema.parse({ source: 'railway', project: id?.toLowerCase() ?? choose(text(given.project), await this.railwayProjects(), 'project', 'Railway') }) as MetricView;
+      }
+      default: return metricViewSchema.parse({ source: 'github', repo: githubRepo(text(given.repo)) }) as MetricView;
     }
   }
 
@@ -138,6 +156,14 @@ export class MetricViews {
     return answer;
   }
 
+  private async umamiSites(): Promise<Choice[]> {
+    type Site = { id?: unknown; name?: unknown; domain?: unknown };
+    const answer = await this.umamiAsk<{ data?: Site[] } | Site[]>('/websites?pageSize=100&includeTeams=true');
+    if (!answer.ok) throw new StoreError(`Umami answered ${answer.status} when asked for its websites.`, 502);
+    const sites = Array.isArray(answer.data) ? answer.data : answer.data.data ?? [];
+    return sites.flatMap(site => typeof site.id === 'string' && UUID.test(site.id) ? [{ id: site.id.toLowerCase(), name: typeof site.name === 'string' && site.name ? site.name : String(site.domain ?? site.id), ...(typeof site.domain === 'string' && site.domain ? { domain: site.domain } : {}) }] : []);
+  }
+
   /** An Umami Cloud website: visitors today and over 7 days, page views, visits, who is on it now, and the clicks the site tracks. */
   private async umami(website: string): Promise<Read> {
     const about = await this.umamiAsk<{ name?: string; domain?: string }>(`/websites/${website}`);
@@ -156,7 +182,7 @@ export class MetricViews {
     const online = !active.ok ? null : Array.isArray(active.data) ? Number(active.data[0]?.x ?? 0) : typeof active.data.visitors === 'number' ? active.data.visitors : typeof active.data.x === 'number' ? active.data.x : null;
     const missing = 'Umami did not give this number.';
     const value = (key: string, label: string, found: number | null): MetricValue => ({ key, label, value: found, ...(found === null ? { note: missing } : {}) });
-    const named: Record<string, string> = { get_click: '“Get ros.ai” clicks', download_click: 'Download clicks', github_click: 'GitHub clicks', try_demo_click: 'Demo clicks' };
+    const named: Record<string, string> = { download: 'Downloads via ros-ai.io', get_click: '“Get ros.ai” clicks', download_click: 'Download clicks', github_click: 'GitHub clicks', try_demo_click: 'Demo clicks' };
     const clicks = events.ok ? [...events.data].sort((a, b) => b.y - a.y).slice(0, 6).map(item => value(`event:${item.x}`.slice(0, 80), `${named[item.x] ?? item.x}, 7 days`, item.y)) : [];
     const values = [
       value('visitors_today', 'Visitors today', count(day, 'visitors')), value('visitors_week', 'Visitors, 7 days', count(week, 'visitors')),
@@ -173,6 +199,21 @@ export class MetricViews {
     if (!answer.ok) throw new StoreError(answer.status === 401 || answer.status === 403 ? 'Railway did not accept the token.' : `Railway answered ${answer.status}.`, answer.status === 401 || answer.status === 403 ? 403 : 502);
     if (!answer.data.data) throw new StoreError(`Railway: ${answer.data.errors?.[0]?.message?.slice(0, 200) ?? 'no answer'}`, 502);
     return answer.data.data;
+  }
+
+  /** The projects an account token reaches: the account's own and those of each workspace it belongs to. Each list is
+   * asked for on its own, so one Railway cannot answer leaves the others. */
+  private async railwayProjects(): Promise<Choice[]> {
+    type Projects = { projects?: { edges?: { node?: { id?: unknown; name?: unknown } }[] } | null };
+    const found = new Map<string, string>();
+    const add = (answer: Projects) => { for (const edge of answer.projects?.edges ?? []) if (typeof edge.node?.id === 'string' && UUID.test(edge.node.id)) found.set(edge.node.id.toLowerCase(), String(edge.node.name ?? edge.node.id)); };
+    const tolerant = async (ask: () => Promise<void>) => { try { await ask(); } catch (error) { if (error instanceof StoreError && (error.status === 403 || error.status === 409)) throw error; } };
+    await tolerant(async () => add(await this.graphql<Projects>('query { projects { edges { node { id name } } } }', {})));
+    await tolerant(async () => {
+      const me = await this.graphql<{ me?: { workspaces?: { id?: unknown }[] } }>('query { me { workspaces { id } } }', {});
+      for (const workspace of (me.me?.workspaces ?? []).slice(0, 10)) if (typeof workspace.id === 'string') await tolerant(async () => add(await this.graphql<Projects>('query($w: String!) { projects(workspaceId: $w) { edges { node { id name } } } }', { w: workspace.id })));
+    });
+    return [...found].map(([id, name]) => ({ id, name }));
   }
 
   /** A Railway project: each service's last deploy and how many are up. Only reads; it never deploys. */
@@ -208,7 +249,7 @@ export function attachMetricRoutes(app: Express, store: Store, views: MetricView
   });
   // Reads the source once before a person adds the block, so a wrong repository, ID or key is caught first.
   app.post('/api/metric/preview', async (req, res) => {
-    const view = metricViewFrom(req.body as Record<string, unknown>), read = await views.read(view, true);
+    const view = await views.find(req.body as Record<string, unknown>), read = await views.read(view, true);
     res.json({ view: view.source === 'github' ? { ...view, repo: read.title } : view, read });
   });
 }

@@ -185,6 +185,16 @@ test('when ROS answers with something that is not JSON, ros.ai’s rules arrange
   } finally { f.close(); }
 });
 
+test('the step says which engine arranged, how long it took, and how long ROS waited for another thread', async () => {
+  const f = fixture({ choice: { engine: 'hosted', selection: { provider: 'cloud', model: 'ros-deep' } }, model: () => 'Sure! Here is how I would group them.' });
+  try {
+    let checks = 0, told = 0;
+    const result = await f.layer.land(f.input([f.agentChange()]), new AbortController().signal, () => ++checks < 2, undefined, () => told++);
+    assert.equal(told, 1);
+    assert.match(result!.event!, /^ROS arranged what the turn left loose \(ros\.ai’s own rules after hosted ROS did not answer, \d+ s; waited \d+ s for another thread\)\.$/u);
+  } finally { f.close(); }
+});
+
 test('while the agent’s change still waits, ROS’s row waits on it and is accepted after it', async () => {
   const f = fixture({ accept: false });
   try {
@@ -260,7 +270,7 @@ test('after an agent turn the assistant runs the pass beside the conversation an
     const row = turn.actions.find(action => action.by === 'ros')!;
     assert.equal(row.title, 'Arranged by ROS: 3 blocks into Note the three options');
     assert.equal(row.status, 'completed');
-    assert(turn.events.some(event => event.message === 'ROS arranged what the turn left loose.'));
+    assert(turn.events.some(event => /^ROS arranged what the turn left loose \(ros\.ai’s own rules, \d+ s\)\.$/u.test(event.message)));
     // Undo from the card marks the row and puts the blocks back on the map's top level.
     const after = assistant.undoLayer(project.id, row.id).turns.find(item => item.id === turn.id)!;
     assert.equal(after.actions.find(action => action.id === row.id)?.undone, true);

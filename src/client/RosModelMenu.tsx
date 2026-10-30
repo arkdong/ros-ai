@@ -14,6 +14,8 @@ import { api, post } from './api';
 import { openOnPress } from './press';
 
 const settingsChanged = 'ros-ai-model-settings';
+/** Reads the project's model again in the bar and the panel, as after a thread puts back the one it last ran with. */
+export const reloadProjectModels = () => window.dispatchEvent(new Event(settingsChanged));
 
 export type ModelChoice = { provider: string; providerLabel: string; model: string; label: string; maker: ModelMaker };
 
@@ -40,8 +42,8 @@ export function useProjectModels(projectId: string, revision: number) {
 
 /** What ROS runs with: one trigger naming the model or agent, and one menu to switch, shared by the bar and the open panel.
  * Claude Code and Codex show as their logo, followed by a chip with the model and effort they run on. */
-export function RosModelMenu({ state, detail, running, onRefresh, onConnections, onPermissions, onError }: {
-  state: AssistantState | null; detail: ProjectDetail; running: boolean; onRefresh: () => unknown;
+export function RosModelMenu({ state, detail, threadId, running, onRefresh, onConnections, onPermissions, onError }: {
+  state: AssistantState | null; detail: ProjectDetail; threadId?: string | null; running: boolean; onRefresh: () => unknown;
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
   const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
@@ -49,7 +51,10 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const backend = state?.backend, inApp = inAppAgent(backend), inAppId = inApp ? backend as InAppAgent : null;
-  const agentModel = useAgentModel(inAppId), compact = Boolean(agentModel.choice?.models.some(item => item.id === agentModel.choice?.model));
+  // The thread shown keeps what ROS runs with, so opening it again later goes on with the same agent and model.
+  const remember = () => threadId ? post(`/api/projects/${detail.project.id}/assistant/threads/${threadId}/choice`) : Promise.resolve();
+  const agentState = useAgentModel(inAppId), agentModel = { ...agentState, choose: async (change: Parameters<typeof agentState.choose>[0]) => { await agentState.choose(change); await remember().catch(() => undefined); } };
+  const compact = Boolean(agentModel.choice?.models.some(item => item.id === agentModel.choice?.model));
   const agentLabel = inApp ? inApp.label : isAcpAgent(backend) ? ACP_AGENTS[backend].label : null;
   // Gemini CLI, Goose and OpenCode are offered once they are installed on this computer.
   useEffect(() => {
@@ -72,7 +77,7 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
   const switchTo = async (change: () => Promise<unknown>) => {
     if (switching || running) return;
     setSwitching(true);
-    try { await change(); await onRefresh(); setMenu(false); } catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); } finally { setSwitching(false); }
+    try { await change(); await remember(); await onRefresh(); setMenu(false); } catch (cause) { onError?.(cause instanceof Error ? cause.message : String(cause)); } finally { setSwitching(false); }
   };
   const setBackend = (next: AssistantBackend) => post(`/api/projects/${detail.project.id}/assistant/backend`, { backend: next });
   // Codex is checked the way the project now runs it, so the bar shows at once whether it can start.
@@ -80,11 +85,12 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
     await setBackend(next);
     if (IN_APP_AGENTS[next].agent === 'codex') await post(`/api/projects/${detail.project.id}/agents/check${IN_APP_AGENTS[next].billing === 'api-key' ? '?billing=api-key' : ''}`);
   });
-  // Claude Code and Codex each run here two ways, as two agents with their own names.
+  // Claude Code and Codex each run here two ways, as two agents with their own names. They always head the menu,
+  // the subscription ones first, above the models and the other agents.
   const agents: { id: InAppAgent; caption: string }[] = [
     ...(planAllowed ? [{ id: 'claude-plan' as const, caption: 'On your Claude subscription' }] : []),
-    { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex', caption: 'On your ChatGPT subscription' },
+    { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex-key', caption: 'On your OpenAI API key' },
   ];
   // Picking a model while an outside agent runs ROS hands ROS back to that model.
@@ -102,16 +108,16 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
       {!compact && <span>{label}</span>}{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="ROS runs with">
-      {groups.map(group => <div key={group.provider} className="ros-menu-group">
-        <p>{groups.length > 1 ? group.label : 'Models'}</p>
-        {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
-      </div>)}
-      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <div className="ros-menu-group">
         <p>Agents</p>
         {agents.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void pickAgent(item.id)}><BrandLogo id={IN_APP_AGENTS[item.id].agent} size={16}/><span className="ros-menu-label">{IN_APP_AGENTS[item.id].label}<small>{item.caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
         {acpShown.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void switchTo(() => setBackend(item.id))}><BrandLogo id={acpLogo[item.id]} size={16}/><span className="ros-menu-label">{item.label}<small>{item.blocker ? 'Cannot start · see Agents' : item.checked && !item.checked.ok ? 'Check failed · see Agents' : ACP_AGENTS[item.id].caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
       </div>
+      {groups.map(group => <div key={group.provider} className="ros-menu-group">
+        <p>{groups.length > 1 ? group.label : 'Models'}</p>
+        {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
+      </div>)}
+      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <hr/>
       <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Models &amp; keys</span></button>
       <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permission details</span></button>

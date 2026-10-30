@@ -4,7 +4,8 @@ export type {AssistantClarificationQuestion} from './assistant-clarifications.js
 export type AssistantStructurePreview={
   summary:string;
   validated:false;
-  notes:{id:string;title:string;description:string;kind:'topic'|'activity'|'group';blockType?:string;parentId:string|null;rationale?:string}[];
+  /** kindName: the kind as the canvas names it, where a saved proposal holds the whole block (a Metrics block's tool, a Google Maps block). */
+  notes:{id:string;title:string;description:string;kind:'topic'|'activity'|'group';blockType?:string;kindName?:string;parentId:string|null;rationale?:string}[];
   relationships:{source:string;target:string;label:string}[];
 };
 export type AssistantResponsePresentation={reply:string;question?:string;clarifications?:AssistantClarificationQuestion[];structure?:AssistantStructurePreview};
