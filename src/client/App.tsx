@@ -142,7 +142,7 @@ export function App(){
   // each step itself, so its groups keep the look it was made with.
   const seenGroups=useRef<{projectId:string;ids:Set<string>}|null>(null);
   useEffect(()=>{if(!detail)return;const canvas=detail.project.canvas,seen=seenGroups.current;if(seen?.projectId!==detail.project.id){seenGroups.current={projectId:detail.project.id,ids:new Set(canvas.nodes.filter(isGroup).map(node=>node.id))};return;}const arrived=arrivedGroups(seen.ids,canvas),guided=demoOpen&&demoSession?.projectId===detail.project.id;for(const node of canvas.nodes)if(isGroup(node))seen.ids.add(node.id);if(arrived.length&&!guided)setExpandedIds(current=>[...new Set([...current,...arrived])]);},[detail]);
-  const hasActive=detail?.runs.some(run=>['running','queued'].includes(run.status))||Boolean(assistant?.activeTurnId),notebookRunning=Boolean(detail?.notebooks?.some(item=>item.running));
+  const hasActive=detail?.runs.some(run=>['running','queued'].includes(run.status))||Boolean(assistant?.activeTurnId)||Boolean(assistant?.turns.some(turn=>turn.layer?.state==='running')),notebookRunning=Boolean(detail?.notebooks?.some(item=>item.running));
   const folder=useProjectFolder(projectId,detail?.project.id===projectId?detail.project.revision:undefined,!publicDemo,()=>{void refresh().catch(report);}),folderStatus=folder.status;
   const missingKey=folderStatus?.files.filter(file=>file.missing).map(file=>file.nodeId).sort().join(',')??'';
   const missingFiles=useMemo(()=>new Set(missingKey.split(',').filter(Boolean)),[missingKey]);

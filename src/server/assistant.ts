@@ -28,6 +28,7 @@ import {CARD_MAX_HEIGHT,cardWidth} from '../shared/card-size.js';
 import {PLUGINS,type PluginId} from '../shared/plugins.js';
 import {pluginMatches} from '../shared/plugin-hints.js';
 import {glanceHint,glanceSchema,glanceText,keepGlance} from './glance.js';
+import type {RosLayer} from './ros-layer.js';
 
 const now=()=>new Date().toISOString();
 const id=z.string().min(1).max(128);
@@ -49,6 +50,8 @@ type Tool=z.infer<typeof toolSchema>;
 type Trace={provider?:string;at:string;messages:ModelMessage[];schema:Record<string,unknown>;response:string;usageId:string;model:string;modelVersion:string|null;responseMetadata:Record<string,unknown>};
 /** glance: where the person was on the map when they sent the message (glance.ts), kept with the turn as ROS read it. */
 type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsideSession?:string;acp?:AcpAgentId;billing?:'plan'|'api-key';glance?:AssistantGlance};
+/** An agent working from outside ros.ai makes its changes call by call; ROS arranges them once it has been quiet this long. */
+const OUTSIDE_QUIET_MS=20_000;
 const emptyMemory=():ResearchMemory=>({originalQuestion:null,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]});
 const clip=(value:string,length:number)=>value.length>length?value.slice(0,length)+'\n[Capture preview truncated; saved artifact is complete.]':value;
 
@@ -61,9 +64,15 @@ export class AssistantService {
   private readonly active=new Map<string,{controller:AbortController;done:Promise<void>}>();
   /** Projects whose conversation from before threads has been placed in their first thread (ensureThreads). */
   private readonly migrated=new Set<string>();
+  /** ROS arranging a finished turn, and the outside agents' turns it arranges once they go quiet (ros-layer.ts). */
+  private readonly layering=new Map<string,{stop:AbortController;hurry:AbortController}>();
+  private readonly quiet=new Map<string,ReturnType<typeof setTimeout>>();
   private closed=false;
-  constructor(private readonly store:Store,private readonly execution:ExecutionService,private readonly experiments:ExperimentService,private readonly agent?:AgentRuntime,private readonly claude?:ClaudeAgentService,private readonly loop?:ToolLoopAgentService,private readonly personal?:PersonalMemory,private readonly skills?:SkillLibrary,private readonly acp?:AcpAgentService){
-    for(const project of store.listProjects())for(const turn of this.turns(project.id))if(turn.status==='running')this.save({...turn,status:'interrupted',error:'The service stopped. Captured work is preserved; no model request or tool action was automatically repeated.',updatedAt:now()});
+  constructor(private readonly store:Store,private readonly execution:ExecutionService,private readonly experiments:ExperimentService,private readonly agent?:AgentRuntime,private readonly claude?:ClaudeAgentService,private readonly loop?:ToolLoopAgentService,private readonly personal?:PersonalMemory,private readonly skills?:SkillLibrary,private readonly acp?:AcpAgentService,private readonly layer?:RosLayer){
+    for(const project of store.listProjects())for(const turn of this.turns(project.id)){
+      if(turn.status==='running')this.save({...turn,status:'interrupted',error:'The service stopped. Captured work is preserved; no model request or tool action was automatically repeated.',updatedAt:now()});
+      else if(turn.layer?.state==='running')this.amend({...turn,layer:{state:'failed',note:'ros.ai stopped before ROS finished; nothing was changed.'}});
+    }
   }
   private turns(projectId:string){return this.store.records<SavedTurn>('assistant-turn',projectId);}
   private getTurn(projectId:string,turnId:string){const turn=this.store.record<SavedTurn>('assistant-turn',turnId);if(!turn||turn.projectId!==projectId)throw new StoreError('Assistant turn not found.',404);this.store.getProject(projectId);return turn;}
@@ -212,6 +221,8 @@ export class AssistantService {
     }
     this.save(turn);this.touchThread(thread);
     if(stopped){this.save({...turn,status:'failed',reply:'Project research is stopped. Open Permissions and resume deliberately before continuing.',error:'Project research is stopped. No model or tool was called.'});return done();}
+    // A pass still asking Local ROS would hold the one request it serves at a time; ros.ai's own rules finish it instead.
+    for(const pass of this.layering.values())pass.hurry.abort();
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
     active.done=Promise.resolve().then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.active.delete(turn.id));
     return done();
@@ -349,7 +360,8 @@ export class AssistantService {
         const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.say(turn,'assistant',result.reply);
-        this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});return;
+        this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});
+        void this.arrange(projectId,turnId);return;
       }
       if(turn.source==='local-records'){
         const local=this.groundedLocal(turn);this.say(turn,'assistant',local.reply);this.save({...turn,...local,status:'completed'});return;
@@ -480,6 +492,49 @@ export class AssistantService {
       return this.updateAction(projectId,turnId,action);
     }catch(error){action={...action,status:'failed',error:error instanceof Error?error.message:'Tool action failed.'};this.updateAction(projectId,turnId,action);return action;}
   }
+  /** After an agent's turn ROS gives what it left on the map the map's shape, as one row on the turn's card (ros-layer.ts).
+   * It runs beside the conversation, never holds up the reply, and changes nothing when it fails. */
+  private async arrange(projectId:string,turnId:string){
+    const layer=this.layer;if(!layer||this.closed||this.layering.has(turnId))return;
+    const controller=new AbortController(),hurry=new AbortController();this.layering.set(turnId,{stop:controller,hurry});
+    try{
+      let turn=this.getTurn(projectId,turnId);
+      if(layer.on())this.save({...turn,layer:{state:'running'}});
+      const result=await layer.land({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source,...(turn.model?{agent:turn.model}:{}),hint:glanceText(this.hint(turn,this.store.detail(projectId)))},controller.signal,()=>this.turns(projectId).some(item=>item.status==='running'&&item.id!==turnId),hurry.signal);
+      if(!result)return;
+      turn=this.getTurn(projectId,turnId);
+      this.save({...turn,layer:result.layer,actions:result.action?[...turn.actions,result.action]:turn.actions,events:result.event?[...turn.events,{at:now(),message:result.event}]:turn.events});
+    }catch(error){
+      const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
+      if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});
+    }finally{this.layering.delete(turnId);}
+  }
+  /** An agent working from outside ros.ai proposed a change: ROS arranges the turn once the agent has been quiet a while. */
+  arrangeLater(projectId:string,turnId:string){
+    if(!this.layer||this.closed)return;
+    clearTimeout(this.quiet.get(turnId));
+    const timer=setTimeout(()=>{this.quiet.delete(turnId);void this.arrange(projectId,turnId);},OUTSIDE_QUIET_MS);timer.unref();
+    this.quiet.set(turnId,timer);
+  }
+  /** "Put this on the map" under an answer given in chat: its sections become blocks at once. */
+  toMap(projectId:string,turnId:string){
+    if(!this.layer)throw new StoreError('ROS is not available in this service.',503);
+    const turn=this.getTurn(projectId,turnId);
+    if(turn.status==='running'||this.layering.has(turnId))throw new StoreError('Wait for the answer to finish first.',409);
+    if(!turn.reply.trim())throw new StoreError('This answer has no text to put on the map.',409);
+    const action=this.layer.toMap({projectId,turnId,request:turn.userMessage,reply:turn.reply,actions:turn.actions,focusId:turn.focus.nodeId,source:turn.source});
+    this.save({...turn,actions:[...turn.actions,action],layer:{state:'done',engine:'layout',...(action.proposalId?{proposalId:action.proposalId}:{})}});
+    return this.state(projectId);
+  }
+  /** Undo on a ROS row of a turn's card. */
+  undoLayer(projectId:string,actionId:string){
+    if(!this.layer)throw new StoreError('ROS is not available in this service.',503);
+    const turn=this.turns(projectId).find(item=>item.actions.some(action=>action.id===actionId)),action=turn?.actions.find(item=>item.id===actionId);
+    if(!turn||!action||action.by!=='ros'||!action.proposalId)throw new StoreError('This ROS change was not found.',404);
+    this.layer.undo(projectId,action.proposalId);
+    this.amend({...turn,actions:turn.actions.map(item=>item.id===actionId?{...item,undone:true}:item)});
+    return this.state(projectId);
+  }
   /** The person's own agent (over MCP) gets a thread of its own per session, named after it, and shows there as its own
    * turn. Its calls keep landing in that turn while nothing else was said in between. */
   outsideTurn(projectId:string,session:string,label:string){
@@ -533,7 +588,7 @@ export class AssistantService {
   }
   cancel(projectId:string,turnId:string){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
   devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);this.migrated.delete(projectId);return this.state(projectId);}
-  stopProject(projectId:string){for(const turn of this.turns(projectId))if(turn.status==='running')this.cancel(projectId,turn.id);}
+  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.layering.get(turn.id)?.stop.abort();clearTimeout(this.quiet.get(turn.id));this.quiet.delete(turn.id);}}
   async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
 
@@ -553,5 +608,7 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.delete('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.deleteThread(String(req.params.id),String(req.params.threadId))));
   if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));
+  app.post('/api/projects/:id/assistant/turns/:turnId/to-map',(req,res)=>res.json(service.toMap(String(req.params.id),String(req.params.turnId))));
+  app.post('/api/projects/:id/assistant/actions/:actionId/undo',(req,res)=>res.json(service.undoLayer(String(req.params.id),String(req.params.actionId))));
   app.post('/api/projects/:id/assistant/actions/:actionId/decision',(req,res)=>{const {decision}=z.object({decision:z.enum(['accept','dismiss'])}).strict().parse(req.body);res.json(service.decide(String(req.params.id),String(req.params.actionId),decision));});
 }
