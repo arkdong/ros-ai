@@ -6,7 +6,7 @@ import { useDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
 import { date, Evidence, RichText, time } from './Content';
 import { MarkdownEditor } from './MarkdownEditor';
-import { noteImageUrl } from '../shared/files';
+import { isImageType, noteImageUrl } from '../shared/files';
 import './detail-polish.css';
 import { NotionBlock } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -72,12 +72,14 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
   const messages = detail.messages.filter(message => message.nodeId === node.id);
   const primary = isGroup(node) ? undefined : primaryArtifact(node, detail), children = detail.project.canvas.nodes.filter(item => item.parentId === node.id);
   const thread = useRef<HTMLDivElement>(null);
+  // A picture fills the view; its text is a caption under it.
+  const picture = Boolean(file && isImageType(file.mediaType));
   // A Data block can query the project's data with SQL.
   const sqlShown = Boolean(sql) && !readOnly && node.blockType === 'dataset' && !node.notion && !file;
   const [sqlOpen, setSqlOpen] = useState(false);
   const sqlPanel = sqlShown && sqlOpen && <SqlPanel projectId={detail.project.id} node={node} revision={detail.project.revision} onSaved={async (artifact, filled) => { await sql!.onChanged(); if (filled) setSqlOpen(false); else onOpenArtifact(artifact); }}/>;
   useEffect(() => { if (side === 'conversation') thread.current?.scrollTo({ top: thread.current.scrollHeight }); }, [side, messages.length, active?.events.length]);
-  return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}`} aria-label="Node work tools">
+  return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}${picture?' picture-view':''}`} aria-label="Node work tools">
     <div className="note-main">
       {!chatOpen&&conversation===undefined&&(messages.length>0||runs.length>0||active)&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
       {node.notion?.kind!=='page'&&<><label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/></>}
@@ -89,8 +91,9 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
       {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.app&&!node.web&&node.blockType!=='agent'&&node.blockType!=='map'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
       {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
-      {file&&description&&<div className="note-description"><RichText text={description}/></div>}
+      {file&&!picture&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}
+      {file&&picture&&description&&<div className="note-description picture-caption-text"><RichText text={description}/></div>}
       {primary&&!file&&<section className="note-content"><div className="note-content-heading"><h3>{primary.title}</h3><span className="note-content-actions">{sqlShown&&<button className="text-button small" aria-pressed={sqlOpen} onClick={()=>setSqlOpen(!sqlOpen)}>{sqlOpen?<><X size={12}/> Close SQL</>:<><Database size={12}/> Query with SQL</>}</button>}<button className="text-button small" onClick={()=>onOpenArtifact(primary)}>Open <ArrowRight size={12}/></button></span></div>{sqlPanel||(['plot','dataset','table','metric','code','log'].includes(primary.kind)?<ArtifactContent artifact={primary}/>:<RichText text={primary.content}/>)}</section>}
       {!primary&&sqlShown&&<section className="note-content">{sqlOpen?<><div className="note-content-heading"><h3>Fill this block with a query</h3><button className="text-button small" onClick={()=>setSqlOpen(false)}><X size={12}/> Close SQL</button></div>{sqlPanel}</>:<button className="secondary small sql-start" onClick={()=>setSqlOpen(true)}><Database size={13}/> Query with SQL</button>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}

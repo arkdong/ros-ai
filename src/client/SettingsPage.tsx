@@ -13,6 +13,7 @@ import { RosMark } from './RosDock';
 import { Commands, DownloadLink } from './UpdateButton';
 import { checkForUpdates, installUpdate, setAutoUpdates, useUpdates } from './updates';
 import { changeSuggestions, pluginName, useSuggestions } from './plugin-suggestions';
+import { LAYER_ENGINES, type LayerStatus } from '../shared/ros-layer';
 import './settings.css';
 
 export type SettingsSection = 'general' | 'usage' | 'balances' | 'memory' | 'resources';
@@ -87,6 +88,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
         <ChipChoice label="Project permissions" caption="Agents may" value={mode} busy={busy} options={approvalModes.map(item => { const Icon = item.icon; return { id: item.mode, label: item.label, detail: item.detail, icon: <Icon size={13}/> }; })} onChange={value => void choose(value)}/>
       </Row>
     </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>}
+    {!publicDemo && <RosLayerSettings/>}
     {!publicDemo && <SuggestionSettings/>}
     {!publicDemo && budget && <section><h2>Monthly budget</h2><div className="settings-card">
       <Row title="All projects" detail={budgetDetail(budget.all)}><AmountField label="Monthly budget for all projects" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
@@ -160,6 +162,33 @@ function FirstRunSettings() {
       <div className="settings-confirm-actions"><button type="button" className="primary small" onClick={() => { setFailed([]); show(); }}>Show the welcome page</button></div>
     </div>}
   </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
+}
+
+const layerEngine: Record<LayerStatus['engine'], string> = {
+  local: 'Runs on Local ROS on this computer.',
+  hosted: 'Runs on hosted ROS while you are signed in.',
+  layout: 'Until Local ROS is downloaded or you sign in to hosted ROS, ros.ai’s own rules do it.',
+};
+/** ROS on top of whichever agent runs a turn: the switch, what it runs on, and behind More the counts that tell whether
+ * it helps and how fast it is on this computer. */
+function RosLayerSettings() {
+  const [status, setStatus] = useState<LayerStatus | null>(null), [more, setMore] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  useEffect(() => { void api<LayerStatus>('/api/ros-layer').then(setStatus).catch(() => setStatus(null)); }, []);
+  if (!status) return null;
+  const run = async (work: () => Promise<LayerStatus>) => { setBusy(true); setError(''); try { setStatus(await work()); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
+  const { stats, bench } = status, plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`, seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  return <section><h2>ROS</h2><div className="settings-card">
+    <Row title="ROS arranges what agents add" detail={`After each agent turn, ROS groups and links what was left loose and puts an answer given only in chat on the map. Undo it on the turn's card. ${layerEngine[status.engine]}`}>
+      <button type="button" role="switch" aria-checked={status.on} aria-label="ROS arranges what agents add" className={`switch ${status.on ? 'on' : ''}`} disabled={busy} onClick={() => void run(() => api('/api/ros-layer', { method: 'PUT', body: JSON.stringify({ on: !status.on }) }))}><span/></button>
+    </Row>
+    {more && <>
+      <Row title="What agents left" detail={stats.turns ? `${plural(stats.turns, 'agent turn')}: ${plural(stats.blocks, 'block')} added, ${stats.loose} of them loose (no group, no link); ${plural(stats.chatOnly, 'answer')} only in chat; ${(stats.changes / stats.turns).toFixed(1)} changes per turn.` : 'No agent turns counted yet.'}><span/></Row>
+      <Row title="What ROS did" detail={stats.rows ? `${plural(stats.rows, 'row')}, ${stats.rescued} of them answers put on the map: ${stats.accepted} kept, ${stats.undone} undone, ${stats.dismissed} dismissed.${stats.fallback ? ` ${stats.fallback} made by ros.ai’s own rules when ROS did not answer.` : ''}` : 'Nothing arranged yet.'}><span/></Row>
+      {status.engine !== 'layout' && <Row title="Speed on this computer" detail={bench ? `${LAYER_ENGINES[bench.engine]} read ${bench.promptTokens.toLocaleString()} tokens in ${seconds(bench.prefillMs)} and wrote ${bench.outputTokens} in ${seconds(bench.decodeMs)}, ${ago(bench.at)}.` : 'Reads a map of about 8,000 tokens, then writes a short answer.'}>
+        <button type="button" className="secondary small" disabled={busy} onClick={() => void run(() => api('/api/ros-layer/bench', { method: 'POST', signal: AbortSignal.timeout(200_000) }))}>{busy && <LoaderCircle size={13} className="spin"/>}{bench ? 'Measure again' : 'Measure'}</button>
+      </Row>}
+    </>}
+  </div><button type="button" className="text-button small settings-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }
 
 /** Whether agents may build App blocks. Off, they see their tools exactly as before; people can always add one. */

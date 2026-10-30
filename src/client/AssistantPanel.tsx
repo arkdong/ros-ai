@@ -194,9 +194,15 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.
   const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && (operation.node.blockType === 'search' || operation.node.label === 'result')));
-  // A turn with two or more canvas changes shows them on one card, waiting or decided.
+  // A turn with two or more canvas changes shows them on one card, waiting or decided; so does a change ROS made, which
+  // can be undone there.
   const changes = turn.actions.filter(action => action.proposalId && !action.reportProposalId && !searchPlan(action) && detail.proposals.some(item => item.id === action.proposalId));
-  const grouped = changes.length > 1 ? new Set(changes) : new Set<AssistantAction>();
+  const grouped = changes.length > 1 || changes.some(action => action.by === 'ros') ? new Set(changes) : new Set<AssistantAction>();
+  // An answer an agent gave only in chat can still go on the map, cut at its own headings.
+  const [toMap, setToMap] = useState<'idle' | 'busy' | string>('idle');
+  const mappable = turn.status === 'completed' && ['codex-agent', 'claude-agent', 'model-agent', 'acp-agent'].includes(turn.source) && reply.trim().length >= 200 && !changes.length && turn.layer?.state !== 'running' && !turn.actions.some(action => action.by === 'ros');
+  const putOnMap = async () => { setToMap('busy'); try { await post(`/api/projects/${detail.project.id}/assistant/turns/${turn.id}/to-map`); setToMap('idle'); await plugins.onRefresh(); } catch (error) { setToMap(error instanceof Error ? error.message : 'Could not put this on the map.'); } };
+  const undo = async (actionId: string) => { await post(`/api/projects/${detail.project.id}/assistant/actions/${actionId}/undo`); await plugins.onRefresh(); };
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
@@ -206,12 +212,14 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
     <article className="assistant-message response">{outside&&<div className="message-meta"><span>{`Your ${turn.model ?? 'own agent'}`}</span><span className="response-source">Working from outside ros.ai</span></div>}{agentNode && <AgentWorkSummary node={agentNode} turn={turn} detail={detail} onReference={onReference}/>}<AssistantResponse content={reply} question={turn.question?.trim()===turn.error?.trim()?undefined:turn.question} clarifications={turn.clarifications} structure={turn.structure} detail={detail} hideStructure={savedStructure} blockedRecord={blockedRecord} onAnswer={onAnswer}/><ReferenceLinks references={turn.references} onReference={onReference}/>
       {turn.warning&&<details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Reply saved · proposal details</span></summary><p>{turn.warning}</p><p>Unvalidated actions were not applied.</p></details>}
       {turn.status === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>{turn.events.at(-1)?.message || 'Working on your question…'}</div>}
+      {turn.status !== 'running' && turn.layer?.state === 'running' && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/>ROS is arranging this on the map…</div>}
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
-      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => grouped.has(action) ? action === changes[0] ? <TurnReview key="turn-review" actions={changes} detail={detail} onProposal={onProposal} onProposals={onProposals} onReference={onReference}/> : null : <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
+      {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => grouped.has(action) ? action === changes[0] ? <TurnReview key="turn-review" actions={changes} detail={detail} onProposal={onProposal} onProposals={onProposals} onReference={onReference} onUndo={undo}/> : null : <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
       {turn.suggested && turn.status !== 'running' && <PluginSuggestionCard turn={turn} projectId={detail.project.id} {...plugins}/>}
-      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'ROS'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}</div>}
+      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'ROS'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}{mappable && <button type="button" className="text-button small ros-to-map" disabled={toMap === 'busy'} title="Put this answer on the map as blocks, cut at its headings" onClick={() => void putOnMap()}>{toMap === 'busy' ? 'Putting it on the map…' : 'Put this on the map'}</button>}</div>}
+      {mappable && toMap !== 'idle' && toMap !== 'busy' && <p className="proposal-review-stale">{toMap}</p>}
     </article>
   </section>;
 }
@@ -290,7 +298,7 @@ const TURN_ROWS = 6;
 
 /** A turn's canvas changes on one card: Accept all, or each row on its own. A row that builds on another (a CV inside a
  * group from the layout row) waits for it, and is dismissed with it. Decided rows say how they were decided. */
-function TurnReview({ actions, detail, onProposal, onProposals, onReference }: { actions: AssistantAction[]; detail: ProjectDetail; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onReference: Props['onReference'] }) {
+function TurnReview({ actions, detail, onProposal, onProposals, onReference, onUndo }: { actions: AssistantAction[]; detail: ProjectDetail; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onReference: Props['onReference']; onUndo: (actionId: string) => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const [opened, setOpened] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -300,7 +308,7 @@ function TurnReview({ actions, detail, onProposal, onProposals, onReference }: {
   const stale = (proposal: Proposal) => proposal.baseRevision !== detail.project.revision;
   const pending = new Map(rows.filter(row => row.proposal.status === 'pending').map(row => [row.proposal.id, row]));
   const fresh = [...pending.values()].filter(row => !stale(row.proposal)), outdated = pending.size - fresh.length;
-  const accepted = rows.filter(row => row.proposal.status === 'accepted').length;
+  const accepted = rows.filter(row => row.proposal.status === 'accepted' && !row.action.undone).length;
   const plural = (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`;
   const heading = fresh.length ? fresh.length === rows.length ? `${plural(rows.length)} to review` : `${fresh.length} of ${plural(rows.length)} to review` : outdated ? `${plural(outdated)} out of date` : accepted === rows.length ? `${plural(rows.length)} accepted` : `${accepted} of ${plural(rows.length)} accepted`;
   const waitsOn = (proposal: Proposal) => (proposal.after ?? []).map(id => pending.get(id)).find(Boolean);
@@ -314,8 +322,9 @@ function TurnReview({ actions, detail, onProposal, onProposals, onReference }: {
       return <li key={proposal.id} className={open ? 'open' : undefined}>
         <div className="turn-review-row">
           <button type="button" className="turn-review-toggle" aria-expanded={open} onClick={() => setOpened(open ? null : proposal.id)}><ChevronRight size={12} aria-hidden="true"/><span title={title}>{title}</span></button>
-          {proposal.status === 'pending' && stale(proposal) ? <span className="turn-review-status">Out of date</span> : <span className="turn-review-kind">{changeKind(proposal)}</span>}
-          {proposal.status !== 'pending' ? <span className="turn-review-status">{proposal.status === 'accepted' ? 'Accepted' : 'Dismissed'}</span> : <>{!stale(proposal) && <button type="button" className="turn-review-decide" disabled={busy || Boolean(before)} title={before ? `Accept “${before.action.title.split('\n')[0]}” first` : 'Accept'} aria-label={`Accept ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'accept'))}><Check size={13}/></button>}
+          {proposal.status === 'pending' && stale(proposal) ? <span className="turn-review-status">Out of date</span> : <span className="turn-review-kind" title={action.by === 'ros' ? 'ROS gave what the turn left loose a place on the map' : undefined}>{action.by === 'ros' ? 'ROS' : changeKind(proposal)}</span>}
+          {action.by === 'ros' && proposal.status === 'accepted' && !action.undone ? <button type="button" className="text-button small turn-review-undo" disabled={busy} onClick={() => void run(() => onUndo(action.id))}>Undo</button>
+          : proposal.status !== 'pending' ? <span className="turn-review-status">{action.undone ? 'Undone' : proposal.status === 'accepted' ? 'Accepted' : 'Dismissed'}</span> : <>{!stale(proposal) && <button type="button" className="turn-review-decide" disabled={busy || Boolean(before)} title={before ? `Accept “${before.action.title.split('\n')[0]}” first` : 'Accept'} aria-label={`Accept ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'accept'))}><Check size={13}/></button>}
           <button type="button" className="turn-review-decide" disabled={busy} title="Dismiss" aria-label={`Dismiss ${title}`} onClick={() => void run(() => onProposal(proposal.id, 'dismiss'))}><X size={13}/></button></>}
         </div>
         {structure && <AssistantStructurePreview structure={structure} existingNodes={detail.project.canvas.nodes} validation="proposal" compact/>}

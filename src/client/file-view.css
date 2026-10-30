@@ -1,14 +1,47 @@
-/* File blocks: a PDF's pages in a scroll or an image on the card; the opened view is a reader. Three neutral greys, no colour. */
+/* File blocks: a PDF's pages in a scroll on the card, or the picture itself as the card; the opened view is a reader
+   for a PDF and a plain stage for a picture. Three neutral greys, no colour. */
 .file-page-preview,.direct-canvas .file-page-preview{position:relative;display:flex;flex-direction:column;align-items:stretch;box-sizing:border-box;height:auto;max-height:172px;min-height:64px;overflow:hidden auto;overscroll-behavior:contain;color:#8a918c;border:1px solid #d9dfda;border-radius:6px}
 .file-page-preview .pdf-page{display:block;background:#fff}
 .file-page-preview>.pdf-page-box{width:100%;box-shadow:none}
 .file-page-preview>.pdf-page-box+.pdf-page-box{border-top:1px solid #d9dfda}
 .file-page-preview>.spin,.file-page-preview>.file-preview-note{align-self:center;margin:auto}
-.file-image-preview,.direct-canvas .file-image-preview{box-sizing:border-box;height:auto;max-height:172px;object-fit:cover;object-position:top;border:1px solid #d9dfda;border-radius:6px}
+/* A picture card is the picture: it fills the card to its rounded corners and gives the card its shape (the card's
+   height follows its width, see pictureCardHeight). A picture taller than twice the card's width shows its top. */
+.direct-canvas.unified-canvas .research-card.picture-card:not(.expanded-group)>.group-heading.picture-face{position:relative;display:block;flex-shrink:0;height:auto;min-height:0;max-height:none;padding:0;overflow:hidden;border-radius:11px;container-type:inline-size}
+.direct-canvas .picture-card .block-primary-preview{display:block;flex:none;min-height:0;max-height:none;margin:0;line-height:0}
+.picture-preview{display:block;width:100%;max-width:100%;height:auto;margin:0 auto;max-height:min(1198px,calc(200cqw + 2px));object-fit:cover;object-position:top;background:#fafafa}
+.picture-missing{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:140px;padding:20px;text-align:center;color:#6b6b6b;font-size:13px;line-height:1.4;background:#fafafa}
+.picture-missing span{color:#171717;font-weight:500}
+.picture-missing small{font-size:12px}
+/* Over the picture, on hover or when selected: the open button at the top right, the title at the bottom left. */
+.picture-chrome{position:absolute;inset:0;pointer-events:none}
+.picture-chrome>*{pointer-events:auto}
+.direct-canvas .picture-card .picture-chrome .card-controls{position:absolute;top:8px;right:8px;margin:0;opacity:0;transition:opacity .12s}
+.direct-canvas .picture-card .picture-chrome .card-controls .icon-button{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);color:#171717;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.direct-canvas .picture-card .picture-chrome .card-controls .icon-button:hover{background:#fff;color:#171717}
+.picture-caption{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 56px);padding:4px 9px;border-radius:8px;background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);color:#171717;font-size:12px;font-weight:500;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .12s;pointer-events:none}
+.picture-card:hover .picture-chrome .card-controls,.picture-card.selected .picture-chrome .card-controls,.picture-card .picture-chrome .card-controls:focus-within,.picture-card:hover .picture-caption,.picture-card.selected .picture-caption{opacity:1}
+.direct-canvas .picture-card .picture-chrome .card-preview-tag{position:absolute;top:10px;left:10px;margin:0}
 .file-preview-note{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6b726d;padding:8px;text-align:center}
 .file-line{display:flex;gap:0;font-size:11px;color:#758079;margin:6px 0 0}
 .file-line small+small::before{content:' · ';white-space:pre}
 .file-viewer{display:flex;flex-direction:column;gap:10px;margin:16px 0 0;min-width:0}
+/* The opened picture: whole in its stage and never larger than its own pixels; zoomed, the stage scrolls. The zoom
+   sits at the stage's corner and shows on hover. */
+.file-viewer.picture{margin:0;gap:0;flex:1 1 auto;min-height:0}
+.picture-stage{position:relative;display:flex;flex:1 1 auto;min-height:0;overflow:hidden;border-radius:10px}
+.picture-scroll{display:flex;flex:1 1 auto;min-width:0;min-height:0;overflow:hidden}
+.picture-stage img{display:block;margin:auto;max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
+.file-viewer.picture.fit .picture-stage img{width:100%;height:100%}
+.file-viewer.picture.zoomed .picture-scroll{overflow:auto;background:#fafafa}
+.file-viewer.picture.zoomed .picture-stage img{max-width:none;max-height:none;height:auto;cursor:zoom-out}
+.picture-zoom{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;height:28px;padding:0 2px;border-radius:14px;background:rgba(255,255,255,.94);border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:12px;color:#171717;opacity:0;transition:opacity .12s}
+.picture-stage:hover .picture-zoom,.picture-zoom:focus-within,.file-viewer.picture.zoomed .picture-zoom{opacity:1}
+.picture-zoom .icon-button{width:24px;height:24px;border-radius:12px;color:#171717}
+.picture-zoom .icon-button:disabled{color:#b3b3b3}
+.picture-zoom-level{min-width:40px;height:24px;padding:0 6px;border:0;border-radius:12px;background:transparent;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;color:#171717;cursor:pointer}
+.picture-zoom-level:disabled{color:#6b6b6b;cursor:default}
+.picture-zoom-level:hover:not(:disabled){background:#f2f2f2}
 .file-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#4b5c54}
 .file-toolbar-space{flex:1}
 .file-page-counter{font-variant-numeric:tabular-nums;font-weight:500}
