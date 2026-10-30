@@ -98,7 +98,8 @@ export function canonicalReport(text: string, selected: Artifact[]): string {
 }
 export const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 // Historical name retained for all figure consumers; PNG captures are base64, SVG is text.
-export const svgImageUrl = (artifact: Artifact) => artifact.mediaType==='image/png' ? `data:image/png;base64,${artifact.content}` : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`;
+/** A figure as an image address: PNG, JPEG and WebP figures are kept as base64, SVG as text. */
+export const svgImageUrl = (artifact: Artifact) => ['image/png','image/jpeg','image/webp'].includes(artifact.mediaType ?? '') ? `data:${artifact.mediaType};base64,${artifact.content}` : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`;
 function tableHtml(artifact: Artifact): string {
   try { const data = artifactTable(artifact.content, artifact.kind === 'dataset' || artifact.mediaType === 'text/csv'); return `<div class="table-scroll"><table><thead><tr>${data.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${data.rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; } catch { return `<pre>${escapeHtml(artifact.content)}</pre>`; }
 }

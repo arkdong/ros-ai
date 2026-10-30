@@ -8,17 +8,18 @@ import { Highlights } from './connections.js';
 import { Store, StoreError } from './store.js';
 import type { ProjectFolders } from './project-folders.js';
 import { WORKFLOW_STEPS, WORKFLOW_TITLE, WorkflowTutorial, type WorkflowSession } from './demo-workflow.js';
+import { DATE_NIGHT_STEPS, DATE_NIGHT_TITLE, DateNightTutorial, type DateNightSession } from './demo-date-night.js';
 import { loadTutorialContent, localMarketDataAvailable } from './tutorial-content.js';
 import { CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import { LAYOUT_GAP } from '../shared/layout.js';
 
 type LessonSession = {
-  projectId:string; scenario:Exclude<TutorialScenarioId,'workflow'>; step:number; createdAt:string;
+  projectId:string; scenario:Exclude<TutorialScenarioId,'workflow'|'date-night'>; step:number; createdAt:string;
   stageNodeIds:string[]; questionArtifactId:string; sourceArtifactIds:string[];
   datasetArtifactId?:string; analysisNodeId?:string; outputArtifactIds:string[];
   runId?:string; draftNodeId?:string; draftArtifactId?:string;
 };
-type SavedSession = LessonSession | WorkflowSession;
+type SavedSession = LessonSession | WorkflowSession | DateNightSession;
 export type ImportArtifact = Pick<Artifact,'kind'|'title'|'content'> & Partial<Pick<Artifact,'url'|'mediaType'|'metadata'|'capture'|'sourceId'>>;
 const lessonSchema = z.enum(['banking','market']);
 const identifier = z.string().min(1).max(128);
@@ -35,8 +36,11 @@ export class TutorialService {
   private highlights:Highlights;
   /** The guided workflow builds its canvas in a project folder, so it needs the local app. */
   private workflow?:WorkflowTutorial;
+  /** Date night needs no folder: it runs the same in the app and in the hosted demo. */
+  private dateNight:DateNightTutorial;
   constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean;folders?:ProjectFolders}={}) {
     this.highlights = new Highlights(store);
+    this.dateNight = new DateNightTutorial(store,(...args) => this.importArtifacts(...args));
     // The hosted demo has no folders; there the walk-through keeps its files as saved blocks.
     if (options.folders || options.publicDemo) this.workflow = new WorkflowTutorial(store,options.publicDemo ? undefined : options.folders,(...args) => this.importArtifacts(...args));
   }
@@ -52,7 +56,10 @@ export class TutorialService {
 
   catalog():TutorialCatalog {
     return {
-      scenarios:[{id:'workflow' as const,title:'From idea to report · AI in Dutch business',projectTitle:WORKFLOW_TITLE,steps:WORKFLOW_STEPS,
+      scenarios:[{id:'date-night' as const,title:'Date night · a table for Friday',projectTitle:DATE_NIGHT_TITLE,steps:DATE_NIGHT_STEPS,
+        summary:'Two agents search Japanese, French, Asian and Spanish restaurants at once, check who has a table next Friday, pin them all on a map and bring photos of the food and the room.',
+        question:'Where should we have dinner next Friday?',publicDataReady:true,publicDataStatus:'',available:true},
+        {id:'workflow' as const,title:'From idea to report · AI in Dutch business',projectTitle:WORKFLOW_TITLE,steps:WORKFLOW_STEPS,
         summary:'The whole workflow in seven steps: web searches from a first idea, findings read from the pages, themes and a leading conclusion, a calculation and a notebook on CBS data, charts and a final report.',
         question:'How is AI changing Dutch businesses, and what does it mean for a bank such as ABN AMRO?',publicDataReady:false,publicDataStatus:'',available:Boolean(this.workflow),
         ...this.workflow ? {} : {unavailableReason:'Available in the local app, where projects are folders on your computer.'}},
@@ -90,6 +97,7 @@ export class TutorialService {
   read(projectId:string):TutorialSession|null {
     const saved = this.saved(projectId);
     if (!saved) return null;
+    if (saved.scenario === 'date-night') return this.dateNight.read(saved,this.execution());
     if (saved.scenario === 'workflow') {
       if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',409);
       return this.workflow.read(saved,this.execution());
@@ -123,6 +131,7 @@ export class TutorialService {
   create(scenario:TutorialScenarioId,folder?:string):TutorialSession {
     const folders = this.options.folders;
     if (folder && !folders) throw new StoreError('Project folders are available in the local app.');
+    if (scenario === 'date-night') return this.read(this.dateNight.create())!;
     if (scenario === 'workflow') {
       if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',403);
       return this.read(this.workflow.create(folder))!;
@@ -162,6 +171,7 @@ export class TutorialService {
     const saved = this.saved(projectId);
     if (!saved) throw new StoreError('This project is not a demo workspace.',404);
     if (expectedStep !== undefined && expectedStep !== saved.step) throw new StoreError('The tutorial has already moved. Refresh before advancing again.',409);
+    if (saved.scenario === 'date-night') { this.dateNight.advance(saved); return this.read(projectId)!; }
     if (saved.scenario === 'workflow') {
       if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',409);
       this.workflow.advance(saved);
@@ -242,7 +252,7 @@ export class TutorialService {
 
   preview(projectId:string):TutorialSession {
     const saved = this.saved(projectId);
-    if (!saved || saved.scenario === 'workflow' || !saved.analysisNodeId || !saved.datasetArtifactId) throw new StoreError('Reach Analyze and challenge before preparing a new calculation.',409);
+    if (!saved || saved.scenario === 'workflow' || saved.scenario === 'date-night' || !saved.analysisNodeId || !saved.datasetArtifactId) throw new StoreError('Reach Analyze and challenge before preparing a new calculation.',409);
     if (!this.experiments) throw new StoreError('The execution service is unavailable.',503);
     if (!this.execution().available) throw new StoreError(this.execution().reason,503);
     const current = saved.runId ? this.experiments.inspect(saved.runId) : null;
@@ -322,7 +332,7 @@ export class TutorialService {
 export function attachTutorialRoutes(app:Express,service:TutorialService) {
   app.get('/api/demo-scenarios',(_req,res) => res.json(service.catalog()));
   app.post('/api/demo-sessions',(req,res) => {
-    const {scenario,folder} = z.object({scenario:z.enum(['workflow',...lessonSchema.options]),folder:z.string().trim().min(1).max(4000).optional()}).strict().parse(req.body);
+    const {scenario,folder} = z.object({scenario:z.enum(['workflow','date-night',...lessonSchema.options]),folder:z.string().trim().min(1).max(4000).optional()}).strict().parse(req.body);
     res.status(201).json(service.create(scenario,folder));
   });
   app.get('/api/projects/:id/demo-session',(req,res) => res.json(service.read(identifier.parse(req.params.id))));

@@ -15,8 +15,9 @@ export function HostedStart({ onDemo }: { onDemo: (scenario: TutorialScenario) =
   useEffect(() => { void api<TutorialCatalog>('/api/demo-scenarios').then(next => setScenarios(next.scenarios.filter(item => item.available !== false))).catch(() => setScenarios([])); }, []);
   const start = async (scenario: TutorialScenario) => { setBusy(scenario.id); try { await onDemo(scenario); } finally { setBusy(null); } };
   const copy = () => { void navigator.clipboard?.writeText(CURL).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }).catch(() => undefined); };
-  // The walk-through with agents comes first.
-  const tours = [...(scenarios ?? [])].sort((a, b) => Number(b.id === 'workflow') - Number(a.id === 'workflow'));
+  // The tours with agents come first: date night, then the research walk-through.
+  const order = ['date-night', 'workflow'], rank = (id: string) => { const at = order.indexOf(id); return at < 0 ? order.length : at; };
+  const tours = [...(scenarios ?? [])].sort((a, b) => rank(a.id) - rank(b.id));
   return <div className="start-screen hosted-start">
     <div className="start-column">
       <span className="start-ring"><RosMark/></span>

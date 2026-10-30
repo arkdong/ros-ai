@@ -1,0 +1,63 @@
+{
+  "title": "Date night · Friday 6 November",
+  "note": "Sample data made up for this demo: the restaurants, ratings and free tables are invented, and the photos are illustrations. No live search or booking happened.",
+  "idea": {
+    "title": "Dinner date next Friday",
+    "text": "Find a restaurant for a date next Friday, 6 November, around 19:30 in Amsterdam.\n\n- We like **Japanese, French, Asian and Spanish** food\n- Somewhere quiet enough to talk, about €50–90 a head\n- Show me which ones still have a table, where they are on a map, and plenty of photos of the food and the room"
+  },
+  "agents": [
+    { "key": "claude", "runtime": "claude", "title": "Find Japanese and French places", "cuisines": ["japanese", "french"],
+      "text": "Search for Japanese and French restaurants in central Amsterdam that suit a date: reviews, price, the room, and how to book." },
+    { "key": "codex", "runtime": "codex", "title": "Find Asian and Spanish places", "cuisines": ["asian", "spanish"],
+      "text": "Search for other Asian and Spanish restaurants in central Amsterdam that suit a date: reviews, price, the room, and how to book." }
+  ],
+  "cuisines": {
+    "japanese": { "title": "Japanese", "color": "#d1495b" },
+    "french":   { "title": "French",   "color": "#2e5aac" },
+    "asian":    { "title": "Asian",    "color": "#e09f3e" },
+    "spanish":  { "title": "Spanish",  "color": "#3a9d5d" }
+  },
+  "slots": ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00"],
+  "places": [
+    { "id": "kumo", "name": "Kumo Izakaya", "cuisine": "japanese", "area": "De Pijp", "lat": 52.3545, "lon": 4.8935, "price": 55, "rating": 4.6,
+      "about": "A busy izakaya with a long counter and a few booths at the back. Small plates to share: grilled black cod, chicken skewers, chawanmushi.",
+      "date": "Ask for a booth: the counter is fun but loud.", "slots": ["full", "few", "open", "open", "few", "full"] },
+    { "id": "hana", "name": "Hana Omakase", "cuisine": "japanese", "area": "Jordaan", "lat": 52.3762, "lon": 4.8812, "price": 95, "rating": 4.8,
+      "about": "Ten seats around one chef. A fixed omakase of twelve courses, mostly nigiri.",
+      "date": "Special, but booked out four weeks ahead.", "slots": ["full", "full", "full", "full", "full", "full"] },
+    { "id": "sora", "name": "Sora Ramen & Sake", "cuisine": "japanese", "area": "Oud-West", "lat": 52.3648, "lon": 4.8695, "price": 35, "rating": 4.4,
+      "about": "Rich tonkotsu ramen and a long sake list. Quick, warm and casual.",
+      "date": "No bookings, walk in only; usually a queue on Fridays.", "slots": ["walk-in", "walk-in", "walk-in", "walk-in", "walk-in", "walk-in"] },
+    { "id": "canal", "name": "Le Petit Canal", "cuisine": "french", "area": "Prinsengracht", "lat": 52.3698, "lon": 4.8852, "price": 65, "rating": 4.6,
+      "about": "A candle-lit bistro in a canal-house basement. Steak frites, duck confit, a short list of Loire wines.",
+      "date": "Ask for the window table on the canal.", "slots": ["open", "open", "few", "open", "open", "full"] },
+    { "id": "lumiere", "name": "Maison Lumière", "cuisine": "french", "area": "Oud-Zuid", "lat": 52.3562, "lon": 4.8770, "price": 90, "rating": 4.7,
+      "about": "Modern French tasting menu in a bright room near the Museumplein.",
+      "date": "Only a 21:30 waitlist left for Friday.", "slots": ["full", "full", "full", "full", "full", "full"] },
+    { "id": "margaux", "name": "Café Margaux", "cuisine": "french", "area": "Plantage", "lat": 52.3664, "lon": 4.9108, "price": 50, "rating": 4.5,
+      "about": "A small wine bar and bistro by the Hortus. Cheese, terrine, and one dish of the day.",
+      "date": "Relaxed and quiet, good for talking.", "slots": ["open", "open", "open", "few", "open", "open"] },
+    { "id": "jade", "name": "Jade Garden", "cuisine": "asian", "area": "Nieuwmarkt", "lat": 52.3722, "lon": 4.9005, "price": 45, "rating": 4.5,
+      "about": "Cantonese, with dim sum served into the evening and a roast duck worth the trip.",
+      "date": "Lively, big round tables; ask for a table for two by the window.", "slots": ["open", "few", "few", "open", "open", "open"] },
+    { "id": "saigon", "name": "Saigon Lanterns", "cuisine": "asian", "area": "De Pijp", "lat": 52.3515, "lon": 4.8968, "price": 40, "rating": 4.4,
+      "about": "Vietnamese with paper lanterns and a small courtyard. Pho, crispy rice pancakes, lemongrass beef.",
+      "date": "Cosy and warm, good value.", "slots": ["open", "open", "open", "few", "full", "full"] },
+    { "id": "bangkok", "name": "Bangkok Kitchen Club", "cuisine": "asian", "area": "Oost", "lat": 52.3611, "lon": 4.9255, "price": 45, "rating": 4.6,
+      "about": "Thai, cooked over charcoal in an open kitchen. Green curry, grilled pork neck, mango sticky rice.",
+      "date": "A little further out, by tram 9 from Centraal.", "slots": ["few", "open", "open", "open", "open", "few"] },
+    { "id": "sol", "name": "Taberna Sol", "cuisine": "spanish", "area": "Jordaan", "lat": 52.3784, "lon": 4.8838, "price": 45, "rating": 4.5,
+      "about": "Tapas and vermouth in a narrow room with tiles from Seville. Croquetas, gambas al ajillo, Iberian ham.",
+      "date": "Book the 20:00 slot: the bar is calmer after the after-work crowd.", "slots": ["full", "full", "few", "open", "open", "open"] },
+    { "id": "casamar", "name": "Casa Mar", "cuisine": "spanish", "area": "Houthavens", "lat": 52.3885, "lon": 4.8862, "price": 60, "rating": 4.6,
+      "about": "Seafood and paella for two on the water, with a terrace heater outside.",
+      "date": "Fully booked on Friday; Saturday is open.", "slots": ["full", "full", "full", "full", "full", "full"] },
+    { "id": "luna", "name": "Bodega Luna", "cuisine": "spanish", "area": "De Pijp", "lat": 52.3570, "lon": 4.8905, "price": 50, "rating": 4.3,
+      "about": "Natural wine and small plates from northern Spain, in a corner bodega.",
+      "date": "Fine, though reviews mention slow service on busy nights.", "slots": ["open", "open", "open", "open", "few", "few"] }
+  ],
+  "pick": {
+    "title": "Friday plan: Le Petit Canal at 19:30",
+    "text": "**First choice: Le Petit Canal, 19:30.** French bistro on the Prinsengracht, about €65 a head, rated 4.6. A few tables left at 19:30; ask for the window table on the canal. Quiet enough to talk.\n\n**If it goes: Kumo Izakaya, 19:30.** Japanese small plates in De Pijp, about €55, rated 4.6. Ask for a booth.\n\n**Something different: Taberna Sol, 20:00.** Spanish tapas in the Jordaan, about €45, rated 4.5.\n\n**Set aside:** Hana Omakase, Maison Lumière and Casa Mar are fully booked on Friday; Sora Ramen takes no bookings.\n\nIn the app, an agent with a booking plugin could reserve the table once you say which one."
+  }
+}
