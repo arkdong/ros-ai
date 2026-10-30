@@ -34,6 +34,7 @@ const proposals = {
   ros_propose_report: { schema: agentToolSchemas.ros_propose_report.extend(project), title: 'Propose a report revision', description: 'Propose a new version of a report block, citing exact artifact IDs as evidence. The person reviews the full text and accepts it before it is saved.' },
   ros_propose_analysis: { schema: agentToolSchemas.ros_propose_analysis.extend(project), title: 'Propose analysis code', description: 'Propose Python analysis code for a block and a dataset artifact. It runs only in ros.ai\'s sandbox, under the project\'s permission choice and limits. Never claim it ran until its status says so.' },
   ros_propose_reuse: { schema: agentToolSchemas.ros_propose_reuse.extend(project), title: 'Propose reusing an artifact', description: 'Propose using an exact artifact version as an input of another block. The person accepts or dismisses it.' },
+  ros_place_pins: { schema: agentToolSchemas.ros_place_pins.extend(project), title: 'Place pins on a map', description: 'Put places on a Map block on the canvas (a new one with title, or one there with nodeId): each pin a name and either lat and lng, or place, an address that ros.ai looks up on OpenStreetMap. Each pin opens in Google Maps. Follows the project\'s permission choice; places that cannot be found come back in notFound.' },
 } as const;
 type ProposalTool = keyof typeof proposals;
 const checkApp = appToolSchemas.ros_check_app.extend(project);

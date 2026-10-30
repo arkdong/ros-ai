@@ -10,6 +10,7 @@ import { noteImageUrl } from '../shared/files';
 import './detail-polish.css';
 import { NotionBlock } from './NotionView';
 import { GoogleBlock } from './GoogleView';
+import { MapBlock } from './MapView';
 import { TrainingBlock } from './TrainingView';
 import { rowBlockOperations } from '../shared/notion-rows';
 import './note-view.css';
@@ -83,9 +84,10 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
       {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onAccount={readOnly?undefined:account=>void mutate([{type:'updateNode',id:node.id,patch:{notion:{...node.notion!,account}}}],'Read with another Notion account')} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {node.training&&<section className="note-content"><TrainingBlock projectId={detail.project.id} nodeId={node.id} view={node.training} full/></section>}
+      {node.blockType==='map'&&<section className="note-content"><MapBlock view={node.map??{pins:[]}} full onPins={readOnly?undefined:pins=>mutate([{type:'updateNode',id:node.id,patch:{map:{pins}}}],`Change the places on ${node.title}`.slice(0,80))}/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
-      {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.app&&!node.web&&node.blockType!=='agent'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
+      {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.app&&!node.web&&node.blockType!=='agent'&&node.blockType!=='map'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
       {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
       {file&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}
@@ -93,7 +95,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {!primary&&sqlShown&&<section className="note-content">{sqlOpen?<><div className="note-content-heading"><h3>Fill this block with a query</h3><button className="text-button small" onClick={()=>setSqlOpen(false)}><X size={12}/> Close SQL</button></div>{sqlPanel}</>:<button className="secondary small sql-start" onClick={()=>setSqlOpen(true)}><Database size={13}/> Query with SQL</button>}</section>}
       {isGroup(node)&&<section className="note-content"><h3>Blocks in this Group</h3>{children.map(child=><button className="overview-artifact" key={child.id} onClick={()=>onOpenNote(child.id)}><FileText size={16}/><span><strong>{child.title}</strong><small>{kindName(child)}{textLabel(child)?` · ${textLabel(child)}`:''}</small></span><ArrowRight size={14}/></button>)}</section>}
       {isGroup(node)&&<GroupHighlights node={node} detail={detail} mutate={mutate} onOpenArtifact={onOpenArtifact} onOpenNote={onOpenNote} readOnly={readOnly}/>}
-      {readOnly&&!description&&!primary&&!children.length&&!node.notion&&!node.google&&!file&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
+      {readOnly&&!description&&!primary&&!children.length&&!node.notion&&!node.google&&!file&&node.blockType!=='map'&&<div className="note-empty"><FileText size={22} strokeWidth={1.3}/><p>Nothing here yet. Ask in the conversation to develop this {isGroup(node)?'group':'note'}.</p></div>}
     </div>
     {chatOpen&&<div className="note-side" id={`note-side-${node.id}`}>
       <div className="note-side-heading"><strong>{side==='history'?'History':'Conversation'}</strong><span className="note-side-spacer"/><button className={`note-history-toggle${side==='history'?' active':''}`} aria-pressed={side==='history'} aria-label={side==='history'?'Close history':undefined} onClick={()=>setSide(side==='history'?'conversation':'history')}>{side==='history'?<><X size={13}/> Close</>:<><History size={13}/> History{runs.length>0&&<span>{runs.length}</span>}</>}</button><button className="icon-button" aria-label="Hide conversation" title="Hide conversation" onClick={()=>setChatOpen(false)}><X size={15}/></button></div>
