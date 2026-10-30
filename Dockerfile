@@ -19,8 +19,12 @@ COPY package.json package-lock.json ./
 COPY --from=build /app/dist/client ./dist/client
 COPY src/server ./src/server
 COPY src/shared ./src/shared
-# The public image contains only the attributed banking scenario's exact inputs.
+# The public image contains only the demos' own material: the banking scenario's exact inputs, then the guided tours.
 COPY examples/dutch-ai-adoption/analysis.py examples/dutch-ai-adoption/cbs-ai-size-2024.csv examples/dutch-ai-adoption/article.md ./examples/dutch-ai-adoption/
 COPY examples/tutorial-results/banking.json ./examples/tutorial-results/banking.json
+# The guided tours: the recorded research walk-through and date night (sample data, drawn map and pictures).
+COPY examples/demo-workflow ./examples/demo-workflow
+COPY examples/demo-date-night/places.json examples/demo-date-night/map.png ./examples/demo-date-night/
+COPY examples/demo-date-night/photos ./examples/demo-date-night/photos
 EXPOSE 8080
 CMD ["node", "--import", "tsx", "src/server/index.ts"]

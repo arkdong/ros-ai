@@ -1,4 +1,4 @@
-# Allow only the source and curated banking material needed by Dockerfile.
+# Allow only the source and the demo material needed by Dockerfile.
 **
 !Dockerfile
 !.dockerignore
@@ -18,6 +18,13 @@
 !examples/dutch-ai-adoption/article.md
 !examples/tutorial-results/
 !examples/tutorial-results/banking.json
+!examples/demo-workflow/
+!examples/demo-workflow/**
+!examples/demo-date-night/
+!examples/demo-date-night/places.json
+!examples/demo-date-night/map.png
+!examples/demo-date-night/photos/
+!examples/demo-date-night/photos/**
 
 # Explicit exclusions also apply inside otherwise allowed source folders.
 **/.env*
