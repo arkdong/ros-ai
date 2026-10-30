@@ -137,6 +137,26 @@ npx tsx training/ros-nemotron/run.ts structure-eval --model=teacher --label=supe
 
 Targets for the new model: valid at least 98%, group F1 at least 0.8, left alone at least 9 times in 10, no drop on the 95 tasks, and a landing answer in 10 seconds or less (p50) on Adam's Mac. Expected cost: maps about US$1 to 3 of Token Factory credit, the H100 about 3 to 5 hours (US$9 to 15 of AI Cloud credit), Super's evaluation about US$1; about US$15 to 25 in all, capped at US$30.
 
+### Results (30 October)
+
+314 training and 29 evaluation maps. Of the teacher's 2,219 links the check kept 1,558 (it dropped 161 of 233 "contradicts"), and labelling then changed the word of 543 and turned 316 round. Two models were trained on one H100, each from the base model with round 1's recipe (2 epochs, about 46 minutes): **r2a** on the maps as written (2,968 samples with round 1's) and **r2b** on the checked and labelled links (2,955). Both were scored on the same 189 held-out turns, built from the labelled maps.
+
+| | valid | group F1 | link F1 (right word / direction) | left alone | missed | p50 | 95 tasks |
+|---|---|---|---|---|---|---|---|
+| ros.ai's rules | 100% | 0.743 | 0 | 0.979 | 0.624 | – | – |
+| round 1 (today's Local ROS) | 99.5% | 0.056 | 0 | 0.938 | 0.929 | 3.7 s | 66 |
+| Nemotron 3 Super | 99.5% | 0.304 | 0.191 (0.33 / 0.54) | 0.354 | 0.113 | 0.9 s | – |
+| r2a | 100% | 0.927 | 0.261 (0.39 / 0.53) | 0.667 | 0.184 | 4.1 s | 71 |
+| r2b | 100% | 0.934 | 0.204 (0.49 / 0.61) | 0.896 | 0.270 | 3.7 s | 68 |
+
+- Both models group almost perfectly (a whole group that came loose comes back every time) and neither dropped on the 95 agent tasks; KNMI is 9 of 10 for both.
+- r2b meets every target (left alone 0.896 rounds to 0.9). r2a misses left alone: on a third of the turns that needed nothing it changed something, nearly always by adding links, and it adds links freely when it regroups too.
+- Clean links made r2b more careful: its links more often have the right word and direction, but it skips 84% of the turns whose answer is links only (r2a 58%), so its link F1 is lower.
+- The left-alone score understates both. Replayed, most of the changes they made to maps that "needed nothing" were reasonable: of r2a's 11, 4 were right, 5 harmless and 2 wrong ("Summary of past funding attempts contradicts Decision to step down", where it supports it); r2b's 3 were all right or harmless.
+- Links remain the weak part: even the labels are right on word and direction only about two times in three by spot check.
+
+Cost: US$9.85 (Token Factory US$2.68: maps 1.43, link check 0.24, labels 0.37, evaluations about 0.6; the H100 2.4 hours, about US$7.20).
+
 ## Known risks
 
 - **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns were refused before they reached the model. Fixed in #67: loopback servers now estimate input as bytes/3.
