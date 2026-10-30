@@ -3,6 +3,7 @@ import { request } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import type { AgentId, AppId, DetectedApp, DetectedModel, LinkMethod, LocalModel } from '../shared/setup.js';
+import { zoteroApp } from './papers.js';
 
 /** What is installed on this computer, from existence, names and modification times.
  * Credential files are checked for existence and never opened. Agent settings are parsed for the
@@ -41,6 +42,17 @@ export function findBinary(name: string): string | null {
   }
   return null;
 }
+
+/** The GitHub CLI's settings folder: GH_CONFIG_DIR, else its usual place on each system. */
+export function ghConfigDir() {
+  const set = process.env.GH_CONFIG_DIR?.trim();
+  if (set) return set;
+  return win ? join(appData, 'GitHub CLI') : join(process.env.XDG_CONFIG_HOME?.trim() || join(home, '.config'), 'gh');
+}
+/** The GitHub CLI's command (ROS_GH_BINARY names another), when it is installed. */
+export const ghBinary = () => findBinary(process.env.ROS_GH_BINARY || 'gh');
+/** The GitHub CLI is installed and has signed in here: its hosts file exists. The file is never opened. */
+export const githubCliFound = () => Boolean(ghBinary()) && exists(join(ghConfigDir(), 'hosts.yml'));
 
 type Shape = { servers: string[]; keys: string[] };
 /** The top-level key names and the names under mcpServers of a JSON settings file. Values are never kept. */
@@ -244,11 +256,12 @@ const specs: AppSpec[] = [
 ];
 /** Apps on this computer, by their bundles and folders, plus the ones the person's agents already talk to. */
 export async function detectApps(agents: Found[], connected: Set<string>): Promise<DetectedApp[]> {
-  const [zoteroRunning, driveFolder] = await Promise.all([
+  const [zoteroRunning, zoteroLocal, driveFolder] = await Promise.all([
     fetch('http://127.0.0.1:23119/connector/ping', { signal: AbortSignal.timeout(400) }).then(response => response.ok, () => false),
+    zoteroApp(),
     Promise.resolve(mac && (() => { try { return readdirSync(join(home, 'Library', 'CloudStorage')).some(name => name.startsWith('GoogleDrive-')); } catch { return false; } })()),
   ]);
-  const gh = Boolean(findBinary('gh')) && exists(join(home, '.config', 'gh', 'hosts.yml'));
+  const gh = githubCliFound();
   return specs.map(spec => {
     const usedBy = agents.filter(agent => agent.found && agent.servers.some(name => spec.pattern.test(name))).map(agent => agent.label);
     const found = signals({
@@ -257,6 +270,8 @@ export async function detectApps(agents: Found[], connected: Set<string>): Promi
       'synced folder': spec.id === 'google-drive' && driveFolder,
       'signed in on the command line': spec.id === 'github' && gh,
     });
-    return { id: spec.id, label: spec.label, signals: found, usedBy, connected: connected.has(spec.id) };
+    // The GitHub CLI's sign-in and the Zotero app connect with nothing to paste.
+    const local = spec.id === 'github' ? (gh ? 'ready' as const : undefined) : spec.id === 'zotero' ? zoteroLocal : undefined;
+    return { id: spec.id, label: spec.label, signals: found, usedBy, connected: connected.has(spec.id), ...(local ? { local } : {}) };
   }).filter(item => item.signals.length || item.usedBy.length || item.connected);
 }

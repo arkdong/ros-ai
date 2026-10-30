@@ -173,7 +173,7 @@ export class CodexAppServer {
   }
   async inspectConnection() {
     await this.initialize();
-    const account = await this.request<{ account?: { type?: string } | null; requiresOpenaiAuth?: boolean }>('account/read', { refreshToken: false });
+    const account = await this.request<{ account?: { type?: string; planType?: string | null } | null; requiresOpenaiAuth?: boolean }>('account/read', { refreshToken: false });
     const value = await this.request<{ config?: { features?: Record<string, unknown>; mcp_servers?: Record<string, { enabled?: boolean }>; model?: string | null; model_reasoning_effort?: string | null; model_provider?: string; model_providers?: Record<string, { requires_openai_auth?: boolean; request_max_retries?: number; stream_max_retries?: number; env_key?: string | null; base_url?: string | null }>; default_permissions?: string | null; sandbox_mode?: string | null; permissions?: Record<string, { filesystem?: Record<string, unknown> | null; network?: { enabled?: boolean | null } | null }> } }>('config/read', { includeLayers: false });
     const config = value.config ?? {}, mcpNames = Object.entries(config.mcp_servers ?? {}).filter(([, v]) => v.enabled !== false).map(([key]) => key);
     const api = this.options.api ?? null, name = codexProvider(Boolean(api)), provider = config.model_providers?.[name];
@@ -190,7 +190,7 @@ export class CodexAppServer {
     let models: CodexModels = { models: [], defaultModel: null };
     try { models = parseCodexModels(await this.request('model/list', { includeHidden: false, limit: 100 }, 5000)); } catch { /* An older Codex keeps choosing its own model. */ }
     const configured = { model: typeof config.model === 'string' ? config.model : null, effort: isEffortLevel(config.model_reasoning_effort) ? config.model_reasoning_effort : null };
-    return { rateLimits, signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced, ...models, configured };
+    return { rateLimits, planType: typeof account.account?.planType === 'string' ? account.account.planType : null, signedIn: Boolean(account.account), authMethod: account.account?.type === 'chatgpt' ? 'chatgpt' as const : account.account?.type === 'apiKey' ? 'api-key' as const : null, disabledMcp: mcpNames, toolRestrictionsConfigured: enforced, ...models, configured };
   }
   /** Under a permission profile, the effective one must be ros.ai's: the session folder and the minimal platform files to read, and no network. */
   private isolated(config: { default_permissions?: string | null; sandbox_mode?: string | null; permissions?: Record<string, { filesystem?: Record<string, unknown> | null; network?: { enabled?: boolean | null } | null }> }) {

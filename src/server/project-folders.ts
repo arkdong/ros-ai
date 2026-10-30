@@ -495,7 +495,7 @@ export class ProjectFolders implements NotebookFolders {
   /** Adds a file that is already in the folder to the canvas as a block. */
   add(projectId: string, rel: string, placement: Partial<Pick<CanvasNode, 'parentId' | 'x' | 'y'>> = {}): { nodeId: string } {
     const { record, files } = this.require(projectId), kind = unplacedKind(rel);
-    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook, HTML (an App), PDF, PNG and JPEG files.');
+    if (!kind) throw new StoreError('ros.ai can add Markdown, code, CSV, notebook, HTML (an App), PDF, PNG, JPEG, WebP and GIF files.');
     if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError('This file is already a block on the canvas.', 409);
     // A PDF or image becomes a File block that shows it; a PDF's text is read into the block's saved version afterwards.
     const node = this.blockFromFile(record, files, rel, kind === 'pdf' || kind === 'image' ? 'file' : kind, placement);
@@ -507,7 +507,7 @@ export class ProjectFolders implements NotebookFolders {
   /** Saves a file the person dropped on the canvas into files/ in the project folder, so a File block can show it. */
   saveFile(projectId: string, name: string, bytes: Buffer): { path: string } {
     const { record, files } = this.require(projectId), extension = extensionOf(name);
-    if (!fileMediaType(name)) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.');
+    if (!fileMediaType(name)) throw new StoreError('ros.ai shows PDF, PNG, JPEG, WebP and GIF files.');
     if (!bytes.length) throw new StoreError(`${name} is empty.`);
     if (bytes.length > FILE_BYTES) throw new StoreError(`${name} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB, the most a File block shows.`);
     const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extension.toLowerCase() === '.jpeg' ? '.jpeg' : extension.toLowerCase(), this.mapped(record));
@@ -519,7 +519,7 @@ export class ProjectFolders implements NotebookFolders {
     const { files } = this.require(projectId), node = this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId);
     if (!node?.file) throw new StoreError('This block shows no file.', 404);
     const mediaType = fileMediaType(node.file.path);
-    if (!mediaType) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.', 415);
+    if (!mediaType) throw new StoreError('ros.ai shows PDF, PNG, JPEG, WebP and GIF files.', 415);
     const info = files.stat(node.file.path);
     if (!info) throw new StoreError(`${node.file.path} is missing from the project folder.`, 404);
     if (!info.isFile()) throw new StoreError(`${node.file.path} is not a normal file.`, 404);
@@ -551,7 +551,7 @@ export class ProjectFolders implements NotebookFolders {
     const record = this.load(projectId);
     if (!record) throw new StoreError('This project has no folder, so there is no file to show. Ask the person to choose a project folder first.');
     const files = new FolderFiles(record.path);
-    if (!fileMediaType(rel)) throw new StoreError(`${rel} is not a PDF, PNG or JPEG. A File block shows only those.`);
+    if (!fileMediaType(rel)) throw new StoreError(`${rel} is not a PDF or a PNG, JPEG, WebP or GIF image. A File block shows only those.`);
     if (!files.stat(rel)?.isFile()) throw new StoreError(`${rel} is not in the project folder. ros_read_canvas lists the files that can be shown.`, 404);
     if (this.mapped(record).has(rel.toLowerCase())) throw new StoreError(`${rel} is already a block on the canvas.`, 409);
   }
@@ -563,7 +563,7 @@ export class ProjectFolders implements NotebookFolders {
   private blockFromFile(record: FolderRecord, files: FolderFiles, rel: string, kind: FolderFileKind, placement: Partial<Pick<CanvasNode, 'id' | 'title' | 'kind' | 'blockType' | 'label' | 'paper' | 'parentId' | 'x' | 'y' | 'width' | 'height'>>): CanvasNode {
     const projectId = record.projectId, read = files.read(rel, READ_BYTES[kind]);
     if (kind === 'figure') throw new StoreError('Figures are written by ros.ai and cannot be added from the folder yet.');
-    if (kind === 'file' && !fileMediaType(rel)) throw new StoreError('ros.ai shows PDF, PNG and JPEG files.');
+    if (kind === 'file' && !fileMediaType(rel)) throw new StoreError('ros.ai shows PDF, PNG, JPEG, WebP and GIF files.');
     const text = kind === 'file' ? '' : decodeText(read.bytes), id = placement.id ?? randomUUID();
     const base: CanvasNode = { id, title: placement.title ?? titleFromPath(rel), description: '', x: placement.x ?? 0, y: placement.y ?? 0, kind: placement.kind && placement.kind !== 'group' ? placement.kind : 'topic',
       ...(placement.parentId ? { parentId: placement.parentId } : {}), ...(placement.width ? { width: placement.width } : {}), ...(placement.height ? { height: placement.height } : {}), ...(placement.label ? { label: placement.label } : {}), ...(placement.paper ? { paper: placement.paper } : {}) };
@@ -756,7 +756,7 @@ export class ProjectFolders implements NotebookFolders {
       const entry = record.files[node.id];
       if (node.kind === 'group' || nodeBlockType(node) !== 'file' || !node.file?.path || (entry && !entry.removed)) continue;
       let read: ReturnType<FolderFiles['read']> | undefined, problem: string | undefined;
-      try { if (!fileMediaType(node.file.path)) throw new StoreError('is not a PDF, PNG or JPEG, so ros.ai cannot show it.'); if (files.stat(node.file.path)) read = files.read(node.file.path, READ_BYTES.file); }
+      try { if (!fileMediaType(node.file.path)) throw new StoreError('is not a PDF or a PNG, JPEG, WebP or GIF image, so ros.ai cannot show it.'); if (files.stat(node.file.path)) read = files.read(node.file.path, READ_BYTES.file); }
       catch (error) { problem = message(error); }
       record.files[node.id] = { path: node.file.path, kind: 'file', hash: read?.observed.hash ?? '', ...(read ? { disk: read.observed } : { missing: true }), ...(problem ? { problem } : {}) };
       if (read) this.queueText(record.projectId, node.id);

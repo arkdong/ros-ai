@@ -137,7 +137,8 @@ try {
     googleDrive = new GoogleDriveConnection({dataDir,port});
     const combinedBudget = new CombinedNebiusBudget(store);
     const inference = new InferenceConnections(store,dataDir);
-    execution = new ExecutionService(store,{combinedBudget,inference});
+    // Web search works with no key: Tavily and Exa answer within the allowance each gives anyone. ROS_FREE_SEARCH=off stops it.
+    execution = new ExecutionService(store,{combinedBudget,inference,freeSearch:process.env.ROS_FREE_SEARCH?.trim().toLowerCase()!=='off'});
     const started = applyStartingAllowances(execution.connectionBudgets, provider => Boolean(store!.globalRecord('connection-allowance', provider)));
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
@@ -167,9 +168,10 @@ try {
     const google = new GoogleWorkspace(googleDrive, new ProjectCache(store));
     AgentWorkspaceTools.google = google;
     // Papers from OpenAlex, arXiv and the Zotero library, for Add block › Paper and, as turned on in Plugins, for agents.
-    const papers = new Papers(store, { openalex: () => plugins.token('openalex'), zotero: () => plugins.token('zotero') });
+    const papers = new Papers(store, { openalex: () => plugins.token('openalex'), zotero: () => plugins.token('zotero'), zoteroApp: () => plugins.way('zotero') === 'zotero-app' });
     AgentWorkspaceTools.papers = papers;
-    // Apps reached with a Plugins token (GitHub, Slack) read it from there each time they connect.
+    // Apps reached with a Plugins token (GitHub, Slack) read it from there each time they connect: GitHub's may be the
+    // GitHub CLI's sign-in, read from gh.
     const apps = new RemoteApps(dataDir, { token: id => plugins.token(id), builtIn: { slack: new SlackApp(() => plugins.token('slack')), 'google-drive': new GoogleDriveApp(google), papers: new PapersApp(papers) } });
     AgentWorkspaceTools.apps = apps;
     // The browser agents use while it is on in Plugins: the Chrome or Edge on this computer, public websites only.

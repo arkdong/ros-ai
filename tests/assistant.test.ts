@@ -101,8 +101,7 @@ test('continuous conversation preserves the original question and focus without 
     const other = f.store.createProject('PRIVATE_OTHER_PROJECT'); f.store.addMessage(other.id, null, 'user', 'PRIVATE_OTHER_PROJECT_CHAT');
     const initial = f.assistant.start(f.project.id, { message: 'Original fixture research question', focus: { nodeId: 'a' } });
     assert.equal((await finished(f, initial.activeTurnId!)).status, 'completed');
-    f.assistant.setFocus(f.project.id, { nodeId: 'b' });
-    f.assistant.start(f.project.id, { message: 'Continue the same question in another note' }); await finished(f);
+    f.assistant.start(f.project.id, { message: 'Continue the same question in another note', focus: { nodeId: 'b' } }); await finished(f);
     const state = f.assistant.state(f.project.id);
     assert.equal(state.memory.originalQuestion, 'Original fixture research question');
     assert.deepEqual(state.memory.questionHistory.map(q => q.text), ['Original fixture research question', 'Clarified fixture question']);
@@ -110,7 +109,6 @@ test('continuous conversation preserves the original question and focus without 
     assert.match(JSON.stringify(f.requests[1]), /Original fixture research question|Use the captured fixture context/);
     assert.doesNotMatch(JSON.stringify(f.requests), /PRIVATE_NODE_A_CHAT|PRIVATE_NEIGHBOR_CHAT|PRIVATE_OTHER_PROJECT/);
     assert.equal(state.messages.length, 4); assert.ok(state.messages.every(m => m.nodeId === null));
-    f.assistant.setFocus(f.project.id, { nodeId: null }); assert.equal(f.assistant.state(f.project.id).focus.nodeId, null);
     assert.equal(f.store.listMessages(f.project.id, 'a').length, 1);
   } finally { await f.close(); }
 });
@@ -166,8 +164,8 @@ test('cross-project focus, reference and reuse cannot expose or select another p
   try {
     const other = f.store.createProject('Private other project'); f.store.mutate(other.id, [{ type: 'addNode', node: { id: 'foreign', title: 'Private', description: '', x: 0, y: 0 } }], 'Fixture');
     const foreign = capture(f.store, other.id, 'foreign', [{ kind: 'result', content: 'PRIVATE_FOREIGN_ARTIFACT' }]).outputs[0];
-    assert.throws(() => f.assistant.setFocus(f.project.id, { nodeId: 'foreign' }), /in this project/);
-    assert.throws(() => f.assistant.setFocus(f.project.id, { nodeId: null, artifactId: foreign.id }), /another project/);
+    assert.throws(() => f.assistant.start(f.project.id, { message: 'Foreign block', focus: { nodeId: 'foreign' } }), /in this project/);
+    assert.throws(() => f.assistant.start(f.project.id, { message: 'Foreign version', focus: { nodeId: null, artifactId: foreign.id } }), /another project/);
     answers.push(reply({ references: [ref('artifact', foreign.id)], tools: [{ type: 'reuse', artifactId: foreign.id, targetNodeId: 'b', reason: 'Invalid foreign reuse fixture' }] }));
     f.assistant.start(f.project.id, { message: 'Check invalid fixture references' }); const turn = await finished(f);
     assert.deepEqual(turn.references, []); assert.equal(turn.actions[0].status, 'failed'); assert.equal(f.store.detail(f.project.id).inputs.length, 0);
@@ -280,7 +278,7 @@ test('restart preserves project memory, focus, pending reuse and traces without 
   try {
     const state = api.assistant.state(f.project.id); assert.equal(state.turns[0].status, 'interrupted'); assert.equal(state.activeTurnId, null);
     assert.equal('steps' in state.turns[0], false, 'Private model request traces persist in the record without leaking into ordinary assistant state.');
-    assert.deepEqual(state.memory, before.memory); assert.deepEqual(state.focus, before.focus); assert.deepEqual(state.messages, before.messages);
+    assert.deepEqual(state.memory, before.memory); assert.deepEqual(state.turns[0].focus, before.turns[0].focus); assert.deepEqual(state.messages, before.messages);
     assert.equal(state.turns[0].actions[0].status, 'pending'); assert.equal(store.record<{ steps: unknown[] }>('assistant-turn', turn.id)!.steps.length, 1);
     await delay(10); assert.equal(api.requests.length, 0); assert.equal(api.searches.length, 0); assert.equal(api.starts.length, 0);
     api.assistant.decide(f.project.id, turn.actions[0].id, 'accept'); assert.equal(store.detail(f.project.id).inputs[0].artifactId, artifact.id);

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import express, { type Express, type Request, type Response } from 'express';
 import { z } from 'zod';
-import type { AssistantFocus, AssistantState } from '../shared/assistant.js';
+import type { AssistantState } from '../shared/assistant.js';
 import { Store, StoreError } from './store.js';
 import { createApp } from './app.js';
 import { ModelSettings } from './model-settings.js';
@@ -25,7 +25,7 @@ function permitted(method:string,path:string):boolean {
       new RegExp(`^${project}(?:/(?:demo-session|policy|research|assistant|models|resources|reviews))?$`),
       new RegExp(`^${project}/resources/[a-zA-Z0-9_-]+$`)],
     POST:[/^\/api\/(demo-sessions|projects)$/,
-      new RegExp(`^${project}/(?:mutations|undo|redo|inputs|highlights|trash|restore|assistant/focus|demo-session/advance)$`),
+      new RegExp(`^${project}/(?:mutations|undo|redo|inputs|highlights|trash|restore|demo-session/advance)$`),
       new RegExp(`^${project}/resources/[a-zA-Z0-9_-]+/use$`)],
     PATCH:[new RegExp(`^${project}/(?:models|highlights/[a-zA-Z0-9_-]+)$`)],
     DELETE:[new RegExp(`^${project}/(?:inputs|highlights)/[a-zA-Z0-9_-]+$`)],
@@ -35,10 +35,8 @@ function permitted(method:string,path:string):boolean {
 
 function savedAssistant(store:Store,projectId:string):AssistantState {
   const detail = store.detail(projectId), session = new TutorialService(store,undefined,{publicDemo:true}).read(projectId);
-  const savedFocus = store.record<AssistantFocus>('assistant-focus',projectId);
-  const focus:AssistantFocus = savedFocus?.nodeId && detail.project.canvas.nodes.some(node => node.id === savedFocus.nodeId) ? savedFocus : {nodeId:null};
   const question = detail.project.canvas.nodes.find(node => node.parentId === session?.stages[0]?.nodeId)?.description ?? null;
-  return { projectId,focus,memory:{originalQuestion:question,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]},
+  return { projectId,memory:{originalQuestion:question,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]},
     outline:detail.project.canvas.nodes.map(node => ({id:node.id,nodeId:node.id,title:node.title,summary:node.description,
       kind:'direction',references:[{kind:'node',id:node.id,nodeId:node.id,label:node.title}]})),
     turns:[],threads:[],messages:detail.messages.filter(message => message.nodeId === null),activeTurnId:null,modelAvailable:false,searchAvailable:false };
@@ -49,14 +47,6 @@ function visitorApp(store:Store):Express {
   app.use(express.json({limit:'1mb'}));
   app.get('/api/projects/:id/research',(req,res) => {store.getProject(routeId.parse(req.params.id));res.json([]);});
   app.get('/api/projects/:id/assistant',(req,res) => res.json(savedAssistant(store,routeId.parse(req.params.id))));
-  app.post('/api/projects/:id/assistant/focus',(req,res) => {
-    const projectId = routeId.parse(req.params.id), detail = store.detail(projectId);
-    const focus = z.object({nodeId:routeId.nullable(),artifactId:routeId.nullable().optional()}).strict().parse(req.body);
-    if (focus.nodeId && !detail.project.canvas.nodes.some(node => node.id === focus.nodeId)) throw new StoreError('Choose a note in this workspace.');
-    if (focus.artifactId && !detail.artifacts.some(artifact => artifact.id === focus.artifactId)) throw new StoreError('Choose an artifact in this workspace.');
-    store.saveRecord('assistant-focus',projectId,projectId,focus);
-    res.json(savedAssistant(store,projectId));
-  });
   const publicSettings = (value:ReturnType<ModelSettings['read']>) => ({...value,providers:value.providers.map(provider => ({...provider,configured:false}))});
   app.get('/api/projects/:id/models',(req,res) => res.json(publicSettings(models.read(routeId.parse(req.params.id)))));
   app.patch('/api/projects/:id/models',(req,res) => res.json(publicSettings(models.update(routeId.parse(req.params.id),req.body))));

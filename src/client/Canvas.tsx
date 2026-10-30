@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
 import { AppWindow, ArrowUpRight, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
@@ -403,9 +403,14 @@ export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   return { canvas: convertLegacyGroups(result), marks };
 }
 export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
+/** The map as it is right now, read when a message goes to ROS: the blocks picked together (a ⌘-click or a box) and the blocks inside
+ * the visible part of the map, nearest its middle first, or 'all' when every block shown is in view. */
+export type CanvasView = () => { picked: string[]; onScreen: string[] | 'all' };
 type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId) => void; onBrowse: (parentId: string | null, kind?: KindId) => void; local?: boolean; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
-  onGoogleCopy?: (nodeId: string) => Promise<boolean> };
+  onGoogleCopy?: (nodeId: string) => Promise<boolean>;
+  /** Filled with a reader of what the map shows, for the glance a message to ROS carries. */
+  view?: RefObject<CanvasView | null> };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -436,7 +441,7 @@ function useStableHandlers<T extends Record<string, (...args: never[]) => unknow
   const latest = useRef(handlers); latest.current = handlers;
   return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
 }
-function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns }: Props) {
+function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view }: Props) {
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The quick Add block menu, placed beside its tile in the tools card.
   const [addMenu, setAddMenu] = useState<{ left: number; top: number } | null>(null);
@@ -509,6 +514,26 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     }
     return { top, bottom, left, right };
   };
+  // What is on screen: blocks inside the part of the map the header, the tools, ROS and the side panel leave visible, nearest
+  // its middle first (a group around the middle comes first). Children of a closed group are not drawn, so they are not on screen.
+  useEffect(() => {
+    if (!view) return;
+    view.current = () => {
+      const bounds = area.current?.getBoundingClientRect(), shown = flow.getNodes().filter(node => node.type === 'research');
+      if (!bounds?.width || !bounds.height) return { picked: groupSelection, onScreen: [] };
+      const inset = canvasInsets();
+      const from = flow.screenToFlowPosition({ x: bounds.left + inset.left, y: bounds.top + inset.top }), to = flow.screenToFlowPosition({ x: bounds.right - inset.right, y: bounds.bottom - inset.bottom });
+      const rect = { x: from.x, y: from.y, width: Math.max(1, to.x - from.x), height: Math.max(1, to.y - from.y) }, middle = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      const distance = (id: string) => {
+        const node = flow.getInternalNode(id); if (!node) return Infinity;
+        const { x, y } = node.internals.positionAbsolute, width = node.measured.width ?? 0, height = node.measured.height ?? 0;
+        return Math.hypot(Math.max(x - middle.x, 0, middle.x - x - width), Math.max(y - middle.y, 0, middle.y - y - height));
+      };
+      const inView = flow.getIntersectingNodes(rect, true).filter(node => node.type === 'research').map(node => ({ id: node.id, distance: distance(node.id) })).sort((a, b) => a.distance - b.distance).map(item => item.id);
+      return { picked: groupSelection, onScreen: shown.length && inView.length === shown.length ? 'all' : inView };
+    };
+    return () => { view.current = null; };
+  });
   const focusReadable = (id: string, duration = 350) => {
     const node = flow.getInternalNode(id), bounds = area.current?.getBoundingClientRect();
     if (!node || !bounds) return;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, Focus, LoaderCircle, X } from 'lucide-react';
-import type { AssistantFocus, AssistantState } from '../shared/assistant';
+import { Archive, ArrowUp, Check, ChevronUp, CircleAlert, LoaderCircle } from 'lucide-react';
+import type { AssistantState } from '../shared/assistant';
 import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
@@ -25,9 +25,10 @@ export function RosMark({ working = false }: { working?: boolean }) {
 const plain = (value: string) => value.replace(/[#*_`>]+/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const clock = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; };
 
-/** ROS folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model, context and controls share one footer line; a request in flight shows above the input.
+/** ROS folded down: a floating composer at the bottom of the map. The input sits alone on top; the ring, model and controls share one footer line; a request in flight shows above the input.
+ * What is selected on the map never shows here: it goes with each message as a quiet hint (the glance, App.tsx).
  * The bar shows one thread (threadId; null is a new thread not yet started): its request in flight, its finished request and its draft. The threads button switches; other threads go on working meanwhile. */
-export function RosBar({ state, detail, policy, focus, busy, threadId, onThread, onSend, onCancel, onClearFocus, onRefresh, onConnections, onPermissions, onOpen, onSkills, onOpenPlugin }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; focus: AssistantFocus; busy: boolean; threadId: ShownThread; onThread: (thread: ShownThread) => void; onSend: (message: string, suggest?: PluginId[]) => Promise<boolean>; onCancel: (turnId: string) => unknown; onClearFocus: () => void; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void; onOpenPlugin: (id: PluginId) => void }) {
+export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend, onCancel, onRefresh, onConnections, onPermissions, onOpen, onSkills, onOpenPlugin }: { state: AssistantState | null; detail: ProjectDetail; policy: ResearchPolicy | null; busy: boolean; threadId: ShownThread; onThread: (thread: ShownThread) => void; onSend: (message: string, suggest?: PluginId[]) => Promise<boolean>; onCancel: (turnId: string) => unknown; onRefresh: () => unknown; onConnections: () => void; onPermissions: () => void; onOpen: (mode: 'half' | 'full') => void; onSkills?: () => void; onOpenPlugin: (id: PluginId) => void }) {
   // The bar and the opened panel share one saved draft per thread, so text survives resizing ROS, switching threads or projects and closing the window.
   const [draft, setDraft] = useDraft(`assistant-draft:${detail.project.id}:${threadId ?? 'new'}`), [now, setNow] = useState(() => Date.now());
   const skills = useSkillMenu(draft, setDraft, onSkills);
@@ -50,8 +51,6 @@ export function RosBar({ state, detail, policy, focus, busy, threadId, onThread,
   // Suggestions waiting for a decision, from every thread: open proposals (not ones the canvas has moved past, which can no longer be accepted), pending actions that carry no proposal of their own, lines ROS noticed about the person, and plugins a reply suggested.
   const waiting = detail.proposals.filter(proposal => proposal.status === 'pending' && proposal.baseRevision === detail.project.revision).length + allTurns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0) + suggestionsWaiting(allTurns, suggestions, detail.project.id);
   const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
-  const focusedNode = detail.project.canvas.nodes.find(node => node.id === focus.nodeId);
-  const blocks = detail.project.canvas.nodes.length;
   useEffect(() => { if (!running) return; setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [running]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -88,9 +87,6 @@ export function RosBar({ state, detail, policy, focus, busy, threadId, onThread,
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={() => onOpen('half')}/>
-        {focusedNode
-          ? <span className="ros-context focused" title={`ROS is looking at ${focusedNode.title}`}><Focus size={12}/><span>{focusedNode.title}</span><button type="button" aria-label="Show ROS the whole map" title="Whole map" onClick={onClearFocus}><X size={12}/></button></span>
-          : <span className="ros-context" title="Select a block to point ROS at it"><Focus size={12}/><span>Whole map · {blocks} {blocks === 1 ? 'block' : 'blocks'}</span></span>}
         <span className="ros-footer-spacer"/>
         {waiting > 0 && <button type="button" className="ros-waiting" onClick={() => onOpen('half')}><span className="ros-dot" aria-hidden="true"/>{waiting} waiting</button>}
         <RosThreadsButton state={state} projectId={detail.project.id} current={threadId} onChoose={onThread}/>

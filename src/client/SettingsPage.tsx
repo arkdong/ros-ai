@@ -4,7 +4,7 @@ import { api } from './api';
 import { ChipChoice } from './ChipChoice';
 import { approvalModes } from './RosModelMenu';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
-import type { BudgetLine, BudgetStatus, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
+import type { BudgetLine, BudgetStatus, PlanUsage, ProviderBalance, UsageAnalytics, UsageEvent } from '../shared/budget-report';
 import type { SetupResetPlan, SetupResetResponse } from '../shared/setup';
 import { cloudAccountChanged } from './ProfileButton';
 import { reloadLocalRos } from './local-ros-status';
@@ -283,6 +283,7 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     <p className="settings-lead">What your agents and models spent, by model and by task. Recorded on this computer; nothing is sent anywhere.</p>
     {publicDemo && <p className="rail-page-note">The demo makes no paid calls, so it records no usage.</p>}
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
+    {!publicDemo && <PlanLimits/>}
     <div className="usage-controls">
       <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
       <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
@@ -314,6 +315,39 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
       </div>
     </section>
   </div>;
+}
+
+const resetsAt = (at: string) => {
+  const time = new Date(at), soon = time.getTime() - Date.now() < DAY;
+  return `Resets ${time.toLocaleString(undefined, soon ? { hour: '2-digit', minute: '2-digit' } : { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`;
+};
+const planName = (plan: string | null) => plan ? `${plan[0].toUpperCase()}${plan.slice(1)} plan` : null;
+
+/** How much of the Claude and ChatGPT subscriptions' windows is used, as Claude Code and Codex report it. */
+function PlanLimits() {
+  const [plans, setPlans] = useState<PlanUsage[] | null>(null);
+  useEffect(() => {
+    let current = true;
+    const load = () => api<{ plans: PlanUsage[] }>('/api/usage/plans').then(value => { if (current) setPlans(value.plans); }).catch(() => { if (current) setPlans(value => value ?? []); });
+    void load(); const timer = window.setInterval(load, 60000);
+    return () => { current = false; window.clearInterval(timer); };
+  }, []);
+  return <section className="plan-limits" aria-label="Subscription limits">
+    <h2>Subscription limits</h2>
+    <div className="settings-card">
+      {!plans ? <p className="usage-empty plan-empty"><LoaderCircle size={14} className="spin"/> Asking Claude Code and Codex…</p>
+        : plans.map(plan => <div key={plan.id} className="settings-row balance-row plan-row">
+          <span className="balance-mark"><BrandLogo id={plan.id} size={20}/></span>
+          <div className="settings-row-text"><strong>{plan.name}{planName(plan.plan) && <small> · {planName(plan.plan)}</small>}</strong>{(plan.state !== 'ready' || plan.message) && <small>{plan.message}</small>}</div>
+          {plan.windows.length > 0 && <ul className="plan-windows">{plan.windows.map(item => <li key={item.label}>
+            <span>{item.label}</span>
+            <b className="plan-track" role="meter" aria-label={`${plan.name} ${item.label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(item.usedPercent)}><i style={{ width: `${item.usedPercent}%` }}/></b>
+            <strong>{Math.round(item.usedPercent)}%</strong>
+            <small>{item.resetsAt ? resetsAt(item.resetsAt) : ''}</small>
+          </li>)}</ul>}
+        </div>)}
+    </div>
+  </section>;
 }
 
 /** What each connected model, agent or tool says is left, and where the provider keeps it to itself. */

@@ -10,11 +10,11 @@ import { Authority } from '../src/server/authority.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
 import type { ExperimentService } from '../src/server/experiments.js';
-import { BRAVE_SEARCH_SCHEMA, BRAVE_SEARCH_USD, BraveAdapter, CHECK_SEARCH_SCHEMA, EXA_CONTENTS_SCHEMA, EXA_PAGE_USD, EXA_SEARCH_SCHEMA, EXA_SEARCH_USD, ExaAdapter, SWEEP_SEARCH_SCHEMA, TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth, type SearchResponse, type SweepResponse } from '../src/server/providers.js';
+import { BRAVE_SEARCH_SCHEMA, BRAVE_SEARCH_USD, BraveAdapter, CHECK_SEARCH_SCHEMA, EXA_CONTENTS_SCHEMA, EXA_PAGE_USD, EXA_SEARCH_SCHEMA, EXA_SEARCH_USD, ExaAdapter, SWEEP_SEARCH_SCHEMA, TAVILY_CREDIT_USD, TavilyAdapter, exaFreePages, exaFreeResults, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchDepth, type SearchResponse, type SweepResponse } from '../src/server/providers.js';
 
 // Offline doubles of Exa's and Brave Search's own APIs on loopback ports. Nothing here reaches either service.
 const EXA_KEY = 'exa-fixture-key-0123456789', BRAVE_KEY = 'brave-fixture-key-0123456789';
-const ENVIRONMENT = ['TAVILY_API_KEY', 'EXA_API_KEY', 'BRAVE_API_KEY', 'EXA_BASE_URL', 'BRAVE_BASE_URL', 'ROS_SPENDING_LIMITS', 'ROS_PUBLIC_DEMO'] as const;
+const ENVIRONMENT = ['TAVILY_API_KEY', 'EXA_API_KEY', 'BRAVE_API_KEY', 'EXA_BASE_URL', 'BRAVE_BASE_URL', 'TAVILY_BASE_URL', 'EXA_MCP_URL', 'ROS_SPENDING_LIMITS', 'ROS_PUBLIC_DEMO'] as const;
 type Seen = { method: string; url: URL; headers: IncomingMessage['headers']; input: Record<string, unknown> };
 const body = (req: IncomingMessage) => new Promise<Record<string, unknown>>(resolve => { let text = ''; req.on('data', chunk => { text += chunk; }); req.on('end', () => resolve(text ? JSON.parse(text) as Record<string, unknown> : {})); });
 const send = (res: ServerResponse, value: unknown, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); };
@@ -66,11 +66,11 @@ class AnsweringModel implements ModelAdapter {
   async prepare() { return info; }
   async complete(request: ModelRequest): Promise<ModelResponse> { this.requests.push(request); return { content: 'It changed in October [S1].', model: info.id, modelVersion: null, usage: { inputTokens: 10, outputTokens: 5 }, metadata: { fixture: true } }; }
 }
-function workspace(t: TestContext, model?: ModelAdapter, search?: SearchAdapter) {
+function workspace(t: TestContext, model?: ModelAdapter, search?: SearchAdapter, freeSearch = false) {
   const directory = mkdtempSync(join(tmpdir(), 'ros-web-search-')), store = new Store(directory), project = store.createProject('Web search');
   store.mutate(project.id, [{ type: 'addNode', node: { id: 'a', title: 'Question', description: 'What changed?', x: 0, y: 0 } }], 'Fixture note');
   new Authority(store).configure(project.id, { mode: 'ask' });
-  const execution = new ExecutionService(store, { model, search, includeSetupUsage: false });
+  const execution = new ExecutionService(store, { model, search, freeSearch, includeSetupUsage: false });
   t.after(async () => { await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); });
   return { store, project, execution };
 }
@@ -146,9 +146,9 @@ test('Searches use the chosen service while it has a key, else the first with a 
   environment(t, {});
   const { execution } = workspace(t);
   assert.deepEqual(execution.searchStatus(), { active: null, chosen: null, services: [
-    { id: 'tavily', label: 'Tavily', configured: false, readsPages: true },
-    { id: 'exa', label: 'Exa', configured: false, readsPages: true },
-    { id: 'brave', label: 'Brave Search', configured: false, readsPages: false },
+    { id: 'tavily', label: 'Tavily', configured: false, free: false, readsPages: true },
+    { id: 'exa', label: 'Exa', configured: false, free: false, readsPages: true },
+    { id: 'brave', label: 'Brave Search', configured: false, free: false, readsPages: false },
   ] });
   assert.equal(execution.agentSearchBlocker(), 'Web search is not connected. Add a Tavily, Exa or Brave Search key on the Plugins page.');
   assert.throws(() => execution.chooseSearch({ provider: 'exa' }), (error: unknown) => error instanceof StoreError && error.status === 409 && error.message === 'Add an Exa key first.');
@@ -164,6 +164,74 @@ test('Searches use the chosen service while it has a key, else the first with a 
   assert.deepEqual([execution.searchStatus().active, execution.searchStatus().chosen], ['exa', 'brave'], 'A chosen service without its key gives way and stays chosen');
   process.env.TAVILY_API_KEY = 'tavily-fixture-key-0123456789';
   assert.equal(execution.searchStatus().active, 'tavily');
+});
+
+/** Exa's hosted MCP server, as it answers anyone with no key: web_search_exa and web_fetch_exa in its own text. */
+const fakeExaFree = () => listen(({ input, headers }, res) => {
+  const message = input as { id?: number; method?: string; params?: { name?: string; arguments?: Record<string, unknown>; protocolVersion?: string } };
+  if (headers.authorization || headers['x-api-key']) return send(res, { error: 'no key expected' }, 400);
+  if (message.id === undefined) return void res.writeHead(202).end();
+  const reply = (result: unknown) => send(res, { jsonrpc: '2.0', id: message.id, result });
+  if (message.method === 'initialize') return reply({ protocolVersion: message.params?.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'exa-stand-in', version: '1' } });
+  if (message.method !== 'tools/call') return reply({});
+  const args = message.params?.arguments ?? {};
+  if (message.params?.name === 'web_search_exa') {
+    if (args.query === 'spent') return reply({ isError: true, content: [{ type: 'text', text: 'You\'ve hit Exa\'s free MCP rate limit. To continue using without limits, create your own Exa API key.' }] });
+    return reply({ content: [{ type: 'text', text: ['Title: Free Exa page\nURL: https://example.org/exa-free\nPublished: 2026-10-01\nAuthor: N/A\nHighlights:\nA passage Exa found free.\nAnother line of it.', 'Title: N/A\nURL: https://example.org/plain\nPublished: N/A\nAuthor: N/A\nText: The page\'s own text.'].join('\n\n---\n\n') }] });
+  }
+  if (message.params?.name === 'web_fetch_exa') return reply({ content: [{ type: 'text', text: ['# Free Exa page', 'URL: https://www.example.org/exa-free', 'Published: 2026-10-01', '', 'The whole page, read free.', '', 'Error fetching https://example.org/missing: CRAWL_NOT_FOUND'].join('\n') }] });
+  reply({});
+});
+
+test('Exa\'s free answers become sources: a block per page, its passages, and the pages it read', () => {
+  assert.deepEqual(exaFreeResults('Title: One\nURL: https://example.org/1\nPublished: N/A\nAuthor: N/A\nHighlights:\nFirst.\nSecond.\n\n---\n\nTitle: Two\nURL: https://example.org/2\nPublished: N/A\nAuthor: N/A\nText: Whole.'),
+    [{ title: 'One', url: 'https://example.org/1', passages: 'First.\nSecond.' }, { title: 'Two', url: 'https://example.org/2', passages: 'Whole.' }]);
+  assert.deepEqual(exaFreeResults('No search results found. Please try a different query.'), []);
+  assert.deepEqual(exaFreePages('# One\nURL: https://example.org/1\nAuthor: A\n\nText of one.\n\n# Two\nURL: https://example.org/2\n\nText of two.\n\nError fetching https://example.org/3: CRAWL_NOT_FOUND'),
+    [{ url: 'https://example.org/1', text: 'Text of one.' }, { url: 'https://example.org/2', text: 'Text of two.' }]);
+});
+
+test('With no key the local app searches free: Tavily in its keyless mode and Exa through its hosted server, at no charge', async t => {
+  const tavily = await listen(({ url, headers, input }, res) => {
+    if (headers.authorization || headers['x-tavily-access-mode'] !== 'keyless') return send(res, { detail: 'Unauthorized' }, 401);
+    if (url.pathname !== '/search') return void res.writeHead(404).end();
+    if (input.query === 'spent') return send(res, { error: { code: 'keyless_limit', message: 'The keyless allowance is used up.', retry_after_seconds: 60 } }, 429);
+    send(res, { request_id: 'free-1', usage: { credits: 1 }, results: [{ title: 'Free page', url: 'https://example.org/free', content: 'A passage found with no key.', score: 0.9 }] });
+  });
+  const exa = await fakeExaFree();
+  t.after(tavily.close); t.after(exa.close);
+  environment(t, { TAVILY_BASE_URL: tavily.base, EXA_MCP_URL: `${exa.base}/mcp` });
+  const { store, project, execution } = workspace(t, undefined, undefined, true);
+  assert.deepEqual(execution.searchStatus(), { active: 'tavily', chosen: null, services: [
+    { id: 'tavily', label: 'Tavily', configured: true, free: true, readsPages: true },
+    { id: 'exa', label: 'Exa', configured: true, free: true, readsPages: true },
+    { id: 'brave', label: 'Brave Search', configured: false, free: false, readsPages: false },
+  ] });
+  assert.equal(execution.agentSearchBlocker(), null);
+  const run = await execution.assistantSearch(project.id, 'a', 'What changed?', signal(), 'turn-free');
+  assert.deepEqual([run.status, run.provider], ['completed', 'tavily']);
+  const asked = tavily.seen[0]!;
+  assert.deepEqual([asked.headers['x-tavily-access-mode'], asked.headers.authorization, typeof asked.headers['x-session-id']], ['keyless', undefined, 'string']);
+  assert.deepEqual(store.listUsage().map(usage => [usage.provider, usage.status, usage.estimatedUsd]), [['tavily', 'settled', 0]]);
+  await assert.rejects(new TavilyAdapter(undefined, { free: true }).search('spent', signal()), /Tavily’s free searches with no account are used up for now\. Add a Tavily key under Plugins › Tavily web search › More/u);
+
+  // Exa, chosen: its hosted server searches and reads pages with no key, at no charge.
+  assert.equal(execution.chooseSearch({ provider: 'exa' }).active, 'exa');
+  const found = await execution.assistantSearch(project.id, 'a', 'What changed?', signal(), 'turn-exa-free');
+  assert.deepEqual([found.status, found.provider], ['completed', 'exa']);
+  const sources = found.artifactIds.map(id => store.getArtifact(id));
+  assert.deepEqual(sources.map(source => [source.title, source.url, source.content]), [['Free Exa page', 'https://example.org/exa-free', 'A passage Exa found free.\nAnother line of it.'], ['example.org', 'https://example.org/plain', 'The page\'s own text.']]);
+  const { failed } = await execution.agentRead(project.id, 'a', [{ url: 'https://example.org/exa-free', title: 'Free Exa page' }, { url: 'https://example.org/missing', title: 'Missing' }], signal(), 'turn-read-free');
+  assert.deepEqual(failed, ['https://example.org/missing']);
+  assert.ok(store.listUsage().every(usage => usage.estimatedUsd === 0), 'Free searches and page reads cost nothing');
+  await assert.rejects(new ExaAdapter(undefined, { free: true }).search('spent', signal()), /Exa’s free searches with no account are used up for now/u);
+
+  // A key of the person's own takes over, and a service with a key comes before a free one.
+  process.env.EXA_API_KEY = EXA_KEY;
+  assert.deepEqual(execution.searchStatus().services.map(service => [service.id, service.free]), [['tavily', true], ['exa', false], ['brave', false]]);
+  execution.chooseSearch({ provider: 'tavily' });
+  delete process.env.EXA_API_KEY; process.env.BRAVE_API_KEY = BRAVE_KEY;
+  assert.equal(execution.searchStatus().active, 'tavily', 'The chosen free service stays in use');
 });
 
 test('An assistant search through Exa saves its passages as sources and settles at the cost Exa reports', async t => {

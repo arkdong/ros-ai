@@ -13,6 +13,7 @@ import type { Papers } from './papers.js';
 import type { BrowserService } from './browser.js';
 import { PLUGINS, type PluginId, type TokenPluginId } from '../shared/plugins.js';
 import type { CredentialProvider } from '../shared/tool-connections.js';
+import type { SearchServiceStatus } from '../shared/search.js';
 import { NOT_NOW_DAYS, suggestionConnect, type PluginReadiness, type SuggestionStatus } from '../shared/plugin-hints.js';
 
 export const pluginIdSchema = z.enum(PLUGINS.map(plugin => plugin.id) as [PluginId, ...PluginId[]]);
@@ -71,7 +72,8 @@ export class PluginSuggestions {
   silenced(pluginId: PluginId, projectId: string) { return this.active().some(item => item.pluginId === pluginId && (item.projectId === null || item.projectId === projectId)); }
 }
 
-export type ReadinessSources = { credentials: ToolCredentials; googleDrive: GoogleDriveConnection; plugins?: PluginTokens; apps?: RemoteApps; papers?: Papers; browser?: BrowserService };
+/** search: the web search services, which Tavily and Exa answer with no key too, within their free limits. */
+export type ReadinessSources = { credentials: ToolCredentials; googleDrive: GoogleDriveConnection; plugins?: PluginTokens; apps?: RemoteApps; papers?: Papers; browser?: BrowserService; search?: () => SearchServiceStatus };
 /** Whether agents can use each plugin now, read the way the Plugins page reads it. */
 export function pluginReadiness(sources: ReadinessSources): Partial<Record<PluginId, PluginReadiness>> {
   const drive = sources.googleDrive.status(), papers = sources.papers?.status().sources ?? [], browser = sources.browser?.status();
@@ -83,8 +85,8 @@ export function pluginReadiness(sources: ReadinessSources): Partial<Record<Plugi
     else if (plugin.connect === 'public') readiness[id] = papers.find(item => item.id === id)?.agents ? 'ready' : 'off';
     else if (plugin.connect === 'browser') readiness[id] = browser?.agents && browser.engine ? 'ready' : 'off';
     else if (plugin.connect === 'key') {
-      const key = sources.credentials.status(id as CredentialProvider);
-      readiness[id] = !key.configured ? 'missing' : key.verified === false ? 'failed' : 'ready';
+      const key = sources.credentials.status(id as CredentialProvider), free = sources.search?.().services.find(item => item.id === id)?.free === true;
+      readiness[id] = free ? 'ready' : !key.configured ? 'missing' : key.verified === false ? 'failed' : 'ready';
     } else {
       const app = plugin.connect === 'sign-in' || plugin.connect === 'desktop' || plugin.signIn ? sources.apps?.status(id as AppId) : undefined;
       const token = plugin.connect === 'token' ? sources.plugins?.status(id as TokenPluginId) : undefined;

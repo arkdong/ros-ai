@@ -4,7 +4,7 @@ import type { AgentId, AppId, LocalModelId, SetupLinkResponse, SetupStatus } fro
 import type { CloudAccountStatus } from '../shared/cloud-account';
 import type { LocalRosStatus } from '../shared/local-ros';
 import type { GoogleDriveStatus } from '../shared/google-drive';
-import { PLUGINS, type AppConnectionStatus, type PluginStatus } from '../shared/plugins';
+import { PLUGINS, zoteroAppProblem, type AppConnectionStatus } from '../shared/plugins';
 import { BrandLogo, hasBrandLogo, type BrandId } from './brand-logos';
 import { RosMark } from './RosDock';
 import { api, post } from './api';
@@ -14,10 +14,11 @@ import './setup.css';
 
 /** Connect your tools: everything ros.ai found on this computer, in one list to tick, in one card in the bar's shape.
  * Connect then works through what was ticked. What needs nothing from the person (an agent's link, a model server, the
- * ROS download, Figma's desktop app) runs at once in the background; what needs the browser (a sign-in, or a key made
- * on the app's site) opens one at a time, each as the one before it finishes, in one window ros.ai moves along. It is
- * the last step of the first run (FirstRun.tsx) and comes back from Agents › Show the setup screen again. Every link is
- * one entry in that tool's own settings; the person can undo each one from Agents. */
+ * ROS download, Figma's desktop app, GitHub through the GitHub CLI's sign-in, Zotero through its app) runs at once in
+ * the background; what needs the browser (a sign-in) opens one at a time, each as the one before it finishes, in one
+ * window ros.ai moves along. Nothing here asks for a key: what only a key or a token connects waits on its Plugins page.
+ * It is the last step of the first run (FirstRun.tsx) and comes back from Agents › Show the setup screen again. Every
+ * link is one entry in that tool's own settings; the person can undo each one from Agents. */
 
 const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli', pi: 'pi', hermes: 'hermes' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
@@ -64,14 +65,20 @@ export function LocalRosRow({ status, computer }: { status: LocalRosStatus; comp
 }
 
 /** How a row connects. auto: by itself, in the background; terminal: an agent whose command line ros.ai cannot reach, so
- * the person pastes one line; sign-in: a sign-in in the browser; key: a key the person makes on the app's site and
- * pastes here; plugins: only on the app's Plugins page. */
-type How = 'auto' | 'terminal' | 'sign-in' | 'key' | 'plugins';
-const tags: Record<How, string> = { auto: 'Automatic', terminal: 'Terminal line', 'sign-in': 'Sign in', key: 'Paste a key', plugins: 'In Plugins' };
-/** How each app found here connects from this screen. Google Drive needs a Google app of the person's own first, so
- * it stays on its Plugins page; Figma connects by itself once its desktop app's server is on. Obsidian and Dropbox
- * have no plugin yet. */
-const appHow: Partial<Record<AppId, How>> = { notion: 'sign-in', linear: 'sign-in', zotero: 'key', slack: 'key', github: 'key', figma: 'auto', 'google-drive': 'plugins' };
+ * the person pastes one line; sign-in: a sign-in in the browser; plugins: only on the app's Plugins page. */
+type How = 'auto' | 'terminal' | 'sign-in' | 'plugins';
+const tags: Record<How, string> = { auto: 'Automatic', terminal: 'Terminal line', 'sign-in': 'Sign in', plugins: 'In Plugins' };
+/** How each app found here connects from this screen. GitHub and Zotero connect by themselves through what is on this
+ * computer (the GitHub CLI's sign-in, the Zotero app) once it is ready (local), and wait on their Plugins pages
+ * otherwise. Slack needs a Slack app of the person's own and Google Drive a Google app, so they stay on their Plugins
+ * pages; Figma connects by itself once its desktop app's server is on. Obsidian and Dropbox have no plugin yet. */
+const appHow: Partial<Record<AppId, How>> = { notion: 'sign-in', linear: 'sign-in', zotero: 'plugins', slack: 'plugins', github: 'plugins', figma: 'auto', 'google-drive': 'plugins' };
+const localApps: ReadonlySet<AppId> = new Set<AppId>(['github', 'zotero']);
+/** What a GitHub or Zotero row says: how it connects by itself, or what to do first. */
+function localWhy(app: SetupStatus['apps'][number]) {
+  if (app.id === 'github') return app.local === 'ready' ? 'Uses the GitHub CLI’s sign-in on this computer.' : 'Sign in to the GitHub CLI with gh auth login, or connect it in Plugins.';
+  return app.local === 'ready' ? 'Reads your library through the Zotero app.' : app.local ? zoteroAppProblem(app.local).replace(/,? then try again\.$/u, ', then connect it in Plugins.') : 'Connect it in Plugins.';
+}
 /** One thing found here. done: already linked or connected, said in a word beside a green dot, with nothing to tick. */
 type Item = { key: string; kind: 'agent' | 'model' | 'ros' | 'local' | 'app'; id: string; label: string; icon: ReactNode; why: string; how: How; on: boolean; done?: string };
 /** Where a ticked row stands once Connect is pressed. next: waiting its turn; busy: ros.ai is on it; wait: the person
@@ -84,7 +91,7 @@ type Props = {
   /** Under the card: the first run's step caption. */
   after?: ReactNode;
 };
-const interactive = (item: Item) => item.how === 'sign-in' || item.how === 'key';
+const interactive = (item: Item) => item.how === 'sign-in';
 /** The Mac app adds ros.ai/<version> to its user agent; it opens other sites in the system browser, a tab each. */
 const macApp = () => / ros\.ai\/\S+$/u.test(navigator.userAgent);
 const WINDOW = 'ros-ai-connect', FEATURES = 'popup,width=520,height=720';
@@ -150,11 +157,12 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
       found.push({ key: `model:${model.id}`, kind: 'model', id: model.id, label: model.label, icon: <BrandLogo id={model.id} size={16}/>, why: n ? `Running with ${n} model${n === 1 ? '' : 's'}. Use them in ROS, on ${status.computer}.` : 'Running, but without a downloaded model yet.', how: n ? 'auto' : 'plugins', on: !model.connectionId && n > 0, ...(model.connectionId ? { done: 'Connected' } : {}) });
     }
     for (const app of status.apps) {
-      const how = appHow[app.id];
+      // GitHub and Zotero connect by themselves once what is on this computer is ready, and come ticked.
+      const ready = localApps.has(app.id) && app.local === 'ready', how = ready ? 'auto' : appHow[app.id];
       if (!how) continue;
       const connected = app.connected || signIns.some(item => item.id === app.id && item.connected) || (app.id === 'google-drive' && Boolean(google?.connected));
       found.push({ key: `app:${app.id}`, kind: 'app', id: app.id, label: app.label, icon: hasBrandLogo(app.id) ? <BrandLogo id={app.id} size={16}/> : <AppWindow size={16} strokeWidth={1.75}/>,
-        why: PLUGINS.find(plugin => plugin.id === app.id)?.summary ?? '', how, on: false, ...(connected ? { done: 'Connected' } : {}) });
+        why: localApps.has(app.id) && !connected ? localWhy(app) : PLUGINS.find(plugin => plugin.id === app.id)?.summary ?? '', how, on: ready && !connected, ...(connected ? { done: 'Connected' } : {}) });
     }
     return found;
   }, [status, cloud, hostedOn, signIns, google, localState]);
@@ -181,18 +189,17 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
 
   // Connecting: the rows ticked when Connect was pressed, where each stands, and the one waiting for the person.
   const [walk, setWalk] = useState<Item[] | null>(null), [steps, setSteps] = useState<Record<string, Step>>({}), [now, setNow] = useState<string | null>(null);
-  const [walking, setWalking] = useState(false), [key, setKey] = useState(''), [saving, setSaving] = useState(false), [keyError, setKeyError] = useState('');
+  const [walking, setWalking] = useState(false);
   const put = (itemKey: string, step: Step) => setSteps(prev => ({ ...prev, [itemKey]: step }));
-  const shared = useRef<Window | null>(null), waiter = useRef<((step: Step) => void) | null>(null), alive = useRef(true), keyField = useRef<HTMLInputElement>(null);
+  const shared = useRef<Window | null>(null), waiter = useRef<((step: Step) => void) | null>(null), alive = useRef(true);
   // Leaving the screen stops waiting. A sign-in still open in the browser finishes by itself; ros.ai saves it either way.
   useEffect(() => () => { alive.current = false; waiter.current?.({ state: 'skip', text: 'Skipped' }); }, []);
   const waiting = now && steps[now]?.state === 'wait' ? now : null;
-  // The step waiting for the person comes into view in the list, with the key field ready for a paste.
+  // The step waiting for the person comes into view in the list.
   useEffect(() => {
     if (!waiting) return;
     document.querySelector('.setup-row.here')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    if (walk?.find(item => item.key === waiting)?.how === 'key') keyField.current?.focus({ preventScroll: true });
-  }, [waiting, walk]);
+  }, [waiting]);
 
   /** Shows a page in the sign-in window: straight there while the window shows ros.ai's own page, through that page when
    * the browser cut the window off from this one, or else in a new window, which the browser may block outside a click.
@@ -260,30 +267,8 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
       return await signedIn(item);
     } catch (cause) { return { state: 'fail', text: 'Couldn’t connect', message: fail(cause) }; }
   };
-  /** One key: its page opens on the app's site, and the step waits for the key pasted here (saveKey) or Skip. */
-  const keyStep = async (item: Item) => {
-    const page = PLUGINS.find(plugin => plugin.id === item.id)?.tokenLink;
-    setKey(''); setKeyError('');
-    put(item.key, { state: 'busy', text: 'Opening' });
-    const opened = page ? await show(page) : true;
-    if (!alive.current) return { state: 'skip', text: 'Skipped' } satisfies Step;
-    put(item.key, { state: 'wait', text: 'Waiting for you', ...(page ? { url: page, blocked: !opened } : {}) });
-    return new Promise<Step>(resolve => { waiter.current = step => { waiter.current = null; resolve(step); }; });
-  };
-  const saveKey = async (item: Item) => {
-    if (!key.trim() || saving) return;
-    setSaving(true); setKeyError('');
-    try {
-      await api(`/api/plugins/${item.id}`, { method: 'PUT', body: JSON.stringify({ token: key.trim() }) });
-      const checked = await post<PluginStatus>(`/api/plugins/${item.id}/check`, {});
-      if (checked.verified === false) throw new Error(checked.checkMessage ?? `${item.label} did not accept it.`);
-      setKey('');
-      waiter.current?.({ state: 'ok', text: 'Connected' });
-    } catch (cause) { setKeyError(fail(cause)); }
-    finally { setSaving(false); }
-  };
   /** Everything that needs nothing from the person, at once: the agents' links and model servers in one request, the
-   * ROS download, and Figma's desktop app. */
+   * ROS download, Figma's desktop app, and GitHub and Zotero through what is on this computer. */
   const automatic = async (chosen: Item[]) => {
     const agents = chosen.filter(item => item.kind === 'agent').map(item => item.id as AgentId), models = chosen.filter(item => item.kind === 'model').map(item => item.id as LocalModelId);
     const jobs: Promise<unknown>[] = [];
@@ -298,14 +283,13 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
       }
     }, cause => { for (const itemKey of [...agents.map(id => `agent:${id}`), ...models.map(id => `model:${id}`)]) put(itemKey, { state: 'fail', text: 'Couldn’t connect', message: fail(cause) }); }));
     if (chosen.some(item => item.kind === 'local')) jobs.push(changeLocalRos('download').then(() => put('local', { state: 'ok', text: 'Downloading' }), cause => put('local', { state: 'fail', text: 'Couldn’t start', message: fail(cause) })));
-    for (const item of chosen.filter(entry => entry.kind === 'app')) jobs.push(post(`/api/apps/${item.id}/connect`, {}).then(() => put(item.key, { state: 'ok', text: 'Connected' }), cause => put(item.key, { state: 'fail', text: 'Couldn’t connect', message: fail(cause) })));
+    for (const item of chosen.filter(entry => entry.kind === 'app')) jobs.push(post(localApps.has(item.id as AppId) ? `/api/plugins/${item.id}/local` : `/api/apps/${item.id}/connect`, {}).then(() => put(item.key, { state: 'ok', text: 'Connected', ...(item.id === 'github' ? { message: 'Through the GitHub CLI’s sign-in.' } : item.id === 'zotero' ? { message: 'Through the Zotero app.' } : {}) }), cause => put(item.key, { state: 'fail', text: 'Couldn’t connect', message: fail(cause) })));
     await Promise.all(jobs);
   };
   const connect = async () => {
     if (!picked.length) { onDone(); return; }
-    // Sign-ins first: each ends on ros.ai's own page, from where the window moves on to the next. Key pages are other
-    // sites', which ros.ai cannot move the window away from, so they come last.
-    const chosen = picked, queue = [...chosen.filter(item => item.how === 'sign-in'), ...chosen.filter(item => item.how === 'key')];
+    // Sign-ins, one after another: each ends on ros.ai's own page, from where the window moves on to the next.
+    const chosen = picked, queue = chosen.filter(item => item.how === 'sign-in');
     // The window opens from this click, while the browser still allows it; each sign-in then opens in it in turn.
     if (queue.length && !macApp()) shared.current = blankWindow('Getting your first sign-in ready…');
     setWalk(chosen); setWalking(true); setMenu(false);
@@ -315,7 +299,7 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
     for (const item of queue) {
       if (!alive.current) return;
       setNow(item.key);
-      put(item.key, await (item.how === 'key' ? keyStep(item) : signIn(item)));
+      put(item.key, await signIn(item));
     }
     if (!alive.current) return;
     setNow(null);
@@ -336,7 +320,8 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
 
   const live = localRos && localState && localState !== 'not-downloaded' ? <LocalRosRow status={localRos} computer={status.computer}/> : null;
   // Apps that connect only on their Plugins page: a line under them says where.
-  const appsNote = items.some(item => item.kind === 'app' && item.how === 'plugins' && !item.done) ? <p className="setup-apps-note">Google Drive connects in Plugins, with a Google app of your own.</p> : undefined;
+  const elsewhere = items.filter(item => item.kind === 'app' && item.how === 'plugins' && !item.done && !localApps.has(item.id as AppId)).map(item => item.label);
+  const appsNote = elsewhere.length ? <p className="setup-apps-note">{elsewhere.length === 1 ? `${elsewhere[0]} connects in Plugins, with ${elsewhere[0] === 'Slack' ? 'a Slack' : 'a Google'} app of your own.` : `${list(elsewhere)} connect in Plugins, each with an app of your own.`}</p> : undefined;
   const frame = (lead: string, card: ReactNode) => <div className="setup-screen"><div className="setup-column">
     <span className="setup-ring"><RosMark/></span>
     <h1>Connect your tools</h1>
@@ -361,26 +346,17 @@ export function SetupScreen({ status, onDone, onAgents, onChanged, hostedOn, aft
     const ok = states.filter(state => state === 'ok').length, skipped = states.filter(state => state === 'skip').length, failed = states.filter(state => state === 'fail').length;
     const settled = ok + skipped + failed;
     const name = current?.kind === 'ros' ? 'ros.ai' : current?.label;
-    const lead = walking ? `${!current ? 'Connecting…' : current.how === 'key' ? `Add your ${name} key.` : steps[current.key]?.blocked ? `Open the ${name} sign-in to go on.` : `Sign in to ${name} in the window that opened.`} ${settled} of ${walk.length} done.`
+    const lead = walking ? `${!current ? 'Connecting…' : steps[current.key]?.blocked ? `Open the ${name} sign-in to go on.` : `Sign in to ${name} in the window that opened.`} ${settled} of ${walk.length} done.`
       : [`${count(ok)} connected.`, skipped ? `${count(skipped)} skipped.` : '', failed ? `${count(failed)} ${failed === 1 ? 'needs' : 'need'} a step from you.` : '', localState === 'downloading' ? 'ROS keeps downloading in the background.' : ''].filter(Boolean).join(' ');
     const linkedAgent = walk.find(item => item.kind === 'agent' && steps[item.key]?.state === 'ok');
     const row = (item: Item) => {
       if (item.kind === 'local' && live) return <Fragment key={item.key}>{live}</Fragment>;
       const step = steps[item.key], here = item.key === now && step?.state === 'wait';
-      const page = item.how === 'key' ? PLUGINS.find(plugin => plugin.id === item.id) : undefined;
       return <div className={`setup-row static${here ? ' here' : ''}`} key={item.key}>
         <span className="setup-tile" aria-hidden="true">{item.icon}</span>
         <span className="setup-text">
           <span className="setup-name">{item.label}</span>
-          {here && page ? <>
-            <span className="setup-why">{page.tokenHint}</span>
-            <form className="setup-key" onSubmit={event => { event.preventDefault(); void saveKey(item); }}>
-              <input ref={keyField} type="password" autoComplete="off" spellCheck={false} aria-label={page.tokenLabel} placeholder={page.tokenLabel} value={key} onChange={event => setKey(event.target.value)}/>
-              <button type="submit" className="primary small" disabled={!key.trim() || saving}>{saving && <LoaderCircle size={12} className="spin"/>}Save</button>
-            </form>
-            {keyError && <p className="inline-error" role="alert">{keyError}</p>}
-            <span className="setup-step-actions">{step.url && <button type="button" className="chip-button" onClick={() => void again(item.key)}>Open the key page<ArrowUpRight size={11}/></button>}<button type="button" className="chip-button" onClick={skip}>Skip</button></span>
-          </> : here ? <>
+          {here ? <>
             <span className="setup-why">{step.blocked ? 'Your browser kept the sign-in window from opening.' : `${item.kind === 'ros' ? 'Sign in or create your account' : 'Allow access'} in the window that opened. ros.ai goes on by itself.`}</span>
             <span className="setup-step-actions"><button type="button" className={step.blocked ? 'primary small' : 'chip-button'} onClick={() => void again(item.key)}>{step.blocked ? `Open the ${item.kind === 'ros' ? 'ros.ai' : item.label} sign-in` : 'Open it again'}<ArrowUpRight size={11}/></button><button type="button" className="chip-button" onClick={skip}>Skip</button></span>
           </> : step?.message && <span className="setup-why">{step.message}</span>}

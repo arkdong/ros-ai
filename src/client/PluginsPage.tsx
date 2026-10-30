@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { GoogleDriveStatus } from '../shared/google-drive';
 import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
-import { PLUGINS, type AppAccountStatus, type AppConnectionStatus, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
+import { PLUGINS, zoteroAppProblem, type AppAccountStatus, type AppConnectionStatus, type LocalPlugins, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
 import type { PaperSourceStatus, PapersStatus } from '../shared/papers';
 import type { BrowserStatus } from '../shared/browser';
 import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
@@ -72,7 +72,7 @@ export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId
 }
 
 /** What the page read last in this session: it opens with that at once while it reads again. */
-type PluginReads = { plugins?: PluginStatus[]; apps?: AppConnectionStatus[]; google?: GoogleDriveStatus | null; credentials?: CredentialStatus[]; budgets?: ConnectionBudgetStatus[]; search?: SearchServiceStatus | null; papers?: PaperSourceStatus[] | null; browser?: BrowserStatus | null };
+type PluginReads = { plugins?: PluginStatus[]; apps?: AppConnectionStatus[]; google?: GoogleDriveStatus | null; credentials?: CredentialStatus[]; budgets?: ConnectionBudgetStatus[]; search?: SearchServiceStatus | null; papers?: PaperSourceStatus[] | null; browser?: BrowserStatus | null; local?: LocalPlugins | null };
 let lastReads: PluginReads = {};
 /** What was connected when the page last finished reading, saved on this computer, so the page and its sidebar open with it. */
 type Installed = { id: PluginId; label: string };
@@ -80,13 +80,13 @@ const savedPlugins = () => readSavedList<Installed>('plugins-installed', item =>
 export const lastInstalledPlugins = () => savedPlugins().map(item => item.id);
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
-  const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null);
+  const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null),[local,setLocal]=useState<LocalPlugins|null>(lastReads.local??null);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedPlugins);
-  useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser};},[plugins,apps,google,credentials,budgets,search,papers,browser]);
+  useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser,local};},[plugins,apps,google,credentials,budgets,search,papers,browser,local]);
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const [tokens,drive,keys,limits,signIns,searching,sources,browsing]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers'),api<BrowserStatus>('/api/browser')]);
+    const [tokens,drive,keys,limits,signIns,searching,sources,browsing,found]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers'),api<BrowserStatus>('/api/browser'),api<LocalPlugins>('/api/plugins/local')]);
     const failures:Record<string,string>={};
     if(tokens.status==='fulfilled')setPlugins(tokens.value.plugins);else failures.plugins=message(tokens.reason);
     if(drive.status==='fulfilled')setGoogle(drive.value);else failures.google=message(drive.reason);
@@ -96,6 +96,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(searching.status==='fulfilled')setSearch(searching.value);
     if(sources.status==='fulfilled')setPapers(sources.value.sources);
     if(browsing.status==='fulfilled')setBrowser(browsing.value);
+    if(found.status==='fulfilled')setLocal(found.value);
     setErrors(failures);setLoading(false);setRead(true);
   },[publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -106,9 +107,14 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.id==='google-sheets'||plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
     if(plugin.connect==='public')return papers?.find(item=>item.id===plugin.id)?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
     if(plugin.connect==='browser')return browser?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
-    if(isSearchProvider(plugin.id)){const key=credentials.find(item=>item.provider===plugin.id);return key?.configured?{label:search?.active===plugin.id?'Used for search':'Key saved',connected:true}:{label:'Not connected',connected:false};}
+    if(isSearchProvider(plugin.id)){
+      const key=credentials.find(item=>item.provider===plugin.id),active=search?.active===plugin.id;
+      if(key?.configured)return {label:active?'Used for search':'Key saved',connected:true};
+      return search?.services.find(item=>item.id===plugin.id)?.free?{label:active?'Used for search':'Free tier',connected:true}:{label:'Not connected',connected:false};
+    }
     const token=plugins.find(item=>item.id===plugin.id),app=viaApp(plugin)?apps.find(item=>item.id===plugin.id):undefined;
     if(app?.connected)return {label:app.accounts&&app.accounts.length>1?`${app.accounts.length} accounts`:'Connected',connected:true};
+    if(token?.via)return token.verified===false||!token.configured?{label:'Check failed',connected:false}:{label:token.via==='github-cli'?'Through GitHub CLI':'Through the Zotero app',connected:true};
     if(token?.configured)return token.verified===false?{label:'Check failed',connected:false}:{label:'Token saved',connected:true};
     return {label:'Not connected',connected:false};
   };
@@ -122,7 +128,10 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.id==='google-drive')return <GoogleDriveConnectionCard key={plugin.id} projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>;
     if(plugin.id==='google-sheets'||plugin.id==='google-docs'){const files=plugin.id==='google-sheets'?'Sheets':'Docs';return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={google?.connected} status={!google?'Checking…':google.connected?'Connected':'Needs Google Drive'}><p>{plugin.name} live in your Drive, so they use the same read-only Google sign-in. {google?.connected?`Add one with Add block › Google Drive and its link; agents read your ${files} through it.`:`Connect Google Drive to reach your ${files}.`} ros.ai cannot edit or share them.</p></ConnectionCard>;}
     if(isSearchProvider(plugin.id)){
-      const id=plugin.id,credential=credentials.find(item=>item.provider===id),label=search?.services.find(item=>item.id===id)?.label??plugin.name;
+      const id=plugin.id,credential=credentials.find(item=>item.provider===id),service=search?.services.find(item=>item.id===id),label=service?.label??plugin.name;
+      const use=async()=>{setSearch(await api<SearchServiceStatus>('/api/connections/search',{method:'PUT',body:JSON.stringify({provider:id})}));setNotice(`ROS and your agents now search the web with ${label}.`);await onChanged();};
+      const saveKey=async(key:string)=>{await api(`/api/connections/credentials/${id}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice(`${label} key saved on this computer.`);await changed();};
+      if(service?.free&&credential&&!credential.configured)return <FreeSearch key={id} plugin={plugin} label={label} active={search?.active===id} using={search?.services.find(item=>item.id===search.active)?.label??null} keyLink={searchKeys[id].link} onUse={use} onSaveKey={saveKey}/>;
       return <KeyConnection key={id} provider={id as CredentialProvider} label={plugin.name} icon={<PluginMark id={id}/>} credential={credential} budget={budgets.find(item=>item.provider===id)} description={searchKeys[id].description} keyLink={searchKeys[id].link} loadError={errors.keys} onSave={async(_provider,key)=>{await api(`/api/connections/credentials/${id}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice(`${label} key saved on this computer.`);await changed();}} onDisconnect={async()=>{await api(`/api/connections/credentials/${id}`,{method:'DELETE'});await changed();}}
         primary={credential?.configured&&search&&search.active!==id?{label:`Search with ${label}`,onClick:async()=>{setSearch(await api<SearchServiceStatus>('/api/connections/search',{method:'PUT',body:JSON.stringify({provider:id})}));setNotice(`ROS and your agents now search the web with ${label}.`);await onChanged();}}:undefined}>
         {credential?.configured&&search?.active===id&&<p>ROS and your agents search the web with {label}.</p>}
@@ -131,6 +140,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.connect==='public')return <PaperSource key={plugin.id} plugin={plugin} source={papers?.find(item=>item.id===plugin.id)} token={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     if(plugin.connect==='browser')return <BrowserPlugin key={plugin.id} plugin={plugin} status={browser} onChanged={changed}/>;
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
+    if(plugin.local)return <LocalPlugin key={plugin.id} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} local={local} onChanged={changed} onLook={async()=>{setLocal(await api<LocalPlugins>('/api/plugins/local'));}}/>;
     if(plugin.connect==='sign-in'||plugin.connect==='desktop')return <AppPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} app={apps.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     const signIns=plugin.signIn?apps.find(item=>item.id===plugin.id):undefined;
     if(signIns?.accounts)return <AppAccounts key={plugin.id} plugin={plugin} app={signIns} status={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
@@ -150,7 +160,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
     {errors.plugins&&<p className="inline-error" role="alert">{errors.plugins}</p>}
     {groups.map(group=><section key={group.title} className="plugin-group"><h2>{group.title}</h2><div className="plugin-grid">{group.ids.map(id=>row(PLUGINS.find(plugin=>plugin.id===id)!))}</div></section>)}
-    <p className="plugins-footnote">Each plugin connects with a sign-in, key, token or desktop app you already have, and stays on this computer. Every agent you run here, from any vendor, uses the same connections; agents read through them and change things only after you accept.</p>
+    <p className="plugins-footnote">Plugins connect through what you already have: a sign-in, or an app on this computer. Keys and tokens wait under More, and everything stays on this computer. Every agent you run here, from any vendor, uses the same connections; agents read through them and change things only after you accept.</p>
   </div>;
 }
 
@@ -214,6 +224,56 @@ function AppPlugin({plugin,app,open:forceOpen,onChanged}:{plugin:PluginDefinitio
       :<p>{desktop?plugin.start:`Connect opens ${plugin.name}’s sign-in. Approve ros.ai there and you come back here; there is nothing to create or paste.`}</p>}
     {desktop&&!connected&&plugin.requirement&&<p className="subtle">{plugin.requirement}</p>}
     <div className="connection-actions">{connected?<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>api(`/api/apps/${plugin.id}`,{method:'DELETE'}))}>Disconnect</button>:<button className="primary small" disabled={busy||!app} onClick={connect}>{busy?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} {busy&&desktop?'Checking…':'Connect'}</button>}</div>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </ConnectionCard>;
+}
+
+/** A web search service with no key saved, which searches free within its own limit (Tavily, Exa): one line and one
+ * button, and a key of the person's own under More. */
+function FreeSearch({plugin,label,active,using,keyLink,onUse,onSaveKey}:{plugin:PluginDefinition;label:string;active:boolean;using:string|null;keyLink:string;onUse:()=>Promise<void>;onSaveKey:(key:string)=>Promise<void>}) {
+  const [key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
+  return <ConnectionCard label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected status={active?'Used for search':'Free tier'}
+    more={<div className="alt-ways">
+      <div className="alt-way"><span><strong>Your own {label} key</strong><small>Searches more than the free limit, charged to your {label} account. <a href={keyLink} target="_blank" rel="noreferrer">Get a key<ExternalLink size={11}/></a></small></span></div>
+      <form className="connection-key" onSubmit={event=>{event.preventDefault();if(!busy&&key.trim().length>=12)void run(()=>onSaveKey(key.trim()));}}><label className="sr-only" htmlFor={`free-key-${plugin.id}`}>{label} API key</label><input id={`free-key-${plugin.id}`} type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)} placeholder="Paste your API key" minLength={12} maxLength={4096}/><button className="secondary small" type="submit" disabled={busy||key.trim().length<12}>{busy&&<LoaderCircle size={13} className="spin"/>}Save key</button></form>
+    </div>}
+    actions={!active&&<button className="primary small" disabled={busy} onClick={()=>void run(onUse)}>Search with {label}</button>}>
+    <p className={active?'connection-check':undefined}>{active?`ROS and your agents search the web with ${label} now, free with no account up to ${label}’s limit.`:`Free with no account, up to ${label}’s limit.${using?` ROS and your agents search with ${using} now.`:''}`}</p>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </ConnectionCard>;
+}
+
+/** A plugin that connects through what is already on this computer, as Codex and Claude Code do: GitHub through the
+ * GitHub CLI's sign-in, Zotero through the Zotero app. One line and one button; the token or key waits under More. */
+function LocalPlugin({plugin,status,local,onChanged,onLook}:{plugin:PluginDefinition;status?:PluginStatus;local:LocalPlugins|null;onChanged:()=>Promise<void>;onLook:()=>Promise<void>}) {
+  const [busy,setBusy]=useState<'use'|'look'|'check'|'token'|'off'|null>(null),[error,setError]=useState(''),[typing,setTyping]=useState(false),[token,setToken]=useState('');
+  const id=plugin.id as TokenPluginId,github=id==='github',app=github?'the GitHub CLI':'the Zotero app';
+  const run=async(what:NonNullable<typeof busy>,work:()=>Promise<unknown>)=>{setBusy(what);setError('');try{await work();await onChanged();}catch(cause){setError(message(cause));}finally{setBusy(null);}};
+  const use=()=>void run('use',()=>post(`/api/plugins/${id}/local`,{}));
+  const look=()=>void run('look',onLook);
+  const via=status?.via??null,failed=status?.verified===false||(via!==null&&status?.configured===false),connected=Boolean(status?.configured)&&!failed;
+  // What is on this computer, before anything is connected: ready, or what stands in the way.
+  const ready=github?local?.github===true:local?.zotero==='ready';
+  const found=!local?'':github?(local.github?'The GitHub CLI on this computer is signed in. ros.ai uses that sign-in; nothing is copied or saved.':'Sign in to the GitHub CLI with gh auth login in Terminal, and ros.ai uses that sign-in. Or use a token under More.')
+    :local.zotero==='ready'?'Zotero is open on this computer. ros.ai reads your library and the PDFs it keeps through it; nothing in your library changes.':`${zoteroAppProblem(local.zotero)}${local.zotero==='closed'?' Or use an API key under More.':''}`;
+  const line=via&&!failed?<p className="connection-check" role="status">{github?`${status?.checkMessage??'Connected through the GitHub CLI.'} Agents use GitHub’s own tools and ask you before changing anything.`:'Connected through the Zotero app. ros.ai reads your library while Zotero is open; nothing in your library changes.'}</p>
+    :failed?<p className="inline-error" role="status">{status?.checkMessage??(github?'The GitHub CLI’s sign-in could not be read. Run gh auth login in Terminal, then check again.':`${plugin.name} could not be reached.`)}</p>
+    :connected?<p className="connection-check" role="status">{status?.checkMessage??`Connected with a ${github?'personal access token':'Zotero API key'}.`}</p>
+    :<p>{found||'Looking on this computer…'}</p>;
+  const primary=connected?null:failed?<button className="primary small" disabled={Boolean(busy)} onClick={()=>void run('check',()=>post(`/api/plugins/${id}/check`,{}))}>{busy==='check'&&<LoaderCircle size={13} className="spin"/>}Check again</button>
+    :ready?<button className="primary small" disabled={Boolean(busy)} onClick={use}>{busy==='use'?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>}{github?'Use GitHub CLI':'Use Zotero'}</button>
+    :<button className="primary small" disabled={Boolean(busy)||!local} onClick={look}>{busy==='look'&&<LoaderCircle size={13} className="spin"/>}Check again</button>;
+  return <ConnectionCard label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={connected} status={!status?'Checking…':failed?'Check failed':via?'Connected':connected?(github?'Connected with a token':'Connected with a key'):'Not connected'}
+    more={<div className="alt-ways">
+      {ready&&via===null&&connected&&<div className="alt-way"><span><strong>{github?'GitHub CLI on this computer':'The Zotero app'}</strong><small>{github?'Signed in. ros.ai uses that sign-in instead of the token.':'Open now. ros.ai reads your library through it instead of the key.'}</small></span><button className="secondary small" disabled={Boolean(busy)} onClick={use}>{github?'Use GitHub CLI':'Use Zotero'}</button></div>}
+      <div className="alt-way"><span><strong>{plugin.tokenLabel}</strong><small>{github?`Make a token on github.com and paste it here${via?`, instead of ${app}`:''}.`:`Reads your online library, without the app. Make a key on zotero.org and paste it here.`}</small></span><button className="secondary small" disabled={Boolean(busy)} aria-expanded={typing} onClick={()=>{setTyping(!typing);setToken('');}}>{typing?'Close':connected&&via===null?'Replace':'Use a token'}</button></div>
+      {typing&&<div className="connection-setup"><p>{plugin.tokenHint} {plugin.tokenLink&&<a href={plugin.tokenLink} target="_blank" rel="noreferrer">Open {plugin.name}<ExternalLink size={11}/></a>}</p>
+        <form onSubmit={event=>{event.preventDefault();if(busy)return;void run('token',async()=>{await api(`/api/plugins/${id}`,{method:'PUT',body:JSON.stringify({token})});await post(`/api/plugins/${id}/check`,{});setToken('');setTyping(false);});}}><label className="field-label" htmlFor={`plugin-token-${id}`}>{plugin.tokenLabel}</label><input id={`plugin-token-${id}`} type="password" autoComplete="off" value={token} onChange={event=>setToken(event.target.value)} placeholder="Paste it here" required minLength={8} maxLength={4096}/><button className="primary small" type="submit" disabled={Boolean(busy)||token.trim().length<8}>{busy==='token'?<LoaderCircle size={13} className="spin"/>:<Plug size={13}/>} Save</button></form>
+        <p className="subtle">Saved privately on this computer. ros.ai checks it once with a read-only request.</p></div>}
+    </div>}
+    actions={<>{(connected||failed)&&<button className="text-button danger" disabled={Boolean(busy)} onClick={()=>void run('off',()=>api(`/api/plugins/${id}`,{method:'DELETE'}))}>Disconnect</button>}{primary}</>}>
+    {line}
     {error&&<p className="inline-error" role="alert">{error}</p>}
   </ConnectionCard>;
 }

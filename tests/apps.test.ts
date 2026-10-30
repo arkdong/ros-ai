@@ -219,7 +219,7 @@ test('GitHub uses its hosted MCP server with the token from its Plugins card, co
   process.env.ROS_APP_GITHUB_URL = `${github.base}/mcp/`;
   try {
     assert.equal(f.apps.status('github').connected, false);
-    await assert.rejects(f.apps.tools('github'), /Save its token on the Plugins page/u);
+    await assert.rejects(f.apps.tools('github'), /GitHub is not connected\. Connect it on the Plugins page/u);
     f.tokens.github = 'ghp_first';
     assert.equal(f.apps.status('github').connected, true);
     assert.deepEqual((await f.apps.tools('github')).map(tool => [tool.name, tool.reads]), [['get_me', true], ['create_issue', false]]);
@@ -229,7 +229,7 @@ test('GitHub uses its hosted MCP server with the token from its Plugins card, co
     assert.deepEqual(seen, ['ghp_first', 'ghp_second']);
     assert.deepEqual(calls.map(call => call.bearer), ['ghp_first', 'ghp_second']);
     f.tokens.github = 'ghp_wrong';
-    await assert.rejects(f.apps.tools('github'), /GitHub did not accept the token saved on its Plugins card/u);
+    await assert.rejects(f.apps.tools('github'), /GitHub did not accept the sign-in or token on its Plugins card/u);
     assert.throws(() => f.apps.disconnect('github'), /Remove the token there/u);
   } finally { delete process.env.ROS_APP_GITHUB_URL; await github.close(); f.close(); }
 });
