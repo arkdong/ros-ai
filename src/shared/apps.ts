@@ -1,4 +1,4 @@
-import type { Canvas, CanvasNode, Mutation } from './types.js';
+import type { Canvas, CanvasNode, MetricPoint, Mutation } from './types.js';
 import { groupMembers } from './groups.js';
 import { kindName } from './vocabulary.js';
 
@@ -103,7 +103,9 @@ export type AppInputContent = {
   content?: string;
   /** The blocks an input Group holds; each can be read by its ID. */
   members?: AppBlock[];
-  /** For blocks read live from Notion or Google Drive: when, and anything that stopped the read. */
+  /** A Metrics block's earlier reads, oldest first: every read of the last two days, then the last read of each day. */
+  history?: MetricPoint[];
+  /** For blocks read live from Notion, Google Drive or a Metrics block's service: when, and anything that stopped the read. */
   live?: { fetchedAt?: string; link?: string | null; notice?: string };
   truncated?: boolean;
 };

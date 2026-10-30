@@ -39,7 +39,7 @@ export function NoteTree({ projectId, nodes, runs, selectedId, limit, onSelect }
     const next = new Set([...ancestors, node.id]);
     return <div className="note-tree-branch" key={node.id}>
       <div className={`note-tree-row ${selectedId === node.id ? 'selected' : ''}`} role="treeitem" aria-selected={selectedId === node.id} aria-expanded={nested.length ? open : undefined} aria-level={depth + 1} aria-label={node.title} tabIndex={0} data-node-id={node.id} style={{ paddingLeft: 8 + depth * 16 }} onClick={() => onSelect(node.id)} onKeyDown={event => keyDown(event, node, nested.length > 0, open)}>
-        <KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} map={node.map?.provider} size={14} /><span className="note-tree-title" title={node.title}>{textPreview(node.title,64).text}</span>{busy && <LoaderCircle size={12} className="spin" />}
+        <KindIcon kind={node.kind} blockType={node.blockType} google={node.google?.kind} map={node.map?.provider} metric={node.metric?.source} size={14} /><span className="note-tree-title" title={node.title}>{textPreview(node.title,64).text}</span>{busy && <LoaderCircle size={12} className="spin" />}
         {nested.length > 0 && <button className="note-tree-toggle" aria-label={`${open ? 'Collapse' : 'Expand'} ${node.title}`} tabIndex={-1} onClick={event => { event.stopPropagation(); toggle(node.id); }}>{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>}
       </div>
       {nested.length > 0 && open && <div role="group">{nested.map(child => render(child, depth + 1, next))}</div>}

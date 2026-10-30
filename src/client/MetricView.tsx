@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, Cloud, LoaderCircle, RotateCw } from 'lucide-react';
-import type { MetricPoint, MetricRead, MetricValue, MetricView } from '../shared/types';
+import type { MetricPoint, MetricRead, MetricSource, MetricValue, MetricView } from '../shared/types';
+import { METRIC_TOOLS, metricChange } from '../shared/metrics';
 import { api } from './api';
 import { BrandLogo } from './brand-logos';
 import { clock, stop } from './live-block';
@@ -14,20 +15,14 @@ const HOUR = 60 * 60_000;
 const ON_CARD = 4;
 const number = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 2 });
 /** Where a block reads, in the person's words, until the first read names it. */
-export const metricSourceName = (view: MetricView) => view.source === 'github' ? view.repo : view.source === 'cloud' ? 'ros.ai cloud' : view.source === 'umami' ? 'Umami' : 'Railway';
-export function MetricLogo({ view, size }: { view: MetricView; size: number }) {
-  return view.source === 'cloud' ? <Cloud size={size}/> : <BrandLogo id={view.source} size={size}/>;
+const metricSourceName = (view: MetricView) => view.source === 'github' ? view.repo : METRIC_TOOLS[view.source];
+/** The tool's own logo, heading the block; ros.ai cloud is a cloud. */
+export function MetricLogo({ source, size }: { source: MetricSource; size: number }) {
+  return source === 'cloud' ? <Cloud size={size}/> : <BrandLogo id={source} size={size}/>;
 }
 
-/** The value the history held about `ago` before the latest read, if ros.ai read the source that long ago. */
-function earlier(history: MetricPoint[], key: string, at: string, ago: number) {
-  const point = [...history].reverse().find(item => Date.parse(at) - Date.parse(item.at) >= ago && item.values[key] !== undefined);
-  return point?.values[key];
-}
-
-function Change({ value, before, span }: { value: number; before: number | undefined; span: string }) {
-  if (before === undefined) return null;
-  const delta = value - before;
+function Change({ delta, span }: { delta: number | undefined; span: 'day' | 'week' }) {
+  if (delta === undefined) return null;
   return <span className="livestat-change" title={`Change over the last ${span}`}>{delta > 0 ? '+' : delta < 0 ? '−' : '±'}{number(Math.abs(delta))} {span === 'day' ? 'today' : 'this week'}</span>;
 }
 
@@ -43,8 +38,9 @@ function Spark({ history, item, width, height }: { history: MetricPoint[]; item:
 }
 
 /** Launch numbers read live from a service (GitHub, ros.ai cloud, Umami, Railway): each number, how it moved today, and its line over two
- * weeks of ros.ai's own reads. The card shows the first few; the block view shows all, with the week's change too. */
-export function MetricBlock({ projectId, nodeId, view, full = false }: { projectId: string; nodeId: string; view: MetricView; full?: boolean }) {
+ * weeks of ros.ai's own reads. The card shows the first few; the block view shows all, with the week's change too.
+ * The footer names what was read (a repository, a website) only when the block's title does not already. */
+export function MetricBlock({ projectId, nodeId, view, title, full = false }: { projectId: string; nodeId: string; view: MetricView; title?: string; full?: boolean }) {
   const [read, setRead] = useState<MetricRead | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
   const key = JSON.stringify(view);
   const load = useCallback(async (refresh = false) => {
@@ -66,16 +62,15 @@ export function MetricBlock({ projectId, nodeId, view, full = false }: { project
             : item.value === null ? <dd className="livestat-missing">{item.note ?? 'Not available'}</dd>
             : <dd>
               <strong>{number(item.value)}</strong>
-              <Change value={item.value} before={earlier(read.history, item.key, read.fetchedAt, 20 * HOUR)} span="day"/>
-              {full && <Change value={item.value} before={earlier(read.history, item.key, read.fetchedAt, 6.5 * 24 * HOUR)} span="week"/>}
+              <Change delta={metricChange(read, item.key, item.value).today} span="day"/>
+              {full && <Change delta={metricChange(read, item.key, item.value).week} span="week"/>}
               <Spark history={read.history} item={item} width={full ? 160 : 72} height={full ? 32 : 18}/>
             </dd>}
         </div>)}</dl>}
     {read?.notice && <p className="live-block-notice">{read.notice}</p>}
     {full && read && read.history.length < 2 && <p className="livestat-note">Lines and changes appear as ros.ai reads the numbers again: about once an hour while this project is open.</p>}
     <footer>
-      <MetricLogo view={view} size={12}/>
-      <span>{read ? `${read.title} · read ${clock(read.fetchedAt)}` : metricSourceName(view)}</span>
+      <span>{read ? `${read.title === title ? '' : `${read.title} · `}read ${clock(read.fetchedAt)}` : metricSourceName(view)}</span>
       {read?.link && <a className="live-block-open" href={read.link} target="_blank" rel="noreferrer" onClick={stop}>Open <ArrowUpRight size={12}/></a>}
       <button className="icon-button" aria-label="Read the numbers again" title="Read the numbers again" disabled={loading} onClick={event => { stop(event); void load(true); }}>{loading ? <LoaderCircle size={13} className="spin"/> : <RotateCw size={13}/>}</button>
     </footer>

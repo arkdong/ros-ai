@@ -15,6 +15,8 @@ import { SET_ASIDE } from '../shared/groups.js';
 import type { NotionApi, NotionWrite } from './notion.js';
 import type { NotionViews } from './notion-view.js';
 import type { GoogleWorkspace } from './google-workspace.js';
+import type { MetricViews } from './metric-view.js';
+import { metricSummary } from '../shared/metrics.js';
 import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AgentApp, type AppId, type AppTool, type RemoteApps } from './remote-apps.js';
 import { projectFolderRoot, type ProjectFolders } from './project-folders.js';
@@ -210,8 +212,8 @@ export class AgentWorkspaceTools {
   static google?: GoogleWorkspace;
   /** Training runs on this computer (Training blocks), read for the agent as the block shows them; unset in the public demo. */
   static training?: (view: TrainingView) => Promise<unknown>;
-  /** Launch numbers (Metric blocks), read for the agent as the block shows them; unset in the public demo. */
-  static metric?: (view: MetricView, projectId: string) => Promise<unknown>;
+  /** Launch numbers (Metrics blocks), read for the agent and for Apps as the block shows them; unset in the public demo. */
+  static metrics?: MetricViews;
   /** The project folders, which say which PDFs and images a File block can show. */
   static folders?: ProjectFolders;
   /** OpenAlex, arXiv and Zotero, which the Papers app searches; adding a paper saves its PDF into the project folder. */
@@ -688,8 +690,8 @@ export class AgentWorkspaceTools {
     catch (error) { return { training: { error: error instanceof Error ? error.message : String(error) } }; }
   }
   private async metricBlock(view: MetricView) {
-    if (!AgentWorkspaceTools.metric) return { metric: { error: 'Metric blocks are read only in the local app.' } };
-    try { return { metric: await AgentWorkspaceTools.metric(view, this.scope.projectId), note: 'Launch numbers read live from the service, with how each moved over the last day and week where ros.ai has an earlier read. ros.ai only reads them.' }; }
+    if (!AgentWorkspaceTools.metrics) return { metric: { error: 'Metrics blocks are read only in the local app.' } };
+    try { return { metric: metricSummary(await AgentWorkspaceTools.metrics.read(view, false, this.scope.projectId)), note: 'Launch numbers read live from the service, with how each moved over the last day and week where ros.ai has an earlier read. ros.ai only reads them. An App that names this block as an input reads the same numbers by key.' }; }
     catch (error) { return { metric: { error: error instanceof Error ? error.message : String(error) } }; }
   }
   private async googleBlock(node: CanvasNode) {

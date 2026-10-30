@@ -18,7 +18,7 @@ import { attachAcpAgentRoutes,type AcpAgentService } from './acp-agent.js';
 import { attachOutsideAgentRoutes, type OutsideAgents } from './outside-agents.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { attachTrainingRoutes, readTraining, trainingSummary } from './training-view.js';
-import { attachMetricRoutes, metricSummary, MetricViews } from './metric-view.js';
+import { attachMetricRoutes, MetricViews } from './metric-view.js';
 import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
@@ -115,7 +115,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Metric blocks read GitHub with the GitHub plugin's sign-in when there is one, Umami and Railway with their Plugins keys,
     // and ros.ai cloud with the app's own cloud sign-in.
     const cloud=tools?.cloud,cloudUrl=cloud?.address;
-    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metric=async(view,projectId)=>metricSummary(await metrics.read(view,false,projectId));}
+    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metrics=metrics;}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.

@@ -225,7 +225,7 @@ export function App(){
     const notebookFile=blockType==='notebook'?chosenFile:undefined;
     let file:{path:string}|undefined;
     if(blockType==='file'){if(!chosenFile)return;try{file=await saveFile(chosenFile);}catch(reason){report(reason);return;}}
-    let name=title.trim()||read?.title.slice(0,200)||(metricRead?(metricRead.source==='github'?`${metricRead.title} on GitHub`:metricRead.source==='cloud'?metricRead.title:`${metricRead.title} on ${metricRead.source==='umami'?'Umami':'Railway'}`).slice(0,200):'')||(notebookFile?.name.replace(/\.ipynb$/iu,'').trim().slice(0,200)??'')||(file?chosenFile!.name.replace(/\.[^.]+$/u,'').trim().slice(0,200):'');
+    let name=title.trim()||read?.title.slice(0,200)||(metricRead?(metricRead.source==='cloud'?'Accounts and downloads':metricRead.title).slice(0,200):'')||(notebookFile?.name.replace(/\.ipynb$/iu,'').trim().slice(0,200)??'')||(file?chosenFile!.name.replace(/\.[^.]+$/u,'').trim().slice(0,200):'');
     if(!name){
       const titles=new Set(detail.project.canvas.nodes.map(node=>node.title.toLocaleLowerCase()));
       name=display;

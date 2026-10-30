@@ -200,14 +200,6 @@ function addPoint(history: MetricPoint[], read: Read): MetricPoint[] {
   return [...kept, point].slice(-MAX_POINTS);
 }
 
-/** What an agent reads for a Metric block: each number, and how it moved over the last day and week. */
-export function metricSummary(read: MetricRead) {
-  const before = (ms: number) => [...read.history].reverse().find(point => Date.parse(read.fetchedAt) - Date.parse(point.at) >= ms);
-  const day = before(20 * 60 * 60_000), week = before(6.5 * 24 * 60 * 60_000);
-  const change = (key: string, value: number, point?: MetricPoint) => point && point.values[key] !== undefined ? value - point.values[key] : undefined;
-  return { source: read.source, title: read.title, link: read.link, readAt: read.fetchedAt, values: read.values.map(item => item.text ? { label: item.label, state: item.text } : item.value === null ? { label: item.label, value: null, note: item.note } : { label: item.label, value: item.value, ...(change(item.key, item.value, day) !== undefined ? { changeOverDay: change(item.key, item.value, day) } : {}), ...(change(item.key, item.value, week) !== undefined ? { changeOverWeek: change(item.key, item.value, week) } : {}) }) };
-}
-
 export function attachMetricRoutes(app: Express, store: Store, views: MetricViews) {
   app.get('/api/projects/:id/nodes/:nodeId/metric', async (req, res) => {
     const node = store.getProject(String(req.params.id)).canvas.nodes.find(item => item.id === String(req.params.nodeId));
