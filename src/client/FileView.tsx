@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { Download, LoaderCircle, Minus, Plus } from 'lucide-react';
+import { Download, ImageOff, LoaderCircle, Minus, Plus } from 'lucide-react';
 import type { Artifact } from '../shared/types';
-import { fileSize, isPdfType } from '../shared/files';
+import { fileSize, isPdfType, type ImageSize } from '../shared/files';
 import './file-view.css';
 
 type PdfModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 type RenderTask = import('pdfjs-dist/legacy/build/pdf.mjs').RenderTask;
 type TextLayer = import('pdfjs-dist/legacy/build/pdf.mjs').TextLayer;
-/** The file a block shows: its address (which changes with the file's version), type and size. */
-export type ShownFile = { src: string; mediaType: string; bytes?: number };
+/** The file a block shows: its address (which changes with the file's version), type and size, and a picture's pixel size. */
+export type ShownFile = { src: string; mediaType: string; bytes?: number; image?: ImageSize };
 const OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
-const typeName = (mediaType: string) => isPdfType(mediaType) ? 'PDF' : mediaType === 'image/png' ? 'PNG' : 'JPEG';
+/** The steps a picture zooms through, as a share of its own pixel size; Fit sits between the two that bracket it. */
+const PICTURE_ZOOMS = [25, 50, 75, 100, 150, 200, 300, 400];
 
 let pdfjsLoad: Promise<PdfModule> | null = null;
 /** pdf.js is loaded the first time a PDF is on screen; its worker renders pages off the main thread. The legacy build
@@ -110,15 +111,22 @@ function PdfPage({ doc, number, width, fluid = false, text = false, onRendered }
   return text ? <>{page}<div ref={words} className="pdf-text"/></> : page;
 }
 
-/** What a File block shows on its card: a PDF's pages in one scroll, or the image, as wide as the card and cut at the
- * card's preview height, with one quiet line about the file. The card's width sets the pages'; resizing redraws them. */
-export function FilePreview({ file, title }: { file: ShownFile; title: string }) {
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  if (!isPdfType(file.mediaType)) return <>
-    <img className="block-figure-preview file-image-preview" src={file.src} alt={title} onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}/>
-    <FileLine parts={[typeName(file.mediaType), size ? `${size.width} × ${size.height}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
-  </>;
+/** What a File block shows on its card: a PDF's pages in one scroll with one quiet line about the file, or the picture
+ * itself, whole, filling the card. The card's width sets the pages'; resizing redraws them. */
+export function FilePreview({ file, title, missing = false, onSize }: { file: ShownFile; title: string; missing?: boolean; onSize?: (size: ImageSize) => void }) {
+  if (!isPdfType(file.mediaType)) return <PicturePreview file={file} title={title} missing={missing} onSize={onSize}/>;
   return <PdfPreview file={file}/>;
+}
+/** A picture on its card: as wide as the card and as tall as its own shape asks, so the whole picture shows. Its
+ * pixel size, known from the folder, gives the card that shape before the picture loads; `onSize` tells the canvas
+ * the size once the picture has loaded, for a file the folder could not read. */
+function PicturePreview({ file, title, missing, onSize }: { file: ShownFile; title: string; missing: boolean; onSize?: (size: ImageSize) => void }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const broken = missing || failed === file.src;
+  if (broken) return <div className="picture-missing"><ImageOff size={18} strokeWidth={1.5}/><span>{title || 'Untitled'}</span><small>{missing ? 'File missing from the project folder' : 'The picture could not be shown'}</small></div>;
+  // A picture smaller than the card sits at its own size in the middle, rather than being stretched.
+  return <img className="picture-preview" src={file.src} alt={title} draggable={false} style={file.image ? { aspectRatio: `auto ${file.image.width} / ${file.image.height}`, width: `min(100%, ${file.image.width}px)` } : undefined}
+    onLoad={event => onSize?.({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setFailed(file.src)}/>;
 }
 /** The card's PDF: every page under the one before, scrolled with the wheel like a Notion page card (nowheel keeps the
  * wheel off the canvas). Page 1 is drawn at once and the rest as they come near the view. */
@@ -166,8 +174,54 @@ function useNearPages(box: RefObject<HTMLElement | null>, total: number, layout:
 }
 function FileLine({ parts }: { parts: string[] }) { return <div className="file-line">{parts.filter(Boolean).map(part => <small key={part}>{part}</small>)}</div>; }
 
-/** The opened File block: every page of a PDF in one scroll, or the image, with zoom; Text shows the text ros.ai read. */
+/** The opened File block: every page of a PDF in one scroll with zoom (Text shows the text ros.ai read), or the
+ * picture, whole, as large as the view allows. */
 export function FileViewer({ file, title, text }: { file: ShownFile; title: string; text?: Artifact }) {
+  if (!isPdfType(file.mediaType)) return <PictureViewer file={file} title={title}/>;
+  return <PdfViewer file={file} title={title} text={text}/>;
+}
+/** The opened picture: fitted whole to the view and never larger than its own pixels; the zoom at the corner, or a
+ * click on the picture, shows it at its own size and scrolls, and Fit brings the whole picture back. */
+function PictureViewer({ file, title }: { file: ShownFile; title: string }) {
+  const scroll = useRef<HTMLDivElement>(null), box = useBox(scroll);
+  const [loaded, setLoaded] = useState<{ src: string; size: ImageSize } | null>(null);
+  const natural = loaded?.src === file.src ? loaded.size : file.image;
+  const [zoom, setZoom] = useState<number | 'fit'>('fit');
+  // The share of the picture's own size that fits it whole in the stage, never above its own size.
+  const fit = natural && box.width > 0 && box.height > 0 ? Math.min(1, box.width / natural.width, box.height / natural.height) * 100 : 100;
+  const current = zoom === 'fit' ? fit : zoom;
+  const zoomIn = () => setZoom(PICTURE_ZOOMS.find(step => step > current + 0.5) ?? PICTURE_ZOOMS[PICTURE_ZOOMS.length - 1]);
+  const zoomOut = () => { const below = PICTURE_ZOOMS.filter(step => step < current - 0.5); setZoom(below.length ? below[below.length - 1] : PICTURE_ZOOMS[0]); };
+  // A zoomed picture starts from its middle.
+  useLayoutEffect(() => { const element = scroll.current; if (!element || zoom === 'fit') return; element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2; element.scrollTop = (element.scrollHeight - element.clientHeight) / 2; }, [zoom]);
+  const canGrow = natural ? fit < 99.5 : false;
+  return <div className={`file-viewer picture${zoom === 'fit' ? ' fit' : ' zoomed'}`}>
+    <div className="picture-stage">
+      <div ref={scroll} className="picture-scroll"><img src={file.src} alt={title} draggable={false} style={zoom === 'fit' ? (natural ? { maxWidth: natural.width, maxHeight: natural.height } : undefined) : { width: natural ? Math.round(natural.width * zoom / 100) : undefined }}
+        onLoad={event => setLoaded({ src: file.src, size: { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight } })}
+        onClick={() => { if (zoom !== 'fit') setZoom('fit'); else if (canGrow) setZoom(100); }} title={zoom === 'fit' ? (canGrow ? 'Show at its own size' : undefined) : 'Fit the whole picture'}/></div>
+      <span className="picture-zoom" role="group" aria-label="Zoom">
+        <button type="button" className="icon-button" aria-label="Zoom out" disabled={current <= PICTURE_ZOOMS[0] + 0.5} onClick={zoomOut}><Minus size={13}/></button>
+        <button type="button" className="picture-zoom-level" aria-label={zoom === 'fit' ? 'Fitted to the view' : 'Fit the whole picture'} disabled={zoom === 'fit'} onClick={() => setZoom('fit')}>{zoom === 'fit' ? 'Fit' : `${zoom}%`}</button>
+        <button type="button" className="icon-button" aria-label="Zoom in" disabled={current >= PICTURE_ZOOMS[PICTURE_ZOOMS.length - 1] - 0.5} onClick={zoomIn}><Plus size={13}/></button>
+      </span>
+    </div>
+  </div>;
+}
+/** The inner size of an element, followed as it resizes. */
+function useBox(box: RefObject<HTMLElement | null>): ImageSize {
+  const [size, setSize] = useState<ImageSize>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const update = () => setSize(current => { const next = { width: Math.floor(element.clientWidth), height: Math.floor(element.clientHeight) }; return next.width === current.width && next.height === current.height ? current : next; });
+    const observer = new ResizeObserver(update); observer.observe(element); update();
+    return () => observer.disconnect();
+  }, [box]);
+  return size;
+}
+/** The opened PDF: every page in one scroll, with zoom; Text shows the text ros.ai read. */
+function PdfViewer({ file, title, text }: { file: ShownFile; title: string; text?: Artifact }) {
   const [zoom, setZoom] = useState(100), [mode, setMode] = useState<'pages' | 'text'>('pages'), [place, setPlace] = useState({ page: 1, total: 0 });
   const pdf = isPdfType(file.mediaType);
   const step = (direction: 1 | -1) => setZoom(current => { const index = ZOOMS.indexOf(current); return ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, (index < 0 ? ZOOMS.indexOf(100) : index) + direction))]; });
@@ -181,8 +235,7 @@ export function FileViewer({ file, title, text }: { file: ShownFile; title: stri
       <a className="secondary small file-download" href={file.src} download={name} title="Save a copy"><Download size={13}/> Download</a>
     </div>
     {mode === 'text' && text ? <pre className="file-text" tabIndex={0}>{text.content}</pre>
-      : pdf ? <PdfPages src={file.src} zoom={zoom} onPlace={(page, total) => setPlace(current => current.page === page && current.total === total ? current : { page, total })}/>
-      : <div className="file-viewport"><img src={file.src} alt={title} style={{ width: `${zoom}%`, maxWidth: 'none' }}/></div>}
+      : <PdfPages src={file.src} zoom={zoom} onPlace={(page, total) => setPlace(current => current.page === page && current.total === total ? current : { page, total })}/>}
   </div>;
 }
 /** Every page in one scroll. Pages near the view are drawn; `onPlace` reports the page under the middle of the view. */
