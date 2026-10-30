@@ -80,11 +80,12 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
     await setBackend(next);
     if (IN_APP_AGENTS[next].agent === 'codex') await post(`/api/projects/${detail.project.id}/agents/check${IN_APP_AGENTS[next].billing === 'api-key' ? '?billing=api-key' : ''}`);
   });
-  // Claude Code and Codex each run here two ways, as two agents with their own names.
+  // Claude Code and Codex each run here two ways, as two agents with their own names. They always head the menu,
+  // the subscription ones first, above the models and the other agents.
   const agents: { id: InAppAgent; caption: string }[] = [
     ...(planAllowed ? [{ id: 'claude-plan' as const, caption: 'On your Claude subscription' }] : []),
-    { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex', caption: 'On your ChatGPT subscription' },
+    { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex-key', caption: 'On your OpenAI API key' },
   ];
   // Picking a model while an outside agent runs ROS hands ROS back to that model.
@@ -102,16 +103,16 @@ export function RosModelMenu({ state, detail, running, onRefresh, onConnections,
       {!compact && <span>{label}</span>}{switching ? <LoaderCircle size={11} className="spin"/> : !running && <ChevronDown size={11}/>}
     </button>
     {menu && <div ref={menuRef} className="ros-model-menu" role="menu" aria-label="ROS runs with">
-      {groups.map(group => <div key={group.provider} className="ros-menu-group">
-        <p>{groups.length > 1 ? group.label : 'Models'}</p>
-        {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
-      </div>)}
-      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <div className="ros-menu-group">
         <p>Agents</p>
         {agents.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void pickAgent(item.id)}><BrandLogo id={IN_APP_AGENTS[item.id].agent} size={16}/><span className="ros-menu-label">{IN_APP_AGENTS[item.id].label}<small>{item.caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
         {acpShown.map(item => <button key={item.id} type="button" role="menuitemradio" aria-checked={backend === item.id} onClick={() => void switchTo(() => setBackend(item.id))}><BrandLogo id={acpLogo[item.id]} size={16}/><span className="ros-menu-label">{item.label}<small>{item.blocker ? 'Cannot start · see Agents' : item.checked && !item.checked.ok ? 'Check failed · see Agents' : ACP_AGENTS[item.id].caption}</small></span>{backend === item.id && <Check size={14}/>}</button>)}
       </div>
+      {groups.map(group => <div key={group.provider} className="ros-menu-group">
+        <p>{groups.length > 1 ? group.label : 'Models'}</p>
+        {group.items.map(choice => <button key={`${choice.provider}:${choice.model}`} type="button" role="menuitemradio" aria-checked={usingModel(choice)} onClick={() => void pickModel(choice)}><ModelMakerSymbol maker={choice.maker} size={16}/><span className="ros-menu-label">{choice.label}</span>{usingModel(choice) && <Check size={14}/>}</button>)}
+      </div>)}
+      {!agentLabel && <button type="button" role="menuitemcheckbox" aria-checked={backend === 'agent'} className="ros-menu-toggle" onClick={() => void switchTo(() => setBackend(backend === 'agent' ? 'provider' : 'agent'))}><Bot size={16}/><span className="ros-menu-label">Use ros.ai’s tools step by step</span><span className={`ros-switch ${backend === 'agent' ? 'on' : ''}`} aria-hidden="true"/></button>}
       <hr/>
       <button type="button" role="menuitem" onClick={link(onConnections)}><Plug size={14}/><span className="ros-menu-label">Models &amp; keys</span></button>
       <button type="button" role="menuitem" onClick={link(onPermissions)}><ShieldCheck size={14}/><span className="ros-menu-label">Permission details</span></button>
