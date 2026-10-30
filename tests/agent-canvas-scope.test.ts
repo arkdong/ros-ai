@@ -159,10 +159,10 @@ test('Removing a group with blocks inside waits for the person in Approve for me
   } finally { await f.close(); }
 });
 
-test('Selected evidence still bounds reuse: a block outside the selection is refused there', async () => {
+test('Reuse reaches any block on the map, whatever is selected; a version that is not in the project is refused', async () => {
   const f = fixture();
   try {
-    await assert.rejects(f.agent(['group-a']).call('ros_propose_reuse', { artifactId: 'any', targetNodeId: 'group-b', reason: 'Use it here.' }), /outside the explicit captured block selection/u);
+    await assert.rejects(f.agent(['group-a']).call('ros_propose_reuse', { artifactId: 'any', targetNodeId: 'group-b', reason: 'Use it here.' }), /There is no artifact any in this project/u);
   } finally { await f.close(); }
 });
 

@@ -1,5 +1,5 @@
-/** What a File block can show: a PDF or a PNG or JPEG image, read from the project folder. */
-export const FILE_TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+/** What a File block can show: a PDF or a PNG, JPEG, WebP or GIF image, read from the project folder. */
+export const FILE_TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
 export const FILE_EXTENSIONS = Object.keys(FILE_TYPES);
 /** The largest file a File block shows or a drop saves into the folder. */
 export const FILE_BYTES = 50_000_000;

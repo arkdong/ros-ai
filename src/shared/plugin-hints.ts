@@ -21,7 +21,7 @@ type Hint = {
   reach: string;
 };
 
-const searchReach = 'Searches the web with your own key. Each search is charged to it.';
+const searchReach = 'Searches the web with your own key. Each search is charged to it.', freeReach = 'Searches the web, free with no account up to its limit, or with your own key.';
 const HINTS: Partial<Record<PluginId, Hint>> = {
   linear: {
     links: [/\blinear\.app\b/iu],
@@ -50,8 +50,8 @@ const HINTS: Partial<Record<PluginId, Hint>> = {
   'google-drive': { links: [/\bdrive\.google\.com\//iu, /\bdocs\.google\.com\/(?:presentation|forms|file)\//iu], names: ['Google Drive', 'GDrive'], reach: 'Reads your Sheets, Docs and CSV files. Nothing in your Drive changes.' },
   'google-sheets': { links: [/\bdocs\.google\.com\/spreadsheets\//iu], names: ['Google Sheets', 'Google Sheet', 'Google spreadsheets', 'Google spreadsheet', 'GSheets', 'GSheet'], reach: 'Reads your sheets, a tab or a range at a time. Nothing changes.' },
   'google-docs': { links: [/\bdocs\.google\.com\/document\//iu], names: ['Google Docs', 'Google Doc', 'GDocs', 'GDoc'], reach: 'Reads your docs. Nothing changes.' },
-  tavily: { names: ['Tavily'], reach: searchReach },
-  exa: { word: { name: 'Exa', next: ['search', 'searches', 'api', 'web'] }, reach: searchReach },
+  tavily: { names: ['Tavily'], reach: freeReach },
+  exa: { word: { name: 'Exa', next: ['search', 'searches', 'api', 'web'] }, reach: freeReach },
   brave: { word: { name: 'Brave', next: ['search', 'api'], not: ['new', 'heart', 'soul', 'enough', 'face', 'one', 'ones', 'man', 'men', 'woman', 'women', 'people'], capitalised: true }, reach: searchReach },
 };
 
@@ -106,12 +106,14 @@ export function suggestionReason(match: PluginMatch) {
 
 /** How the person connects a plugin from a suggestion. switch: turn a public source on for agents; sign-in: the app's own
  * sign-in in a new window; key and token: a field in the card; setup: a one-time setup on the Plugins page (Google Drive and
- * the Sheets and Docs that ride on it, Figma's desktop server, the browser). */
+ * the Sheets and Docs that ride on it, Figma's desktop server, the browser, and the plugins that connect through what is
+ * on this computer: GitHub and Zotero). */
 export type SuggestionConnect = 'switch' | 'sign-in' | 'key' | 'token' | 'setup';
 export function suggestionConnect(plugin: PluginDefinition): SuggestionConnect | null {
   if (plugin.connect === 'unavailable') return null;
   if (plugin.connect === 'public') return 'switch';
   if (plugin.connect === 'sign-in' || plugin.signIn) return 'sign-in';
+  if (plugin.local) return 'setup';
   if (plugin.connect === 'key') return 'key';
   if (plugin.connect === 'token') return 'token';
   return 'setup';

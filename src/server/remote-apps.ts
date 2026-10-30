@@ -25,7 +25,8 @@ export const appCatalogue = {
   notion: { name: 'Notion', auth: 'sign-in', url: 'https://mcp.notion.com/mcp', reads: ['notion-search', 'notion-fetch', 'notion-query-data-sources', 'notion-query-database-view', 'notion-get-comments', 'notion-get-users', 'notion-get-self', 'notion-get-teams', 'notion-get-file-download-urls', 'notion-list-page-backlinks'] },
   linear: { name: 'Linear', auth: 'sign-in', url: 'https://mcp.linear.app/mcp', reads: ['list_comments', 'list_cycles', 'get_document', 'list_documents', 'get_issue', 'get_issue_git_branch_name', 'list_issues', 'list_my_issues', 'list_issue_statuses', 'get_issue_status', 'list_issue_labels', 'list_projects', 'get_project', 'list_project_labels', 'list_teams', 'get_team', 'list_users', 'get_user', 'search_documentation'] },
   sentry: { name: 'Sentry', auth: 'sign-in', url: 'https://mcp.sentry.dev/mcp', reads: ['whoami', 'find_organizations', 'find_teams', 'find_projects', 'find_releases', 'find_dsns', 'get_issue_details', 'get_trace_details', 'get_event_attachment', 'search_events', 'search_issues', 'search_docs', 'get_doc'] },
-  // GitHub's hosted server takes no dynamic registration, so it uses the token from GitHub's Plugins card; it marks its own read tools.
+  // GitHub's hosted server takes no dynamic registration, so it uses the GitHub CLI's sign-in or the token from GitHub's
+  // Plugins card; it marks its own read tools.
   github: { name: 'GitHub', auth: 'token', token: 'github', url: 'https://api.githubcopilot.com/mcp/', reads: [] },
   // Figma's hosted server admits only clients on Figma's list; its desktop app serves the same design tools on this computer.
   figma: { name: 'Figma', auth: 'desktop', url: 'http://127.0.0.1:3845/mcp', start: 'Open the Figma desktop app, open a design file, switch to Dev Mode and turn on the desktop MCP server in the inspect panel.', reads: ['get_design_context', 'get_variable_defs', 'get_code_connect_map', 'get_screenshot', 'get_metadata', 'get_figjam', 'create_design_system_rules', 'get_code', 'get_image', 'whoami'] },
@@ -418,7 +419,7 @@ export class RemoteApps {
     if (cached && cached.key === tokenKey) return cached;
     if (cached) { this.clients.delete(ref); void cached.client.close().catch(() => undefined); }
     if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server.`);
-    if (!probe && !(account ? signedIn(account.saved) : this.status(id).connected)) throw new StoreError(app.auth === 'token' ? `${app.name} is not connected. Save its token on the Plugins page.` : account && this.accounts(id).length > 1 ? `${this.named(id, account)} needs you to sign in again. Open Plugins › ${app.name} and sign in again.` : `${app.name} is not connected. Open Plugins and connect it.`, 409);
+    if (!probe && !(account ? signedIn(account.saved) : this.status(id).connected)) throw new StoreError(app.auth === 'token' ? `${app.name} is not connected. Connect it on the Plugins page.` : account && this.accounts(id).length > 1 ? `${this.named(id, account)} needs you to sign in again. Open Plugins › ${app.name} and sign in again.` : `${app.name} is not connected. Open Plugins and connect it.`, 409);
     const url = new URL(appUrl(id));
     const transport = app.auth === 'sign-in' ? new StreamableHTTPClientTransport(url, { authProvider: this.provider(id, account!.key, account!.saved.redirectUri ?? appRedirectUri(undefined)) })
       : new StreamableHTTPClientTransport(url, token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : {});
@@ -428,7 +429,7 @@ export class RemoteApps {
       if (error instanceof StoreError) throw error;
       const reason = label(error instanceof Error ? error.message : String(error)), status = (error as { code?: unknown }).code;
       if (app.auth === 'desktop') throw new StoreError(`${app.name}’s desktop app is not answering at ${url.host}. ${app.start}`, 502);
-      if (app.auth === 'token' && (status === 401 || status === 403)) throw new StoreError(`${app.name} did not accept the token saved on its Plugins card. Replace it there.`, 502);
+      if (app.auth === 'token' && (status === 401 || status === 403)) throw new StoreError(`${app.name} did not accept the sign-in or token on its Plugins card. Connect it again there.`, 502);
       throw new StoreError(`Could not reach ${app.name}: ${reason}`, 502);
     }
     const reads = new Set<string>(app.reads);
