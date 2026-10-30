@@ -28,8 +28,8 @@ type Props = { status: SetupStatus; onDone: () => void; onAgents: () => void; on
  * fades in. */
 type Block = { id: string; kind: ReactNode; state?: ReactNode; title?: ReactNode; aside?: ReactNode; body?: ReactNode; meta?: ReactNode; who?: AgentId; badge?: BrandId; stamp: string; className?: string };
 type Wire = { d: string; live: boolean };
-const AGENTS: AgentId[] = ['claude-code', 'codex', 'cursor', 'gemini-cli', 'pi', 'hermes'];
-const LABELS: Record<AgentId, string> = { 'claude-code': 'Claude Code', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
+const AGENTS: AgentId[] = ['claude-code', 'claude-app', 'codex', 'cursor', 'gemini-cli', 'pi', 'hermes'];
+const LABELS: Record<AgentId, string> = { 'claude-code': 'Claude Code', 'claude-app': 'Claude app', codex: 'Codex', cursor: 'Cursor', 'gemini-cli': 'Gemini CLI', pi: 'Pi', hermes: 'Hermes Agent' };
 /** The evals agent, step by step: what it is doing, then what it did. The last step is where it stops. */
 const WORK = [
   { doing: 'Reading the eval protocol', done: 'Read the eval protocol' },

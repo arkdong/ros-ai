@@ -109,6 +109,9 @@ export function detectAgents(): Found[] {
   const claudeBinary = findBinary(process.env.ROS_CLAUDE_BINARY || 'claude'), claudeShape = jsonShape(claudeConfig);
   // Claude Code keeps its sign-in in the keychain on a Mac, so only a positive answer is known.
   const claudeSignedIn = exists(join(claudeHome, '.credentials.json')) || Boolean(claudeShape?.keys.includes('oauthAccount')) ? true : null;
+  // The Claude desktop app starts the MCP servers in this file when it opens.
+  const claudeAppDir = win ? join(appData, 'Claude') : mac ? join(home, 'Library', 'Application Support', 'Claude') : join(process.env.XDG_CONFIG_HOME?.trim() || join(home, '.config'), 'Claude');
+  const claudeAppConfig = join(claudeAppDir, 'claude_desktop_config.json'), claudeAppShape = jsonShape(claudeAppConfig), claudeApp = app('Claude');
   const codexHome = process.env.CODEX_HOME || join(home, '.codex'), codexConfig = join(codexHome, 'config.toml');
   const codexBinary = findBinary(process.env.ROS_CODEX_BINARY || 'codex'), codexServers = tomlServers(codexConfig), codexApp = app('Codex');
   const codexSignedIn = exists(join(codexHome, 'auth.json')) ? true : isDir(codexHome) ? false : null;
@@ -126,6 +129,10 @@ export function detectAgents(): Found[] {
       found: Boolean(claudeBinary || claudeShape || isDir(claudeHome)), signedIn: claudeSignedIn,
       signals: signals({ 'used recently': recent(join(claudeHome, 'projects')) || recent(join(claudeHome, 'history.jsonl')), 'signed in': claudeSignedIn === true, 'command line': Boolean(claudeBinary) }),
       entry: Boolean(claudeShape?.servers.includes('ros-ai')), servers: others(claudeShape?.servers) },
+    { id: 'claude-app', label: 'Claude app', sessionLabel: 'Claude app', method: 'file', binary: null, target: claudeAppConfig,
+      found: Boolean(claudeApp || claudeAppShape || isDir(claudeAppDir)), signedIn: null,
+      signals: signals({ app: Boolean(claudeApp), settings: claudeAppShape !== null }),
+      entry: Boolean(claudeAppShape?.servers.includes('ros-ai')), servers: others(claudeAppShape?.servers) },
     { id: 'codex', label: 'Codex', sessionLabel: 'Codex', method: 'cli', binary: codexBinary, target: codexConfig,
       found: Boolean(codexBinary || codexServers || isDir(codexHome) || codexApp), signedIn: codexSignedIn,
       signals: signals({ 'used recently': recent(join(codexHome, 'sessions')) || recent(join(codexHome, 'history.jsonl')), 'signed in': codexSignedIn === true, app: codexApp, 'command line': Boolean(codexBinary) }),

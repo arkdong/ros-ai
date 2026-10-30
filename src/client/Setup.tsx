@@ -20,7 +20,7 @@ import './setup.css';
  * It is the last step of the first run (FirstRun.tsx) and comes back from Agents › Show the setup screen again. Every
  * link is one entry in that tool's own settings; the person can undo each one from Agents. */
 
-const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli', pi: 'pi', hermes: 'hermes' };
+const brands: Partial<Record<AgentId, BrandId>> = { 'claude-code': 'claude', 'claude-app': 'claude', codex: 'codex', 'gemini-cli': 'gemini-cli', pi: 'pi', hermes: 'hermes' };
 /** The agent's official mark where ros.ai has one, else a neutral terminal glyph. */
 export function AgentIcon({ id, size = 20 }: { id: AgentId; size?: number }) {
   const brand = brands[id];
@@ -28,6 +28,7 @@ export function AgentIcon({ id, size = 20 }: { id: AgentId; size?: number }) {
 }
 export const agentWhy: Record<AgentId, string> = {
   'claude-code': 'Adds ros.ai to Claude Code\'s tools. Your Claude login stays yours.',
+  'claude-app': 'Adds ros.ai to the Claude desktop app\'s connectors, in its settings file.',
   codex: 'Adds ros.ai to Codex\'s tools. Your ChatGPT login stays yours.',
   cursor: 'Adds ros.ai to Cursor\'s MCP servers, in its settings file.',
   'gemini-cli': 'Adds ros.ai to Gemini CLI\'s MCP servers, in its settings file.',
