@@ -39,8 +39,10 @@ export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: st
  * they keep (names and descriptions, and in full any they called with /name); left out when there are none.
  * billing: for Claude Code and Codex, which of their two agents the project picked (IN_APP_AGENTS in assistant.ts).
  * threadId: the ROS thread the turn belongs to; each thread keeps its own agent session, and two threads can run at once.
- * Left out, the project itself is the session. */
-export type AgentExecuteRequest = AgentScope & { turnId: string; threadId?: string; message: string; preferences?: string; billing?: 'plan' | 'api-key'; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
+ * Left out, the project itself is the session.
+ * glance: where the person was on the map when they sent the request, as the paragraph the first message carries after the
+ * selection (glance.ts); left out when the app sent none. */
+export type AgentExecuteRequest = AgentScope & { turnId: string; threadId?: string; message: string; preferences?: string; glance?: string; billing?: 'plan' | 'api-key'; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
 export interface AgentRuntime {
   status(projectId: string): Promise<AgentConnectionStatus>;
   execute(request: AgentExecuteRequest): Promise<AgentResult>;

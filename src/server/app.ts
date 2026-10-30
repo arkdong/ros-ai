@@ -233,7 +233,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
   if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
   // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now. The demo cannot connect tools, so it has none.
-  if (tools?.suggestions && !options.publicDemo) { const sources=tools; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
+  if (tools?.suggestions && !options.publicDemo) { const sources={...tools,...(execution.searchStatus?{search:()=>execution.searchStatus!()}:{})}; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;

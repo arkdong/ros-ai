@@ -77,7 +77,8 @@ function configuredAuthorization():LiveAuthorization|undefined {
   return {id,nebiusUsd,tavilyUsd,maxRequests};
 }
 
-type Options = {model?:ModelAdapter;search?:SearchAdapter;limits?:{nebius?:number;tavily?:number};maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;liveAuthorization?:LiveAuthorization;combinedBudget?:CombinedNebiusBudget;inference?:InferenceConnections};
+/** freeSearch: Tavily and Exa search with no key, on the allowance each gives anyone (the local app turns it on). */
+type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;limits?:{nebius?:number;tavily?:number};maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;liveAuthorization?:LiveAuthorization;combinedBudget?:CombinedNebiusBudget;inference?:InferenceConnections};
 type Active = {controller:AbortController;done:Promise<void>};
 export class BudgetLedger {
   constructor(private readonly store:Store,readonly limits:{nebius:number;tavily:number;openai?:number},readonly authorizationId?:string,readonly maxRequests=Number.MAX_SAFE_INTEGER) {}
@@ -125,9 +126,10 @@ export class ExecutionService {
     const openaiRequests=Number(process.env.ROS_OPENAI_MAX_REQUESTS??1);
     if(!Number.isFinite(openaiUsd)||openaiUsd<0||!Number.isInteger(openaiRequests)||openaiRequests<1)throw new Error('Invalid OpenAI authorization settings.');
     this.openaiLedger=new BudgetLedger(store,{nebius:0,tavily:0,openai:openaiUsd},openaiId,openaiRequests);
-    this.search = options.search ?? new TavilyAdapter();
+    const free={free:options.freeSearch===true};
+    this.search = options.search ?? new TavilyAdapter(undefined,free);
     this.injectedSearch=Boolean(options.search);
-    this.searches={tavily:this.search,exa:new ExaAdapter(),brave:new BraveAdapter()};
+    this.searches={tavily:this.search,exa:new ExaAdapter(undefined,free),brave:new BraveAdapter()};
     this.authorization = options.liveAuthorization ?? configuredAuthorization();
     this.combinedBudget=options.combinedBudget??(process.env.ROS_NEBIUS_COMBINED_AUTHORIZATION_ID?new CombinedNebiusBudget(store):undefined);
     this.maxConcurrent = Math.max(1,Math.min(4,Math.floor(options.maxConcurrent ?? Number(process.env.ROS_MAX_CONCURRENT || 2))));
@@ -210,20 +212,21 @@ export class ExecutionService {
     if(provider!=='tavily')throw new Error(allowance.reason);
     return this.ledger.reserve('tavily',amountUsd,purpose,basis,runId,trace);
   }
-  /** The web search service in use: the one chosen on the Plugins page while it has a key, otherwise the first
-   * with a key (Tavily, Exa, Brave Search), otherwise Tavily, whose missing key then explains itself. */
+  /** The web search service in use: the one chosen on the Plugins page while it can search, otherwise the first
+   * with a key (Tavily, Exa, Brave Search), otherwise the first free one, otherwise Tavily, whose missing key then
+   * explains itself. */
   searchService():{id:SearchProviderId;adapter:SearchAdapter}{
     if(this.injectedSearch)return {id:'tavily',adapter:this.search};
     const chosen=this.store.globalRecord<{provider:SearchProviderId}>('search-service','app')?.provider;
-    const id=chosen&&this.searches[chosen]?.configured?chosen:searchProviders.find(provider=>this.searches[provider].configured)??'tavily';
+    const id=chosen&&this.searches[chosen]?.configured?chosen:searchProviders.find(provider=>this.searches[provider].configured&&!this.searches[provider].free)??searchProviders.find(provider=>this.searches[provider].configured)??'tavily';
     return {id,adapter:this.searches[id]};
   }
   searchStatus():SearchServiceStatus{
     const active=this.searchService();
     return {active:active.adapter.configured?active.id:null,chosen:this.store.globalRecord<{provider:SearchProviderId}>('search-service','app')?.provider??null,
-      services:searchProviders.map(id=>({id,label:searchLabels[id],configured:this.injectedSearch?id==='tavily':this.searches[id].configured,readsPages:Boolean(SEARCH_SERVICES[id].read)}))};
+      services:searchProviders.map(id=>({id,label:searchLabels[id],configured:this.injectedSearch?id==='tavily':this.searches[id].configured,free:!this.injectedSearch&&this.searches[id].free===true,readsPages:Boolean(SEARCH_SERVICES[id].read)}))};
   }
-  /** Search with this service from now on; it needs its key first. */
+  /** Search with this service from now on; it needs its key first, unless it searches free. */
   chooseSearch(supplied:unknown):SearchServiceStatus{
     const {provider}=z.object({provider:z.enum(searchProviders)}).strict().parse(supplied);
     if(!this.searches[provider].configured)throw new StoreError(`Add ${aSearchLabel(provider)} key first.`,409);

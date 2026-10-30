@@ -160,8 +160,10 @@ export type AgentCapture = {
 
 /** Both app-server dynamic tools and a future CLI/MCP transport use this boundary.
  * There are no paths, arbitrary SQL, shell commands, network or package APIs.
- * Only the user's explicit node/artifact selection is captured. Connections do
- * not import their opposite endpoint or transitively expand this scope.
+ * The capture holds only what a request names on purpose (Check sources on a block), arriving in full; where the
+ * person clicked comes as a hint in the first message instead (glance.ts). The tools reach any block and saved version
+ * of the project, and the approval mode decides what waits for the person. Connections do not import their opposite
+ * endpoint.
  */
 /** Models often send a list or object argument as JSON text ("[...]"). When the arguments fail
  * validation, top-level strings holding valid JSON are read once more as JSON; the original error
@@ -224,7 +226,7 @@ export class AgentWorkspaceTools {
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
-  /** Blocks this turn added; later tools may build on them although they were not selected. */
+  /** Blocks this turn added; tools build on them at once, and a change that waits for the person says so. */
   private readonly own = new Set<string>();
   /** The turn's canvas changes that wait for the person, with the blocks each adds: a later change may build on them,
    * and then waits for them (a CV goes inside a candidate's group the person has not accepted yet). */
@@ -233,7 +235,7 @@ export class AgentWorkspaceTools {
   private readonly results = new Map<string, { sources: { n: number; artifactId: string; title: string; url?: string }[] }>();
   /** The Web block each direction of this turn's plans belongs to. */
   private readonly directions = new Map<string, string>();
-  /** Artifacts of blocks the agent read through ros_read_canvas; readable, but not evidence for proposals. */
+  /** Saved versions the agent opened beyond the capture, through ros_read_canvas or by id. */
   private readonly opened = new Map<string, AgentCapture['artifacts'][number]>();
   /** The block this turn checks with ros_check_claims, its claims and the verdicts written so far. */
   private check: { nodeId: string; textHash: string; claims: { id: string; text: string }[]; verdicts: Map<string, CheckedClaim>; findings: Set<string> } | null = null;
@@ -314,18 +316,29 @@ export class AgentWorkspaceTools {
   /** Agents known by the name they gave (their client, model or ACP agent) rather than a fixed one. */
   private get named() { return this.agent === 'outside' || this.agent === 'model' || isAcpAgent(this.agent); }
   preview() { return { ...this.capture, artifacts: this.capture.artifacts.map(({ content, ...a }) => ({ ...a, characters: content.length, preview: content.slice(0, 1200), truncated: content.length > 1200 })) }; }
+  /** Blocks and saved versions an explicit allowance keeps this agent to (Codex with spending limits on); unset, the whole project. */
+  within?: { nodeIds: ReadonlySet<string>; artifactIds: ReadonlySet<string> };
+  /** A block a tool starts from or writes into: the request's own block, one this turn added, or any other block on the canvas.
+   * Where the person clicked never narrows it; the approval mode decides what waits for them. */
   private node(id: string) {
     if (this.scope.nodeIds.includes(id) || this.own.has(id)) return;
     if ([...this.waiting.values()].some(change => change.nodes.has(id))) throw new StoreError(`Block ${id} is a change of this turn that still waits for the person's Accept, so nothing can build on it yet. Say that it waits for review and stop.`, 409);
-    throw new StoreError('Tool target is outside the explicit captured block selection.', 403);
+    this.onCanvas(id);
+    if (this.within && !this.within.nodeIds.has(id)) throw new StoreError(`Block ${id} is outside the Codex allowance for this project.`, 403);
   }
-  /** A block a canvas change may touch or put blocks in: any block on this project's canvas. The selection points Ros at
-   * a block but does not fence off the rest of the map: the approval mode decides what lands at once (Full access every
-   * change, Approve for me additions and moves), the rest waits for the person's Accept, and all of it can be undone. */
+  /** A block a canvas change may touch or put blocks in: any block on this project's canvas. Nothing the person clicked
+   * fences off the rest of the map: the approval mode decides what lands at once (Full access every change, Approve for
+   * me additions and moves), the rest waits for the person's Accept, and all of it can be undone. */
   private onCanvas(id: string, canvas = this.store.getProject(this.scope.projectId).canvas) {
     if (!canvas.nodes.some(n => n.id === id)) throw new StoreError(`There is no block ${id} on this canvas. Call ros_read_canvas for the current block IDs.`, 404);
   }
-  private artifact(id: string) { const a = this.capture.artifacts.find(a => a.id === id); if (!a) throw new StoreError('Tool artifact is outside the exact captured version selection.', 403); return a; }
+  /** A saved version a proposal uses (evidence, a dataset, a version to show): the capture's first, then any of this project. */
+  private artifact(id: string) {
+    const captured = this.capture.artifacts.find(a => a.id === id);
+    if (captured) return captured;
+    if (this.within && !this.within.artifactIds.has(id)) throw new StoreError(`Saved version ${id} is outside the Codex allowance for this project.`, 403);
+    return this.readable(id);
+  }
   /** Any saved version on this canvas can be read (ros_read_canvas already reads every block's text): the selection's
    * versions first, then those opened through ros_read_canvas, then any other artifact of this project. */
   private readable(id: string) {
