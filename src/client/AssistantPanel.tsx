@@ -1,6 +1,6 @@
 import { ResearchRing } from './Brand';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Split, X } from 'lucide-react';
 import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';
@@ -24,6 +24,8 @@ import { useSkillMenu } from './SkillMenu';
 import type { PluginId } from '../shared/plugins';
 import { PluginSuggestionCard, usePluginChip } from './PluginSuggestion';
 import { RosThreadChip, type ShownThread } from './RosThreads';
+import { TurnFilesCard } from './TurnFiles';
+import { RosQueue } from './RosQueue';
 import './assistant-compact.css';
 
 /** The Vite dev server (npm run dev); the dev-only conversation reset exists only there. */
@@ -84,6 +86,10 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
     setTimeout(()=>{const selector=legacy?`[data-message-id="${reference.id}"]`:matchingTurn?`[data-turn-id="${matchingTurn.id}"]`:null;if(selector)document.querySelector<HTMLElement>(selector)?.scrollIntoView({block:'center'});},0);
   };
   const running = busy || Boolean(active);
+  const queued = threadId ? (state?.queued ?? []).filter(item => item.threadId === threadId) : [];
+  const thread = threadId ? state?.threads.find(item => item.id === threadId) : undefined;
+  const lastCopied = thread?.branchedFrom ? turns.findLast(turn => turn.copiedFrom) : undefined;
+  const branched = async (id: string) => { await onRefresh(); onThread(id); };
   const lastTurn = turns.at(-1);
   const blocker = state && !state.modelAvailable ? assistantBlocker(state.modelBlocker||'The selected model is unavailable.',state.backend) : null;
   const modelBlocked = Boolean(state && !state.modelAvailable);
@@ -99,7 +105,8 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
   useEffect(()=>{if(submission&&turns.some(turn=>turn.userMessage===submission.message&&turn.createdAt>=submission.at)){setSubmission(null);saveLocal(submissionKey,null);}},[state,submissionKey,submission]);
   const changeBackend=async(backend:AssistantBackend)=>{if(running)return;try{await post(`/api/projects/${detail.project.id}/assistant/backend`,{backend});await onRefresh();}catch(cause){rememberSubmission({message:'Change assistant connection',at:new Date().toISOString(),status:'failed',error:cause instanceof Error?cause.message:String(cause)});}};
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); if (!message.trim() || running || modelBlocked || submission?.status==='pending') return;
+    // While the thread works, a message waits for it (RosQueue) instead of being refused.
+    event.preventDefault(); if (!message.trim() || busy || (running && !active) || (modelBlocked && !active) || submission?.status==='pending') return;
     setPreparedNotice('');
     const attempt:Submission={message:message.trim(),at:new Date().toISOString(),status:'pending'};rememberSubmission(attempt);
     // The box empties before the send: a message from a new thread moves the panel to the thread it starts, and the text must not stay behind as that new thread's draft.
@@ -135,7 +142,8 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
       {!state && !loadError && <p className="assistant-loading"><LoaderCircle className="spin" size={16}/> Opening the conversation…</p>}
       {state && !turns.length && !messages.length && <div className="assistant-welcome"><div className="assistant-welcome-signal" aria-hidden="true"><ResearchRing/></div><h3>What are you exploring?</h3><p>Start with a question or a half-formed idea. Keep the conversation here while your notes and evidence take shape.</p><div className="assistant-starters"><button onClick={() => usePrompt('Help me frame the question I want to explore: ')}>Shape a research question <ArrowRight size={14}/></button>{detail.project.canvas.nodes.length > 0 && <button onClick={() => usePrompt('What do we know so far, and what is still missing?')}>Make sense of this project <ArrowRight size={14}/></button>}</div></div>}
       {messages.length > 0 && <details className="assistant-previous" open={previousOpen} onToggle={event=>setPreviousOpen(event.currentTarget.open)}><summary><HistoryLabel/> Earlier project conversation <span>{messages.length}</span></summary>{messages.map(item => <article key={item.id} data-message-id={item.id} className={`assistant-message ${item.role}`}><div className="message-meta"><span>{item.role === 'user' ? 'You' : item.role === 'system' ? 'Workspace update' : 'ros.ai'}</span><time>{time(item.createdAt)}</time></div>{item.role === 'assistant' ? <AssistantResponse content={item.content} detail={detail} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(`message:${item.id}`,questions)}/> : <RichText text={item.content}/>}</article>)}</details>}
-      {turns.map(turn => <Turn key={turn.id} turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onProposals={onProposals} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)} plugins={{latest:turn.id===lastTurn?.id,running,backend:state?.backend,onSend:text=>onSend(text),onRefresh,onOpenPlugin}}/>)}
+      {turns.map(turn => <div key={turn.id} className="assistant-turn-wrap"><Turn turn={turn} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onProposals={onProposals} onInspectAction={onInspectAction} person={state?.person} onMemory={()=>void onRefresh()} onAnswer={busy||submission?.status==='pending'?undefined:questions=>openAnswers(turn.id,questions)} onBranched={branched} plugins={{latest:turn.id===lastTurn?.id,running,backend:state?.backend,onSend:text=>onSend(text),onRefresh,onOpenPlugin}}/>
+        {turn === lastCopied && thread?.branchedFrom && <p className="ros-branch-mark"><Split size={12} aria-hidden="true"/>Branched from{state?.threads.some(item => item.id === thread.branchedFrom!.threadId) ? <button type="button" className="text-button" onClick={() => onThread(thread.branchedFrom!.threadId)}>{thread.branchedFrom.title}</button> : <span>{thread.branchedFrom.title}</span>}</p>}</div>)}
       {pending.map(proposal => <ProposalReview key={proposal.id} proposal={proposal} title={proposal.summary} detail={detail} onProposal={onProposal} onOpen={() => onReference({kind:'proposal',id:proposal.id,label:proposal.summary})}/>)}
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
@@ -144,14 +152,16 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     {plugins.chip&&<div className="plugin-chip-row">{plugins.chip}</div>}
+    {!asking&&queued.length>0&&<div className="ros-queue-panel"><RosQueue projectId={detail.project.id} items={queued} onChanged={onRefresh} onEdit={text=>{setMessage(current=>current.trim()?`${current}\n\n${text}`:text);textarea.current?.focus();}}/></div>}
     <form className="assistant-composer ros-composer" hidden={asking} onSubmit={event => void submit(event)}>
       <label className="sr-only" htmlFor="assistant-message">Message ROS</label>
       {skills.menu}
-      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Type your next question' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
+      <textarea id="assistant-message" ref={textarea} data-testid="project-message" aria-autocomplete="list" aria-expanded={skills.open} value={message} rows={2} placeholder={active ? 'Add a message; it goes when ROS is done' : turns.length ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event)) return; if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }}/>
       <div className="ros-bar-footer">
         <RosModelMenu state={state} detail={detail} threadId={threadId} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={error=>rememberSubmission({message:'Change what ROS runs with',at:new Date().toISOString(),status:'failed',error})}/>
         <RosApprovalMenu policy={policy} running={running} onRefresh={onRefresh} onDetails={onPermissions} onError={error=>rememberSubmission({message:'Change approval mode',at:new Date().toISOString(),status:'failed',error})}/>
         <span className="ros-footer-spacer"/>
+        {active && message.trim() && <button className="ros-send ros-queue-send" data-testid="queue-project-message" aria-label="Send when ROS is done" title="Send when ROS is done (Enter)" disabled={busy || submission?.status==='pending'}><ArrowUp size={14}/></button>}
         {active ? <StopButton armed={stopArmed} onStop={stop}/>
           : <button className="ros-send" data-testid="send-project-message" aria-label="Send to ROS" title={blocker?.summary||'Send to ROS'} disabled={!message.trim() || running || !state || modelBlocked}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>
@@ -184,7 +194,7 @@ function ReferenceLinks({ references, onReference }: { references: AssistantRefe
   return <div className="assistant-references">{references.map((reference, index) => <button key={`${reference.kind}:${reference.id}:${index}`} onClick={() => onReference(reference)} title={`Open ${reference.label}`}>{reference.kind === 'artifact' ? <FileText size={12}/> : reference.kind === 'proposal' ? <GitBranch size={12}/> : <BookOpen size={12}/>}<span>{textPreview(reference.label,48).text}</span><ArrowRight size={11}/></button>)}</div>;
 }
 
-function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, onInspectAction, onAnswer, person, onMemory, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
+function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, onInspectAction, onAnswer, person, onMemory, onBranched, plugins }: { turn: AssistantTurn; detail: ProjectDetail; onReference: Props['onReference']; onDecision: Props['onDecision']; onProposal: Props['onProposal']; onProposals: Props['onProposals']; onInspectAction: Props['onInspectAction']; onAnswer?: (questions: AssistantClarificationQuestion[]) => void; person?: PersonalMemoryState; onMemory?: () => void; onBranched: (threadId: string) => Promise<unknown>; plugins: { latest: boolean; running: boolean; backend?: AssistantBackend; onSend: (message: string) => Promise<boolean>; onRefresh: () => unknown; onOpenPlugin: (id: PluginId) => void } }) {
   // The person's own Claude Code or Codex, connected over MCP: there is no message from them here.
   const outside = turn.source === 'outside-agent';
   // Admission failures retain one persistent alert. The stored reply/error
@@ -203,6 +213,9 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
   const mappable = turn.status === 'completed' && ['codex-agent', 'claude-agent', 'model-agent', 'acp-agent'].includes(turn.source) && reply.trim().length >= 200 && !changes.length && turn.layer?.state !== 'running' && !turn.actions.some(action => action.by === 'ros');
   const putOnMap = async () => { setToMap('busy'); try { await post(`/api/projects/${detail.project.id}/assistant/turns/${turn.id}/to-map`); setToMap('idle'); await plugins.onRefresh(); } catch (error) { setToMap(error instanceof Error ? error.message : 'Could not put this on the map.'); } };
   const undo = async (actionId: string) => { await post(`/api/projects/${detail.project.id}/assistant/actions/${actionId}/undo`); await plugins.onRefresh(); };
+  // Branch from here: a new thread with the conversation up to this answer, to try another way or another agent.
+  const [branching, setBranching] = useState<'idle' | 'busy' | string>('idle');
+  const branch = async () => { setBranching('busy'); try { const next = await post<AssistantState>(`/api/projects/${detail.project.id}/assistant/turns/${turn.id}/branch`); setBranching('idle'); if (next.threadId) await onBranched(next.threadId); } catch (error) { setBranching(error instanceof Error ? error.message : 'Could not branch from here.'); } };
   const savedStructure = turn.actions.some(action => {
     const proposal = detail.proposals.find(item => item.id === action.proposalId);
     return proposal && Boolean(proposalStructurePreview(proposal, detail.project.canvas.nodes));
@@ -216,10 +229,12 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
       {turn.error && <details className="assistant-failure-details"><summary><CircleHelp size={14}/><span>Attempt failed</span><span>Details</span></summary><p>{turn.error}</p></details>}
       {['interrupted','cancelled'].includes(turn.status) && <p className="assistant-interrupted">{turn.status === 'cancelled' ? 'Stopped. Saved work remains available.' : 'Interrupted. Send a follow-up to continue from the saved work.'}</p>}
       {turn.actions.filter(action => !searchPlan(action) || (detail.proposals.find(item => item.id === action.proposalId)?.status ?? action.status) === 'pending').map(action => grouped.has(action) ? action === changes[0] ? <TurnReview key="turn-review" actions={changes} detail={detail} onProposal={onProposal} onProposals={onProposals} onReference={onReference} onUndo={undo}/> : null : <ActionCard key={action.id} action={action} detail={detail} onReference={onReference} onDecision={onDecision} onProposal={onProposal} onInspectAction={onInspectAction}/>)}
+      {turn.files && <TurnFilesCard projectId={detail.project.id} turnId={turn.id} files={turn.files}/>}
       {turn.remembered?.length ? <RememberCard remembered={turn.remembered} person={person} onChanged={onMemory}/> : null}
       {turn.suggested && turn.status !== 'running' && <PluginSuggestionCard turn={turn} projectId={detail.project.id} {...plugins}/>}
-      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'ROS'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}{mappable && <button type="button" className="text-button small ros-to-map" disabled={toMap === 'busy'} title="Put this answer on the map as blocks, cut at its headings" onClick={() => void putOnMap()}>{toMap === 'busy' ? 'Putting it on the map…' : 'Put this on the map'}</button>}</div>}
+      {turn.status !== 'running' && <div className="ros-turn-meta"><span>{outside ? 'Outside agent' : turn.source === 'local-records' ? 'Saved context' : 'ROS'} · {time(turn.createdAt)}</span>{!outside&&turn.model&&<span title={turn.destination?turn.location==='local-verified'?'On this computer':turn.location==='local-unverified'?`${turn.destination} · local processing unverified`:`Sent to ${turn.destination}`:undefined}>{turn.model}</span>}{turn.events.length > 0 && <details className="assistant-turn-events"><summary>{turn.events.length} {turn.events.length === 1 ? 'step' : 'steps'}</summary><ol>{turn.events.map((event, index) => <li key={index}><time>{time(event.at)}</time><span>{event.message}</span></li>)}</ol></details>}{mappable && <button type="button" className="text-button small ros-to-map" disabled={toMap === 'busy'} title="Put this answer on the map as blocks, cut at its headings" onClick={() => void putOnMap()}>{toMap === 'busy' ? 'Putting it on the map…' : 'Put this on the map'}</button>}{!outside && <button type="button" className="text-button small ros-branch" disabled={branching === 'busy'} title="Start a new thread from this answer, to try another way or another agent. This thread stays as it is." onClick={() => void branch()}><Split size={11} aria-hidden="true"/>{branching === 'busy' ? 'Branching…' : 'Branch'}</button>}</div>}
       {mappable && toMap !== 'idle' && toMap !== 'busy' && <p className="proposal-review-stale">{toMap}</p>}
+      {branching !== 'idle' && branching !== 'busy' && <p className="proposal-review-stale">{branching}</p>}
     </article>
   </section>;
 }
