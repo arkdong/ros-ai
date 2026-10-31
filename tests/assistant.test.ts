@@ -216,8 +216,10 @@ test('cancelling a pending model call retains admission and discards late output
     const state = f.assistant.start(f.project.id, { message: 'Wait for a fixture response' });
     await until(() => f.requests.length === 1);
     // The thread takes one question at a time; a message without a thread would start a new one.
-    assert.throws(() => f.assistant.start(f.project.id, { message: 'Duplicate work', threadId: state.threadId }), /still working in this thread/);
+    // A message for a thread that is working waits for it; stopping the turn leaves it waiting for the person.
+    assert.equal(f.assistant.start(f.project.id, { message: 'Duplicate work', threadId: state.threadId }).queued.length, 1);
     f.assistant.cancel(f.project.id, state.activeTurnId!);
+    assert.equal(f.assistant.state(f.project.id).queued[0].paused, true);
     release(reply({ reply: 'LATE_RESPONSE_MUST_NOT_PERSIST', tools: [{ type: 'notes', summary: 'Late note', notes: [{ id: 'late-note', title: 'Late note', description: '', kind: 'topic', parentId: null, rationale: 'Too late.' }], relationships: [] }] }));
     await until(() => f.store.listUsage()[0].status === 'uncertain');
     assert.equal(f.signals[0].aborted, true); assert.equal((await finished(f, state.activeTurnId!)).status, 'cancelled');
@@ -406,7 +408,9 @@ test('threads keep their own history, two run at once, and the earlier conversat
     const one = f.assistant.start(f.project.id, { message: 'Continue the earlier question', threadId: legacy });
     assert.equal(one.threadId, legacy);
     await until(() => f.requests.length === 1);
-    assert.throws(() => f.assistant.start(f.project.id, { message: 'Too soon', threadId: legacy }), /still working in this thread/);
+    const waiting = f.assistant.start(f.project.id, { message: 'Too soon', threadId: legacy });
+    assert.equal(waiting.queued.length, 1); assert.equal(waiting.turns.filter(turn => turn.threadId === legacy && turn.status === 'running').length, 1);
+    f.assistant.removeQueued(f.project.id, waiting.queued[0].id);
     const two = f.assistant.start(f.project.id, { message: 'A separate question in a new thread' });
     assert.ok(two.threadId && two.threadId !== legacy); assert.equal(two.threads.filter(thread => thread.running).length, 2);
     assert.equal(two.threads.find(thread => thread.id === two.threadId)!.title, 'A separate question in a new thread');

@@ -13,6 +13,7 @@ import type { PluginId } from '../shared/plugins';
 import { suggestionsWaiting, usePluginChip } from './PluginSuggestion';
 import { useSuggestions } from './plugin-suggestions';
 import { RosThreadsButton, seenKey, seenTurn, type ShownThread } from './RosThreads';
+import { RosQueue } from './RosQueue';
 import './ros-dock.css';
 
 export type RosMode = 'bar' | 'half' | 'full';
@@ -42,6 +43,7 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
   const turns = threadId ? allTurns.filter(turn => turn.threadId === threadId) : [];
   const active = turns.findLast(turn => turn.status === 'running');
   const running = busy || Boolean(active);
+  const queued = threadId ? (state?.queued ?? []).filter(item => item.threadId === threadId) : [];
   // The thread's last finished request stays in the bar, with its outcome, until the user archives it.
   const finished = !running ? turns.findLast(turn => turn.status !== 'running') : undefined;
   const done = finished && finished.id !== seen ? finished : undefined;
@@ -55,8 +57,9 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || running) return;
-    if (state && !state.modelAvailable) { onOpen('half'); return; }
+    // While the thread works, the message waits for it (RosQueue).
+    if (!message || busy || (running && !active)) return;
+    if (state && !state.modelAvailable && !active) { onOpen('half'); return; }
     setDraft('');
     if (!await onSend(message, plugins.suggest)) setDraft(message);
     input.current?.focus();
@@ -81,8 +84,9 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
         </button>
         <button type="button" className="icon-button ros-done-ok" aria-label="Archive this request" title="Archive" onClick={dismiss}><Archive size={14}/></button>
       </div>}
+      {queued.length > 0 && <RosQueue projectId={detail.project.id} items={queued} compact onChanged={onRefresh} onEdit={text => { setDraft(draft.trim() ? `${draft} ${text}` : text); input.current?.focus(); }}/>}
       {skills.menu}
-      <input ref={input} aria-label="Ask ROS" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Type your next question' : done ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (!active) (event.target as HTMLInputElement).blur(); }}/>
+      <input ref={input} aria-label="Ask ROS" aria-autocomplete="list" aria-expanded={skills.open} placeholder={running ? 'Add a message; it goes when ROS is done' : done ? 'Ask a follow-up, or @ an agent' : 'Ask ROS, or @ an agent'} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (skills.onKeyDown(event) || event.key !== 'Escape') return; if (!active) (event.target as HTMLInputElement).blur(); }}/>
       <div className="ros-bar-footer">
         <RosMark working={running}/>
         <RosModelMenu state={state} detail={detail} threadId={threadId} running={running} onRefresh={onRefresh} onConnections={onConnections} onPermissions={onPermissions} onError={() => onOpen('half')}/>
@@ -92,6 +96,7 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
         <RosThreadsButton state={state} projectId={detail.project.id} current={threadId} onChoose={onThread}/>
         <button type="button" className="icon-button" aria-label={rosSizeLabel.half} title="Half sheet" onClick={() => onOpen('half')}><RosSizeIcon size="half" px={15}/></button>
         <button type="button" className="icon-button" aria-label={rosSizeLabel.full} title="Side panel" onClick={() => onOpen('full')}><RosSizeIcon size="full" px={15}/></button>
+        {active && draft.trim() && <button type="submit" className="ros-send ros-queue-send" aria-label="Send when ROS is done" title="Send when ROS is done (Enter)" disabled={busy}><ArrowUp size={14}/></button>}
         {active ? <StopButton armed={stopArmed} onStop={stop}/>
           : <button type="submit" className="ros-send" aria-label="Send to ROS" disabled={!draft.trim() || running}>{running ? <LoaderCircle size={14} className="spin"/> : <ArrowUp size={14}/>}</button>}
       </div>

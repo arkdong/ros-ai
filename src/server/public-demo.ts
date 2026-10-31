@@ -39,7 +39,7 @@ function savedAssistant(store:Store,projectId:string):AssistantState {
   return { projectId,memory:{originalQuestion:question,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]},
     outline:detail.project.canvas.nodes.map(node => ({id:node.id,nodeId:node.id,title:node.title,summary:node.description,
       kind:'direction',references:[{kind:'node',id:node.id,nodeId:node.id,label:node.title}]})),
-    turns:[],threads:[],messages:detail.messages.filter(message => message.nodeId === null),activeTurnId:null,modelAvailable:false,searchAvailable:false };
+    turns:[],threads:[],queued:[],messages:detail.messages.filter(message => message.nodeId === null),activeTurnId:null,modelAvailable:false,searchAvailable:false };
 }
 
 function visitorApp(store:Store):Express {

@@ -8,6 +8,7 @@ import type { PluginMatch } from './plugin-hints.js';
 import type { TurnLayer } from './ros-layer.js';
 import type { ModelSelection } from './model-settings.js';
 import type { EffortLevel } from './agent-models.js';
+import type { TurnFiles } from './turn-files.js';
 
 /** 'agent' runs the selected model in ros.ai's own tool loop; gemini, goose and opencode are agents on
  * this computer that speak ACP (acp-agents.ts). Claude Code and Codex are two agents each (IN_APP_AGENTS). */
@@ -38,7 +39,7 @@ export type ResearchMemory = {originalQuestion:string|null;questionHistory:{id:s
 export type OutlineEntry = {id:string;title:string;summary:string;kind:'question'|'direction'|'decision'|'finding'|'hypothesis'|'gap';references:AssistantReference[];nodeId?:string;status?:string};
 /** by: 'ros' when ROS made the change on top of the agent's turn (ros-layer.ts); undone: the person took it back. */
 export type AssistantAction = {id:string;type:'proposal'|'experiment'|'research'|'reuse'|'search';title:string;status:'pending'|'running'|'completed'|'failed'|'cancelled';nodeId?:string;targetNodeId?:string;artifactId?:string;runId?:string;proposalId?:string;reportProposalId?:string;error?:string;by?:'ros';undone?:boolean};
-export type AssistantTurn = {id:string;projectId:string;/** The thread the turn belongs to; turns from before threads are stamped with the project's first thread when it is read. */threadId?:string;createdAt:string;updatedAt:string;focus:AssistantFocus;userMessage:string;reply:string;question?:string|null;clarifications?:AssistantClarificationQuestion[];structure?:AssistantStructurePreview;status:'running'|'completed'|'failed'|'cancelled'|'interrupted';source:'model'|'local-records'|'codex-agent'|'claude-agent'|'model-agent'|'outside-agent'|'acp-agent';references:AssistantReference[];actions:AssistantAction[];events:{at:string;message:string;kind?:'thought'|'tool';step?:AgentStep}[];remembered?:{id:string;kind:MemoryKind;text:string}[];suggested?:TurnSuggestion;/** ROS arranging what the turn left (ros-layer.ts). */layer?:TurnLayer;error?:string;warning?:string;model?:string;destination?:string;location?:'local-unverified'|'external'|'local-verified'};
+export type AssistantTurn = {id:string;projectId:string;/** The thread the turn belongs to; turns from before threads are stamped with the project's first thread when it is read. */threadId?:string;createdAt:string;updatedAt:string;focus:AssistantFocus;userMessage:string;reply:string;question?:string|null;clarifications?:AssistantClarificationQuestion[];structure?:AssistantStructurePreview;status:'running'|'completed'|'failed'|'cancelled'|'interrupted';source:'model'|'local-records'|'codex-agent'|'claude-agent'|'model-agent'|'outside-agent'|'acp-agent';references:AssistantReference[];actions:AssistantAction[];events:{at:string;message:string;kind?:'thought'|'tool';step?:AgentStep}[];remembered?:{id:string;kind:MemoryKind;text:string}[];suggested?:TurnSuggestion;/** ROS arranging what the turn left (ros-layer.ts). */layer?:TurnLayer;error?:string;warning?:string;model?:string;destination?:string;location?:'local-unverified'|'external'|'local-verified';/** Files in the project folder that changed while the turn ran (turn-files.ts). */files?:TurnFiles;/** A copy of an earlier turn, made when a thread was branched from it: shown for context, with nothing to decide on. */copiedFrom?:string};
 /** Plugins the request needed and the person had not connected, noticed by ros.ai in the message (a link or a name).
  * One card under the reply, open until the person carries on after connecting (done), puts it off (later) or declines
  * every plugin on it (never), or until a newer request that needs the same plugin takes the card over (moved). */
@@ -48,12 +49,18 @@ export type AssistantLive = {turnId:string;threadId?:string;reply:string;status:
 /** One conversation with ROS inside a project. A project holds many; each keeps its own history, agent session, running turn
  * and draft, while the map, its proposals, the approval mode and what ROS runs with are the project's. outsideSession: the
  * thread of the person's own agent connected over MCP, one per session, named after the agent. */
-export type AssistantThread = {id:string;projectId:string;title:string;createdAt:string;updatedAt:string;outsideSession?:string;choice?:ThreadChoice};
+export type AssistantThread = {id:string;projectId:string;title:string;createdAt:string;updatedAt:string;outsideSession?:string;choice?:ThreadChoice;branchedFrom?:ThreadBranch;/** The agent's own session does not hold this thread's conversation (a branch, or a turn stopped for a new message), so
+ * the next agent turn gets the earlier conversation written into its request. */carry?:boolean};
+/** Where a branch came from: the thread and the turn it was cut after, with that thread's name then. */
+export type ThreadBranch = {threadId:string;turnId:string;title:string};
+/** A message typed while its thread was working, sent when the thread is free. paused: it waits for the person (the turn
+ * before it was stopped, or ros.ai restarted); note says why. */
+export type QueuedMessage = {id:string;threadId:string;message:string;createdAt:string;paused?:boolean;note?:string};
 /** What a thread last ran with: the agent or way (backend), the project model, and for Claude Code or Codex the model and effort
  * the agent ran on. Opening the thread again puts this choice back in the ROS bar, so the thread goes on as it was. */
 export type ThreadChoice = {backend:AssistantBackend;model?:ModelSelection;agentModel?:{model:string;effort:EffortLevel|null}};
 /** A thread as the bar and the panel list it: its name and its state in one line. updatedAt moves with its turns. */
-export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean;choice?:ThreadChoice};
+export type AssistantThreadSummary = {id:string;title:string;createdAt:string;updatedAt:string;running:boolean;step?:string;waiting:number;last?:{turnId:string;status:AssistantTurn['status'];at:string};outside?:boolean;choice?:ThreadChoice;branchedFrom?:ThreadBranch};
 /** threads: newest activity first. activeTurnId: a running turn in any thread. threadId: set on the state a new message
  * returns, naming the thread it went into (a new one when the message named none). */
-export type AssistantState = {projectId:string;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};
+export type AssistantState = {projectId:string;memory:ResearchMemory;outline:OutlineEntry[];turns:AssistantTurn[];threads:AssistantThreadSummary[];/** Messages waiting for their thread, oldest first. */queued:QueuedMessage[];threadId?:string;messages:Message[];activeTurnId:string|null;person?:PersonalMemoryState;modelAvailable:boolean;searchAvailable:boolean;backend?:AssistantBackend;modelBlocker?:string|null};
