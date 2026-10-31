@@ -8,10 +8,17 @@
  *   report     checks every trajectory and prints the pass rates
  *   export     writes train.jsonl and val.jsonl from the passing trajectories
  *   eval       a model under test works the held-out tasks         --student-url=http://127.0.0.1:4319/v1 --label=baseline
- *   smoke      the whole path offline with a scripted teacher; spends nothing */
+ *   smoke      the whole path offline with a scripted teacher; spends nothing
+ * Round 2's structure family (structure.ts): when, what to group and what to link after an agent's turn
+ *   structure-maps     teacher writes well-organised maps          --per-domain=8 --eval-per-domain=3 --concurrency=6 --max-usd=2
+ *   structure-check-links  teacher checks each map's links once more   --max-usd=1
+ *   structure-label-links  teacher labels each kept pair's word and direction afresh   --max-usd=1
+ *   structure-export   takes their shape away, writes structure/ and the round 2 sets (round 1 + structure); --all-links skips the check
+ *   structure-eval     scores a model on the held-out maps         --student-url=... --label=x, or --model=rules|teacher
+ *   structure-smoke    the structure path offline on a hand-written map; spends nothing */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../../src/server/store.js';
@@ -20,7 +27,7 @@ import { ExperimentService } from '../../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../../src/server/agent-tools.js';
 import { AGENT_LOOP_INSTRUCTIONS } from '../../src/server/agent-prompt.js';
 import type { ModelAdapter } from '../../src/server/providers.js';
-import { Ledger, dataDir, flag, appendJsonl, arg, path, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
+import { Ledger, dataDir, flag, appendJsonl, arg, path, pool, readJson, readJsonl, student, teacher, writeJson, type ChatAdapter } from './lib.js';
 import { rollout, type Fixture, type Task, type Trajectory } from './env.js';
 import { FAMILIES } from './families.js';
 import { EVAL_DOMAINS, TRAIN_DOMAINS, makeProjects, makeTasks, seeded } from './generate.js';
@@ -28,12 +35,19 @@ import { web } from './world.js';
 import { check } from './check.js';
 import { isValidation, toSample } from './export.js';
 import { scriptedTeacher, scriptedWeb } from './smoke.js';
+import { SMOKE_MAP, answerFor, askFor, checkLinks, evaluate, keptLinks, labelLinks, makeCases, makeMap, mapKey, scoreCase, summarise, toStructureSample, uniqueMaps, type LinkCheck, type LinkLabels, type StructureCase, type StructureMap } from './structure.js';
+import { landingPlan } from '../../src/server/ros-layer.js';
+import { LINK_WORDS } from '../../src/shared/links.js';
 
 const step = process.argv[2];
 const files = {
   snapshot: () => path('snapshot.json'), fixtures: () => path('fixtures.jsonl'), evalFixtures: () => path('eval-fixtures.jsonl'),
   tasks: () => path('tasks.jsonl'), evalTasks: () => path('eval-tasks.jsonl'), trajectories: () => path('trajectories.jsonl'),
+  maps: () => path('structure', 'maps.jsonl'), evalMaps: () => path('structure', 'eval-maps.jsonl'), evalCases: () => path('structure', 'eval-cases.jsonl'),
+  linkChecks: () => path('structure', 'link-checks.jsonl'), linkLabels: () => path('structure', 'link-labels.jsonl'),
 };
+/** A map's cases come from a seed of its own, so every export takes the same shape away. */
+const casesOf = (map: StructureMap) => makeCases(map, seeded(parseInt(createHash('md5').update(map.id).digest('hex').slice(0, 8), 16)));
 
 type Snapshot = { at: string; commit: string; hash: string; system: string; tools: { base: unknown[]; notion: unknown[] } };
 /** The prompt and tool list exactly as the loop sends them, with and without Notion connected. */
@@ -56,11 +70,6 @@ function requireSnapshot() {
   const saved = readJson<Snapshot>(files.snapshot()), hash = contractHash(currentContract());
   if (saved.hash !== hash) throw new Error(`The prompt or tools changed since the snapshot of ${saved.at} (commit ${saved.commit}). Check out that commit, or take a new snapshot and start the data again.`);
   return saved;
-}
-
-async function pool<T>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<void>) {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => { for (let index = next++; index < items.length; index = next++) await work(items[index], index); }));
 }
 
 /** The 19 October comparison's ten tasks on the bundled KNMI weather demo, so ros-nemotron's score compares with Nano's 6/10 and Super's 7.5/10. */
@@ -181,6 +190,90 @@ if (step === 'snapshot') {
   writeFileSync(path('train.jsonl'), samples.map(item => JSON.stringify(item)).join('\n') + '\n');
   console.log(`${samples.length}/${trajectories.length} smoke trajectories pass and export.`);
   if (samples.length !== tasks.length) process.exitCode = 1;
+} else if (step === 'structure-maps') {
+  const ledger = new Ledger(Number(arg('max-usd', '2'))), model = teacher(ledger, 'structure-maps', false);
+  let failing = 0;
+  for (const [domains, file, count] of [[TRAIN_DOMAINS, files.maps(), Number(arg('per-domain', '8'))], [EVAL_DOMAINS, files.evalMaps(), Number(arg('eval-per-domain', '3'))]] as const) {
+    const written = readJsonl<StructureMap>(file), seen = new Set(written.map(mapKey));
+    // A domain's maps one after another, so each request knows the titles before it, and domains side by side. Every map
+    // is saved as it comes; one that fails is left for the next run, which writes only what is missing.
+    await pool(domains, Number(arg('concurrency', '6')), async domain => {
+      const titles = written.filter(map => map.domain === domain).map(map => map.title);
+      for (let index = titles.length, tries = 0; titles.length < count && tries < count * 2; index++, tries++) {
+        const map = await makeMap(model, domain, index, titles).catch(error => {
+          const message = (error as Error).message;
+          if (message.startsWith('Spend cap')) throw error;
+          if (++failing >= 5) throw new Error(`Five maps in a row failed, so the run stops. Last: ${message}`);
+          console.warn(`maps: ${domain}: ${message.slice(0, 200)}`);
+          return null;
+        });
+        if (!map) continue;
+        failing = 0;
+        if (seen.has(mapKey(map))) continue;
+        seen.add(mapKey(map)); appendJsonl(file, map); titles.push(map.title);
+      }
+      console.log(`maps: ${domain} (${titles.length} of ${count})`);
+    });
+  }
+  console.log(`${readJsonl(files.maps()).length} training maps, ${readJsonl(files.evalMaps()).length} evaluation maps. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
+} else if (step === 'structure-check-links') {
+  const ledger = new Ledger(Number(arg('max-usd', '1'))), model = teacher(ledger, 'structure-check-links', false);
+  const done = new Set(readJsonl<LinkCheck>(files.linkChecks()).map(check => check.mapId));
+  const todo = [...readJsonl<StructureMap>(files.maps()), ...readJsonl<StructureMap>(files.evalMaps())].filter(map => map.links.length && !done.has(map.id));
+  await pool(todo, Number(arg('concurrency', '6')), async map => {
+    const check = await checkLinks(model, map).catch(error => { if ((error as Error).message.startsWith('Spend cap')) throw error; console.warn(`${map.id}: ${(error as Error).message.slice(0, 200)}`); return null; });
+    if (check) appendJsonl(files.linkChecks(), check);
+  });
+  const links = readJsonl<LinkCheck>(files.linkChecks()).flatMap(check => check.links);
+  console.table(LINK_WORDS.map(word => ({ word, links: links.filter(link => link.word === word).length, kept: links.filter(link => link.word === word && link.keep).length })));
+  console.log(`${links.filter(link => link.keep).length} of ${links.length} links kept${todo.length ? '' : ' (nothing left to check)'}. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
+} else if (step === 'structure-label-links') {
+  const ledger = new Ledger(Number(arg('max-usd', '1'))), model = teacher(ledger, 'structure-label-links', false);
+  const checks = new Map(readJsonl<LinkCheck>(files.linkChecks()).map(check => [check.mapId, check]));
+  const kept = [...readJsonl<StructureMap>(files.maps()), ...readJsonl<StructureMap>(files.evalMaps())].map(map => keptLinks(map, checks.get(map.id)));
+  const done = new Set(readJsonl<LinkLabels>(files.linkLabels()).map(labels => labels.mapId));
+  await pool(kept.filter(map => map.links.length && !done.has(map.id)), Number(arg('concurrency', '6')), async map => {
+    const labels = await labelLinks(model, map).catch(error => { if ((error as Error).message.startsWith('Spend cap')) throw error; console.warn(`${map.id}: ${(error as Error).message.slice(0, 200)}`); return null; });
+    if (labels) appendJsonl(files.linkLabels(), labels);
+  });
+  const labelled = new Map(readJsonl<LinkLabels>(files.linkLabels()).map(labels => [labels.mapId, labels.links])), count = { unchanged: 0, otherWord: 0, turned: 0, dropped: 0 };
+  for (const map of kept) for (const link of map.links) {
+    const now = labelled.get(map.id)?.find(item => [item.from, item.to].sort().join('\u0000') === [link.from, link.to].sort().join('\u0000'));
+    if (!labelled.has(map.id)) continue;
+    count[!now ? 'dropped' : now.from !== link.from ? 'turned' : now.word !== link.word ? 'otherWord' : 'unchanged']++;
+  }
+  console.log(`${labelled.size} maps labelled; their kept links: ${JSON.stringify(count)}. Spent US$${ledger.spentUsd.toFixed(3)} in total.`);
+} else if (step === 'structure-export') {
+  // The links a check dropped stay out, and labelled maps take their labelled links, unless --all-links asks for the maps as written.
+  const checks = new Map(readJsonl<LinkCheck>(files.linkChecks()).map(check => [check.mapId, check])), labels = new Map(readJsonl<LinkLabels>(files.linkLabels()).map(item => [item.mapId, item.links]));
+  const read = (file: string) => uniqueMaps(readJsonl<StructureMap>(file)).map(map => flag('all-links') ? map : labels.has(map.id) ? { ...map, links: labels.get(map.id)! } : keptLinks(map, checks.get(map.id)));
+  const cases = read(files.maps()).flatMap(casesOf), held = read(files.evalMaps()).flatMap(casesOf);
+  const rows = cases.flatMap(item => { const sample = toStructureSample(item); return sample ? [{ item, sample }] : []; });
+  for (const [split, keep] of [['train', false], ['val', true]] as const) writeFileSync(path('structure', `${split}.jsonl`), rows.filter(({ item }) => isValidation(item.mapId) === keep).map(({ sample }) => JSON.stringify(sample)).join('\n') + '\n');
+  writeFileSync(files.evalCases(), held.map(item => JSON.stringify(item)).join('\n') + '\n');
+  // Round 2 trains on round 1's turns and the structure family together, so Local ROS keeps working as an agent too.
+  for (const split of ['train', 'val']) {
+    const round1 = existsSync(path(`${split}.jsonl`)) ? readFileSync(path(`${split}.jsonl`), 'utf8').trim() : '';
+    writeFileSync(path('round2', `${split}.jsonl`), [round1, readFileSync(path('structure', `${split}.jsonl`), 'utf8').trim()].filter(Boolean).join('\n') + '\n');
+  }
+  console.table([...new Set(rows.map(({ item }) => item.kind))].map(kind => ({ kind, samples: rows.filter(({ item }) => item.kind === kind).length })));
+  console.log(`${rows.length} structure samples (${cases.length - rows.length} cut from the packet), ${held.length} evaluation cases. Round 2 sets in ${dataDir()}/round2/.`);
+} else if (step === 'structure-eval') {
+  const label = arg('label', 'baseline')!, cases = readJsonl<StructureCase>(files.evalCases());
+  if (!cases.length) throw new Error('Run structure-export first.');
+  const model = arg('model') === 'rules' ? 'rules' : arg('model') === 'teacher' ? teacher(new Ledger(Number(arg('max-usd', '3'))), 'structure-eval', false) : student();
+  const summary = await evaluate(cases, model, path('structure', 'eval', `${label}.jsonl`), Number(arg('concurrency', '2')));
+  writeJson(path('structure', 'eval', `${label}.summary.json`), { at: new Date().toISOString(), label, ...summary });
+  console.log(`${label}: ${JSON.stringify(summary, null, 2)}`);
+} else if (step === 'structure-smoke') {
+  process.env.ROS_TRAINING_DATA ??= mkdtempSync(join(tmpdir(), 'ros-structure-smoke-'));
+  const cases = makeCases(SMOKE_MAP, seeded(7)), samples = cases.map(toStructureSample).filter(Boolean);
+  // The original shape, read back by the app's own parser, has to score full marks; ros.ai's own rules show the floor.
+  const original = summarise(cases.map(item => { const { view, asked } = askFor(item); return scoreCase(item, landingPlan(JSON.stringify(answerFor(item.target, asked)), asked, view, item.request)); }));
+  const rules = await evaluate(cases, 'rules', path('structure', 'eval', 'smoke-rules.jsonl'));
+  console.log(`${cases.length} cases (${[...new Set(cases.map(item => item.kind))].join(', ')}), ${samples.length} samples in ${dataDir()}`);
+  console.log(`original shape: ${JSON.stringify(original)}\nros.ai's rules: ${JSON.stringify(rules)}`);
+  if (samples.length !== cases.length || original.group.f1 !== 1 || original.link.f1 !== 1 || original.leftAlone !== 1) process.exitCode = 1;
 } else {
-  console.log('Steps: snapshot, projects, tasks, rollout, report, export, eval, smoke. See README.md.');
+  console.log('Steps: snapshot, projects, tasks, rollout, report, export, eval, smoke, structure-maps, structure-export, structure-eval, structure-smoke. See README.md.');
 }

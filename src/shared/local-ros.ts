@@ -13,4 +13,7 @@ export type LocalRosStatus = {
   note?: string;
   connectionId?: string;
   error?: string;
+  /** The model this version of ros.ai wants, while ROS runs another from disk: on offer (updates are not automatic, the
+   * person stopped it, or it failed), coming in the background, or being switched to. */
+  update?: { state: 'available' | 'downloading' | 'switching'; model: string; doneBytes?: number; totalBytes?: number; bytesPerSecond?: number; note?: string; error?: string };
 };

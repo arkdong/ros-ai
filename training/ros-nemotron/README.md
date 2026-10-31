@@ -104,9 +104,63 @@ The 95 held-out tasks, on Adam's Mac. Both small models are Q4_K_M GGUFs in llam
 
 The first run gave the student 32,768 tokens and scored 12 and 15. The harness injects the student like a hosted model, whose admission counts a token per byte plus 4,096 and the 8,000-token output cap, so it refused most requests over about 20 KB. The app admits Local Ros at three bytes a token up to its 64 KB request cap. The table comes from the rerun with `--student-context=65536`, which is slightly stricter than the app. `student()` now defaults to 76,096 tokens (64,000 + 4,096 + 8,000), so it admits what the app admits.
 
+## Round 2: the structure family (30 October)
+
+Round 2 teaches ROS the job it does on top of any agent (`src/server/ros-layer.ts`): after an agent's turn, decide **when** to give its work the map's shape, **which blocks to group** (into a group already there or a new one, with a short title) and **which to link**, in the map's six link words (supports, contradicts, answers, uses data from, builds on, part of).
+
+How the data is made (`structure.ts`): the teacher writes well-organised maps, one per request (each with its own stage, size and style, and the titles already written in its domain, so a domain's maps differ), with groups of two to six blocks under a theme title, one to three blocks outside every group, three to ten links, and for each group the request and reply of the agent turn that added it. Each map then gives several turns, each with the map's original shape as the answer:
+
+- **regroup:** a group's blocks came loose and the group is gone; the answer is the group again, under its own title.
+- **place:** one or two blocks came out of a group that is still there; the answer puts them back.
+- **mixed:** both in one turn.
+- **links:** a block that fits no group came without its links; the answer is the links only.
+- **leave:** a block that fits no group and has no links; the answer is to change nothing.
+
+The teacher links more freely than it groups (in the first run about a third of its links were a stretch), so `structure-check-links` has it check each map's links once more, strictly, and the export leaves out the ones it drops (`--all-links` keeps them). The check is strict about links that are false but lenient about word and direction, so `structure-label-links` then has Super label each kept pair afresh against what each word means, saying in a few words how the blocks relate first (the right word in the right direction, or none), and the export uses those labels. Up to four of the moved blocks' links are taken away and belong to the answer; any others stay, as links the agent made itself. The landing request is built by the app's own functions (`seeTurn`, `landingAsk`) and every answer is read back by the app's own parser (`landingPlan`), so a sample is exactly what Local ROS gets and what the app keeps. Training and evaluation use round 1's domains, which never mix, and nothing comes from Claude, Codex or anyone's own projects.
+
+Steps, from the repository root on Adam's Mac. `ROS_TRAINING_DATA` points at round 1's data folder, so the round 2 sets include round 1's turns and `--max-usd` (which caps the total in `spend.jsonl`, US$33.08 after round 1) counts everything.
+
+```sh
+export ROS_TRAINING_DATA=~/code/ros-nemotron-run/training/ros-nemotron/data
+npx tsx training/ros-nemotron/run.ts structure-smoke                      # offline on a hand-written map; spends nothing
+npx tsx training/ros-nemotron/run.ts structure-maps --per-domain=8 --eval-per-domain=3 --max-usd=36   # resumable; writes only what is missing
+npx tsx training/ros-nemotron/run.ts structure-check-links --max-usd=37  # Super checks each map's links once more
+npx tsx training/ros-nemotron/run.ts structure-label-links --max-usd=37  # Super labels each kept pair's word and direction afresh
+npx tsx training/ros-nemotron/run.ts structure-export                     # structure/ and round2/train.jsonl, round2/val.jsonl, without the dropped links
+npx tsx training/ros-nemotron/run.ts structure-eval --model=rules --label=rules
+llama-server -m <model>.gguf --jinja --reasoning-budget 0 -c 32768 --parallel 2 --port 4339 --alias ros-local
+npx tsx training/ros-nemotron/run.ts structure-eval --label=ros-nemotron --student-url=http://127.0.0.1:4339/v1
+npx tsx training/ros-nemotron/run.ts structure-eval --model=teacher --label=super --max-usd=37
+```
+
+`structure-eval` prints and saves (`structure/eval/<label>.summary.json`): valid answers, group precision, recall and F1 (a block in the right group, and each pair of blocks put together in a new one), link F1 with the share of right words and directions among the right pairs, `leftAlone` (maps that needed nothing and got nothing), `missed` (maps that needed something and got nothing), title overlap and speed. Training is round 1's recipe on `round2/train.jsonl` and `round2/val.jsonl` (structure samples carry no tools); then the 95 round 1 tasks again, to check nothing dropped.
+
+Targets for the new model: valid at least 98%, group F1 at least 0.8, left alone at least 9 times in 10, no drop on the 95 tasks, and a landing answer in 10 seconds or less (p50) on Adam's Mac. Expected cost: maps about US$1 to 3 of Token Factory credit, the H100 about 3 to 5 hours (US$9 to 15 of AI Cloud credit), Super's evaluation about US$1; about US$15 to 25 in all, capped at US$30.
+
+### Results (30 October)
+
+314 training and 29 evaluation maps. Of the teacher's 2,219 links the check kept 1,558 (it dropped 161 of 233 "contradicts"), and labelling then changed the word of 543 and turned 316 round. Two models were trained on one H100, each from the base model with round 1's recipe (2 epochs, about 46 minutes): **r2a** on the maps as written (2,968 samples with round 1's) and **r2b** on the checked and labelled links (2,955). Both were scored on the same 189 held-out turns, built from the labelled maps.
+
+| | valid | group F1 | link F1 (right word / direction) | left alone | missed | p50 | 95 tasks |
+|---|---|---|---|---|---|---|---|
+| ros.ai's rules | 100% | 0.743 | 0 | 0.979 | 0.624 | – | – |
+| round 1 (today's Local ROS) | 99.5% | 0.056 | 0 | 0.938 | 0.929 | 3.7 s | 66 |
+| Nemotron 3 Super | 99.5% | 0.304 | 0.191 (0.33 / 0.54) | 0.354 | 0.113 | 0.9 s | – |
+| r2a | 100% | 0.927 | 0.261 (0.39 / 0.53) | 0.667 | 0.184 | 4.1 s | 71 |
+| r2b | 100% | 0.934 | 0.204 (0.49 / 0.61) | 0.896 | 0.270 | 3.7 s | 68 |
+
+- Both models group almost perfectly (a whole group that came loose comes back every time) and neither dropped on the 95 agent tasks; KNMI is 9 of 10 for both.
+- r2b meets every target (left alone 0.896 rounds to 0.9). r2a misses left alone: on a third of the turns that needed nothing it changed something, nearly always by adding links, and it adds links freely when it regroups too.
+- Clean links made r2b more careful: its links more often have the right word and direction, but it skips 84% of the turns whose answer is links only (r2a 58%), so its link F1 is lower.
+- The left-alone score understates both. Replayed, most of the changes they made to maps that "needed nothing" were reasonable: of r2a's 11, 4 were right, 5 harmless and 2 wrong ("Summary of past funding attempts contradicts Decision to step down", where it supports it); r2b's 3 were all right or harmless.
+- Links remain the weak part: even the labels are right on word and direction only about two times in three by spot check.
+
+Cost: US$9.85 (Token Factory US$2.68: maps 1.43, link check 0.24, labels 0.37, evaluations about 0.6; the H100 2.4 hours, about US$7.20).
+
 ## Known risks
 
 - **Local Ros context.** Local Ros declares 32,768 tokens, and ros.ai counts each request's bytes plus 12,096 against it. The prompt and tools alone are about 19.5 KB (24 KB with Notion), so most agent turns were refused before they reached the model. Fixed in #67: loopback servers now estimate input as bytes/3.
 - **Chat template.** `train_lora.py` labels each assistant turn by rendering the conversation turn by turn and stops if more than 5% of samples do not render that way. The 27 October pilot skipped none.
 - **Mamba kernels.** Nemotron 3 Nano 4B is a hybrid Mamba-2 model; `mamba-ssm` and `causal-conv1d` must install on the VM. `setup-vm.sh` pins versions with prebuilt wheels and checks the import first.
+- **Token Factory errors.** Now and then Token Factory answers with its own error as the reply text ("[ERROR: Agent failed ... timed out after 90 seconds]"), sometimes within a second. The adapter treats that as a failed request, `ask` tries again after 4 to 64 seconds, and a long answer (four maps at once) is split into one per request.
 - **A simulated web.** Facts in search results are plausible but written by the teacher. The student learns the method (quote what a tool returned, date it, name gaps), not the facts.

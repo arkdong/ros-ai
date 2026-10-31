@@ -20,6 +20,12 @@ export const appendJsonl = (file: string, value: unknown) => { mkdirSync(dirname
 export const arg = (name: string, fallback?: string) => { const found = process.argv.find(item => item.startsWith(`--${name}=`)); return found ? found.slice(name.length + 3) : fallback; };
 export const flag = (name: string) => process.argv.includes(`--${name}`);
 
+/** Runs work over items, at most `concurrency` at a time. */
+export async function pool<T>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<void>) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => { for (let index = next++; index < items.length; index = next++) await work(items[index], index); }));
+}
+
 /** Every paid request in the pipeline settles here; a request that would pass the cap is never sent. */
 export class Ledger {
   private readonly file = path('spend.jsonl');
@@ -66,6 +72,9 @@ export class ChatAdapter implements ModelAdapter {
     const captured = captureChatCompletion(result, { provider: this.provider, requestedModel: this.model, modelVersion: false, responseContract: request.tools ? 'agent-tool-calls' : 'text', wireRequest: { model: this.model }, allowToolCalls: Boolean(request.tools) });
     const usage = captured.usage ?? { inputTokens: Math.ceil(inputBytes / 4), outputTokens: request.maxOutputTokens };
     this.options.ledger?.settle({ purpose: this.options.purpose, model: this.model, ...usage, usd: (usage.inputTokens * this.price.input + usage.outputTokens * this.price.output) / 1e6 });
+    // Token Factory now and then answers with its own error as the reply text ("[ERROR: Agent failed ... timed out after
+    // 90 seconds]"), at times within a second: a failed request, not the model's answer.
+    if (/^\s*\[ERROR:/u.test(captured.content)) throw new Error(`${this.options.purpose}: ${captured.content.trim().slice(0, 300)}`);
     return captured;
   }
 }
@@ -103,11 +112,22 @@ export function parseJson<T>(text: string): T {
     return JSON.parse(out) as T;
   }
 }
+/** The teacher's JSON answer. A failed request (an HTTP error, or Token Factory's error text in place of an answer) is
+ * tried again after 4, 8, 16, 32 and 64 seconds, JSON that does not parse once more, and a spent cap stops at once. */
 export async function ask<T>(model: ChatAdapter, system: string, user: string, maxOutputTokens = 6000): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
+  for (let failed = 0, unparsed = 0; ;) {
     const signal = AbortSignal.timeout(300_000);
-    await model.prepare(signal);
-    const response = await model.complete({ messages: [{ role: 'system', content: system }, { role: 'user', content: user }], maxOutputTokens }, signal);
-    try { return parseJson<T>(response.content); } catch (error) { if (attempt >= 2) throw error; console.warn(`Unparseable teacher JSON, retrying once: ${(error as Error).message}`); }
+    let content: string;
+    try {
+      await model.prepare(signal);
+      content = (await model.complete({ messages: [{ role: 'system', content: system }, { role: 'user', content: user }], maxOutputTokens }, signal)).content;
+    } catch (error) {
+      const message = (error as Error).message, wait = 4 * 2 ** failed;
+      if (message.startsWith('Spend cap') || ++failed > 5) throw error;
+      console.warn(`Teacher request failed, trying again in ${wait} s: ${message.slice(0, 200)}`);
+      await new Promise(resolve => setTimeout(resolve, wait * 1000));
+      continue;
+    }
+    try { return parseJson<T>(content); } catch (error) { if (++unparsed >= 2) throw error; console.warn(`Unparseable teacher JSON, retrying once: ${(error as Error).message}`); }
   }
 }

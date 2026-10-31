@@ -135,7 +135,7 @@ test('with neither ROS on the computer nor a sign-in, ros.ai’s own rules group
   } finally { f.close(); }
 });
 
-test('a request that names a block puts the loose blocks into its group and links the block to them', async () => {
+test('a request that names a block puts the loose blocks into its group and links them to the block', async () => {
   const f = fixture();
   try {
     const result = await f.layer.land(f.input([f.agentChange()], { request: 'Add what we know next to the Survey design block' }), new AbortController().signal);
@@ -144,8 +144,9 @@ test('a request that names a block puts the loose blocks into its group and link
     // Each finds a free spot beside the block already in the group.
     const spots = ['survey', 'field', 'surveys', 'unknowns'].map(id => `${f.node(id)!.x},${f.node(id)!.y}`);
     assert.equal(new Set(spots).size, 4);
-    const link = f.store.getProject(f.project.id).canvas.connections.find(edge => edge.source === 'survey');
-    assert.deepEqual([link?.target, link?.label], ['field', 'informs']);
+    // In the map's own words: the work builds on the block the request names.
+    const link = f.store.getProject(f.project.id).canvas.connections.find(edge => edge.target === 'survey');
+    assert.deepEqual([link?.source, link?.label], ['field', 'builds on']);
   } finally { f.close(); }
 });
 
@@ -153,7 +154,7 @@ test('ROS decides themes and links under its contract; refs it was not given are
   const f = fixture({ choice: { engine: 'local', selection: { provider: 'local-ros', model: 'ros-local' } }, model: () => JSON.stringify({
     place: [{ block: 'n1', group: 'g1' }, { block: 'n9', group: 'g1' }],
     newGroups: [{ title: '**Evidence from surveys**', blocks: ['n2', 'n3', 'n1'] }],
-    links: [{ from: 'b1', to: 'n2', label: 'Informs' }, { from: 'b1', to: 'b1', label: 'loops' }, { from: 'g1', to: 'b1', label: 'not the turn’s work' }],
+    links: [{ from: 'n2', to: 'b1', label: 'Builds  on' }, { from: 'b1', to: 'n3', label: 'informs' }, { from: 'b1', to: 'b1', label: 'supports' }, { from: 'g1', to: 'b1', label: 'supports' }],
     toMap: null,
   }) });
   try {
@@ -164,7 +165,8 @@ test('ROS decides themes and links under its contract; refs it was not given are
     assert.equal(group.title, 'Evidence from surveys');
     assert.equal(f.node('unknowns')!.parentId, group.id);
     const links = f.store.getProject(f.project.id).canvas.connections;
-    assert.deepEqual(links.map(edge => [edge.source, edge.target, edge.label]), [['background', 'surveys', 'informs']]);
+    // Only links in the map's own words that touch the turn's work stay.
+    assert.deepEqual(links.map(edge => [edge.source, edge.target, edge.label]), [['surveys', 'background', 'builds on']]);
     // ROS read the packet: refs for the loose blocks, the groups and the other blocks, with the hint.
     const packet = JSON.parse((f.calls[0] as { messages: { content: string }[] }).messages[1].content);
     assert.deepEqual(packet.loose.map((item: { ref: string; title: string }) => `${item.ref} ${item.title}`), ['n1 Field studies', 'n2 Surveys', 'n3 Open questions']);
@@ -219,7 +221,7 @@ test('an answer given only in chat goes on the map as a group of its sections be
     // Beside Background reading, clear of it.
     const background = f.node('background')!;
     assert(group.x > background.x && group.y >= background.y);
-    assert(canvas.connections.some(edge => edge.source === 'background' && edge.target === group.id));
+    assert(canvas.connections.some(edge => edge.source === group.id && edge.target === 'background' && edge.label === 'builds on'));
     // A short reply is conversation and stays in chat.
     const second = await f.layer.land(f.input([], { turnId: randomUUID(), reply: 'Done.' }), new AbortController().signal);
     assert.equal(second?.layer.state, 'skipped');

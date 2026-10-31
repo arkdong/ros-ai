@@ -96,6 +96,8 @@ export class InferenceConnections{
     return {id,name:config?.name??state!.summary.name,enabled,deleted:!config,ready,reason,revision:state?.revision??0,endpointOrigin:parsed?.url.origin??state!.summary.endpointOrigin,keyConfigured:Boolean(config?.apiKey),destination,models:config?.models.map(model=>({...model,maker:model.maker??modelMaker(model.id)}))??state!.summary.models,caps:config?.caps??state!.summary.caps,allowanceEnabled,requestCeiling,usdCeiling,usedRequests,accountedUsd:accounted/UNITS_PER_USD,remainingRequests,remainingUsd:remaining/UNITS_PER_USD,pricingBasis:destination==='local-unverified'?'No provider USD debit; loopback processing location is unverified.':'Operator-declared input/output upper rates; both full input and full output model context are reserved because hidden/billed reasoning limits are unverified. Account prices and tokenizer are unverified.',updatedAt:state?.updatedAt??config!.updatedAt};
   }
   statuses(){return this.ids().map(id=>this.status(id));}
+  /** Whether a request on this connection is under way: Local ROS switches models only when none is. */
+  busy(id:string){return (this.active.get(id)??0)>0;}
   create(supplied:unknown){
     const input=connectionSchema.parse(supplied),at=new Date().toISOString(),parsed=endpoint(input.endpoint);
     const existing=this.ids().find(id=>this.state(id)?.endpointFingerprints.includes(parsed.fingerprint));

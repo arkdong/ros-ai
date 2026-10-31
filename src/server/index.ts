@@ -145,7 +145,8 @@ try {
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference,port);
     // ROS on this computer starts with the app once its download is on disk, and a download the person started carries on.
-    localRos = new LocalRos(dataDir,inference);
+    // A newer model this version wants comes by itself while updates are automatic (Settings › General).
+    localRos = new LocalRos(dataDir,inference,undefined,()=>updates?.auto??true);
     void localRos.resume();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
     const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
