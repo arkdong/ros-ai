@@ -235,3 +235,27 @@
 .ros-thread-confirm > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ros-thread-confirm .text-button { flex-shrink: 0; }
 .ros-thread-danger, .ros-thread-danger:hover:not(:disabled) { color: var(--fail); }
+
+/* Messages waiting for the thread (RosQueue.tsx): above the composer, one line each. */
+.ros-queue { display: grid; gap: 2px; margin: 0 0 6px; min-width: 0; }
+.ros-queue-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px 4px 8px; border: 1px solid var(--line, #e4e4e4); border-radius: 8px; background: #fff; font-size: 13px; color: var(--ink, #171717); }
+.ros-queue-row > svg { flex-shrink: 0; color: var(--muted, #6b6b6b); }
+.ros-queue-row.paused { background: #fafafa; }
+.ros-queue-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ros-queue-text, .ros-queue-text > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ros-queue-text > small { font-size: var(--text-xs, 11px); color: var(--muted, #6b6b6b); }
+.ros-queue-row .text-button { flex-shrink: 0; font-size: 12px; color: var(--muted, #6b6b6b); padding: 2px 4px; }
+.ros-queue-row .text-button:hover:not(:disabled) { color: var(--ink, #171717); }
+.ros-queue-row .icon-button { flex-shrink: 0; width: 24px; height: 24px; color: var(--muted, #6b6b6b); }
+.ros-queue.compact { margin: 0 0 4px; }
+.ros-queue-problem { margin: 2px 0 0; font-size: 12px; color: var(--muted, #6b6b6b); }
+.ros-send.ros-queue-send { margin-right: 4px; }
+/* A branched thread: where its copied conversation ends. */
+.ros-branch-mark { display: flex; align-items: center; gap: 6px; margin: 4px 0 14px; font-size: var(--text-xs, 11px); color: var(--muted, #6b6b6b); }
+.ros-branch-mark::before, .ros-branch-mark::after { content: ''; flex: 1; border-top: 1px solid var(--line, #e4e4e4); }
+.ros-branch-mark > button { padding: 0; font-size: inherit; color: inherit; text-decoration: underline; }
+.ros-turn-meta .ros-branch { margin-left: auto; padding: 0; font-size: var(--text-xs); color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
+.ros-turn-meta .ros-branch:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
+.ros-turn-meta .ros-to-map + .ros-branch { margin-left: 10px; }
+.ros-queue-panel { margin: 8px 12px 0; }
+.ros-queue-panel .ros-queue { margin: 0; }

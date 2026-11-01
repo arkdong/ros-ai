@@ -9,12 +9,14 @@ export function useLiveTurns(projectId: string | null, enabled: boolean, onSettl
   useEffect(() => { setLive({}); }, [projectId]);
   useEffect(() => {
     if (!projectId || !enabled || typeof EventSource === 'undefined') return;
-    const events = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/assistant/events`);
+    const events = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/assistant/events`), seen = new Set<string>();
     events.onmessage = item => {
       let value: AssistantLive;
       try { value = JSON.parse(item.data) as AssistantLive; } catch { return; }
       setLive(current => ({ ...current, [value.turnId]: value }));
-      if (value.status !== 'running') settled.current();
+      // A turn that ends, and one that starts on its own (a waiting message sent once its thread was free), load at once.
+      const fresh = !seen.has(value.turnId); seen.add(value.turnId);
+      if (value.status !== 'running' || fresh) settled.current();
     };
     return () => events.close();
   }, [projectId, enabled]);

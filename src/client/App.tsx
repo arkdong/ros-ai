@@ -155,7 +155,7 @@ export function App(){
     void check();return()=>{stopped=true;clearTimeout(timer);};
   },[projectId,publicDemo,refresh]);
   // Replies stream over their own connection; the refresh above still brings actions, proposals and the canvas.
-  const live=useLiveTurns(projectId,Boolean(assistant?.activeTurnId)||Boolean(chatBusy),()=>void refresh().catch(report)),liveAssistant=useMemo(()=>withLive(assistant,live),[assistant,live]);
+  const live=useLiveTurns(projectId,Boolean(assistant?.activeTurnId)||Boolean(chatBusy)||Boolean(assistant?.queued?.some(item=>!item.paused)),()=>void refresh().catch(report)),liveAssistant=useMemo(()=>withLive(assistant,live),[assistant,live]);
   // The ROS thread shown for this project: the one chosen here, else the one saved, else the newest; null is a new thread not yet started. chatBusy names the thread a message is being sent in.
   const threadChoice=useMemo(()=>{if(!projectId)return undefined;if(projectId in threadChoices)return threadChoices[projectId];const saved=readSaved<string|null>(`ros-thread:${projectId}`,null);return saved==='new'?null:saved??undefined;},[projectId,threadChoices]);
   const threadId=shownThread(liveAssistant,threadChoice),threadKey=threadId??'new';

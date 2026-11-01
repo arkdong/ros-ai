@@ -1,0 +1,26 @@
+.turn-files { margin:12px 0; border:1px solid #e4e4e4; border-radius:10px; padding:10px 12px 8px; background:#fff; min-width:0; }
+.turn-files>header { display:flex; align-items:center; gap:7px; min-width:0; color:#6b6b6b; }
+.turn-files>header>svg { flex-shrink:0; }
+.turn-files>header>strong { flex:1; min-width:0; font-size:13px; font-weight:500; line-height:1.5; color:#171717; }
+.turn-files ul { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:1px; min-width:0; }
+.turn-files li { min-width:0; }
+.turn-files-row { display:flex; align-items:center; gap:6px; min-width:0; border-radius:6px; padding:1px 2px 1px 0; }
+.turn-files-row:hover { background:#f6f6f6; }
+.turn-files-toggle { flex:1; min-width:0; display:flex; align-items:center; gap:5px; border:0; background:none; padding:3px 4px; font:inherit; font-size:13px; color:#171717; text-align:left; justify-content:flex-start; cursor:pointer; }
+.turn-files-toggle>svg { flex-shrink:0; color:#6b6b6b; transition:transform .12s; }
+.turn-files li.open .turn-files-toggle>svg { transform:rotate(90deg); }
+.turn-files-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; }
+.turn-files-folder { color:#8a8a8a; }
+.turn-files-status { flex-shrink:0; font-size:12px; color:#6b6b6b; }
+.turn-files-lines { flex-shrink:0; font-size:12px; font-variant-numeric:tabular-nums; color:#6b6b6b; }
+.turn-files-lines .added { color:#2f7d32; }
+.turn-files-lines .removed { color:#b3261e; }
+.turn-files-reveal { width:24px; height:24px; flex-shrink:0; color:#6b6b6b; }
+.turn-files-note { font-size:12px; line-height:1.6; color:#6b6b6b; margin:4px 0 0; }
+.turn-files li>.turn-files-note { margin:2px 0 6px 18px; }
+.turn-files-patch { margin:4px 0 8px; padding:8px 0; max-height:320px; overflow:auto; border-radius:6px; background:#fafafa; border:1px solid #ededed; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:#3a3a3a; white-space:pre; }
+.turn-files-patch>span { display:block; padding:0 10px; }
+.turn-files-patch>.added { background:#ecf6ec; color:#1e5e22; }
+.turn-files-patch>.removed { background:#fbeceb; color:#8c1d16; }
+.turn-files-patch>.hunk { color:#8a8a8a; }
+@media (prefers-reduced-motion: reduce) { .turn-files-toggle>svg { transition:none; } }

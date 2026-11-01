@@ -12,7 +12,7 @@ import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
 import type {ModelMessage,Mutation,ProjectDetail,Run} from '../shared/types.js';
-import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type InAppAgent,type ThreadChoice,IN_APP_AGENTS,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
+import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type QueuedMessage,type InAppAgent,type ThreadChoice,IN_APP_AGENTS,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
 import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
 import {isEffortLevel} from '../shared/agent-models.js';
@@ -30,6 +30,7 @@ import {PLUGINS,type PluginId} from '../shared/plugins.js';
 import {pluginMatches} from '../shared/plugin-hints.js';
 import {glanceHint,glanceSchema,glanceText,keepGlance} from './glance.js';
 import type {RosLayer} from './ros-layer.js';
+import {TurnFileService} from './turn-files.js';
 
 const now=()=>new Date().toISOString();
 const id=z.string().min(1).max(128);
@@ -51,8 +52,15 @@ type Tool=z.infer<typeof toolSchema>;
 type Trace={provider?:string;at:string;messages:ModelMessage[];schema:Record<string,unknown>;response:string;usageId:string;model:string;modelVersion:string|null;responseMetadata:Record<string,unknown>};
 /** glance: where the person was on the map when they sent the message (glance.ts), kept with the turn as ROS read it. */
 type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsideSession?:string;acp?:AcpAgentId;billing?:'plan'|'api-key';glance?:AssistantGlance};
+/** A waiting message keeps where the person was on the map and the plugins their app noticed, for when it is sent.
+ * first: the person asked for it to go next, ahead of older waiting messages. */
+type SavedQueued=QueuedMessage&{projectId:string;glance?:AssistantGlance;suggest?:PluginId[];first?:boolean};
 /** An agent working from outside ros.ai makes its changes call by call; ROS arranges them once it has been quiet this long. */
 const OUTSIDE_QUIET_MS=20_000;
+/** Messages that can wait for one thread at a time. */
+const QUEUE_LIMIT=10;
+/** How much of the earlier conversation an agent gets when its own session does not hold it. */
+const CARRY_TURNS=8,CARRY_CHARS=9000,CARRY_TURN_CHARS=1600;
 const emptyMemory=():ResearchMemory=>({originalQuestion:null,questionHistory:[],decisions:[],findings:[],hypotheses:[],gaps:[]});
 const clip=(value:string,length:number)=>value.length>length?value.slice(0,length)+'\n[Capture preview truncated; saved artifact is complete.]':value;
 
@@ -68,8 +76,15 @@ export class AssistantService {
   /** ROS arranging a finished turn, and the outside agents' turns it arranges once they go quiet (ros-layer.ts). */
   private readonly layering=new Map<string,{stop:AbortController;hurry:AbortController}>();
   private readonly quiet=new Map<string,ReturnType<typeof setTimeout>>();
+  /** An outside agent's file changes are counted again once it has been quiet a while. */
+  private readonly filesQuiet=new Map<string,ReturnType<typeof setTimeout>>();
+  /** What each turn changed in the project folder (turn-files.ts). */
+  readonly files:TurnFileService;
   private closed=false;
   constructor(private readonly store:Store,private readonly execution:ExecutionService,private readonly experiments:ExperimentService,private readonly agent?:AgentRuntime,private readonly claude?:ClaudeAgentService,private readonly loop?:ToolLoopAgentService,private readonly personal?:PersonalMemory,private readonly skills?:SkillLibrary,private readonly acp?:AcpAgentService,private readonly layer?:RosLayer){
+    this.files=new TurnFileService(store);
+    // Messages that were waiting when ros.ai stopped are kept, and wait for the person: nothing is sent on its own.
+    for(const project of store.listProjects())for(const queued of this.store.records<QueuedMessage>('assistant-queued',project.id))if(!queued.paused)this.store.saveRecord('assistant-queued',queued.id,project.id,{...queued,paused:true,note:'ros.ai restarted before this was sent.'});
     for(const project of store.listProjects())for(const turn of this.turns(project.id)){
       if(turn.status==='running')this.save({...turn,status:'interrupted',error:'The service stopped. Captured work is preserved; no model request or tool action was automatically repeated.',updatedAt:now()});
       else if(turn.layer?.state==='running')this.amend({...turn,layer:{state:'failed',note:'ros.ai stopped before ROS finished; nothing was changed.'}});
@@ -218,21 +233,25 @@ export class AssistantService {
       const own=turns.filter(turn=>turn.threadId===thread.id),running=own.findLast(turn=>turn.status==='running'),last=own.findLast(turn=>turn.status!=='running');
       const waiting=own.flatMap(turn=>turn.actions).filter(action=>action.status==='pending'&&(!action.proposalId||reviewable.has(action.proposalId))).length;
       const updatedAt=own.reduce((latest,turn)=>turn.updatedAt>latest?turn.updatedAt:latest,thread.updatedAt);
-      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{}),...(thread.choice?{choice:thread.choice}:{})};
+      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{}),...(thread.choice?{choice:thread.choice}:{}),...(thread.branchedFrom?{branchedFrom:thread.branchedFrom}:{})};
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
-    return {projectId,backend,memory,outline,turns,threads:summaries,messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
+    return {projectId,backend,memory,outline,turns,threads:summaries,queued:this.queued(projectId),messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
   }
   /** suggest: plugins the person's app noticed in the message (a link or a name) and found unconnected; the reply carries
    * a card for those the message really names. threadId: the thread the message continues; left out, it starts a new
    * thread named after the message. A thread takes one question at a time; other threads go on working meanwhile.
    * focus: a block the request is about on purpose (Check sources on a block); a message typed in the bar has none.
    * glance: where the person was on the map, a weak hint for words like "this" (glance.ts); it never sets the focus. */
-  start(projectId:string,supplied:{message:string;focus?:AssistantFocus;glance?:AssistantGlance;suggest?:PluginId[];threadId?:string}):AssistantState{
-    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional(),glance:glanceSchema.optional(),suggest:z.array(z.enum(PLUGINS.map(plugin=>plugin.id) as [PluginId,...PluginId[]])).max(3).optional(),threadId:id.optional()}).strict().parse(supplied);
+  start(projectId:string,supplied:{message:string;focus?:AssistantFocus;glance?:AssistantGlance;suggest?:PluginId[];threadId?:string;when?:'queue'|'now'}):AssistantState{
+    const body=z.object({message:z.string().trim().min(1).max(12000),focus:focusSchema.optional(),glance:glanceSchema.optional(),suggest:z.array(z.enum(PLUGINS.map(plugin=>plugin.id) as [PluginId,...PluginId[]])).max(3).optional(),threadId:id.optional(),when:z.enum(['queue','now']).optional()}).strict().parse(supplied);
     if(this.closed)throw new StoreError('Assistant is stopping.',503);
     const chosen=body.threadId?this.getThread(projectId,body.threadId):null;
     if(!chosen)this.ensureThreads(projectId);
-    if(chosen&&this.turns(projectId).some(t=>t.threadId===chosen.id&&t.status==='running'))throw new StoreError('ROS is still working in this thread. Wait for it, or start a new thread.',409);
+    // A message for a thread that is still working waits for it; "now" stops the turn first.
+    if(chosen&&this.busy(projectId,chosen.id)){
+      if(body.focus)throw new StoreError('ROS is still working in this thread. Wait for it, or start a new thread.',409);
+      return this.enqueue(projectId,chosen,{message:body.message,...(body.glance?{glance:body.glance}:{}),...(body.suggest?.length?{suggest:body.suggest}:{})},body.when==='now');
+    }
     const stopped=this.experiments.authority.policy(projectId).stopped;
     const focus=body.focus?this.validateFocus(projectId,body.focus):{nodeId:null},sentAt=now();
     const glance=keepGlance(body.glance,this.store.getProject(projectId).canvas.nodes,artifactId=>{try{const artifact=this.store.getArtifact(artifactId);return artifact.projectId===projectId?artifact.nodeId:undefined;}catch{return undefined;}},sentAt);
@@ -254,8 +273,110 @@ export class AssistantService {
     // A pass still asking Local ROS would hold the one request it serves at a time; ros.ai's own rules finish it instead.
     for(const pass of this.layering.values())pass.hurry.abort();
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
-    active.done=Promise.resolve().then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.active.delete(turn.id));
+    // The project folder is looked at before the turn starts and after it ends, so the turn can show what it changed.
+    active.done=Promise.resolve().then(()=>this.files.begin(projectId,turn.id)).then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.settle(projectId,turn.id));
     return done();
+  }
+  /** A thread is busy while a turn of it runs, or while a stopped one is still winding down. */
+  private busy(projectId:string,threadId:string){
+    if(this.turns(projectId).some(turn=>turn.threadId===threadId&&turn.status==='running'))return true;
+    return [...this.active.keys()].some(turnId=>this.store.record<SavedTurn>('assistant-turn',turnId)?.threadId===threadId);
+  }
+  /** After a turn: what it changed in the folder, then the next message waiting for its thread. */
+  private async settle(projectId:string,turnId:string){
+    try{await this.recordFiles(projectId,turnId);}catch{/* The turn stands without its file card. */}
+    finally{this.active.delete(turnId);}
+    const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
+    if(turn?.threadId)this.drain(projectId,turn.threadId);
+  }
+  /** Keeps with the turn the files that changed in the project folder while it ran. keep: an outside agent's turn, which
+   * may change more files later; the start stays the baseline. */
+  private async recordFiles(projectId:string,turnId:string,keep=false){
+    if(!this.files.has(turnId))return;
+    const started=this.getTurn(projectId,turnId).createdAt,ended=now();
+    // Another thread working at the same time may have changed some of these files.
+    const overlap=this.turns(projectId).some(other=>other.id!==turnId&&!other.copiedFrom&&other.createdAt<ended&&(other.status==='running'||other.updatedAt>started));
+    const files=await this.files.finish(turnId,{overlap,keep});
+    if(!files)return;
+    const current=this.store.record<SavedTurn>('assistant-turn',turnId);
+    if(!current||(!files.changed.length&&!current.files))return;
+    this.amend({...current,files});this.publish(current);
+  }
+  private queuedRecords(projectId:string){
+    return this.store.records<SavedQueued>('assistant-queued',projectId).sort((a,b)=>Number(Boolean(b.first))-Number(Boolean(a.first))||a.createdAt.localeCompare(b.createdAt));
+  }
+  /** Messages waiting for their threads, as the app shows them. */
+  private queued(projectId:string):QueuedMessage[]{
+    return this.queuedRecords(projectId).map(({id,threadId,message,createdAt,paused,note})=>({id,threadId,message,createdAt,...(paused?{paused}:{}),...(note?{note}:{})}));
+  }
+  private enqueue(projectId:string,thread:AssistantThread,message:{message:string;glance?:AssistantGlance;suggest?:PluginId[]},first:boolean):AssistantState{
+    if(this.queuedRecords(projectId).filter(item=>item.threadId===thread.id).length>=QUEUE_LIMIT)throw new StoreError(`${QUEUE_LIMIT} messages are already waiting in this thread. Send or remove one first.`,409);
+    const item:SavedQueued={id:randomUUID(),projectId,threadId:thread.id,createdAt:now(),...message,...(first?{first:true}:{})};
+    this.store.saveRecord('assistant-queued',item.id,projectId,item);
+    if(first)this.interrupt(projectId,thread.id);
+    return {...this.state(projectId),threadId:thread.id};
+  }
+  /** Sends the next waiting message of a thread once nothing of it runs. A message that cannot start waits for the
+   * person, with the reason. */
+  private drain(projectId:string,threadId:string){
+    if(this.closed||this.busy(projectId,threadId))return;
+    const next=this.queuedRecords(projectId).find(item=>item.threadId===threadId&&!item.paused);
+    if(!next)return;
+    this.store.removeRecord('assistant-queued',next.id,projectId);
+    try{this.getThread(projectId,threadId);this.start(projectId,{message:next.message,threadId,...(next.glance?{glance:next.glance}:{}),...(next.suggest?.length?{suggest:next.suggest}:{})});}
+    catch(error){this.store.saveRecord('assistant-queued',next.id,projectId,{...next,paused:true,note:error instanceof Error?error.message.slice(0,300):'It could not be sent.'});}
+  }
+  /** Stops the thread's running turn so the message the person asked to go now can start. Its captured work is kept. */
+  private interrupt(projectId:string,threadId:string){
+    const running=this.turns(projectId).find(turn=>turn.threadId===threadId&&turn.status==='running');
+    if(!running){this.drain(projectId,threadId);return;}
+    // Claude Code and the ACP agents start a new session after a stop, so the next turn gets the conversation written out.
+    if(running.source==='claude-agent'||running.source==='acp-agent'){const thread=this.getThread(projectId,threadId);this.store.saveRecord('assistant-thread',thread.id,projectId,{...thread,carry:true});}
+    this.cancel(projectId,running.id,'next');
+  }
+  /** Send now on a waiting message: it goes next, and a turn still working in its thread is stopped. */
+  sendQueuedNow(projectId:string,queuedId:string){
+    const item=this.queuedRecords(projectId).find(entry=>entry.id===queuedId);
+    if(!item)throw new StoreError('This message is no longer waiting.',404);
+    const {note:_note,paused:_paused,...rest}=item;
+    this.store.saveRecord('assistant-queued',item.id,projectId,{...rest,first:true,createdAt:now()});
+    this.interrupt(projectId,item.threadId);
+    return this.state(projectId);
+  }
+  removeQueued(projectId:string,queuedId:string){
+    const item=this.queuedRecords(projectId).find(entry=>entry.id===queuedId);
+    if(item)this.store.removeRecord('assistant-queued',item.id,projectId);
+    return this.state(projectId);
+  }
+  /** Branch from here: a new thread that holds this thread's conversation up to the turn, and goes on from there on its
+   * own. The original thread is not changed. The copied turns are for reading; their changes are decided in the original. */
+  branch(projectId:string,turnId:string){
+    const from=this.getTurn(projectId,turnId);
+    if(from.status==='running')throw new StoreError('Wait for this answer to finish before branching from it.',409);
+    if(from.source==='outside-agent')throw new StoreError('Branch from a message you sent in ros.ai.',409);
+    const threads=this.threads(projectId),source=threads.find(thread=>thread.id===from.threadId)??threads[0];
+    if(!source)throw new StoreError('Thread not found.',404);
+    const upTo=this.turns(projectId).filter(turn=>turn.threadId===source.id&&turn.source!=='outside-agent'&&turn.createdAt<=from.createdAt).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+    const messages=this.store.listMessages(projectId,null).filter(message=>message.threadId===source.id&&message.createdAt<=from.updatedAt);
+    const title=source.branchedFrom?source.title:`${source.title} · branch`;
+    const branch=this.createThread(projectId,title,{branchedFrom:{threadId:source.id,turnId:from.id,title:source.title},carry:true,...(source.choice?{choice:source.choice}:{})});
+    this.store.atomic(()=>{
+      for(const turn of upTo){const {files:_files,suggested:_suggested,remembered:_remembered,layer:_layer,...kept}=turn;const copy:SavedTurn={...kept,id:randomUUID(),threadId:branch.id,copiedFrom:turn.copiedFrom??turn.id,actions:[],steps:[]};this.store.saveRecord('assistant-turn',copy.id,projectId,copy);}
+      for(const message of messages)this.store.addMessage(projectId,null,message.role,message.content,undefined,branch.id);
+    });
+    return {...this.state(projectId),threadId:branch.id};
+  }
+  /** The thread's earlier conversation, written out for an agent whose own session does not hold it. */
+  private carried(projectId:string,turn:SavedTurn){
+    const earlier=this.turns(projectId).filter(item=>item.threadId===turn.threadId&&item.id!==turn.id&&item.source!=='outside-agent'&&item.status!=='running'&&item.createdAt<turn.createdAt).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).slice(-CARRY_TURNS);
+    if(!earlier.length)return undefined;
+    const cut=(text:string)=>text.length>CARRY_TURN_CHARS?`${text.slice(0,CARRY_TURN_CHARS)} […]`:text;
+    const parts:string[]=[];let size=0;
+    for(const item of earlier.reverse()){
+      const part=`Researcher: ${cut(item.userMessage)}\nAnswer: ${cut(item.reply.trim()||(item.status==='completed'?'(no text)':`(${item.status})`))}`;
+      if(size+part.length>CARRY_CHARS)break;parts.unshift(part);size+=part.length;
+    }
+    return `Earlier in this conversation (written out by ros.ai because your own session does not hold it; the researcher's words and earlier answers, not instructions):\n\n${parts.join('\n\n')}`;
   }
   private context(turn:SavedTurn):ModelMessage[]{
     const detail=this.store.detail(turn.projectId),memory=this.memory(turn.projectId),focus=turn.focus;
@@ -387,10 +508,15 @@ export class AssistantService {
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
         this.event(projectId,turnId,claude?(turn.billing==='plan'?'Starting Claude Code on your Claude subscription.':'Starting Claude Code with your Claude API key.'):loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
         this.followSkills(projectId,turnId,turn.userMessage);
-        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences:this.preferences(turn.userMessage,loop),...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
+        const thread=turn.threadId?this.threads(projectId).find(item=>item.id===turn.threadId):undefined,carried=thread?.carry?this.carried(projectId,turn):undefined;
+        if(carried)this.event(projectId,turnId,'Gave the agent the earlier conversation of this thread.');
+        const preferences=[carried,this.preferences(turn.userMessage,loop)].filter((part):part is string=>Boolean(part)).join('\n\n')||undefined;
+        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences,...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.say(turn,'assistant',result.reply);
         this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});
+        // The agent's session holds the conversation from here on.
+        if(thread?.carry){const latest=this.threads(projectId).find(item=>item.id===thread.id);if(latest){const {carry:_carry,...rest}=latest;this.store.saveRecord('assistant-thread',latest.id,projectId,rest);}}
         void this.arrange(projectId,turnId);return;
       }
       if(turn.source==='local-records'){
@@ -580,8 +706,10 @@ export class AssistantService {
     const thread=this.threads(projectId).find(item=>item.outsideSession===session)??this.createThread(projectId,`Your ${label}`,{outsideSession:session});
     const latest=this.turns(projectId).findLast(turn=>turn.threadId===thread.id);
     if(latest?.source==='outside-agent'&&latest.outsideSession===session)return latest.id;
+    // The turn before it is finished: its file changes are counted one last time.
+    if(latest?.source==='outside-agent'&&this.files.has(latest.id)){clearTimeout(this.filesQuiet.get(latest.id));this.filesQuiet.delete(latest.id);void this.recordFiles(projectId,latest.id).catch(()=>undefined);}
     const turn:SavedTurn={id:randomUUID(),projectId,threadId:thread.id,createdAt:now(),updatedAt:now(),focus:{nodeId:null},userMessage:'',reply:'',status:'completed',source:'outside-agent',model:label,references:[],actions:[],events:[],steps:[],outsideSession:session};
-    this.save(turn);this.touchThread(thread);return turn.id;
+    this.save(turn);this.touchThread(thread);void this.files.begin(projectId,turn.id);return turn.id;
   }
   renameThread(projectId:string,threadId:string,supplied:unknown){
     const {title}=z.object({title:z.string().trim().min(1).max(120)}).strict().parse(supplied);
@@ -598,6 +726,7 @@ export class AssistantService {
       for(const turn of turns)this.store.removeRecord('assistant-turn',turn.id,projectId);
       this.store.removeMessages(projectId,this.store.listMessages(projectId,null).filter(message=>message.threadId===thread.id).map(message=>message.id));
       for(const namespace of ['claude-session','codex-session','acp-session'])this.store.removeRecord(namespace,thread.id,projectId);
+      for(const item of this.queuedRecords(projectId))if(item.threadId===thread.id)this.store.removeRecord('assistant-queued',item.id,projectId);
       this.store.removeRecord('assistant-thread',thread.id,projectId);
     });
     return this.state(projectId);
@@ -608,7 +737,13 @@ export class AssistantService {
     if(entry.note)turn.reply=[turn.reply,entry.note].filter(Boolean).join('\n\n').slice(-16000);
     turn.actions.push(...entry.actions??[]);
     this.save(turn);
+    // Its file changes are counted again once it has been quiet a while.
+    if(this.files.has(turnId)&&!this.closed){clearTimeout(this.filesQuiet.get(turnId));const timer=setTimeout(()=>{this.filesQuiet.delete(turnId);void this.recordFiles(projectId,turnId,true).catch(()=>undefined);},OUTSIDE_QUIET_MS);timer.unref();this.filesQuiet.set(turnId,timer);}
   }
+  /** The saved diff of one file a turn changed. */
+  fileDiff(projectId:string,turnId:string,path:unknown){return this.files.diff(projectId,this.getTurn(projectId,turnId).id,z.string().min(1).max(4096).parse(path));}
+  /** Shows a file a turn changed in the file manager. */
+  revealFile(projectId:string,turnId:string,path:unknown){const turn=this.getTurn(projectId,turnId);return this.files.reveal(projectId,turn.id,z.string().min(1).max(4096).parse(path),turn.files?.changed??[]);}
   suggestion(projectId:string,turnId:string){return this.getTurn(projectId,turnId).suggested;}
   /** Closes the plugin card under a reply: the person put it off, declined it, or carried on after connecting. */
   closeSuggestion(projectId:string,turnId:string,status:Exclude<TurnSuggestion['status'],'open'|'moved'>){
@@ -625,9 +760,13 @@ export class AssistantService {
     this.store.atomic(()=>{if(decision==='accept')this.store.addInput(projectId,action.targetNodeId!,action.artifactId!);this.updateAction(projectId,turn.id,{...action,status:decision==='accept'?'completed':'cancelled'});});
     return this.state(projectId);
   }
-  cancel(projectId:string,turnId:string){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
+  /** why: 'stop' when the person stopped the turn, and the messages waiting for its thread then wait for them too;
+   * 'next' when a waiting message was sent now, which starts once the turn has stopped. */
+  cancel(projectId:string,turnId:string,why:'stop'|'next'='stop'){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);
+    if(why==='stop')for(const item of this.queuedRecords(projectId))if(item.threadId===turn.threadId&&!item.paused)this.store.saveRecord('assistant-queued',item.id,projectId,{...item,paused:true,note:'Waiting: you stopped the turn before it.'});
+    this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:why==='next'?'Stopped to send your next message. Captured work and reservations are preserved.':'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
   devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);this.migrated.delete(projectId);return this.state(projectId);}
-  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.layering.get(turn.id)?.stop.abort();clearTimeout(this.quiet.get(turn.id));this.quiet.delete(turn.id);}}
+  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.layering.get(turn.id)?.stop.abort();clearTimeout(this.quiet.get(turn.id));this.quiet.delete(turn.id);clearTimeout(this.filesQuiet.get(turn.id));this.filesQuiet.delete(turn.id);this.files.forget(turn.id);}}
   async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
 
@@ -649,6 +788,11 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.delete('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.deleteThread(String(req.params.id),String(req.params.threadId))));
   if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));
+  app.post('/api/projects/:id/assistant/turns/:turnId/branch',(req,res)=>res.json(service.branch(String(req.params.id),String(req.params.turnId))));
+  app.get('/api/projects/:id/assistant/turns/:turnId/files/diff',(req,res)=>res.json(service.fileDiff(String(req.params.id),String(req.params.turnId),req.query.path)));
+  app.post('/api/projects/:id/assistant/turns/:turnId/files/reveal',(req,res)=>res.json(service.revealFile(String(req.params.id),String(req.params.turnId),(req.body as {path?:unknown}|undefined)?.path)));
+  app.post('/api/projects/:id/assistant/queued/:queuedId/now',(req,res)=>res.json(service.sendQueuedNow(String(req.params.id),String(req.params.queuedId))));
+  app.delete('/api/projects/:id/assistant/queued/:queuedId',(req,res)=>res.json(service.removeQueued(String(req.params.id),String(req.params.queuedId))));
   app.post('/api/projects/:id/assistant/turns/:turnId/to-map',(req,res)=>res.json(service.toMap(String(req.params.id),String(req.params.turnId))));
   app.post('/api/projects/:id/assistant/actions/:actionId/undo',(req,res)=>res.json(service.undoLayer(String(req.params.id),String(req.params.actionId))));
   app.post('/api/projects/:id/assistant/actions/:actionId/decision',(req,res)=>{const {decision}=z.object({decision:z.enum(['accept','dismiss'])}).strict().parse(req.body);res.json(service.decide(String(req.params.id),String(req.params.actionId),decision));});
