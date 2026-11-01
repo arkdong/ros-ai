@@ -1,6 +1,6 @@
 import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'map'|'metric'|'dashboard';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'map'|'metric'|'dashboard'|'post';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** One place on a Map block: where it is and what it is. `place` is the address or name it was looked up by, when it was. */
@@ -65,6 +65,30 @@ export type DashboardShow = 'number'|'line'|'bars'|'funnel';
 export type DashboardTile = { id:string; block:string; keys:string[]; show:DashboardShow; label?:string; section?:string };
 export type DashboardView = { tiles:DashboardTile[] };
 export type MetricRead = { source:MetricSource; title:string; link:string; values:MetricValue[]; history:MetricPoint[]; fetchedAt:string; notice?:string };
+/** Where a Post block's post comes from. Slice 1 reads platforms that need no login; the rest come with ros.ai's signed-in browser. */
+export type PostPlatform = 'youtube'|'reddit'|'hackernews'|'github';
+/** How the card shows it: a photo post as its cover, a video as its thumbnail, a text post or thread as text. */
+export type PostShape = 'photo'|'video'|'text';
+/** One photo of a post: where it was on the web, and where ros.ai saved it in the project folder (unset when the project has no folder or the download failed). */
+export type PostPhoto = { url:string; path?:string; width?:number; height?:number };
+export type PostComment = { author:string; text:string; likes?:number; at?:string; depth?:number };
+/** A post read once from its platform and kept as it was then (posts get edited and deleted): the text, who wrote it,
+ * its counts, photos saved into the project folder, the top comments, and a video's subtitles as a saved version. */
+export type PostView = {
+  platform:PostPlatform; shape:PostShape; url:string; id:string;
+  title?:string; text:string; author:{ name:string; url?:string };
+  /** Where it was posted: a subreddit, a YouTube channel, a repository. */
+  community?:string; postedAt?:string;
+  counts:Partial<Record<'likes'|'comments'|'views'|'points'|'stars'|'forks'|'saves',number>>;
+  photos:PostPhoto[]; tags?:string[]; comments?:PostComment[];
+  /** A video's length in seconds; its subtitles are the block's saved version. */
+  duration?:number;
+  /** A video's subtitles, saved as posts/<name>/subtitles.txt in the project folder (path), or kept here (text, shortened) when the project has no folder. */
+  subtitles?:{ language:string; automatic:boolean; characters:number; path?:string; text?:string };
+  readAt:string; notice?:string;
+};
+/** A post found by a search, before it is added: enough to choose which to put on the canvas. */
+export type PostHit = { platform:PostPlatform; url:string; title:string; author?:string; community?:string; postedAt?:string; counts:PostView['counts']; snippet?:string; thumbnail?:string; duration?:number };
 export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
 export type TrainingRead = {
   stage:TrainingStage; running:boolean; fetchedAt:string; notice?:string;
@@ -101,7 +125,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; metric?:MetricView; dashboard?:DashboardView; file?:FileView; map?:MapView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; metric?:MetricView; dashboard?:DashboardView; post?:PostView; file?:FileView; map?:MapView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };
