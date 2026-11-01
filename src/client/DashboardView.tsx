@@ -114,8 +114,8 @@ function AddTile({ projectId, sources, onAdd, onClose, sections }: { projectId: 
 
 /** A Dashboard block: numbers pinned from other blocks, each still read from its block, under the headings the person gives.
  * The card lists the first few; the block view shows every tile, lets the person add and remove them. */
-/** The card on the map shows the first tiles as the opened block does, smaller; the rest are in the block view. */
-const ON_CARD = 6;
+/** The card on the map shows every section, each with its first few tiles, smaller; the rest are in the block view. */
+const PER_SECTION = 4;
 
 export function DashboardBlock({ projectId, view, sources, full = false, onTiles }: { projectId: string; view: DashboardView; sources: DashboardSource[]; full?: boolean; onTiles?: (tiles: DashboardTile[]) => void }) {
   const reads = useReads(projectId, view.tiles.map(tile => tile.block).filter(id => sources.some(source => source.id === id)));
@@ -123,13 +123,14 @@ export function DashboardBlock({ projectId, view, sources, full = false, onTiles
   const byId = useMemo(() => new Map(sources.map(source => [source.id, source])), [sources]);
   const sections = dashboardSections(view.tiles), names = sections.map(item => item.section).filter(Boolean);
   const latest = Object.values(reads).flatMap(read => 'error' in read ? [] : [read.fetchedAt]).sort().at(-1);
+  const shownOnCard = sections.reduce((sum, group) => sum + Math.min(PER_SECTION, group.tiles.length), 0);
   if (!full) return <div className="live-block dash-block">
-    {view.tiles.length ? dashboardSections(view.tiles.slice(0, ON_CARD)).map(group => <section key={group.section || '-'} className="dash-section">
+    {view.tiles.length ? sections.map(group => <section key={group.section || '-'} className="dash-section">
         {group.section && <h3>{group.section}</h3>}
-        <div className="dash-grid">{group.tiles.map(tile => <Tile key={tile.id} tile={tile} read={reads[tile.block]} source={byId.get(tile.block)} full={false} compact/>)}</div>
+        <div className="dash-grid">{group.tiles.slice(0, PER_SECTION).map(tile => <Tile key={tile.id} tile={tile} read={reads[tile.block]} source={byId.get(tile.block)} full={false} compact/>)}</div>
       </section>)
       : <p className="dash-empty">No numbers yet. Open the block to add some, or use Pin on a Metrics number.</p>}
-    <footer><span>{view.tiles.length > ON_CARD ? `${ON_CARD} of ${view.tiles.length} tiles` : `${view.tiles.length} ${view.tiles.length === 1 ? 'tile' : 'tiles'}`}{latest ? ` · read ${clock(latest)}` : ''}</span></footer>
+    <footer><span>{shownOnCard < view.tiles.length ? `${shownOnCard} of ${view.tiles.length} tiles` : `${view.tiles.length} ${view.tiles.length === 1 ? 'tile' : 'tiles'}`}{latest ? ` · read ${clock(latest)}` : ''}</span></footer>
   </div>;
   return <div className="live-block dash-block full">
     {sections.map(group => <section key={group.section || '-'} className="dash-section">

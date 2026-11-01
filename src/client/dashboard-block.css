@@ -82,3 +82,11 @@
 .dash-block:not(.full) .dash-section h3 { margin: 0; }
 .dash-block:not(.full) .dash-funnel li { font-size: 11px; gap: 2px 8px; }
 .dash-block:not(.full) .dash-line { margin-top: 2px; }
+/* Card fixes: rows start at the top, tiles keep their own height, labels wrap to two lines, bars are lighter. */
+.dash-block:not(.full) { align-content: start; }
+.dash-block:not(.full) .dash-grid { align-items: start; }
+.dash-block:not(.full) .dash-tile-head span { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+.dash-block:not(.full) .dash-bars { gap: 2px; height: 24px; border-bottom-color: #f0f0f0; }
+.dash-block:not(.full) .dash-bars span { max-width: 8px; background: #8a8a8a; border-radius: 2px 2px 0 0; }
+.dash-block:not(.full) .dash-bars { justify-content: flex-end; }
+.dash-block:not(.full) .dash-funnel-track span { background: #6b6b6b; }
