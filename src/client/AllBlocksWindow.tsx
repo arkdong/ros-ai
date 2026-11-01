@@ -5,6 +5,7 @@ import { PaperSearch } from './PaperSearch';
 import { KindPreview, PREVIEW_FRAMES, usePreviewLoop } from './KindPreview';
 import { KIND_GROUPS, blockKind, searchKinds, type BlockKind, type KindId } from './block-kinds';
 import { TEXT_LABELS, sentence } from '../shared/vocabulary';
+import { postPlatform } from '../shared/posts';
 import type { MetricInput, MetricSource, NotionView, TrainingView } from '../shared/types';
 import { ChipChoice } from './ChipChoice';
 import { BrandLogo } from './brand-logos';
@@ -20,7 +21,7 @@ const METRIC_SOURCES: { id: MetricSource; label: string; detail: string; needs: 
   { id: 'umami', label: 'Umami', detail: 'Website visitors, clicks and downloads', needs: 'Needs Umami connected on the Plugins page with an API key. Leave the website empty when the key reaches only one.' },
   { id: 'railway', label: 'Railway', detail: 'Whether each service is up', needs: 'Needs Railway connected on the Plugins page with an account token. Leave the project empty when the token reaches only one.' },
 ];
-export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput };
+export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput; postLink?: string };
 type Props = { initial?: KindId; scope: string | null; groups: { id: string; title: string }[]; folder: boolean; local: boolean; onClose: () => void; onCreate: (kind: BlockKind, options: AddOptions) => Promise<void>; onPaper: (scope: string | null, paperId: string) => Promise<void> };
 
 /** All blocks: every kind in three groups, a search over them, and the chosen kind shown as it looks on the map with
@@ -29,11 +30,11 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
   const [query, setQuery] = useState(''), [selected, setSelected] = useState<KindId>(initial ?? 'text'), [busy, setBusy] = useState(false), [menu, setMenu] = useState<'label' | 'where' | null>(null);
   const [title, setTitle] = useState(''), [label, setLabel] = useState(''), [where, setWhere] = useState<string | null>(scope);
   const [file, setFile] = useState<File | null>(null), [paper, setPaper] = useState<PaperSummary | null>(null);
-  const [notionUrl, setNotionUrl] = useState(''), [notionFilter, setNotionFilter] = useState(''), [googleUrl, setGoogleUrl] = useState(''), [trainingFolder, setTrainingFolder] = useState('~/code/ros-nemotron-run'), [trainingHost, setTrainingHost] = useState(''), [metricSource, setMetricSource] = useState<MetricSource>('cloud'), [metricRepo, setMetricRepo] = useState('arkdong/ros-ai'), [metricId, setMetricId] = useState('');
+  const [notionUrl, setNotionUrl] = useState(''), [notionFilter, setNotionFilter] = useState(''), [googleUrl, setGoogleUrl] = useState(''), [trainingFolder, setTrainingFolder] = useState('~/code/ros-nemotron-run'), [trainingHost, setTrainingHost] = useState(''), [metricSource, setMetricSource] = useState<MetricSource>('cloud'), [metricRepo, setMetricRepo] = useState('arkdong/ros-ai'), [metricId, setMetricId] = useState(''), [postLink, setPostLink] = useState('');
   const [resting, setResting] = useState(false), rest = useRef<number | null>(null), foot = useRef<HTMLDivElement>(null);
   const kinds = searchKinds(query, local), kind = blockKind(selected), frames = PREVIEW_FRAMES[selected], frame = usePreviewLoop(selected, resting);
   const text = kind.id === 'text', papers = kind.id === 'paper';
-  const ready = papers ? Boolean(paper) : kind.id === 'file' ? Boolean(file) : kind.id === 'notion' ? Boolean(notionUrl.trim()) : kind.id === 'google' ? Boolean(googleUrl.trim()) : kind.id === 'training' ? Boolean(trainingFolder.trim()) : kind.id === 'metric' ? metricSource !== 'github' || Boolean(metricRepo.trim()) : true;
+  const ready = papers ? Boolean(paper) : kind.id === 'file' ? Boolean(file) : kind.id === 'notion' ? Boolean(notionUrl.trim()) : kind.id === 'google' ? Boolean(googleUrl.trim()) : kind.id === 'training' ? Boolean(trainingFolder.trim()) : kind.id === 'metric' ? metricSource !== 'github' || Boolean(metricRepo.trim()) : kind.id === 'post' ? Boolean(postPlatform(postLink)) : true;
   useEffect(() => { if (kinds.length && !kinds.some(item => item.id === selected)) setSelected(kinds[0].id); }, [query]);
   useEffect(() => {
     if (!menu) return;
@@ -48,10 +49,10 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
     setBusy(true);
     try {
       if (papers) await onPaper(where, paper!.id);
-      else await onCreate(kind, { title: title.trim(), scope: where, label: text && label ? label : undefined, file: kind.id === 'notebook' || kind.id === 'file' ? file ?? undefined : undefined, notion: kind.id === 'notion' ? { url: notionUrl.trim(), ...(notionFilter.trim() ? { filter: notionFilter.trim() } : {}) } : undefined, googleLink: kind.id === 'google' ? googleUrl.trim() : undefined, training: kind.id === 'training' ? { folder: trainingFolder.trim(), ...(trainingHost.trim() ? { host: trainingHost.trim() } : {}) } : undefined, metric: kind.id === 'metric' ? { source: metricSource, ...(metricSource === 'github' ? { repo: metricRepo.trim() } : metricSource === 'umami' ? { website: metricId.trim() } : metricSource === 'railway' ? { project: metricId.trim() } : {}) } : undefined });
+      else await onCreate(kind, { title: title.trim(), scope: where, label: text && label ? label : undefined, file: kind.id === 'notebook' || kind.id === 'file' ? file ?? undefined : undefined, notion: kind.id === 'notion' ? { url: notionUrl.trim(), ...(notionFilter.trim() ? { filter: notionFilter.trim() } : {}) } : undefined, googleLink: kind.id === 'google' ? googleUrl.trim() : undefined, postLink: kind.id === 'post' ? postLink.trim() : undefined, training: kind.id === 'training' ? { folder: trainingFolder.trim(), ...(trainingHost.trim() ? { host: trainingHost.trim() } : {}) } : undefined, metric: kind.id === 'metric' ? { source: metricSource, ...(metricSource === 'github' ? { repo: metricRepo.trim() } : metricSource === 'umami' ? { website: metricId.trim() } : metricSource === 'railway' ? { project: metricId.trim() } : {}) } : undefined });
     } finally { setBusy(false); }
   };
-  const adding = papers && paper?.pdf && folder ? 'Saving the PDF…' : kind.id === 'notion' ? 'Reading Notion…' : kind.id === 'google' ? 'Reading Google…' : kind.id === 'training' ? 'Reading the run…' : kind.id === 'metric' ? 'Reading the numbers…' : kind.id === 'file' ? 'Saving…' : 'Adding…';
+  const adding = papers && paper?.pdf && folder ? 'Saving the PDF…' : kind.id === 'notion' ? 'Reading Notion…' : kind.id === 'google' ? 'Reading Google…' : kind.id === 'training' ? 'Reading the run…' : kind.id === 'metric' ? 'Reading the numbers…' : kind.id === 'post' ? 'Reading the post…' : kind.id === 'file' ? 'Saving…' : 'Adding…';
   const whereTitle = where ? groups.find(group => group.id === where)?.title ?? 'nearest free spot' : 'nearest free spot';
   return <Modal title="All blocks" className="all-blocks-modal" bare onClose={onClose}>
     <form className="ab-form" onSubmit={event => { event.preventDefault(); void add(); }} onKeyDown={event => { if (event.key === 'Escape' && menu) { event.preventDefault(); event.stopPropagation(); setMenu(null); } }}>
@@ -77,6 +78,7 @@ export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose
             {kind.id === 'notion' && <><label className="ab-field"><span>Notion page or database link</span><input id="ab-notion-url" type="url" required value={notionUrl} maxLength={500} placeholder="https://www.notion.so/…" disabled={busy} onChange={event => setNotionUrl(event.target.value)}/></label><label className="ab-field"><span>For a database, only rows where <small>optional</small></span><input id="ab-notion-filter" value={notionFilter} maxLength={1000} placeholder={'"Teams" LIKE \'%Research%\''} disabled={busy} onChange={event => setNotionFilter(event.target.value)}/></label></>}
             {kind.id === 'google' && <label className="ab-field"><span>Google Sheet or Doc link</span><input id="ab-google-url" type="url" required value={googleUrl} maxLength={1000} placeholder="https://docs.google.com/…" disabled={busy} onChange={event => setGoogleUrl(event.target.value)}/></label>}
             {kind.id === 'training' && <><label className="ab-field"><span>Run folder on this computer</span><input id="ab-training-folder" required value={trainingFolder} maxLength={1000} placeholder="~/code/ros-nemotron-run" disabled={busy} onChange={event => setTrainingFolder(event.target.value)}/></label><label className="ab-field"><span>GPU machine <small>optional ssh host</small></span><input id="ab-training-host" value={trainingHost} maxLength={200} placeholder="nebius-h100" disabled={busy} onChange={event => setTrainingHost(event.target.value)}/></label></>}
+            {kind.id === 'post' && <><label className="ab-field"><span>Link to the post</span><input id="ab-post-link" required value={postLink} maxLength={2000} placeholder="A YouTube video, Reddit thread, Hacker News story or GitHub repository" disabled={busy} onChange={event => setPostLink(event.target.value)}/></label><p className="ab-note">{postLink.trim() && !postPlatform(postLink) ? 'Post blocks read YouTube, Reddit, Hacker News and GitHub links for now.' : folder ? 'Its photos and a video’s subtitles are saved in posts/ in the project folder.' : 'Choose a project folder to keep its photos and subtitles.'}</p></>}
             {kind.id === 'metric' && <>
               <div className="ab-field"><span>Read from</span><ChipChoice label="Read from" value={metricSource} disabled={busy} options={METRIC_SOURCES.map(item => ({ id: item.id, label: item.label, detail: item.detail, icon: item.id === 'cloud' ? <Cloud size={13}/> : <BrandLogo id={item.id} size={13}/> }))} onChange={value => { setMetricSource(value); setMetricId(''); }}/></div>
               {metricSource === 'github' && <label className="ab-field"><span>GitHub repository</span><input id="ab-metric-repo" required value={metricRepo} maxLength={300} placeholder="owner/name or its link" disabled={busy} onChange={event => setMetricRepo(event.target.value)}/></label>}

@@ -13,6 +13,7 @@ import { GoogleBlock } from './GoogleView';
 import { MapBlock } from './MapView';
 import { TrainingBlock } from './TrainingView';
 import { MetricBlock } from './MetricView';
+import { PostSheet } from './PostView';
 import { rowBlockOperations } from '../shared/notion-rows';
 import './note-view.css';
 import { groupMembers, isGroup } from '../shared/groups';
@@ -83,15 +84,16 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
   return <aside className={`inspector note-view${chatOpen?'':' chat-closed'}${picture?' picture-view':''}`} aria-label="Node work tools">
     <div className="note-main">
       {!chatOpen&&conversation===undefined&&(messages.length>0||runs.length>0||active)&&<button className="note-chat-toggle" aria-expanded={false} aria-controls={`note-side-${node.id}`} onClick={()=>setChatOpen(true)}><MessageSquare size={13}/> Conversation{active?<LoaderCircle size={12} className="spin"/>:messages.length>0&&<span>{messages.length}</span>}</button>}
-      {node.notion?.kind!=='page'&&<><label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/></>}
+      {node.notion?.kind!=='page'&&!node.post&&<><label className="sr-only" htmlFor={`note-title-${node.id}`}>Note title</label><input id={`note-title-${node.id}`} className="note-title" aria-label="Node title" data-testid="node-title" readOnly={readOnly} value={title} onChange={event=>setTitle(event.target.value)} onBlur={()=>saveTitle.current()} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur();}}} placeholder="Untitled node" maxLength={200}/></>}
       {readOnly&&<div className="history-inspector-note">{readOnlyNote}</div>}
       {node.notion&&<section className="note-content"><NotionBlock projectId={detail.project.id} nodeId={node.id} view={node.notion} full readOnly={readOnly} onAccount={readOnly?undefined:account=>void mutate([{type:'updateNode',id:node.id,patch:{notion:{...node.notion!,account}}}],'Read with another Notion account')} onTitle={value=>{if(value&&value!==node.title)void mutate([{type:'updateNode',id:node.id,patch:{title:value.slice(0,200)}}],'Rename from Notion');}} onRows={readOnly?undefined:async table=>{const {operations,added,skipped,beyond}=rowBlockOperations(detail.project.canvas,node,table);if(operations.length&&!await mutate(operations,`One block per row of ${node.title}`.slice(0,80)))return null;return {added:operations.length?added:0,skipped,beyond};}}/>{node.notion.filter&&<p className="subtle">Rows where {node.notion.filter}</p>}</section>}
       {node.training&&<section className="note-content"><TrainingBlock projectId={detail.project.id} nodeId={node.id} view={node.training} full/></section>}
       {node.blockType==='map'&&<section className="note-content"><MapBlock view={node.map??{pins:[]}} full onPins={readOnly?undefined:pins=>mutate([{type:'updateNode',id:node.id,patch:{map:{pins}}}],`Change the places on ${node.title}`.slice(0,80))}/></section>}
       {node.metric&&<section className="note-content"><MetricBlock projectId={detail.project.id} nodeId={node.id} view={node.metric} title={node.title} full/></section>}
+      {node.post&&<section className="note-content"><PostSheet projectId={detail.project.id} nodeId={node.id} post={node.post} title={node.title}/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
       {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
-      {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.metric&&!node.app&&!node.web&&node.blockType!=='agent'&&node.blockType!=='map'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
+      {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.metric&&!node.post&&!node.app&&!node.web&&node.blockType!=='agent'&&node.blockType!=='map'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
       {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
       {file&&!picture&&description&&<div className="note-description"><RichText text={description}/></div>}
       {file&&<FileViewer file={file} title={node.title} text={primary?.kind==='source'?primary:undefined}/>}

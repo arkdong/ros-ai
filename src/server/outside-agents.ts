@@ -7,7 +7,7 @@ import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantService } from './assistant.js';
-import { APP_TOOL_DESCRIPTIONS, AgentWorkspaceTools, agentToolSchemas, appCanvasNote, appToolSchemas } from './agent-tools.js';
+import { APP_TOOL_DESCRIPTIONS, AgentWorkspaceTools, POST_TOOL_DESCRIPTIONS, agentToolSchemas, appCanvasNote, appToolSchemas } from './agent-tools.js';
 import { APP_GUIDE } from './app-guide.js';
 import { appVersion } from '../shared/apps.js';
 import { projectFolderRoot } from './project-folders.js';
@@ -37,6 +37,8 @@ const proposals = {
   ros_propose_reuse: { schema: agentToolSchemas.ros_propose_reuse.extend(project), title: 'Propose reusing an artifact', description: 'Propose using an exact artifact version as an input of another block. The person accepts or dismisses it.' },
   ros_place_pins: { schema: agentToolSchemas.ros_place_pins.extend(project), title: 'Place pins on a map', description: 'Put places on a Map block on the canvas (a new one with title, or one there with nodeId): each pin a name and either lat and lng, or place, an address that ros.ai looks up on OpenStreetMap. Each pin opens in Google Maps. Follows the project\'s permission choice; places that cannot be found come back in notFound.' },
   ros_add_metrics: { schema: agentToolSchemas.ros_add_metrics.extend(project), title: 'Add Metrics blocks', description: 'Put launch numbers on the canvas as Metrics blocks, one per source, read live: cloud (ros.ai accounts, sign-ups, hosted ROS use, downloads, feedback), github (a repository\'s stars, release downloads, visitors), umami (a website\'s visitors, clicks and downloads), railway (whether each service is up). Umami and Railway use the keys saved in ros.ai\'s Plugins › Launch numbers; name the website by its domain and the project by its name, or leave them out when the key reaches one. Sources that cannot be read come back in notAdded. Follows the project\'s permission choice.' },
+  ros_search_posts: { schema: agentToolSchemas.ros_search_posts.extend(project), title: 'Search posts', description: POST_TOOL_DESCRIPTIONS.ros_search_posts },
+  ros_add_posts: { schema: agentToolSchemas.ros_add_posts.extend(project), title: 'Add posts', description: POST_TOOL_DESCRIPTIONS.ros_add_posts },
 } as const;
 type ProposalTool = keyof typeof proposals;
 const checkApp = appToolSchemas.ros_check_app.extend(project);

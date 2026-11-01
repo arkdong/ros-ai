@@ -41,6 +41,7 @@ import { attachSuggestionRoutes, pluginReadiness, type PluginSuggestions } from 
 import { attachNotionViewRoutes, NotionViews } from './notion-view.js';
 import { NotionFileSaver } from './notion-files.js';
 import { WebFileFetcher } from './web-files.js';
+import { attachPostRoutes, Posts } from './posts.js';
 import { Geocoder } from './geocode.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
@@ -115,7 +116,9 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Metric blocks read GitHub with the GitHub plugin's sign-in when there is one, Umami and Railway with their Plugins keys,
     // and ros.ai cloud with the app's own cloud sign-in.
     const cloud=tools?.cloud,cloudUrl=cloud?.address;
-    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metrics=metrics;}
+    const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metrics=metrics;
+    // Post blocks read YouTube through yt-dlp in ros.ai's own Python, and GitHub with the GitHub plugin's sign-in when there is one.
+    const posts=new Posts({...(options.notebooks?.python?{python:options.notebooks.python.runtime}:{}),githubToken:()=>tools?.plugins?.token('github')});attachPostRoutes(app,store,posts,{folders,files:AgentWorkspaceTools.webFiles});AgentWorkspaceTools.posts=posts;}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.
