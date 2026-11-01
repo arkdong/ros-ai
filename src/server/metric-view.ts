@@ -43,6 +43,14 @@ function choose(given: string, choices: Choice[], what: 'website' | 'project', w
 /** Which Metrics block is which: one per repository, website, project, or ros.ai cloud. */
 export const metricViewKey = (view: MetricView) => view.source === 'github' ? `github:${view.repo.toLowerCase()}` : view.source === 'umami' ? `umami:${view.website}` : view.source === 'railway' ? `railway:${view.project}` : view.show ? `cloud:${view.show}` : 'cloud';
 const DAY = 24 * 60 * 60_000;
+/** Umami's channels (the kind of source a visit came from), as people say them. */
+const CHANNELS: Record<string, string> = { direct: 'Direct visits', referral: 'Visits from other sites', organicSearch: 'Visits from search', paidSearch: 'Visits from paid search', organicSocial: 'Visits from social media', paidSocial: 'Visits from paid social', email: 'Visits from email', sms: 'Visits from SMS', organicShopping: 'Visits from shopping', paidShopping: 'Visits from paid shopping', organicVideo: 'Visits from video', paidVideo: 'Visits from paid video', display: 'Visits from display ads', affiliate: 'Visits from affiliates', paidOther: 'Visits from other paid' };
+/** The five largest rows of an Umami metrics answer as numbers keyed kind:name; nothing when Umami did not give them. */
+function sources(answer: Answer<{ x: string | null; y: number }[]>, kind: string, label: (name: string) => string): MetricValue[] {
+  if (!answer.ok || !Array.isArray(answer.data)) return [];
+  return [...answer.data].filter(item => typeof item.y === 'number').sort((a, b) => b.y - a.y).slice(0, 5)
+    .map(item => { const name = String(item.x || (kind === 'referrer' ? 'no site (direct)' : 'direct')).slice(0, 80); return { key: `${kind}:${name}`, label: label(name), value: item.y }; });
+}
 const ago = (at: string) => { const minutes = Math.round((Date.now() - Date.parse(at)) / 60_000); return minutes < 60 ? `${Math.max(1, minutes)} min ago` : minutes < 48 * 60 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`; };
 
 /** Metric blocks: launch numbers read live from a service, with a trend kept in the project folder's cache.
@@ -174,7 +182,7 @@ export class MetricViews {
     return sites.flatMap(site => typeof site.id === 'string' && UUID.test(site.id) ? [{ id: site.id.toLowerCase(), name: typeof site.name === 'string' && site.name ? site.name : String(site.domain ?? site.id), ...(typeof site.domain === 'string' && site.domain ? { domain: site.domain } : {}) }] : []);
   }
 
-  /** An Umami Cloud website: visitors today and over 7 days, page views, visits, who is on it now, and the clicks the site tracks. */
+  /** An Umami Cloud website: visitors today and over 7 days, where they came from (kind of source and the top sites), page views, visits, who is on it now, and the clicks the site tracks. */
   private async umami(website: string): Promise<Read> {
     const about = await this.umamiAsk<{ name?: string; domain?: string }>(`/websites/${website}`);
     if (!about.ok) throw new StoreError(about.status === 404 ? 'Umami has no website with that ID for this key.' : `Umami answered ${about.status}.`, about.status === 404 ? 404 : 502);
@@ -183,11 +191,14 @@ export class MetricViews {
     // Umami 2 answers { visitors: { value, prev } }; later versions answer plain numbers.
     type Stats = Record<string, number | { value?: number } | unknown>;
     const count = (stats: Answer<Stats>, key: string) => { if (!stats.ok) return null; const found = stats.data[key]; return typeof found === 'number' ? found : typeof (found as { value?: unknown })?.value === 'number' ? (found as { value: number }).value : null; };
-    const [day, week, active, events] = await Promise.all([
+    const [day, week, active, events, referrers, channels] = await Promise.all([
       this.umamiAsk<Stats>(`/websites/${website}/stats?${range(today.getTime())}`),
       this.umamiAsk<Stats>(`/websites/${website}/stats?${range(now - 7 * DAY)}`),
       this.umamiAsk<Record<string, unknown> | { x?: number }[]>(`/websites/${website}/active`),
       this.umamiAsk<{ x: string; y: number }[]>(`/websites/${website}/metrics?${range(now - 7 * DAY)}&type=event`),
+      // Where visitors came from: the sites that linked here, and (newer Umami) the kind of source. Umami already keeps both.
+      this.umamiAsk<{ x: string | null; y: number }[]>(`/websites/${website}/metrics?${range(now - 7 * DAY)}&type=referrer`).catch(() => ({ ok: false, status: 0 }) as Answer<never>),
+      this.umamiAsk<{ x: string | null; y: number }[]>(`/websites/${website}/metrics?${range(now - 7 * DAY)}&type=channel`).catch(() => ({ ok: false, status: 0 }) as Answer<never>),
     ]);
     const online = !active.ok ? null : Array.isArray(active.data) ? Number(active.data[0]?.x ?? 0) : typeof active.data.visitors === 'number' ? active.data.visitors : typeof active.data.x === 'number' ? active.data.x : null;
     const missing = 'Umami did not give this number.';
@@ -198,6 +209,7 @@ export class MetricViews {
       value('visitors_today', 'Visitors today', count(day, 'visitors')), value('visitors_week', 'Visitors, 7 days', count(week, 'visitors')),
       ...clicks.slice(0, 1), value('online', 'On the site now', online),
       value('pageviews_week', 'Page views, 7 days', count(week, 'pageviews')), value('visits_week', 'Visits, 7 days', count(week, 'visits')), ...clicks.slice(1),
+      ...sources(channels, 'channel', name => `${CHANNELS[name] ?? name}, 7 days`), ...sources(referrers, 'referrer', name => `From ${name}, 7 days`),
     ];
     return { source: 'umami', title: about.data.domain || about.data.name || 'Umami website', link: `https://cloud.umami.is/websites/${website}`, values, fetchedAt: new Date().toISOString() };
   }
