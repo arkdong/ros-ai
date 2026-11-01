@@ -10,8 +10,8 @@ export const sentence = (word: string) => word ? word[0].toUpperCase() + word.sl
 
 /** What a block is on screen: ten kinds plus Group. Storage keeps the older blockType and kind words as aliases
  * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google, training and metric are External).
- * A Web block is External too, named for what it reads, and a Metrics block for the tool it reads (GitHub, Umami, Railway, ros.ai cloud). A Map shows pinned places, on OpenStreetMap or (a Google Maps block) on Google's map. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
-export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Google Maps' | MetricTool | 'Group' | 'Search';
+ * A Web block is External too, named for what it reads, and a Metrics block for the tool it reads (GitHub, Umami, Railway, ros.ai cloud). A Map shows pinned places, on OpenStreetMap or (a Google Maps block) on Google's map. A Dashboard holds numbers pinned from other blocks. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
+export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Google Maps' | 'Dashboard' | MetricTool | 'Group' | 'Search';
 export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: { provider?: 'google' }; metric?: { source: MetricSource } }): KindName {
   if (node.kind === 'group') return 'Group';
   switch (node.blockType) {
@@ -25,6 +25,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: 
     case 'agent': return 'Agent';
     case 'app': return 'App';
     case 'map': return node.map?.provider === 'google' ? 'Google Maps' : 'Map';
+    case 'dashboard': return 'Dashboard';
     case 'search': return 'Search';
     default: return 'Text';
   }

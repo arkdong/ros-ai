@@ -238,12 +238,12 @@ export function App(){
       name=display;
       for(let suffix=2;titles.has(name.toLocaleLowerCase());suffix++)name=`${display} ${suffix}`;
     }
-    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(blockType==='map'?{map:{pins:[],...(onGoogle?{provider:'google' as const}:{})}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(metric?{metric}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
+    if(await mutate([{type:'addNode',node:{id,kind,blockType,parentId:scope,title:name,description:'',...(label?{label}:{}),...(blockType==='code'?{code:blankCode}:{}),...(blockType==='app'?{app:{source:APP_STARTER,inputs:[]}}:{}),...(blockType==='map'?{map:{pins:[],...(onGoogle?{provider:'google' as const}:{})}}:{}),...(blockType==='dashboard'?{dashboard:{tiles:[]}}:{}),...(notion?{notion}:{}),...(google?{google}:{}),...(training?{training}:{}),...(metric?{metric}:{}),...(file?{file}:{}),...emptyPosition(detail.project.canvas,scope,expandedIds)}}],`Add ${display}`)){
       setAddWindow(null);
       if(notebookFile&&blockType==='notebook')await post(`/api/projects/${detail.project.id}/nodes/${id}/notebook/import`,{name:notebookFile.name,content:await notebookFile.text()}).catch(report);
       // Code and notebooks open straight into their editors once the block exists on the canvas; an App on its inputs.
       if(blockType==='app')saveLocal(`app-tab:${id}`,'inputs');
-      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'||blockType==='map'?id:null);
+      setInspectorId(blockType==='code'||blockType==='notebook'||blockType==='app'||blockType==='map'||blockType==='dashboard'?id:null);
       selectBlock(id);
       if(scope)setExpandedIds(current=>[...new Set([...current,scope])]);
       setFocusId(id);

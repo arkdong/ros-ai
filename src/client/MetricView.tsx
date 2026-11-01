@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, Cloud, LoaderCircle, RotateCw } from 'lucide-react';
-import type { MetricPoint, MetricRead, MetricSource, MetricValue, MetricView } from '../shared/types';
+import type { DashboardShow, MetricPoint, MetricRead, MetricSource, MetricValue, MetricView } from '../shared/types';
 import { METRIC_TOOLS, metricChange } from '../shared/metrics';
 import { api } from './api';
 import { BrandLogo } from './brand-logos';
 import { clock, stop } from './live-block';
+import { PinButton } from './DashboardView';
 import './live-block.css';
 import './metric-block.css';
 
@@ -40,7 +41,9 @@ function Spark({ history, item, width, height }: { history: MetricPoint[]; item:
 /** Launch numbers read live from a service (GitHub, ros.ai cloud, Umami, Railway): each number, how it moved today, and its line over two
  * weeks of ros.ai's own reads. The card shows the first few; the block view shows all, with the week's change too.
  * The footer names what was read (a repository, a website) only when the block's title does not already. */
-export function MetricBlock({ projectId, nodeId, view, title, full = false }: { projectId: string; nodeId: string; view: MetricView; title?: string; full?: boolean }) {
+/** Pinning a number onto a Dashboard block, offered in the block view: the dashboards on the map, and what to do with the choice. */
+export type MetricPin = { dashboards: { id: string; title: string }[]; onPin: (key: string, dashboard: string | null, show: DashboardShow) => void };
+export function MetricBlock({ projectId, nodeId, view, title, full = false, pin }: { projectId: string; nodeId: string; view: MetricView; title?: string; full?: boolean; pin?: MetricPin }) {
   const [read, setRead] = useState<MetricRead | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
   const key = JSON.stringify(view);
   const load = useCallback(async (refresh = false) => {
@@ -58,6 +61,7 @@ export function MetricBlock({ projectId, nodeId, view, title, full = false }: { 
       : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading {metricSourceName(view)}…</p>
       : <dl className="livestat-values">{shown.map(item => <div key={item.key} className="livestat-value">
           <dt>{item.label}</dt>
+          {full && pin && <PinButton label={item.label} dashboards={pin.dashboards} onPin={(dashboard, show) => pin.onPin(item.key, dashboard, show)}/>}
           {item.text ? <dd className="livestat-state"><span className={`livestat-dot${item.tone ? ` ${item.tone}` : ''}`} aria-hidden="true"/>{item.text}</dd>
             : item.value === null ? <dd className="livestat-missing">{item.note ?? 'Not available'}</dd>
             : <dd>

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { Activity, AppWindow, Braces, Database, File as FileIcon, GraduationCap, LayoutGrid, MapPinned, NotebookPen, Text as TextIcon } from 'lucide-react';
+import { Activity, AppWindow, Braces, Database, File as FileIcon, GraduationCap, LayoutGrid, MapPinned, NotebookPen, Text as TextIcon, LayoutDashboard } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import type { NodeKind } from '../shared/types';
 import { readSaved, saveLocal } from './persistence';
 
-export type KindId = 'text' | 'code' | 'notebook' | 'data' | 'file' | 'paper' | 'notion' | 'google' | 'app' | 'training' | 'metric' | 'map' | 'google-maps' | 'group';
-export type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion' | 'file' | 'google' | 'app' | 'training' | 'metric' | 'map' | 'google-map';
+export type KindId = 'text' | 'code' | 'notebook' | 'data' | 'file' | 'paper' | 'notion' | 'google' | 'app' | 'training' | 'metric' | 'dashboard' | 'map' | 'google-maps' | 'group';
+export type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion' | 'file' | 'google' | 'app' | 'training' | 'metric' | 'dashboard' | 'map' | 'google-map';
 export type KindGroup = 'Write' | 'Bring in' | 'Build';
 /** One kind of block a person can add. `asks` kinds need something first (a file, a link, a paper), so they open the
  *  All blocks window; the others land on the map at once. `needs` names what must be in place, in the person's words. */
@@ -21,6 +21,7 @@ export const BLOCK_KINDS: BlockKind[] = [
   { id: 'notion', name: 'Notion', caption: 'Page, database', group: 'Bring in', kind: 'topic', blockType: 'notion', needs: 'Notion connected', asks: true, line: 'A Notion page or database shown live through your Notion connection. Rows can be filtered.', facts: ['Reads live, nothing is copied', 'Database rows can be filtered'], icon: size => <BrandLogo id="notion" size={size}/> },
   { id: 'google', name: 'Google Drive', caption: 'Sheet, Doc', group: 'Bring in', kind: 'topic', blockType: 'google', needs: 'Google signed in', asks: true, line: 'A Google Sheet or Doc read live through your Google sign-in, which only reads.', facts: ['Reads live, nothing is copied', 'The link picks the tab'], icon: size => <BrandLogo id="google-drive" size={size}/> },
   { id: 'metric', name: 'Metrics', caption: 'Live numbers', group: 'Bring in', kind: 'topic', blockType: 'metric', needs: 'Nothing', asks: true, localOnly: true, line: 'Launch numbers read live: accounts and downloads from ros.ai cloud, GitHub stars, Umami visitors, Railway services. Each shows how it moved today.', facts: ['Reads again every 15 minutes', 'Keeps a trend in the project folder'], icon: size => <Activity size={size}/> },
+  { id: 'dashboard', name: 'Dashboard', caption: 'Pinned numbers', group: 'Build', kind: 'topic', blockType: 'dashboard', needs: 'Nothing', line: 'Numbers pinned from your Metrics blocks, side by side under your own headings: a number, a line, bars a day, or a funnel.', facts: ['Each tile reads from its block', 'Pin from any Metrics number'], icon: size => <LayoutDashboard size={size}/> },
   { id: 'map', name: 'Map', caption: 'Places', group: 'Build', kind: 'topic', blockType: 'map', needs: 'Nothing', line: 'Places pinned on an OpenStreetMap map, by you or by an agent. Each place opens in Google Maps.', facts: ['Agents pin places by name or address', 'Opens in Google Maps, no key needed'], icon: size => <MapPinned size={size}/> },
   { id: 'google-maps', name: 'Google Maps', caption: 'Google’s map', group: 'Build', kind: 'topic', blockType: 'google-map', needs: 'Nothing', line: 'Places pinned on Google’s own map, by you or by an agent. Without a key it shows one place at a time; a Google Maps key in Plugins shows them all.', facts: ['Agents pin places by name or address', 'No key needed to start'], icon: size => <BrandLogo id="google-maps" size={size}/> },
   { id: 'app', name: 'App', caption: 'Interactive', group: 'Build', kind: 'topic', blockType: 'app', needs: 'Apps on in Settings', line: 'A small page an agent builds for you, sealed on its card. It reads only the blocks you name as inputs.', facts: ['Reads only the inputs you name', 'An agent writes the page'], icon: size => <AppWindow size={size}/> },
