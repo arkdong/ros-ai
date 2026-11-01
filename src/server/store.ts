@@ -12,6 +12,7 @@ import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
 import { MAX_MAP_PINS } from '../shared/maps.js';
+import { MAX_POST_COMMENTS, MAX_POST_PHOTOS, POST_COMMENT_TEXT, POST_PLATFORMS, POST_SUBTITLES_KEPT, POST_TEXT } from '../shared/posts.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 /** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
@@ -60,12 +61,27 @@ export const metricViewSchema = z.discriminatedUnion('source', [
   z.object({ source: z.literal('umami'), website: uuid }).strict(),
   z.object({ source: z.literal('railway'), project: uuid }).strict(),
 ]);
+/** A Post block's post (see PostView), read by ros.ai from its platform. Kept out of what agents may propose and out of
+ * nodeFields: agents add posts with ros_add_posts, which reads them, so a post on the canvas is what the platform showed. */
+const postCount = z.number().int().min(0).max(1e13);
+export const postViewSchema = z.object({
+  platform: z.enum(POST_PLATFORMS), shape: z.enum(['photo', 'video', 'text']), url: z.string().url().max(2000), id: z.string().trim().min(1).max(200),
+  title: z.string().max(500).optional(), text: z.string().max(POST_TEXT), author: z.object({ name: z.string().max(200), url: z.string().url().max(2000).optional() }).strict(),
+  community: z.string().max(200).optional(), postedAt: z.string().max(40).optional(),
+  counts: z.object({ likes: postCount, comments: postCount, views: postCount, points: z.number().int().min(-1e9).max(1e13), stars: postCount, forks: postCount, saves: postCount }).partial().strict(),
+  photos: z.array(z.object({ url: z.string().url().max(4000), path: z.string().max(1000).optional(), width: z.number().int().positive().max(100_000).optional(), height: z.number().int().positive().max(100_000).optional() }).strict()).max(MAX_POST_PHOTOS),
+  tags: z.array(z.string().max(100)).max(30).optional(),
+  comments: z.array(z.object({ author: z.string().max(200), text: z.string().max(POST_COMMENT_TEXT), likes: z.number().int().min(-1e9).max(1e13).optional(), at: z.string().max(40).optional(), depth: z.number().int().min(0).max(10).optional() }).strict()).max(MAX_POST_COMMENTS).optional(),
+  duration: z.number().min(0).max(1e7).optional(),
+  subtitles: z.object({ language: z.string().max(40), automatic: z.boolean(), characters: z.number().int().min(0).max(1e8), path: z.string().max(1000).optional(), text: z.string().max(POST_SUBTITLES_KEPT).optional() }).strict().optional(),
+  readAt: z.string().max(40), notice: z.string().max(500).optional(),
+}).strict();
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
 /** A Map block's pins (see MapView). Kept out of nodeFields, so the canvas tool agents see reads as the training snapshot
  * has it; agents place pins with ros_place_pins. */
 export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: z.string().trim().url().max(2000).optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
-const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric']).optional(), map: mapViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);

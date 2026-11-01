@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { closeSync, constants, createReadStream, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
+import { closeSync, constants, createReadStream, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
 import express, { type Express } from 'express';
@@ -19,7 +19,7 @@ import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '.
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { mapPinSchema, metricViewSchema, paperSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { mapPinSchema, metricViewSchema, paperSchema, postViewSchema, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -89,6 +89,9 @@ const launch = (command: string, args: string[]) => new Promise<void>((done, fai
   child.once('error', error => fail(new StoreError(errorCode(error) === 'ENOENT' ? 'This computer has no app opener ros.ai can use. Open the folder yourself.' : 'The file could not be opened.', 501)));
   child.once('spawn', () => { child.unref(); done(); });
 });
+/** The folder that holds Post blocks' photos and subtitles. */
+export const POST_FOLDER = 'posts';
+const postPath = (rel: string) => { const clean = posix.normalize(rel); return clean === rel && clean.startsWith(`${POST_FOLDER}/`) && !clean.split('/').some(part => part === '..' || part.startsWith('.')); };
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
 function unplacedKind(path: string): UnplacedFile['kind'] | null {
   const extension = extensionOf(path).toLowerCase(), media = fileMediaType(path);
@@ -230,7 +233,7 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric', 'post']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined), post: postViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
     // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
@@ -516,6 +519,11 @@ export class ProjectFolders implements NotebookFolders {
       try { this.store.mutate(projectId, [placed.includes(block.id) ? { type: 'updateNode', id: block.id, patch } : { type: 'addNode', node: { id: block.id, title: block.title, description: '', kind: 'topic', ...patch, parentId: parentOf(block), x: block.x, y: block.y, ...(block.width === undefined ? {} : { width: block.width }) } }], 'Map from the project folder'); if (!placed.includes(block.id)) placed.push(block.id); }
       catch { /* a map ros.ai cannot keep is left out */ }
     }
+    // A Post block keeps its post in the manifest and its photos and subtitles in posts/.
+    for (const block of manifest.blocks.filter(item => item.kind !== 'group' && item.blockType === 'post' && item.post && !placed.includes(item.id))) {
+      try { this.store.mutate(projectId, [{ type: 'addNode', node: { id: block.id, title: block.title, description: '', kind: 'topic', blockType: 'post', post: block.post!, parentId: parentOf(block), x: block.x, y: block.y, ...(block.width === undefined ? {} : { width: block.width }) } }], 'Posts from the project folder'); placed.push(block.id); }
+      catch { /* a post ros.ai cannot keep is left out */ }
+    }
     // Adding a block finds it a free spot; the saved arrangement is put back afterwards.
     const positions: Mutation[] = manifest.blocks.filter(block => placed.includes(block.id)).map(block => ({ type: 'updateNode', id: block.id, patch: { x: block.x, y: block.y } }));
     if (positions.length) try { this.store.mutate(projectId, positions, 'Arrange blocks from the project folder'); } catch { /* blocks stay where ros.ai placed them */ }
@@ -548,6 +556,41 @@ export class ProjectFolders implements NotebookFolders {
     const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extension.toLowerCase() === '.jpeg' ? '.jpeg' : extension.toLowerCase(), this.mapped(record));
     files.write(path, bytes);
     return { path };
+  }
+  /** A block of the project, for routes that check its saved paths. */
+  storeNode(projectId: string, nodeId: string): CanvasNode | undefined { return this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId); }
+  /** A free folder for one Post block's photos and subtitles, posts/<name>; Post files stay out of the loose files list. */
+  postFolder(projectId: string, name: string): string {
+    const { files } = this.require(projectId), base = safeFileBase(name) || 'Post';
+    for (let index = 1; index < 1000; index++) {
+      const candidate = posix.join(POST_FOLDER, index === 1 ? base : `${base} ${index}`);
+      if (!files.exists(candidate)) return candidate;
+    }
+    throw new StoreError(`Too many posts are named ${base}.`);
+  }
+  /** Writes a photo or the subtitles of a Post block inside posts/. */
+  savePostFile(projectId: string, rel: string, bytes: Buffer): void {
+    const { files } = this.require(projectId);
+    if (!postPath(rel)) throw new StoreError('Post files are saved only inside posts/.');
+    if (bytes.length > FILE_BYTES) throw new StoreError(`${rel} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB.`);
+    files.write(rel, bytes);
+  }
+  /** A Post block's saved photo or subtitles, checked to be inside posts/ on every read. */
+  postFile(projectId: string, rel: string): { absolute: string; mediaType: string; size: number; mtimeMs: number } {
+    const { files } = this.require(projectId);
+    if (!postPath(rel)) throw new StoreError('Post files are read only from posts/.', 404);
+    const mediaType = rel.toLowerCase().endsWith('.txt') ? 'text/plain; charset=utf-8' : fileMediaType(rel);
+    if (!mediaType) throw new StoreError(`${rel} is not a photo or subtitles file.`, 415);
+    const info = files.stat(rel);
+    if (!info?.isFile()) throw new StoreError(`${rel} is missing from the project folder.`, 404);
+    if (info.size > FILE_BYTES) throw new StoreError(`${rel} is larger than ${Math.round(FILE_BYTES / 1_000_000)} MB.`, 413);
+    return { absolute: files.resolve(rel), mediaType, size: info.size, mtimeMs: info.mtimeMs };
+  }
+  /** The text of a Post block's subtitles file, up to limit characters. */
+  postText(projectId: string, rel: string, limit: number): string {
+    const file = this.postFile(projectId, rel);
+    if (!file.mediaType.startsWith('text/plain')) throw new StoreError(`${rel} is not a text file.`, 415);
+    return readFileSync(file.absolute, 'utf8').slice(0, limit);
   }
   /** The file a File block shows, for the server to send to the browser. The block's path is checked against the folder on every read. */
   fileOf(projectId: string, nodeId: string): { absolute: string; name: string; mediaType: string; size: number; hash?: string } {
@@ -779,7 +822,7 @@ export class ProjectFolders implements NotebookFolders {
     } finally {
       if (JSON.stringify(record) !== before) this.save(record);
       const mapped = this.mapped(record), board = record.board?.toLowerCase();
-      const unplaced = listing.filter(file => !mapped.has(file.path.toLowerCase()) && file.path.toLowerCase() !== board)
+      const unplaced = listing.filter(file => !mapped.has(file.path.toLowerCase()) && file.path.toLowerCase() !== board && !file.path.toLowerCase().startsWith(`${POST_FOLDER}/`))
         .flatMap(file => { const kind = unplacedKind(file.path); return kind ? [{ path: file.path, kind, bytes: file.size }] : []; }).slice(0, 200);
       this.checked.set(projectId, { available: true, unplaced, problems, checkedAt: now() });
     }
@@ -1059,7 +1102,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   private writeManifest(record: FolderRecord, files: FolderFiles, project: Project): void {
     const manifest: Manifest = { app: 'ros.ai', format: 1, projectId: project.id, title: project.title,
-      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.metric ? { metric: node.metric } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
+      blocks: project.canvas.nodes.map(node => { const entry = record.files[node.id]; return { id: node.id, title: node.title, kind: node.kind ?? 'unspecified', ...(node.blockType ? { blockType: node.blockType } : {}), ...(node.notion ? { notion: shareable(node.notion) } : {}), ...(node.google ? { google: node.google } : {}), ...(node.training ? { training: node.training } : {}), ...(node.metric ? { metric: node.metric } : {}), ...(node.post ? { post: node.post } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: node.map } : {}), ...(node.label ? { label: node.label } : {}),
         parentId: node.parentId ?? null, x: node.x, y: node.y, ...(node.width === undefined ? {} : { width: node.width }), ...(node.height == null ? {} : { height: node.height }), ...(entry && !entry.removed ? { file: entry.path } : {}), ...(node.app ? { inputs: node.app.inputs } : {}) }; }),
       connections: project.canvas.connections };
     this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
@@ -1171,6 +1214,23 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
     stream.pipe(res);
   });
   // The file a File block shows, read from the project folder on every request. Browsers cache it by its content hash.
+  // A Post block's saved photo (by its index) or its subtitles, read from posts/ in the project folder.
+  app.get('/api/projects/:id/nodes/:nodeId/post/:part', (req, res) => {
+    const projectId = id.parse(req.params.id), node = folders.storeNode(projectId, id.parse(req.params.nodeId)), part = String(req.params.part);
+    if (!node?.post) throw new StoreError('This block shows no post.', 404);
+    const rel = part === 'subtitles' ? node.post.subtitles?.path : /^\d{1,2}$/u.test(part) ? node.post.photos[Number(part)]?.path : undefined;
+    if (!rel) throw new StoreError('This post has no such file saved.', 404);
+    const file = folders.postFile(projectId, rel), tag = `"${file.size.toString(36)}-${Math.round(file.mtimeMs).toString(36)}"`;
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('ETag', tag);
+    if (req.headers['if-none-match'] === tag) { res.status(304).end(); return; }
+    res.setHeader('Content-Type', file.mediaType);
+    res.setHeader('Content-Length', String(file.size));
+    const stream = createReadStream(file.absolute);
+    stream.on('error', () => { if (!res.headersSent) res.status(404); res.end(); });
+    stream.pipe(res);
+  });
   app.get('/api/projects/:id/nodes/:nodeId/file', (req, res) => {
     const file = folders.fileOf(id.parse(req.params.id), id.parse(req.params.nodeId));
     const tag = file.hash ? `"${file.hash.slice(0, 32)}"` : undefined;

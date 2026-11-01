@@ -1,6 +1,7 @@
-import type { Canvas, CanvasNode, MetricSource } from './types.js';
+import type { Canvas, CanvasNode, MetricSource, PostPlatform } from './types.js';
 import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 import { METRIC_TOOLS, type MetricTool } from './metrics.js';
+import { POST_PLATFORM_NAMES } from './posts.js';
 
 /** The words a Text block can carry as its label; the researcher's own word (at most 40 characters) is allowed too. */
 export const TEXT_LABELS = ['question', 'plan', 'task', 'result', 'finding', 'decision', 'draft', 'report'] as const;
@@ -10,9 +11,9 @@ export const sentence = (word: string) => word ? word[0].toUpperCase() + word.sl
 
 /** What a block is on screen: ten kinds plus Group. Storage keeps the older blockType and kind words as aliases
  * (note, action, report and finding are all Text; dataset is Data; figure and file are File; notion, google, training and metric are External).
- * A Web block is External too, named for what it reads, and a Metrics block for the tool it reads (GitHub, Umami, Railway, ros.ai cloud). A Map shows pinned places, on OpenStreetMap or (a Google Maps block) on Google's map. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
-export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Google Maps' | MetricTool | 'Group' | 'Search';
-export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: { provider?: 'google' }; metric?: { source: MetricSource } }): KindName {
+ * A Web block is External too, named for what it reads, and a Metrics block for the tool it reads (GitHub, Umami, Railway, ros.ai cloud). A Post block is named for its platform (YouTube, Reddit, Hacker News, GitHub). A Map shows pinned places, on OpenStreetMap or (a Google Maps block) on Google's map. An App is a page you use; a Code block whose language is html becomes one when it is saved. */
+export type KindName = 'Text' | 'Code' | 'Notebook' | 'Data' | 'File' | 'External' | 'Web' | 'Agent' | 'App' | 'Map' | 'Google Maps' | MetricTool | (typeof POST_PLATFORM_NAMES)[PostPlatform] | 'Post' | 'Group' | 'Search';
+export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: { provider?: 'google' }; metric?: { source: MetricSource }; post?: { platform: PostPlatform } }): KindName {
   if (node.kind === 'group') return 'Group';
   switch (node.blockType) {
     case 'code': return 'Code';
@@ -21,6 +22,7 @@ export function kindName(node: Pick<CanvasNode, 'kind' | 'blockType'> & { map?: 
     case 'figure': case 'file': return 'File';
     case 'notion': case 'google': case 'training': return 'External';
     case 'metric': return node.metric ? METRIC_TOOLS[node.metric.source] : 'External';
+    case 'post': return node.post ? POST_PLATFORM_NAMES[node.post.platform] : 'Post';
     case 'web': return 'Web';
     case 'agent': return 'Agent';
     case 'app': return 'App';
