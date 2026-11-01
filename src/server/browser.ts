@@ -25,14 +25,14 @@ const VIEWPORT = { width: 1280, height: 800 };
 const NAVIGATION_MS = 30_000, ACTION_MS = 10_000, SESSION_IDLE_MS = 5 * 60_000, SESSION_MAX_MS = 30 * 60_000, BROWSER_IDLE_MS = 60_000;
 const MAX_SESSIONS = 3, SNAPSHOT_SLICE = 8_000, FULL_PAGE_HEIGHT = 8_000;
 /** Chromium sends WebRTC and QUIC over UDP, past an HTTP proxy; these keep every connection on the proxy. */
-const FLAGS = ['--disable-quic', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--webrtc-ip-handling-policy=disable_non_proxied_udp'];
+export const FLAGS = ['--disable-quic', '--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--webrtc-ip-handling-policy=disable_non_proxied_udp'];
 /** What the browser process inherits from ros.ai's environment: never the API keys ros.ai holds. */
 const INHERITED = /^(PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|TMP|TEMP|LANG|LANGUAGE|LC_[A-Z_]+|TZ|DISPLAY|WAYLAND_DISPLAY|XDG_[A-Z_]+|DBUS_SESSION_BUS_ADDRESS|FONTCONFIG_[A-Z_]+|SystemRoot|SYSTEMROOT|windir|WINDIR|USERPROFILE|LOCALAPPDATA|APPDATA|ProgramData|PROGRAMDATA|ProgramFiles|PROGRAMFILES|ProgramFiles\(x86\)|PROGRAMFILES\(X86\)|ProgramW6432|ComSpec|COMSPEC|PATHEXT|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE)$/u;
-const environment = () => Object.fromEntries(Object.entries(process.env).filter(([name, value]) => value !== undefined && INHERITED.test(name))) as Record<string, string>;
+export const environment = () => Object.fromEntries(Object.entries(process.env).filter(([name, value]) => value !== undefined && INHERITED.test(name))) as Record<string, string>;
 
 const oneLine = (value: string, limit: number) => { const text = value.replace(/\s+/gu, ' ').trim(); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
 /** Playwright's errors carry a call log and colour codes after their first line. */
-const reason = (error: unknown) => oneLine((error instanceof Error ? error.message : String(error)).replace(/\u001b\[[0-9;]*m/gu, '').split('\n')[0].replace(/^[a-zA-Z.]+: /u, ''), 300);
+export const reason = (error: unknown) => oneLine((error instanceof Error ? error.message : String(error)).replace(/\u001b\[[0-9;]*m/gu, '').split('\n')[0].replace(/^[a-zA-Z.]+: /u, ''), 300);
 /** A page for the step list: its title as a Markdown link. */
 export const pageLink = (title: string, url: string) => `[${oneLine(title || url, 80).replace(/[[\]]/gu, '')}](${url.replace(/[()\s]/gu, char => char === '(' ? '%28' : char === ')' ? '%29' : encodeURIComponent(char))})`;
 
@@ -236,8 +236,12 @@ export class BrowserService {
     child.on('close', () => finish());
     return this.status();
   }
+  private readonly closing: (() => Promise<void>)[] = [];
+  /** Work that closes with the browser, such as the signed-in browser's profiles. */
+  onShutdown(close: () => Promise<void>) { this.closing.push(close); }
   async shutdown() {
     this.installer?.kill();
+    for (const close of this.closing) await close().catch(() => undefined);
     for (const session of [...this.sessions]) await session.close();
     clearTimeout(this.idle);
     const running = this.running; this.running = null;

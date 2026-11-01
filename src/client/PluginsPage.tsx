@@ -7,6 +7,7 @@ import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import { PLUGINS, zoteroAppProblem, type AppAccountStatus, type AppConnectionStatus, type LocalPlugins, type PluginDefinition, type PluginId, type PluginStatus, type TokenPluginId } from '../shared/plugins';
 import type { PaperSourceStatus, PapersStatus } from '../shared/papers';
 import type { BrowserStatus } from '../shared/browser';
+import type { SignedInSiteStatus } from '../shared/types';
 import { isSearchProvider, type SearchProviderId, type SearchServiceStatus } from '../shared/search';
 import { ConnectionCard, GoogleDriveConnectionCard, KeyConnection, message } from './ModelPage';
 import { BrandLogo, hasBrandLogo } from './brand-logos';
@@ -54,6 +55,7 @@ const groups: { title: string; ids: PluginId[] }[] = [
   { title: 'Team', ids: ['notion', 'slack', 'linear'] },
   { title: 'Code and design', ids: ['github', 'sentry', 'figma'] },
   { title: 'Launch numbers', ids: ['umami', 'railway'] },
+  { title: 'Social sites', ids: ['xiaohongshu'] },
   { title: 'Tools', ids: ['browser'] },
   { title: 'Not available yet', ids: ['overleaf'] },
 ];
@@ -85,7 +87,7 @@ export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId
 }
 
 /** What the page read last in this session: it opens with that at once while it reads again. */
-type PluginReads = { plugins?: PluginStatus[]; apps?: AppConnectionStatus[]; google?: GoogleDriveStatus | null; credentials?: CredentialStatus[]; budgets?: ConnectionBudgetStatus[]; search?: SearchServiceStatus | null; papers?: PaperSourceStatus[] | null; browser?: BrowserStatus | null; local?: LocalPlugins | null };
+type PluginReads = { plugins?: PluginStatus[]; apps?: AppConnectionStatus[]; google?: GoogleDriveStatus | null; credentials?: CredentialStatus[]; budgets?: ConnectionBudgetStatus[]; search?: SearchServiceStatus | null; papers?: PaperSourceStatus[] | null; browser?: BrowserStatus | null; local?: LocalPlugins | null; sites?: SignedInSiteStatus[] | null };
 let lastReads: PluginReads = {};
 /** What was connected when the page last finished reading, saved on this computer, so the page and its sidebar open with it. */
 type Installed = { id: PluginId; label: string };
@@ -93,13 +95,13 @@ const savedPlugins = () => readSavedList<Installed>('plugins-installed', item =>
 export const lastInstalledPlugins = () => savedPlugins().map(item => item.id);
 
 export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
-  const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null),[local,setLocal]=useState<LocalPlugins|null>(lastReads.local??null);
+  const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null),[sites,setSites]=useState<SignedInSiteStatus[]|null>(lastReads.sites??null),[local,setLocal]=useState<LocalPlugins|null>(lastReads.local??null);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedPlugins);
-  useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser,local};},[plugins,apps,google,credentials,budgets,search,papers,browser,local]);
+  useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser,local,sites};},[plugins,apps,google,credentials,budgets,search,papers,browser,local,sites]);
   const refresh=useCallback(async()=>{
     if(publicDemo)return;
     setLoading(true);
-    const [tokens,drive,keys,limits,signIns,searching,sources,browsing,found]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers'),api<BrowserStatus>('/api/browser'),api<LocalPlugins>('/api/plugins/local')]);
+    const [tokens,drive,keys,limits,signIns,searching,sources,browsing,found,signedIn]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers'),api<BrowserStatus>('/api/browser'),api<LocalPlugins>('/api/plugins/local'),api<{sites:SignedInSiteStatus[]}>('/api/signed-in')]);
     const failures:Record<string,string>={};
     if(tokens.status==='fulfilled')setPlugins(tokens.value.plugins);else failures.plugins=message(tokens.reason);
     if(drive.status==='fulfilled')setGoogle(drive.value);else failures.google=message(drive.reason);
@@ -110,6 +112,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(sources.status==='fulfilled')setPapers(sources.value.sources);
     if(browsing.status==='fulfilled')setBrowser(browsing.value);
     if(found.status==='fulfilled')setLocal(found.value);
+    if(signedIn.status==='fulfilled')setSites(signedIn.value.sites);
     setErrors(failures);setLoading(false);setRead(true);
   },[publicDemo]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -120,6 +123,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(plugin.id==='google-sheets'||plugin.id==='google-docs')return google?.connected?{label:'Through Google Drive',connected:true}:{label:'Needs Google Drive',connected:false};
     if(plugin.connect==='public')return papers?.find(item=>item.id===plugin.id)?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
     if(plugin.connect==='browser')return browser?.agents?{label:'On for agents',connected:true}:{label:'Off for agents',connected:false};
+    if(plugin.connect==='site'){const site=sites?.find(item=>item.id===plugin.id);return site?.signedIn?{label:site.needsCheck?'Needs a check':'Logged in',connected:!site.needsCheck}:{label:'Not logged in',connected:false};}
     if(plugin.id==='google-maps')return credentials.find(item=>item.provider==='google-maps')?.configured?{label:'Key saved',connected:true}:{label:'Not connected',connected:false};
     if(isSearchProvider(plugin.id)){
       const key=credentials.find(item=>item.provider===plugin.id),active=search?.active===plugin.id;
@@ -156,6 +160,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     </KeyConnection>;
     if(plugin.connect==='public')return <PaperSource key={plugin.id} plugin={plugin} source={papers?.find(item=>item.id===plugin.id)} token={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;
     if(plugin.connect==='browser')return <BrowserPlugin key={plugin.id} plugin={plugin} status={browser} onChanged={changed}/>;
+    if(plugin.connect==='site')return <SitePlugin key={plugin.id} plugin={plugin} site={sites?.find(item=>item.id===plugin.id)} onSites={setSites} onChanged={changed}/>;
     if(plugin.connect==='unavailable')return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} status="Not available yet"><p>{plugin.unavailableReason}</p></ConnectionCard>;
     if(plugin.local)return <LocalPlugin key={plugin.id} plugin={plugin} status={plugins.find(item=>item.id===plugin.id)} local={local} onChanged={changed} onLook={async()=>{setLocal(await api<LocalPlugins>('/api/plugins/local'));}}/>;
     if(plugin.connect==='sign-in'||plugin.connect==='desktop')return <AppPlugin key={plugin.id} open={plugin.id===selected} plugin={plugin} app={apps.find(item=>item.id===plugin.id)} onChanged={changed}/>;
@@ -225,6 +230,35 @@ function BrowserPlugin({plugin,status,onChanged}:{plugin:PluginDefinition;status
       {engine?<button className={on?'secondary small':'primary small'} disabled={Boolean(doing)||!shown} onClick={()=>void run('switch',()=>api('/api/browser',{method:'PUT',body:JSON.stringify({agents:!on})}))}>{on?'Turn off for agents':'Turn on for agents'}</button>
         :<button className="primary small" disabled={Boolean(doing)||downloading||!shown} onClick={()=>void run('download',async()=>setLive(await post<BrowserStatus>('/api/browser/download',{})))}>{downloading?<LoaderCircle size={13} className="spin"/>:null} {downloading?'Downloading…':'Download Chromium'}</button>}
       {engine&&<button className="text-button" disabled={Boolean(doing)} onClick={()=>void run('check',()=>post('/api/browser/check',{}))}>{doing==='check'?'Checking…':'Check'}</button>}
+    </div>
+    {error&&<p className="inline-error" role="alert">{error}</p>}
+  </ConnectionCard>;
+}
+
+/** A site ros.ai reads in its own signed-in browser (Xiaohongshu): Log in opens a window on the site for the person to
+ * log in by hand, which closes by itself once the site says who is logged in. While it is open the card asks every two
+ * seconds how it went. */
+function SitePlugin({plugin,site,onSites,onChanged}:{plugin:PluginDefinition;site?:SignedInSiteStatus;onSites:(sites:SignedInSiteStatus[])=>void;onChanged:()=>Promise<void>}) {
+  const [doing,setDoing]=useState<'login'|'check'|'logout'|null>(null),[error,setError]=useState('');
+  const windowOpen=site?.window??false;
+  useEffect(()=>{
+    if(!windowOpen)return;
+    const timer=setInterval(()=>{void api<{sites:SignedInSiteStatus[]}>('/api/signed-in').then(next=>{onSites(next.sites);if(!next.sites.find(item=>item.id===plugin.id)?.window)void onChanged();}).catch(()=>undefined);},2000);
+    return()=>clearInterval(timer);
+  },[windowOpen,plugin.id,onSites,onChanged]);
+  const run=async(what:'login'|'check'|'logout',work:()=>Promise<{sites:SignedInSiteStatus[]}>)=>{setDoing(what);setError('');try{onSites((await work()).sites);await onChanged();}catch(cause){setError(message(cause));}finally{setDoing(null);}};
+  const id=encodeURIComponent(plugin.id),signedIn=site?.signedIn??false;
+  const login=()=>void run('login',()=>post(`/api/signed-in/${id}/login`,{}));
+  return <ConnectionCard label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} forceOpen connected={signedIn&&!site?.needsCheck} status={!site?'Checking…':windowOpen?'Window open':signedIn?site.needsCheck?'Needs a check':'Logged in':'Not logged in'}
+    more={<div className="alt-ways"><div className="alt-way"><span><strong>How ros.ai reads {plugin.name}</strong><small>In a browser profile of its own on this computer, never your browser’s cookies, through public websites only. It reads like a person would, a search every 10 seconds and a note every 4, and stops when {plugin.name} asks for a check. A second account is safer: {plugin.name} can limit accounts that read a lot. Log out deletes the profile.</small></span></div></div>}>
+    {windowOpen?<p className="connection-check" role="status"><LoaderCircle size={12} className="spin"/> Log in in the {plugin.name} window, with the QR code in the {plugin.name} app or your phone number. It closes by itself when you are in.</p>
+      :signedIn?<p className={site?.needsCheck?undefined:'connection-check'} role="status">{site?.needsCheck?`${plugin.name} asked for a check that a person is there, so ros.ai stopped reading it. Press Log in and pass the check in the window.`:`Logged in${site?.account?` as ${site.account}`:''}. Agents search ${plugin.name} with ros_search_posts, and Add block › Post takes a ${plugin.name} link.`}</p>
+      :<p>Log in once, by hand, in a {plugin.name} window ros.ai opens. Agents then search it for real people’s notes and add the ones worth keeping as Post blocks.</p>}
+    {site&&!site.canWindow&&!signedIn&&<p className="subtle">Logging in needs Google Chrome or Microsoft Edge on this computer.</p>}
+    <div className="connection-actions">
+      {(!signedIn||site?.needsCheck)&&<button className="primary small" disabled={Boolean(doing)||windowOpen||!site?.canWindow} onClick={login}>{doing==='login'?<LoaderCircle size={13} className="spin"/>:null} Log in</button>}
+      {signedIn&&!windowOpen&&<button className="text-button" disabled={Boolean(doing)} onClick={()=>void run('check',()=>post(`/api/signed-in/${id}/check`,{}))}>{doing==='check'?'Checking…':'Check'}</button>}
+      {(signedIn||windowOpen)&&<button className="text-button danger" disabled={Boolean(doing)} onClick={()=>void run('logout',()=>api(`/api/signed-in/${id}`,{method:'DELETE'}))}>Log out</button>}
     </div>
     {error&&<p className="inline-error" role="alert">{error}</p>}
   </ConnectionCard>;

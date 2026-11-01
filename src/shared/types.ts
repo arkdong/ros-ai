@@ -60,7 +60,7 @@ export type MetricValue = { key:string; label:string; value:number|null; note?:s
 export type MetricPoint = { at:string; values:Record<string,number> };
 export type MetricRead = { source:MetricSource; title:string; link:string; values:MetricValue[]; history:MetricPoint[]; fetchedAt:string; notice?:string };
 /** Where a Post block's post comes from. Slice 1 reads platforms that need no login; the rest come with ros.ai's signed-in browser. */
-export type PostPlatform = 'youtube'|'reddit'|'hackernews'|'github';
+export type PostPlatform = 'youtube'|'reddit'|'hackernews'|'github'|'xiaohongshu';
 /** How the card shows it: a photo post as its cover, a video as its thumbnail, a text post or thread as text. */
 export type PostShape = 'photo'|'video'|'text';
 /** One photo of a post: where it was on the web, and where ros.ai saved it in the project folder (unset when the project has no folder or the download failed). */
@@ -82,6 +82,10 @@ export type PostView = {
   readAt:string; notice?:string;
 };
 /** A post found by a search, before it is added: enough to choose which to put on the canvas. */
+/** A site ros.ai reads in its signed-in browser (Plugins › Xiaohongshu): whether it is logged in and as whom, whether
+ * the site asked for a check that a person is there, and whether its login window is open now. */
+export type SignedInSite = 'xiaohongshu';
+export type SignedInSiteStatus = { id:SignedInSite; name:string; signedIn:boolean; account?:string; checkedAt?:string; needsCheck:boolean; window:boolean; canWindow:boolean };
 export type PostHit = { platform:PostPlatform; url:string; title:string; author?:string; community?:string; postedAt?:string; counts:PostView['counts']; snippet?:string; thumbnail?:string; duration?:number };
 export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
 export type TrainingRead = {

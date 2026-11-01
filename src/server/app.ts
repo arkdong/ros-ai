@@ -35,6 +35,7 @@ import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-dr
 import { attachGoogleRoutes, type GoogleWorkspace } from './google-workspace.js';
 import { attachPaperRoutes, type Papers } from './papers.js';
 import { attachBrowserRoutes, type BrowserService } from './browser.js';
+import { attachSignedInRoutes, SignedInBrowser } from './signed-in-browser.js';
 import { attachPluginRoutes, type PluginTokens } from './plugins.js';
 import { attachAppRoutes, type RemoteApps } from './remote-apps.js';
 import { attachSuggestionRoutes, pluginReadiness, type PluginSuggestions } from './plugin-suggestions.js';
@@ -118,7 +119,9 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const cloud=tools?.cloud,cloudUrl=cloud?.address;
     const metrics=new MetricViews(new ProjectCache(store),{githubToken:()=>tools?.plugins?.token('github'),umamiKey:()=>tools?.plugins?.token('umami'),railwayToken:()=>tools?.plugins?.token('railway'),...(cloud&&cloudUrl?{cloud:{url:cloudUrl,stats:()=>cloud.stats()}}:{})});attachMetricRoutes(app,store,metrics);AgentWorkspaceTools.metrics=metrics;
     // Post blocks read YouTube through yt-dlp in ros.ai's own Python, and GitHub with the GitHub plugin's sign-in when there is one.
-    const posts=new Posts({...(options.notebooks?.python?{python:options.notebooks.python.runtime}:{}),githubToken:()=>tools?.plugins?.token('github')});attachPostRoutes(app,store,posts,{folders,files:AgentWorkspaceTools.webFiles});AgentWorkspaceTools.posts=posts;}
+    // Xiaohongshu is read in ros.ai's signed-in browser, logged in once by the person in Plugins › Xiaohongshu.
+    const signedIn=tools?.browser&&options.localPaths?new SignedInBrowser(tools.browser,options.localPaths.dataDir):undefined;if(signedIn){attachSignedInRoutes(app,signedIn);tools!.browser!.onShutdown?.(()=>signedIn.shutdown());}
+    const posts=new Posts({...(options.notebooks?.python?{python:options.notebooks.python.runtime}:{}),githubToken:()=>tools?.plugins?.token('github'),...(signedIn?{signedIn}:{})});attachPostRoutes(app,store,posts,{folders,files:AgentWorkspaceTools.webFiles});AgentWorkspaceTools.posts=posts;}
   if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
   if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.

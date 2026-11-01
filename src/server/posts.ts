@@ -11,8 +11,11 @@ import type { PythonRuntime } from './local-python.js';
 import type { ProjectFolders } from './project-folders.js';
 import { StoreError, type Store } from './store.js';
 import type { WebFileFetcher } from './web-files.js';
+import type { SignedInBrowser } from './signed-in-browser.js';
+import { readXiaohongshu, searchXiaohongshu } from './xiaohongshu.js';
 
-/** Posts from the platforms a Post block reads without a login: YouTube (through yt-dlp, which ros.ai installs into its
+/** Posts for Post blocks. Xiaohongshu is read in ros.ai's signed-in browser (see xiaohongshu.ts); the rest without a
+ * login: YouTube (through yt-dlp, which ros.ai installs into its
  * own Python), Reddit's and Hacker News' public JSON, and GitHub's API (with the GitHub plugin's sign-in when there is
  * one). Each read keeps the post as the platform showed it; photos and subtitles are saved into the project folder. Every
  * piece of text a post brings is written by other people: untrusted, never instructions. */
@@ -48,7 +51,7 @@ export function subtitleText(vtt: string): string {
   return lines.join('\n');
 }
 
-type Options = { fetcher?: typeof fetch; python?: PythonRuntime; githubToken?: () => string | undefined; ytDlp?: (args: string[], timeout: number) => Promise<string> };
+type Options = { fetcher?: typeof fetch; python?: PythonRuntime; signedIn?: SignedInBrowser; githubToken?: () => string | undefined; ytDlp?: (args: string[], timeout: number) => Promise<string> };
 
 export class Posts {
   private readonly fetcher: typeof fetch;
@@ -62,6 +65,7 @@ export class Posts {
   /** Posts on one platform that match a query, newest or most liked first when asked. Nothing is saved. */
   async search(platform: PostPlatform, query: string, limit = 10, sort: PostSort = 'relevance', signal?: AbortSignal): Promise<PostHit[]> {
     const count = Math.max(1, Math.min(MAX_POST_HITS, limit));
+    if (platform === 'xiaohongshu') return searchXiaohongshu(this.signedIn(), query, count, sort);
     if (platform === 'hackernews') {
       const body = await this.json(`https://hn.algolia.com/api/v1/${sort === 'new' ? 'search_by_date' : 'search'}?${new URLSearchParams({ query, tags: 'story', hitsPerPage: String(count) })}`, 'Hacker News', signal) as { hits?: Record<string, unknown>[] };
       const hits = (body.hits ?? []).map(hit => ({ platform, url: `https://news.ycombinator.com/item?id=${hit.objectID}`, title: clean(hit.title, 300) || 'Untitled', author: clean(hit.author, 100) || undefined, postedAt: typeof hit.created_at === 'string' ? hit.created_at : undefined, counts: counts({ points: num(hit.points), comments: num(hit.num_comments) }), snippet: clean(htmlText(hit.story_text) || (typeof hit.url === 'string' ? hit.url : ''), 300) || undefined } satisfies PostHit));
@@ -85,10 +89,16 @@ export class Posts {
   async read(link: string, signal?: AbortSignal): Promise<ReadPost> {
     const platform = postPlatform(link);
     if (!platform) throw new StoreError(`ros.ai reads posts from ${POST_PLATFORMS.map(id => POST_PLATFORM_NAMES[id]).join(', ')}; ${link.slice(0, 200)} is not a link to one of them.`);
+    if (platform === 'xiaohongshu') return readXiaohongshu(this.signedIn(), link);
     if (platform === 'hackernews') return this.readHackerNews(link, signal);
     if (platform === 'reddit') return this.readReddit(link, signal);
     if (platform === 'github') return this.readGithub(link, signal);
     return this.readYoutube(link);
+  }
+
+  private signedIn(): SignedInBrowser {
+    if (!this.options.signedIn) throw new StoreError('Xiaohongshu is read in ros.ai\'s signed-in browser, which this ros.ai does not run.', 501);
+    return this.options.signedIn;
   }
 
   private async readHackerNews(link: string, signal?: AbortSignal): Promise<ReadPost> {

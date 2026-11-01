@@ -51,7 +51,7 @@ test('Links name their platform; counts and lengths read as the platforms show t
   assert.equal(postPlatform('https://old.reddit.com/r/a/comments/x1/y'), 'reddit');
   assert.equal(postPlatform('https://news.ycombinator.com/item?id=1'), 'hackernews');
   assert.equal(postPlatform('https://github.com/arkdong/ros-ai'), 'github');
-  assert.equal(postPlatform('https://www.xiaohongshu.com/explore/1'), undefined);
+  assert.equal(postPlatform('https://www.instagram.com/p/1'), undefined);
   assert.equal(postPlatform('file:///etc/passwd'), undefined);
   assert.deepEqual([shortCount(1204), shortCount(31_000), shortCount(2_400_000)], ['1,204', '31k', '2.4M']);
   assert.deepEqual([duration(848), duration(3725)], ['14:08', '1:02:05']);
@@ -119,7 +119,7 @@ test('Agents search posts and add the ones they pick as Post blocks in one group
 
     type Added = { action: { proposalId: string }; committed: boolean; groupId?: string; added: { nodeId: string; title: string; platform: string }[]; notAdded?: { link: string; problem: string }[]; alreadyOnCanvas?: { title: string }[] };
     const added = await toolkit(project.id).call('ros_add_posts', { summary: 'Real posts about hotpot', rationale: 'The person wants real reviews.', group: 'Posts · Amsterdam hotpot',
-      links: ['https://www.reddit.com/r/Amsterdam/comments/abc123/best_hotpot/', 'https://youtu.be/vid1', 'https://news.ycombinator.com/item?id=999', 'https://www.xiaohongshu.com/explore/1'] }) as Added;
+      links: ['https://www.reddit.com/r/Amsterdam/comments/abc123/best_hotpot/', 'https://youtu.be/vid1', 'https://news.ycombinator.com/item?id=999', 'https://www.instagram.com/p/1'] }) as Added;
     assert.equal(added.committed, false);
     assert.deepEqual(added.added.map(item => [item.title, item.platform]), [['Best hotpot in Amsterdam?', 'Reddit'], ['Amsterdam hotpot tour', 'YouTube']]);
     assert.deepEqual(added.notAdded?.map(item => item.problem.slice(0, 20)), ['Not a link to YouTub', 'Hacker News has no s']);
