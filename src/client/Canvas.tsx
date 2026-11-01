@@ -270,7 +270,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const group=data.kind==='group';
   useEffect(() => {
     if (data.expanded || data.heightSet || !heading.current) return;
-    const element=heading.current, update=()=>measure.current(data.width,measuredCardHeight((data.notion||data.google||data.training||data.metric||data.dashboard||data.post||data.app||data.map?element.scrollHeight:element.offsetHeight)+2,Boolean(data.picture&&data.file?.image)));
+    const element=heading.current, update=()=>measure.current(data.width,measuredCardHeight((data.notion||data.google||data.training||data.metric||data.dashboard||data.post||data.app||data.map?element.scrollHeight:element.offsetHeight)+2,Boolean(data.picture&&data.file?.image),Boolean(data.dashboard)));
     const observer=new ResizeObserver(update);observer.observe(element);update();return()=>observer.disconnect();
   },[data.expanded,data.heightSet,data.width,data.primary,data.chosen,data.notebookFigure,data.file]);
   // The Notion preview keeps one row callback, which always reaches the latest canvas.

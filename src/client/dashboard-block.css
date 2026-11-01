@@ -67,3 +67,18 @@
 .dash-add .dash-keys input { flex: none; width: auto; min-width: 0; height: auto; margin: 0; }
 .dash-add .dash-keys label > span, .dash-add .dash-keys label { min-width: 0; }
 .dash-pin .dash-pin-menu > button { display: block; width: 100%; text-align: left; }
+/* The card on the map: the opened view's sections and tiles, smaller. */
+.dash-block:not(.full) { gap: 8px; }
+.dash-block:not(.full) .dash-section { gap: 6px; }
+.dash-block:not(.full) .dash-section h3 { font-size: 12px; color: #4a4a4a; }
+.dash-block:not(.full) .dash-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.dash-block:not(.full) .dash-tile { gap: 2px; padding: 6px 8px; border-radius: 8px; }
+.dash-block:not(.full) .dash-tile.funnel { grid-column: 1 / -1; }
+.dash-block:not(.full) .dash-tile-head { font-size: 11px; }
+.dash-block:not(.full) .dash-number strong { font-size: 18px; }
+.dash-block:not(.full) .dash-bars { height: 28px; }
+.dash-block:not(.full) .dash-funnel { gap: 5px; }
+.dash-block:not(.full) .dash-funnel-track { height: 6px; }
+.dash-block:not(.full) .dash-section h3 { margin: 0; }
+.dash-block:not(.full) .dash-funnel li { font-size: 11px; gap: 2px 8px; }
+.dash-block:not(.full) .dash-line { margin-top: 2px; }

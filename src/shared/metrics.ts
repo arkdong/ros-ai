@@ -1,4 +1,15 @@
-import type { MetricPoint, MetricRead, MetricSource } from './types.js';
+import type { CloudShow, MetricPoint, MetricRead, MetricSource } from './types.js';
+
+/** The areas a ros.ai cloud Metrics block can be narrowed to (its Show chip), with the numbers each one shows, in order. */
+export const CLOUD_SHOWS: Record<CloudShow, { label: string; keys: readonly string[] }> = {
+  acquisition: { label: 'Acquisition', keys: ['users', 'signups_today', 'signups_week', 'downloads', 'downloads_week'] },
+  engagement: { label: 'Engagement', keys: ['researchers_week', 'researchers_month', 'active_week'] },
+  activation: { label: 'Activation', keys: ['users', 'funnel_workspace', 'funnel_source', 'funnel_report'] },
+  retention: { label: 'Retention', keys: ['retention_week1', 'retention_week4'] },
+  usage: { label: 'Product usage', keys: ['workspaces_week', 'sources_week', 'conversations_week', 'python_runs_week', 'reports_week'] },
+  costs: { label: 'Costs', keys: ['requests_week', 'cost_week'] },
+};
+export const CLOUD_SHOW_IDS = Object.keys(CLOUD_SHOWS) as CloudShow[];
 
 /** The tool a Metrics block reads, by name: its card and block view are headed with it, beside the tool's logo. */
 export const METRIC_TOOLS = { github: 'GitHub', cloud: 'ros.ai cloud', umami: 'Umami', railway: 'Railway' } as const satisfies Record<MetricSource, string>;

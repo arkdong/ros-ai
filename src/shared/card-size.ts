@@ -36,7 +36,10 @@ export function pictureCardHeight(width: number, image: ImageSize) {
 }
 /** The height a card takes at the size the browser measured: a card of text between its minimum and the preview
  * limit, a picture card as tall as its picture. */
-export function measuredCardHeight(measured: number, picture = false) {
+/** A Dashboard card grows to show its sections, up to this. */
+export const DASHBOARD_MAX_HEIGHT = 720;
+export function measuredCardHeight(measured: number, picture = false, dashboard = false) {
+  if (dashboard) return Math.min(DASHBOARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
   return picture ? Math.max(PICTURE_MIN_HEIGHT, Math.min(CARD_MAX_SET_HEIGHT, measured)) : Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
 }
 /** The most room a card can take below its top, for placing new blocks clear of it. */

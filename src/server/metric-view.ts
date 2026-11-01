@@ -1,5 +1,6 @@
 import type { Express } from 'express';
-import type { MetricPoint, MetricRead, MetricValue, MetricView } from '../shared/types.js';
+import type { CloudShow, MetricPoint, MetricRead, MetricValue, MetricView } from '../shared/types.js';
+import { CLOUD_SHOWS } from '../shared/metrics.js';
 import type { ProjectCache } from './project-cache.js';
 import { metricViewSchema, Store, StoreError } from './store.js';
 import { RAILWAY_API, UMAMI_API } from './plugins.js';
@@ -40,7 +41,7 @@ function choose(given: string, choices: Choice[], what: 'website' | 'project', w
   throw new StoreError(`${wanted && !found.length ? `No ${what} matches "${given.trim().slice(0, 80)}". ` : ''}The ${where} ${key} reaches ${choices.length} ${what}${choices.length === 1 ? '' : 's'}: ${list}. Name one by its ${what === 'website' ? 'domain' : 'name'} or ID.`, 409);
 }
 /** Which Metrics block is which: one per repository, website, project, or ros.ai cloud. */
-export const metricViewKey = (view: MetricView) => view.source === 'github' ? `github:${view.repo.toLowerCase()}` : view.source === 'umami' ? `umami:${view.website}` : view.source === 'railway' ? `railway:${view.project}` : 'cloud';
+export const metricViewKey = (view: MetricView) => view.source === 'github' ? `github:${view.repo.toLowerCase()}` : view.source === 'umami' ? `umami:${view.website}` : view.source === 'railway' ? `railway:${view.project}` : view.show ? `cloud:${view.show}` : 'cloud';
 const DAY = 24 * 60 * 60_000;
 const ago = (at: string) => { const minutes = Math.round((Date.now() - Date.parse(at)) / 60_000); return minutes < 60 ? `${Math.max(1, minutes)} min ago` : minutes < 48 * 60 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`; };
 
@@ -71,10 +72,10 @@ export class MetricViews {
 
   /** The view someone named: a repository as owner/name or its link; an Umami website or Railway project by its ID or link,
    * its domain or name, or left out when the key reaches only one. */
-  async find(given: { source?: unknown; repo?: unknown; website?: unknown; project?: unknown }): Promise<MetricView> {
+  async find(given: { source?: unknown; repo?: unknown; website?: unknown; project?: unknown; show?: unknown }): Promise<MetricView> {
     const text = (value: unknown) => typeof value === 'string' ? value : '';
     switch (given.source) {
-      case 'cloud': return { source: 'cloud' };
+      case 'cloud': return metricViewSchema.parse({ source: 'cloud', ...(given.show ? { show: given.show } : {}) }) as MetricView;
       case 'umami': {
         const id = UUID.exec(text(given.website))?.[0];
         return metricViewSchema.parse({ source: 'umami', website: id?.toLowerCase() ?? choose(text(given.website), await this.umamiSites(), 'website', 'Umami') }) as MetricView;
@@ -90,7 +91,7 @@ export class MetricViews {
   private fresh(view: MetricView): Promise<Read> {
     switch (view.source) {
       case 'github': return this.github(view.repo);
-      case 'cloud': return this.cloud();
+      case 'cloud': return this.cloud(view.show);
       case 'umami': return this.umami(view.website);
       case 'railway': return this.railway(view.project);
     }
@@ -136,7 +137,7 @@ export class MetricViews {
   }
 
   /** ros.ai cloud's own counts, read with the app's ros.ai cloud sign-in (see ros-ai-cloud src/stats.ts). */
-  private async cloud(): Promise<Read> {
+  private async cloud(show?: CloudShow): Promise<Read> {
     if (!this.options.cloud) throw new StoreError('ros.ai cloud is off in this copy of ros.ai.', 404);
     const stats = await this.options.cloud.stats(), number = (key: string) => typeof stats[key] === 'number' ? stats[key] as number : null;
     const value = (key: string, label: string): MetricValue => { const found = number(key); return { key, label, value: found, ...(found === null ? { note: 'ros.ai cloud did not give this number.' } : {}) }; };
@@ -149,9 +150,12 @@ export class MetricViews {
       value('funnel_workspace', 'Accounts that made a project'), value('funnel_source', 'Accounts that added a source'), value('funnel_report', 'Accounts that made a report'),
       value('workspaces_week', 'Projects made, 7 days'), value('sources_week', 'Sources added, 7 days'), value('conversations_week', 'Messages to agents, 7 days'),
       value('python_runs_week', 'Python runs, 7 days'), value('reports_week', 'Reports, 7 days'),
+      { ...value('retention_week1', 'Week-1 retention (%)'), ...(number('retention_week1') === null && 'researchers_week' in stats ? { note: 'Nobody signed up 7 to 13 days ago yet.' } : {}) },
       { ...value('retention_week4', 'Week-4 retention (%)'), ...(number('retention_week4') === null && 'researchers_week' in stats ? { note: 'Nobody signed up 28 to 34 days ago yet.' } : {}) },
     ];
-    return { source: 'cloud', title: 'ros.ai cloud', link: this.options.cloud.url, values, fetchedAt: new Date().toISOString() };
+    // Narrowed to one area: its numbers, in its order (a key it names that this cloud does not give is shown as missing).
+    const shown = show ? CLOUD_SHOWS[show].keys.map(key => values.find(item => item.key === key) ?? value(key, key)) : values;
+    return { source: 'cloud', title: show ? `ros.ai cloud · ${CLOUD_SHOWS[show].label}` : 'ros.ai cloud', link: this.options.cloud.url, values: shown, fetchedAt: new Date().toISOString() };
   }
 
   private async umamiAsk<T>(path: string): Promise<Answer<T>> {

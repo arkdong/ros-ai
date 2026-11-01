@@ -59,7 +59,7 @@ export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).ma
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
 export const metricViewSchema = z.discriminatedUnion('source', [
   z.object({ source: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/u) }).strict(),
-  z.object({ source: z.literal('cloud') }).strict(),
+  z.object({ source: z.literal('cloud'), show: z.enum(['acquisition', 'engagement', 'activation', 'retention', 'usage', 'costs']).optional() }).strict(),
   z.object({ source: z.literal('umami'), website: uuid }).strict(),
   z.object({ source: z.literal('railway'), project: uuid }).strict(),
 ]);
