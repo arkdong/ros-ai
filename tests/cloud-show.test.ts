@@ -20,3 +20,14 @@ test('A ros.ai cloud block narrowed by its Show chip reads only that area, in it
   assert.deepEqual(await views().find({ source: 'cloud', show: 'usage' }), { source: 'cloud', show: 'usage' });
   assert.throws(() => metricViewSchema.parse({ source: 'cloud', show: 'revenue' }));
 });
+
+test('Acquisition lists where new accounts heard about ros.ai, most first, and how many skipped', async () => {
+  const withSources = { ...stats, signup_sources: { sources: [{ key: 'friend', label: 'A friend or colleague', count: 4 }, { key: 'github', label: 'GitHub', count: 2 }], skipped: 3, unanswered: 10 } };
+  const read = await new MetricViews(undefined, { cloud: { url: 'https://cloud.example', stats: async () => withSources } }).read({ source: 'cloud', show: 'acquisition' });
+  assert.deepEqual(read.values.slice(-3).map(item => [item.key, item.label, item.value]), [
+    ['heard:friend', 'Heard from a friend or colleague', 4], ['heard:github', 'Heard from GitHub', 2], ['heard:skipped', 'Skipped the question', 3]]);
+  const none = await new MetricViews(undefined, { cloud: { url: 'https://cloud.example', stats: async () => ({ ...stats, signup_sources: { sources: [], skipped: 0, unanswered: 1 } }) } }).read({ source: 'cloud', show: 'acquisition' });
+  assert.match(none.values.find(item => item.key === 'heard')?.note ?? '', /No new account/u);
+  const old = await views().read({ source: 'cloud', show: 'acquisition' });
+  assert(!old.values.some(item => item.key.startsWith('heard')));
+});
