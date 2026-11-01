@@ -1,3 +1,4 @@
+import type { UsageCounts, UsageKey } from '../shared/usage-counts.js';
 import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS } from '../shared/dashboards.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -97,6 +98,8 @@ export const appProposalMutationSchema = mutations(appNodeFields);
 export const snapshotAppProposalMutationSchema = mutations({ ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','app']).optional(), app: appSchema.optional() });
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
+/** Blocks that bring something in, counted as sources in the usage counts. */
+const SOURCE_BLOCKS = new Set<string>(['dataset', 'file', 'notion', 'google', 'web', 'post']);
 const clone = <T>(value: T): T => structuredClone(value);
 const GRID = 24;
 // Placement runs before the browser measures outcome content. Existing cards may
@@ -232,6 +235,10 @@ export class Store {
   /** What ROS ran with last, in any project: the model and the way it runs (a backend such as claude-plan). */
   lastRosChoice():RosChoice { return this.globalRecord<RosChoice>('ros-last-choice','last')??{}; }
   rememberRosChoice(change:RosChoice) { this.saveGlobalRecord('ros-last-choice','last',{...this.lastRosChoice(),...change}); }
+  /** Today's usage counts (UTC day) go up by one: numbers only, which UsageCounts sends to ros.ai cloud while that is on. */
+  countUsage(key:UsageKey,by=1) { if(by<=0)return; const day=now().slice(0,10), counts=this.globalRecord<UsageCounts>('usage-counts',day)??{}; this.saveGlobalRecord('usage-counts',day,{...counts,[key]:(counts[key]??0)+by}); }
+  /** Each day's usage counts, oldest first. */
+  usageDays():{day:string;counts:UsageCounts}[] { return (this.db.prepare("SELECT id, data FROM global_records WHERE namespace='usage-counts' ORDER BY id").all() as {id:string;data:string}[]).map(row=>({day:row.id,counts:JSON.parse(row.data) as UsageCounts})); }
 
   record<T>(namespace:string,id:string):T|undefined {
     const row=this.db.prepare('SELECT data FROM workspace_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
@@ -304,6 +311,7 @@ export class Store {
     return this.transaction(() => {
       this.db.prepare('INSERT INTO projects(id, data, history) VALUES (?, ?, ?)').run(project.id, JSON.stringify(project), JSON.stringify({ stack: [project.canvas], cursor: 0 }));
       this.recordChange(project, 'Project created');
+      this.countUsage('workspaces');
       return project;
     });
   }
@@ -587,6 +595,12 @@ export class Store {
     }
     history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
     history.cursor++;
+    // Blocks restored from the project folder were counted when they were first added.
+    if (!checkedLabel.endsWith(' from the project folder')) {
+      const added = operations.flatMap(operation => operation.type === 'addNode' ? [operation.node as Partial<CanvasNode>] : []);
+      this.countUsage('sources', added.filter(node => (node.blockType && SOURCE_BLOCKS.has(node.blockType)) || node.paper).length);
+      this.countUsage('reports', added.filter(node => node.blockType === 'report').length);
+    }
     return this.commitCanvas(project, canvas, checkedLabel, history);
   }
 
@@ -709,6 +723,7 @@ export class Store {
     if (threadId !== undefined && nodeId !== null) throw new StoreError('Only project messages belong to a ROS thread');
     const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
+    if (message.role === 'user') this.countUsage('conversations');
     return message;
   }
 
@@ -762,6 +777,7 @@ export class Store {
       if (input.projectId !== run.projectId || input.nodeId !== run.nodeId || artifact.projectId !== run.projectId || artifact.hash !== input.artifact.hash || artifact.id !== input.artifact.id || artifact.content !== input.artifact.content || !artifact.content.includes(input.excerpt)) throw new StoreError('Invalid captured input version');
     }
     this.db.prepare('INSERT INTO runs(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(run.id, run.projectId, run.nodeId, this.serializeRun(run));
+    if (run.configuration.kind === 'local-experiment') this.countUsage('python_runs');
     return clone(run);
   }
 

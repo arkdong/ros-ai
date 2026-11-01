@@ -178,6 +178,17 @@ export class CloudAccount {
     return result.body as Record<string, unknown>;
   }
 
+  /** Sends the app's daily usage counts (numbers only) as the signed-in person. Answers false when nobody is signed in,
+   * the session has ended or this ros.ai cloud does not take them yet, so the caller tries again later. */
+  async sendUsage(body: { days: { day: string; counts: Record<string, number> }[]; version?: string }): Promise<boolean> {
+    const account = this.url ? this.account() : undefined;
+    if (!account) return false;
+    const result = await this.call('/v1/usage', { method: 'POST', headers: { Authorization: `Bearer ${account.token}` }, body: JSON.stringify(body) });
+    if (result.status === 401 || result.status === 404) return false;
+    if (result.status >= 300) throw new Error(typeof result.body?.error?.message === 'string' ? result.body.error.message : `ros.ai cloud did not take the usage counts (${result.status}).`);
+    return true;
+  }
+
   async signOut(): Promise<CloudAccountStatus> {
     this.pending = undefined;
     const account = this.account();

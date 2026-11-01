@@ -35,6 +35,7 @@ import { BrowserService } from './browser.js';
 import { ProjectCache } from './project-cache.js';
 import { InferenceConnections } from './inference-connections.js';
 import { CloudAccount } from './cloud-account.js';
+import { UsageCounts } from './usage-counts.js';
 import { trustSystemCertificates } from './system-certificates.js';
 import { LocalRos } from './local-ros.js';
 import { RosLayer, type LayerChoice } from './ros-layer.js';
@@ -83,6 +84,7 @@ let acp:AcpAgentService|undefined;
 let browser:BrowserService|undefined;
 let appFrames:AppFrames|undefined;
 let cloud:CloudAccount|undefined;
+let usageCounts:UsageCounts|undefined;
 let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
 let guide:WorkspaceGuideService|undefined;
@@ -110,6 +112,7 @@ async function shutdown() {
     await loop?.shutdown();
     await acp?.shutdown();
     await browser?.shutdown();
+    usageCounts?.stop();
     cloud?.shutdown();
     localRos?.shutdown();
     await execution?.shutdown();
@@ -194,9 +197,12 @@ try {
     const setup = new Setup({dataDir,outside,inference,credentials,plugins,cloud,localRos,apps,googleDrive});
     // Looks for a newer ros.ai on GitHub; updating stops every service first, then restarts.
     updates = new Updates(store,root,shutdown);
+    // Day-by-day usage counts (numbers only) to ros.ai cloud while signed in; Settings › General turns them off.
+    usageCounts = new UsageCounts(store,cloud,updates.version);
+    usageCounts.start();
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
     const suggestions = new PluginSuggestions(dataDir);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames},guide);
+    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames,usageCounts},guide);
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;
