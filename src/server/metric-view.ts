@@ -144,6 +144,12 @@ export class MetricViews {
       value('users', 'Accounts'), value('signups_today', 'Sign-ups today'), value('downloads', 'Downloads'), value('active_week', 'Hosted ROS users, 7 days'),
       value('signups_week', 'Sign-ups, 7 days'), value('downloads_week', 'Downloads, 7 days'), value('requests_week', 'Hosted ROS requests, 7 days'),
       value('cost_week', 'Hosted ROS cost, 7 days (US$)'), value('feedback', 'Feedback notes'), value('feedback_week', 'Feedback notes, 7 days'),
+      // From the app's usage counts (Settings › General › Usage counts), sent by signed-in apps.
+      value('researchers_week', 'Active researchers, 7 days'), value('researchers_month', 'Active researchers, 30 days'),
+      value('funnel_workspace', 'Accounts that made a project'), value('funnel_source', 'Accounts that added a source'), value('funnel_report', 'Accounts that made a report'),
+      value('workspaces_week', 'Projects made, 7 days'), value('sources_week', 'Sources added, 7 days'), value('conversations_week', 'Messages to agents, 7 days'),
+      value('python_runs_week', 'Python runs, 7 days'), value('reports_week', 'Reports, 7 days'),
+      { ...value('retention_week4', 'Week-4 retention (%)'), ...(number('retention_week4') === null && 'researchers_week' in stats ? { note: 'Nobody signed up 28 to 34 days ago yet.' } : {}) },
     ];
     return { source: 'cloud', title: 'ros.ai cloud', link: this.options.cloud.url, values, fetchedAt: new Date().toISOString() };
   }

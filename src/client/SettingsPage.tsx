@@ -14,6 +14,7 @@ import { Commands, DownloadLink } from './UpdateButton';
 import { checkForUpdates, installUpdate, setAutoUpdates, useUpdates } from './updates';
 import { changeSuggestions, pluginName, useSuggestions } from './plugin-suggestions';
 import { LAYER_ENGINES, type LayerStatus } from '../shared/ros-layer';
+import { USAGE_KEYS, USAGE_NAMES, type UsageCountsStatus } from '../shared/usage-counts';
 import './settings.css';
 
 export type SettingsSection = 'general' | 'usage' | 'balances' | 'memory' | 'resources';
@@ -101,6 +102,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
     {!publicDemo && <AppSettings/>}
+    {!publicDemo && <UsageCountSettings/>}
     {!publicDemo && <FirstRunSettings/>}
     {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>
@@ -188,6 +190,22 @@ function RosLayerSettings() {
         <button type="button" className="secondary small" disabled={busy} onClick={() => void run(() => api('/api/ros-layer/bench', { method: 'POST', signal: AbortSignal.timeout(200_000) }))}>{busy && <LoaderCircle size={13} className="spin"/>}{bench ? 'Measure again' : 'Measure'}</button>
       </Row>}
     </>}
+  </div><button type="button" className="text-button small settings-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
+}
+
+/** Whether ros.ai sends its day-by-day usage counts to ros.ai cloud while signed in (on by default). Numbers only. */
+function UsageCountSettings() {
+  const [status, setStatus] = useState<UsageCountsStatus | null>(null), [busy, setBusy] = useState(false), [more, setMore] = useState(false), [error, setError] = useState('');
+  useEffect(() => { void api<UsageCountsStatus>('/api/usage-counts').then(setStatus).catch(() => setStatus(null)); }, []);
+  if (!status?.available) return null;
+  const toggle = async () => { setBusy(true); setError(''); try { setStatus(await api<UsageCountsStatus>('/api/usage-counts', { method: 'PUT', body: JSON.stringify({ on: !status.on }) })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
+  const today = USAGE_KEYS.map(key => `${USAGE_NAMES[key]} ${status.today[key] ?? 0}`).join(' · ');
+  const when = !status.on ? 'Off: nothing is sent.' : !status.signedIn ? 'Sent only while you are signed in to ros.ai cloud; you are signed out, so nothing is sent.' : status.sentAt ? `Last sent ${new Date(status.sentAt).toLocaleString()}.` : 'Not sent yet; the first send is a minute after ros.ai starts.';
+  return <section><h2>Usage counts</h2><div className="settings-card">
+    <Row title="Send usage counts to ros.ai" detail={`A few times a day, ros.ai cloud gets how many projects, sources, messages to agents, Python runs and reports you made each day, as numbers only: never names, titles, content or files. ${when}`}>
+      <button type="button" role="switch" aria-checked={status.on} aria-label="Send usage counts to ros.ai" className={`switch ${status.on ? 'on' : ''}`} disabled={busy} onClick={() => void toggle()}/>
+    </Row>
+    {more && <Row title="Counted today" detail={`${today}. The day runs on UTC.`}><span/></Row>}
   </div><button type="button" className="text-button small settings-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>{error && <p className="inline-error" role="alert">{error}</p>}</section>;
 }
 
