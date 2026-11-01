@@ -5,7 +5,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantAction } from '../shared/assistant.js';
 import type { AgentScope } from '../shared/agent-runtime.js';
-import type { Artifact, Canvas, CanvasNode, CheckedClaim, MapPin, MetricRead, MetricView, Mutation, PostView, Run, TrainingView, WebDirection } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, CheckedClaim, DashboardTile, MapPin, MetricRead, MetricView, Mutation, PostView, Run, TrainingView, WebDirection } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import { EXTRACT_PAGES_PER_CREDIT, SEARCH_SERVICES, type SearchDepth } from './providers.js';
 import { CARD_DEFAULT_HEIGHT, CARD_DEFAULT_WIDTH, CARD_MAX_HEIGHT, cardFootprintHeight, cardWidth, estimatedCardHeight, estimatedSize } from '../shared/card-size.js';
@@ -17,6 +17,7 @@ import type { NotionViews } from './notion-view.js';
 import type { GoogleWorkspace } from './google-workspace.js';
 import { metricViewKey, type MetricViews } from './metric-view.js';
 import { METRIC_TOOLS, metricSummary } from '../shared/metrics.js';
+import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS, tilesFor } from '../shared/dashboards.js';
 import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AgentApp, type AppId, type AppTool, type RemoteApps } from './remote-apps.js';
 import { projectFolderRoot, type ProjectFolders } from './project-folders.js';
@@ -60,6 +61,19 @@ const placePinsSchema = z.object({
   }).strict()).min(1).max(50),
 }).strict();
 /** Metrics blocks, one per source. An Umami website or Railway project may be named by its domain or name, or left out when the key reaches one. */
+/** Numbers pinned onto a Dashboard block from Metrics blocks, by key. A funnel names several keys of one block, in order. */
+const pinToDashboardSchema = z.object({
+  summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800),
+  dashboard: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u).optional().describe('The nodeId of a Dashboard block on the canvas to add to. Leave out to start a new one'),
+  title: z.string().trim().min(1).max(200).optional().describe('A new dashboard\'s title, such as "Launch". Ignored when dashboard is given'),
+  tiles: z.array(z.object({
+    block: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u).describe('The nodeId of the Metrics block the number comes from'),
+    keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS).describe('The number\'s key from ros_read_canvas (metric.values[].key). A funnel lists two or more keys of the same block, first step first; any other way makes one tile per key'),
+    show: z.enum(['number', 'line', 'bars', 'funnel']).describe('number: the value and its change today. line: its line over two weeks. bars: its value at the end of each day. funnel: several numbers as steps, each with the share of the one before'),
+    section: z.string().trim().min(1).max(60).optional().describe('The heading the tile sits under, such as "Acquisition"'),
+    label: z.string().trim().min(1).max(80).optional().describe('Words to show instead of the block\'s own label for the number'),
+  }).strict()).min(1).max(20),
+}).strict();
 const addMetricsSchema = z.object({
   summary: z.string().trim().min(1).max(240), rationale: z.string().trim().min(1).max(1800),
   blocks: z.array(z.object({
@@ -179,7 +193,7 @@ const NOTION_ACCOUNTS = ' Each Notion account is its own app, one workspace each
  * gemini, goose and opencode are agents on this computer that ros.ai starts as Ros over ACP. */
 export type AgentName = 'codex' | 'claude' | 'outside' | 'model' | AcpAgentId;
 /** Tool input contracts, shared by every agent transport. */
-export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema, ros_place_pins: placePinsSchema, ros_add_metrics: addMetricsSchema, ros_search_posts: searchPostsSchema, ros_add_posts: addPostsSchema };
+export const agentToolSchemas = { ros_read_canvas: canvasReadSchema, ros_read_selected: readSchema, ros_propose_canvas: canvasSchema, ros_propose_reuse: reuseSchema, ros_propose_analysis: experimentSchema, ros_propose_report: reportSchema, ros_fan_out_search: fanOutSchema, ros_write_result: resultSchema, ros_read_pages: readPagesSchema, ros_write_findings: findingsSchema, ros_propose_groups: groupsSchema, ros_check_claims: checkSchema, ros_write_verdicts: verdictsSchema, ros_notion_search: notionSearchSchema, ros_notion_read: notionReadSchema, ros_notion_query: notionQuerySchema, ros_notion_write: notionWriteSchema, ros_app_tools: appToolsSchema, ros_app_call: appCallSchema, ros_use_skill: skillUseSchema, ros_browser: browserSchema, ros_place_pins: placePinsSchema, ros_add_metrics: addMetricsSchema, ros_pin_to_dashboard: pinToDashboardSchema, ros_search_posts: searchPostsSchema, ros_add_posts: addPostsSchema };
 /** The tools that change while Apps are on for agents: the canvas tool takes App blocks, and two tools join it. */
 export const appToolSchemas = { ros_propose_canvas: appCanvasSchema, ros_app_guide: appGuideSchema, ros_check_app: checkAppSchema };
 /** What the canvas tool says about App blocks; the check is named only where a browser can run it. */
@@ -277,6 +291,7 @@ export class AgentWorkspaceTools {
     { type: 'function', name: 'ros_propose_report', description: 'Propose a report: the title and the full Markdown text, as an immutable revision of a block. nodeId is the selected report or text block (or a block this turn added); leave it out when nothing is selected and ros.ai adds a report block for it. evidenceIds are exact selected artifact versions and may be empty when the evidence is in blocks you name in the text. The user reviews the full text and explicitly accepts before it is saved; do not claim the pending report is committed. Name the blocks the report draws on by their titles in words; the only links are [label](artifact:<id>) for an artifact in evidenceIds and [label](https://…) for a web page; never write block ids in the text.', inputSchema: z.toJSONSchema(reportSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_place_pins', description: `Put places on a map on the canvas: a Map block shows pins on OpenStreetMap, a Google Maps block on Google's own map, and each pin opens in Google Maps with one click. When the person asks for Google Maps, set on: "google". Use it whenever places matter to the work (a trip, venues, field sites, offices, a route), rather than listing addresses in a note or drawing a map in code. Give nodeId to add to a Map block already there (ros_read_canvas lists its pins), or a title for a new one. Give each pin a name and either lat and lng you are sure of, or place: an address or a name with its town, which ros.ai looks up on OpenStreetMap (at most ${MAX_LOOKUPS} lookups a call, about one a second). Put every pin of a map in one call, in the order the person should see them; each call is a round trip the person waits for. Pins that cannot be found are reported in notFound and left off; try a fuller address for them. The change follows the project approval mode. At most ${MAX_MAP_PINS} pins on one map.`, inputSchema: z.toJSONSchema(placePinsSchema, { io: 'input' }) },
     { type: 'function', name: 'ros_add_metrics', description: 'Put launch numbers on the canvas as Metrics blocks, one per source, read live and again every 15 minutes, each number with how it moved today and this week. Sources: cloud (ros.ai\'s own accounts, sign-ups, hosted ROS use, downloads and feedback, read with the person\'s ros.ai cloud sign-in), github (a repository\'s stars, release downloads, visitors and cloners), umami (a website\'s visitors, page views, tracked clicks and downloads), railway (whether each service of a project is up). Umami and Railway read with the keys the person saved in Plugins › Launch numbers; they have no tools of their own, and Metrics blocks are made only with this tool. Name an Umami website by its domain and a Railway project by its name, or leave them out when the key reaches only one. ros.ai reads every source before proposing: one that cannot be read comes back in notAdded with what the person needs to do, and the rest still goes ahead; a source already on the canvas is not added twice. The answer gives each block\'s numbers. The change follows the project approval mode.', inputSchema: z.toJSONSchema(addMetricsSchema, { io: 'input' }) },
+    { type: 'function', name: 'ros_pin_to_dashboard', description: 'Pin numbers from Metrics blocks onto a Dashboard block: a new one (give title) or one on the canvas (give its nodeId as dashboard). Each tile names the Metrics block (block) and the number\'s key from ros_read_canvas, and shows it as a number, a line over two weeks, bars a day, or, with several keys of one block, a funnel. Tiles keep reading from their block, so the dashboard stays current; section puts tiles under headings such as Acquisition or Activation. Only Metrics blocks can be pinned today; add missing sources with ros_add_metrics first. A key the block does not give comes back in notPinned with the keys it has. The change follows the project approval mode.', inputSchema: z.toJSONSchema(pinToDashboardSchema, { io: 'input' }) },
   ];
   /** The canvas revision this turn may build on; it moves forward with the turn's own accepted changes. */
   private expectedRevision: number;
@@ -433,6 +448,7 @@ export class AgentWorkspaceTools {
     if (name === 'ros_check_app') return this.checkApp(lenient(checkAppSchema, supplied));
     if (name === 'ros_place_pins') return this.placePins(lenient(placePinsSchema, supplied));
     if (name === 'ros_add_metrics') return this.addMetrics(lenient(addMetricsSchema, supplied));
+    if (name === 'ros_pin_to_dashboard') return this.pinToDashboard(lenient(pinToDashboardSchema, supplied));
     if (name === 'ros_search_posts') return this.searchPosts(lenient(searchPostsSchema, supplied));
     if (name === 'ros_add_posts') return this.addPosts(lenient(addPostsSchema, supplied));
     let action: AssistantAction, apps: string[] = [];
@@ -655,6 +671,49 @@ export class AgentWorkspaceTools {
       instruction: `${made.status === 'accepted' ? 'The Metrics blocks are on the canvas.' : 'Wait for exact user approval. Do not describe the blocks as added yet.'} The numbers in added were read just now; ros_read_canvas reads them again later. ${together}${notAdded.length ? ' Say which sources could not be read and what the person needs to do for each (notAdded).' : ''}`,
     };
   }
+  /** ros_pin_to_dashboard: each tile's Metrics block read once to check its keys, then one change that adds the tiles to a
+   * Dashboard block on the canvas or to a new one, under the project's approval mode. A tile that names a block that is not
+   * a Metrics block, or a key the block does not give, is reported with what the block does have, and the rest still goes ahead. */
+  private async pinToDashboard(value: z.infer<typeof pinToDashboardSchema>) {
+    const views = AgentWorkspaceTools.metrics;
+    if (!views) throw new StoreError('Dashboards read Metrics blocks, which are only in the local app.', 403);
+    const nodes = this.store.getProject(this.scope.projectId).canvas.nodes;
+    const target = value.dashboard ? nodes.find(node => node.id === value.dashboard) : undefined;
+    if (value.dashboard && (!target || target.blockType !== 'dashboard')) throw new StoreError(`No Dashboard block has the nodeId ${value.dashboard}. Leave dashboard out to start a new one, or use a Dashboard block's nodeId from ros_read_canvas.`, 404);
+    const reads = new Map<string, MetricRead>(), tiles: DashboardTile[] = [], notPinned: { block: string; keys: string[]; problem: string; keysItHas?: { key: string; label: string }[] }[] = [];
+    for (const asked of value.tiles) {
+      const block = nodes.find(node => node.id === asked.block);
+      if (!block?.metric) { notPinned.push({ block: asked.block, keys: asked.keys, problem: block ? `${block.title} is not a Metrics block; only Metrics blocks can be pinned today.` : 'No block has this nodeId.' }); continue; }
+      if (asked.show === 'funnel' && asked.keys.length < 2) { notPinned.push({ block: asked.block, keys: asked.keys, problem: 'A funnel needs two or more keys of the same block.' }); continue; }
+      let read = reads.get(block.id);
+      if (!read) {
+        try { read = await views.read(block.metric, false, this.scope.projectId); reads.set(block.id, read); }
+        catch (error) { if (this.signal?.aborted) throw new StoreError('The turn was stopped.', 409); notPinned.push({ block: asked.block, keys: asked.keys, problem: error instanceof Error ? error.message.slice(0, 400) : String(error) }); continue; }
+      }
+      const unknown = asked.keys.filter(key => !read!.values.some(item => item.key === key));
+      if (unknown.length) { notPinned.push({ block: asked.block, keys: unknown, problem: `${block.title} gives no number with ${unknown.length === 1 ? 'this key' : 'these keys'}.`, keysItHas: read.values.map(item => ({ key: item.key, label: item.label })) }); continue; }
+      for (const tile of tilesFor(block.id, asked.keys, asked.show, asked.section, randomUUID)) tiles.push(asked.label && asked.show !== 'funnel' && asked.keys.length > 1 ? tile : { ...tile, ...(asked.label ? { label: asked.label } : {}) });
+    }
+    if (!tiles.length) return { committed: false, notPinned, instruction: 'Nothing could be pinned, so nothing was proposed. Fix each tile in notPinned (a Metrics block\'s nodeId and a key it has) and call again.' };
+    const before = target?.dashboard?.tiles ?? [], room = MAX_DASHBOARD_TILES - before.length;
+    if (room <= 0) throw new StoreError(`That dashboard already holds ${MAX_DASHBOARD_TILES} tiles. Start a new one by leaving dashboard out.`, 409);
+    const kept = tiles.slice(0, room), dashboardId = target?.id ?? randomUUID(), title = target?.title ?? value.title ?? 'Dashboard';
+    let operations: Mutation[];
+    if (target) operations = [{ type: 'updateNode', id: target.id, patch: { dashboard: { tiles: [...before, ...kept] } } }];
+    else {
+      const origin = this.layout([snapUp(CARD_DEFAULT_HEIGHT + LAYOUT_GAP)], CARD_DEFAULT_WIDTH, { title, description: '' });
+      operations = [{ type: 'addNode', node: { id: dashboardId, title, description: '', kind: 'topic', blockType: 'dashboard', dashboard: { tiles: kept }, x: origin.x + (this.agentNodeId ? COLUMN : 0), y: origin.tops[0] } }];
+      if (this.agentNodeId) operations.push({ type: 'addConnection', connection: { id: randomUUID(), source: this.agentNodeId, target: dashboardId, label: 'added' } });
+    }
+    const made = this.propose(`${value.summary}\nWhy: ${value.rationale}`, operations, { rationale: value.rationale });
+    const valueOf = (tile: DashboardTile) => { const read = reads.get(tile.block)!; return tile.keys.map(key => { const item = read.values.find(entry => entry.key === key)!; return { key, label: item.label, value: item.value, ...(item.text ? { state: item.text } : {}) }; }); };
+    return {
+      action: made.action, committed: made.status === 'accepted', dashboard: { nodeId: dashboardId, title, new: !target },
+      pinned: kept.map(tile => ({ block: tile.block, show: tile.show, ...(tile.section ? { section: tile.section } : {}), numbers: valueOf(tile) })),
+      ...(tiles.length > kept.length ? { leftOut: tiles.length - kept.length } : {}), ...(notPinned.length ? { notPinned } : {}),
+      instruction: `${made.status === 'accepted' ? 'The tiles are on the dashboard.' : 'Wait for exact user approval. Do not describe the tiles as pinned yet.'}${notPinned.length ? ' Say which numbers could not be pinned and why (notPinned).' : ''}${tiles.length > kept.length ? ` The dashboard holds at most ${MAX_DASHBOARD_TILES} tiles; ${tiles.length - kept.length} were left out.` : ''}`,
+    };
+  }
   /** ros_search_posts: one platform's posts for a query, read now and returned; nothing is added or saved. */
   private async searchPosts(value: z.infer<typeof searchPostsSchema>) {
     const posts = AgentWorkspaceTools.posts;
@@ -802,7 +861,7 @@ export class AgentWorkspaceTools {
       if (!node) return { id: nodeId, missing: true };
       const artifacts = artifactsOf(node.id);
       for (const a of artifacts) if (!this.capture.artifacts.some(c => c.id === a.id)) this.opened.set(a.id, { id: a.id, nodeId: a.nodeId, runId: a.runId, kind: a.kind, title: a.title, hash: a.hash, content: a.content, createdAt: a.createdAt, capture: a.capture, mediaType: a.mediaType });
-      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.google ? await this.googleBlock(node) : {}), ...(node.training ? await this.trainingBlock(node.training) : {}), ...(node.metric ? await this.metricBlock(node.metric) : {}), ...(node.post ? this.postBlock(node.post) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: { on: node.map.provider === 'google' ? 'Google Maps' : 'OpenStreetMap', pins: node.map.pins.map(({ id: _id, ...pin }) => pin), note: 'A Map block. Add, move or replace pins with ros_place_pins and this nodeId.' } } : {}), ...(node.app ? this.appBlock(node) : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
+      return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.google ? await this.googleBlock(node) : {}), ...(node.training ? await this.trainingBlock(node.training) : {}), ...(node.metric ? await this.metricBlock(node.metric) : {}), ...(node.post ? this.postBlock(node.post) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: { on: node.map.provider === 'google' ? 'Google Maps' : 'OpenStreetMap', pins: node.map.pins.map(({ id: _id, ...pin }) => pin), note: 'A Map block. Add, move or replace pins with ros_place_pins and this nodeId.' } } : {}), ...(node.dashboard ? { dashboard: { tiles: node.dashboard.tiles, note: 'A Dashboard block: numbers pinned from Metrics blocks (block is the Metrics block\'s nodeId, keys its numbers). Add tiles with ros_pin_to_dashboard and this nodeId.' } } : {}), ...(node.app ? this.appBlock(node) : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
     })) };
   }
   /** A Post block as the agent reads it: the post as it was read, its top comments and a video's subtitles. */

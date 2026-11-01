@@ -75,6 +75,7 @@ function stepLabel(step: Step, title: (id?: string) => string | undefined): stri
     const app = title(step.target) ?? 'a new App page';
     return step.outcome === 'failed' ? `Could not check ${app}` : step.outcome === 'requested' ? `Checking ${app}` : `Checked ${app}`;
   }
+  if (step.tool === 'ros_pin_to_dashboard') return step.outcome === 'waiting' ? 'Proposed dashboard tiles · waiting for your review' : step.outcome === 'declined' ? 'Dashboard tiles declined' : step.outcome === 'failed' ? 'Could not pin to the dashboard' : step.outcome === 'requested' ? 'Reading the numbers to pin' : 'Pinned numbers to a dashboard';
   if (step.tool === 'ros_search_posts') return step.outcome === 'failed' ? 'Could not search posts' : step.outcome === 'requested' ? 'Searching posts' : 'Searched posts';
   if (step.tool === 'ros_add_posts') return step.outcome === 'waiting' ? 'Proposed posts · waiting for your review' : step.outcome === 'declined' ? 'Posts declined' : step.outcome === 'failed' ? 'Could not add posts' : step.outcome === 'requested' ? 'Reading the posts' : 'Added posts';
   if (step.tool === 'ros_add_metrics') return step.outcome === 'waiting' ? 'Proposed Metrics blocks · waiting for your review' : step.outcome === 'declined' ? 'Metrics blocks declined' : step.outcome === 'failed' ? 'Could not add Metrics blocks' : step.outcome === 'requested' ? 'Reading the launch numbers' : 'Added Metrics blocks';

@@ -1,3 +1,4 @@
+import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS } from '../shared/dashboards.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -81,7 +82,11 @@ const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string()
  * has it; agents place pins with ros_place_pins. */
 export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: z.string().trim().url().max(2000).optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
-const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
+/** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
+ * tool agents see reads as the training snapshot has it; agents pin numbers with ros_pin_to_dashboard. */
+export const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
+export const dashboardViewSchema = z.object({ tiles: z.array(dashboardTileSchema).max(MAX_DASHBOARD_TILES) }).strict();
+const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post','dashboard']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), dashboard: dashboardViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
 /** What agents may propose: decisions are recorded only by the researcher. */
 export const proposalMutationSchema = mutations(liveNodeFields);

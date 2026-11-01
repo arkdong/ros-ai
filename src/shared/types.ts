@@ -1,6 +1,6 @@
 import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
-export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'map'|'metric'|'post';
+export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'map'|'metric'|'dashboard'|'post';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
 export type FileView = { path:string };
 /** One place on a Map block: where it is and what it is. `place` is the address or name it was looked up by, when it was. */
@@ -58,6 +58,12 @@ export type MetricInput = { source:MetricSource; repo?:string; website?:string; 
  * service's last deploy) has text instead, and tone 'bad' when it failed. */
 export type MetricValue = { key:string; label:string; value:number|null; note?:string; text?:string; tone?:'good'|'bad' };
 export type MetricPoint = { at:string; values:Record<string,number> };
+/** How a dashboard tile shows what it pins: one number, its line over two weeks, a bar a day, or several numbers of one block as a funnel. */
+export type DashboardShow = 'number'|'line'|'bars'|'funnel';
+/** A number pinned onto a Dashboard block: which block it reads and which of its numbers, by key (a funnel names several, in order).
+ * The tile keeps reading from that block; `label` replaces the block's own words for the number, `section` is the heading it sits under. */
+export type DashboardTile = { id:string; block:string; keys:string[]; show:DashboardShow; label?:string; section?:string };
+export type DashboardView = { tiles:DashboardTile[] };
 export type MetricRead = { source:MetricSource; title:string; link:string; values:MetricValue[]; history:MetricPoint[]; fetchedAt:string; notice?:string };
 /** Where a Post block's post comes from. Slice 1 reads platforms that need no login; the rest come with ros.ai's signed-in browser. */
 export type PostPlatform = 'youtube'|'reddit'|'hackernews'|'github';
@@ -119,7 +125,7 @@ export type Decision = { id:string; text:string; reason:string; at:string; based
 // Missing fields on foundation records mean unspecified kind and project scope.
 /** label: what a text block means to the project (question, plan, task, result, finding, decision, draft, report, or the researcher's own word).
  * 'result' marks the note an agent's search direction fills; its searches run on that note. */
-export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; metric?:MetricView; post?:PostView; file?:FileView; map?:MapView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
+export type CanvasNode = { id:string; title:string; description:string; x:number; y:number; width?:number; /** Set when the researcher resized the card's height; null in a change gives the card back to its content. */ height?:number|null; kind?:NodeKind; parentId?:string|null; blockType?:BlockType; label?:string; artifactId?:string; code?:CodeDocument; notebook?:NotebookDocument; groupHighlights?:GroupHighlight[]; agent?:AgentLink; app?:AppDocument; check?:SourceCheck; web?:WebSearch; notion?:NotionView; google?:GoogleView; training?:TrainingView; metric?:MetricView; dashboard?:DashboardView; post?:PostView; file?:FileView; map?:MapView; paper?:PaperRef; legacyKind?:Exclude<NodeKind,'group'>; decisions?:Decision[] };
 export type Connection = { id:string; source:string; target:string; label:string; sourceHandle?:'top'|'right'|'bottom'|'left'; targetHandle?:'top'|'right'|'bottom'|'left' };
 export type Canvas = { nodes:CanvasNode[]; connections:Connection[] };
 export type Project = { id:string; title:string; revision:number; canvas:Canvas; createdAt:string; updatedAt:string };
