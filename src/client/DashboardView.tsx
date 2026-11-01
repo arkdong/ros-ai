@@ -49,7 +49,8 @@ function Bars({ days }: { days: { day: string; value: number }[] }) {
 }
 
 /** One tile: what it pins, read from its block, and where it came from. */
-function Tile({ tile, read, source, full, onRemove }: { tile: DashboardTile; read: MetricRead | { error: string } | undefined; source: DashboardSource | undefined; full: boolean; onRemove?: () => void }) {
+/** full: a tile in the opened block. compact: a smaller tile on the card on the map, chart and all, without the source line. */
+function Tile({ tile, read, source, full, compact = false, onRemove }: { tile: DashboardTile; read: MetricRead | { error: string } | undefined; source: DashboardSource | undefined; full: boolean; compact?: boolean; onRemove?: () => void }) {
   const from = source ? source.title : 'A block no longer on the map';
   const values = read && !('error' in read) ? tile.keys.map(key => read.values.find(item => item.key === key)) : [];
   const first = values[0];
@@ -77,16 +78,16 @@ function Tile({ tile, read, source, full, onRemove }: { tile: DashboardTile; rea
       <div className="dash-number"><strong>{number(first.value)}</strong>
         <span className="dash-change">{change.today !== undefined && <span>{signed(change.today)} today</span>}{full && change.week !== undefined && <span>{signed(change.week)} this week</span>}</span>
       </div>
-      {full && tile.show === 'line' && <Line points={recentPoints(read.history, first.key)} width={240} height={56}/>}
-      {full && tile.show === 'bars' && <Bars days={dailyValues(read.history, first.key)}/>}
+      {(full || compact) && tile.show === 'line' && (!compact || recentPoints(read.history, first.key).length > 1) && <Line points={recentPoints(read.history, first.key)} width={compact ? 160 : 240} height={compact ? 28 : 56}/>}
+      {(full || compact) && tile.show === 'bars' && (!compact || dailyValues(read.history, first.key).length > 1) && <Bars days={dailyValues(read.history, first.key)}/>}
     </>;
   };
   const label = tile.label ?? (tile.show === 'funnel' ? 'Funnel' : first?.label ?? tile.keys[0]);
-  if (!full) return <div className="dash-row"><dt>{label}</dt><dd>{first && !first.text && first.value !== null && tile.show !== 'funnel' ? <strong>{number(first.value)}</strong> : tile.show === 'funnel' && values.length ? <strong>{values.map(item => item?.value === null || item?.value === undefined ? '–' : number(item.value)).join(' → ')}</strong> : first?.text ?? '–'}</dd></div>;
+  if (!full && !compact) return <div className="dash-row"><dt>{label}</dt><dd>{first && !first.text && first.value !== null && tile.show !== 'funnel' ? <strong>{number(first.value)}</strong> : tile.show === 'funnel' && values.length ? <strong>{values.map(item => item?.value === null || item?.value === undefined ? '–' : number(item.value)).join(' → ')}</strong> : first?.text ?? '–'}</dd></div>;
   return <div className={`dash-tile ${tile.show}`}>
     <div className="dash-tile-head"><span>{label}</span>{onRemove && <button type="button" className="icon-button" aria-label={`Remove ${label} from the dashboard`} title="Remove tile" onClick={onRemove}><X size={13}/></button>}</div>
     {body()}
-    <span className="dash-from" title={from}>from {from}</span>
+    {!compact && <span className="dash-from" title={from}>from {from}</span>}
   </div>;
 }
 
@@ -113,6 +114,9 @@ function AddTile({ projectId, sources, onAdd, onClose, sections }: { projectId: 
 
 /** A Dashboard block: numbers pinned from other blocks, each still read from its block, under the headings the person gives.
  * The card lists the first few; the block view shows every tile, lets the person add and remove them. */
+/** The card on the map shows the first tiles as the opened block does, smaller; the rest are in the block view. */
+const ON_CARD = 6;
+
 export function DashboardBlock({ projectId, view, sources, full = false, onTiles }: { projectId: string; view: DashboardView; sources: DashboardSource[]; full?: boolean; onTiles?: (tiles: DashboardTile[]) => void }) {
   const reads = useReads(projectId, view.tiles.map(tile => tile.block).filter(id => sources.some(source => source.id === id)));
   const [adding, setAdding] = useState(false);
@@ -120,9 +124,12 @@ export function DashboardBlock({ projectId, view, sources, full = false, onTiles
   const sections = dashboardSections(view.tiles), names = sections.map(item => item.section).filter(Boolean);
   const latest = Object.values(reads).flatMap(read => 'error' in read ? [] : [read.fetchedAt]).sort().at(-1);
   if (!full) return <div className="live-block dash-block">
-    {view.tiles.length ? <dl className="dash-rows">{view.tiles.slice(0, 5).map(tile => <Tile key={tile.id} tile={tile} read={reads[tile.block]} source={byId.get(tile.block)} full={false}/>)}</dl>
+    {view.tiles.length ? dashboardSections(view.tiles.slice(0, ON_CARD)).map(group => <section key={group.section || '-'} className="dash-section">
+        {group.section && <h3>{group.section}</h3>}
+        <div className="dash-grid">{group.tiles.map(tile => <Tile key={tile.id} tile={tile} read={reads[tile.block]} source={byId.get(tile.block)} full={false} compact/>)}</div>
+      </section>)
       : <p className="dash-empty">No numbers yet. Open the block to add some, or use Pin on a Metrics number.</p>}
-    <footer><span>{view.tiles.length} {view.tiles.length === 1 ? 'tile' : 'tiles'}{latest ? ` · read ${clock(latest)}` : ''}</span></footer>
+    <footer><span>{view.tiles.length > ON_CARD ? `${ON_CARD} of ${view.tiles.length} tiles` : `${view.tiles.length} ${view.tiles.length === 1 ? 'tile' : 'tiles'}`}{latest ? ` · read ${clock(latest)}` : ''}</span></footer>
   </div>;
   return <div className="live-block dash-block full">
     {sections.map(group => <section key={group.section || '-'} className="dash-section">

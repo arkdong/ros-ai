@@ -22,3 +22,5 @@
 .livestat-dot.good { background: #2f7d4f; }
 .livestat-dot.bad { background: #b42318; }
 .livestat-block.full .livestat-state { font-size: 14px; color: #171717; }
+.livestat-show { display: flex; margin-bottom: 4px; }
+.livestat-show .chip-menu.right { left: 0; right: auto; }

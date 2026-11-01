@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, Cloud, LoaderCircle, RotateCw } from 'lucide-react';
-import type { DashboardShow, MetricPoint, MetricRead, MetricSource, MetricValue, MetricView } from '../shared/types';
-import { METRIC_TOOLS, metricChange } from '../shared/metrics';
+import type { CloudShow, DashboardShow, MetricPoint, MetricRead, MetricSource, MetricValue, MetricView } from '../shared/types';
+import { CLOUD_SHOW_IDS, CLOUD_SHOWS, METRIC_TOOLS, metricChange } from '../shared/metrics';
+import { ChipChoice } from './ChipChoice';
 import { api } from './api';
 import { BrandLogo } from './brand-logos';
 import { clock, stop } from './live-block';
@@ -43,7 +44,7 @@ function Spark({ history, item, width, height }: { history: MetricPoint[]; item:
  * The footer names what was read (a repository, a website) only when the block's title does not already. */
 /** Pinning a number onto a Dashboard block, offered in the block view: the dashboards on the map, and what to do with the choice. */
 export type MetricPin = { dashboards: { id: string; title: string }[]; onPin: (key: string, dashboard: string | null, show: DashboardShow) => void };
-export function MetricBlock({ projectId, nodeId, view, title, full = false, pin }: { projectId: string; nodeId: string; view: MetricView; title?: string; full?: boolean; pin?: MetricPin }) {
+export function MetricBlock({ projectId, nodeId, view, title, full = false, pin, onShow }: { projectId: string; nodeId: string; view: MetricView; title?: string; full?: boolean; pin?: MetricPin; /** A ros.ai cloud block's Show chip: narrows it to one area. */ onShow?: (show: CloudShow | undefined) => void }) {
   const [read, setRead] = useState<MetricRead | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
   const key = JSON.stringify(view);
   const load = useCallback(async (refresh = false) => {
@@ -57,6 +58,8 @@ export function MetricBlock({ projectId, nodeId, view, title, full = false, pin 
   useEffect(() => { const timer = window.setInterval(() => void load(), AGAIN_MS); return () => window.clearInterval(timer); }, [load]);
   const shown = read ? (full ? read.values : read.values.filter(item => item.value !== null || item.text).slice(0, ON_CARD)) : [];
   return <div className={`live-block livestat-block${full ? ' full' : ''}`}>
+    {full && onShow && view.source === 'cloud' && <div className="livestat-show"><ChipChoice label="Show" caption="Show" value={view.show ?? 'all'}
+      options={[{ id: 'all' as const, label: 'Everything' }, ...CLOUD_SHOW_IDS.map(id => ({ id, label: CLOUD_SHOWS[id].label }))]} onChange={id => onShow(id === 'all' ? undefined : id)}/></div>}
     {error && !read ? <p className="live-block-error">{error}</p>
       : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading {metricSourceName(view)}…</p>
       : <dl className="livestat-values">{shown.map(item => <div key={item.key} className="livestat-value">

@@ -50,8 +50,9 @@ export type TrainingView = { folder:string; host?:string; remote?:string };
 /** Launch numbers read live from a service: a GitHub repository, ros.ai cloud's accounts and downloads, an Umami
  * website or a Railway project. Only where to read is saved; each read is also kept in the project's cache, so the
  * card can show how the numbers move. */
-export type MetricView = { source:'github'; repo:string } | { source:'cloud' } | { source:'umami'; website:string } | { source:'railway'; project:string };
+export type MetricView = { source:'github'; repo:string } | { source:'cloud'; /** Narrows the block to one area of ros.ai cloud's numbers; left out, it shows them all. */ show?:CloudShow } | { source:'umami'; website:string } | { source:'railway'; project:string };
 export type MetricSource = MetricView['source'];
+export type CloudShow = 'acquisition'|'engagement'|'activation'|'retention'|'usage'|'costs';
 /** What a person types to add a Metric block, before ros.ai checks it: a repository, website or project as an ID or a link. */
 export type MetricInput = { source:MetricSource; repo?:string; website?:string; project?:string };
 /** One number a Metric block shows; null when the service would not give it (a note says why). A state (a Railway
