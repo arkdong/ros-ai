@@ -1,9 +1,12 @@
 import type { PostPlatform, PostView } from './types.js';
 
-/** Platforms a Post block reads. Slice 1 has the ones that need no login; Xiaohongshu, X and the rest come with
- * ros.ai's signed-in browser. */
-export const POST_PLATFORMS = ['youtube', 'reddit', 'hackernews', 'github'] as const satisfies readonly PostPlatform[];
-export const POST_PLATFORM_NAMES = { youtube: 'YouTube', reddit: 'Reddit', hackernews: 'Hacker News', github: 'GitHub' } as const satisfies Record<PostPlatform, string>;
+/** Platforms a Post block reads. Xiaohongshu is read in ros.ai's signed-in browser, after the person logs in there once
+ * (Plugins › Xiaohongshu); the others need no login. */
+export const POST_PLATFORMS = ['youtube', 'reddit', 'hackernews', 'github', 'xiaohongshu'] as const satisfies readonly PostPlatform[];
+export const POST_PLATFORM_NAMES = { youtube: 'YouTube', reddit: 'Reddit', hackernews: 'Hacker News', github: 'GitHub', xiaohongshu: 'Xiaohongshu' } as const satisfies Record<PostPlatform, string>;
+/** Platforms read in the signed-in browser, which need the person's login first. */
+export const SIGNED_IN_PLATFORMS = ['xiaohongshu'] as const satisfies readonly PostPlatform[];
+export type SignedInPlatform = (typeof SIGNED_IN_PLATFORMS)[number];
 
 /** Limits on what one Post block keeps. */
 export const POST_TEXT = 20_000;
@@ -28,6 +31,7 @@ export function postPlatform(link: string): PostPlatform | undefined {
   if (name === 'reddit.com' || name === 'redd.it') return 'reddit';
   if (name === 'news.ycombinator.com') return 'hackernews';
   if (name === 'github.com') return 'github';
+  if (name === 'xiaohongshu.com' || name === 'xhslink.com') return 'xiaohongshu';
   return undefined;
 }
 
@@ -54,6 +58,19 @@ export function postCounts(post: Pick<PostView, 'platform' | 'counts'>): { key: 
     reddit: [['points', 'upvotes'], ['comments', 'comments']],
     hackernews: [['points', 'points'], ['comments', 'comments']],
     github: [['stars', 'stars'], ['forks', 'forks'], ['comments', 'comments']],
+    xiaohongshu: [['likes', 'likes'], ['saves', 'saves'], ['comments', 'comments']],
   };
   return order[post.platform].flatMap(([key, label]) => post.counts[key] === undefined ? [] : [{ key, label, value: post.counts[key]! }]);
+}
+
+/** A count as Xiaohongshu writes it, as a number: "1.2万" is 12,000, "10+" is 10, "" is none. */
+export function chineseCount(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : undefined;
+  if (typeof value !== 'string') return undefined;
+  const match = /^\s*([\d.,]+)\s*(万|w|千|k|亿)?\+?\s*$/iu.exec(value);
+  if (!match) return undefined;
+  const base = Number(match[1].replace(/,/gu, ''));
+  if (!Number.isFinite(base)) return undefined;
+  const unit = match[2]?.toLowerCase();
+  return Math.round(base * (unit === '万' || unit === 'w' ? 10_000 : unit === '千' || unit === 'k' ? 1_000 : unit === '亿' ? 100_000_000 : 1));
 }

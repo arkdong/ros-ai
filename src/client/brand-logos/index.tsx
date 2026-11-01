@@ -31,10 +31,11 @@ import slack from './slack.svg';
 import tavily from './tavily.svg';
 import umami from './umami.svg';
 import youtube from './youtube.svg';
+import xiaohongshu from './xiaohongshu.svg';
 import zotero from './zotero.svg';
 
 /** Official company marks, copied unchanged from their sources (see SOURCES.md); each belongs to its owner. */
-const logos = { arxiv, brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, hackernews, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-maps': googleMaps, 'google-sheets': googleSheets, goose, hermes, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, openalex, opencode, overleaf, pi, reddit, railway, sentry, slack, tavily, umami, youtube, zotero };
+const logos = { arxiv, brave, claude, codex, exa, figma, 'gemini-cli': geminiCli, github, hackernews, 'google-docs': googleDocs, 'google-drive': googleDrive, 'google-maps': googleMaps, 'google-sheets': googleSheets, goose, hermes, linear, 'lm-studio': lmStudio, moonshot, nebius, notion, ollama, openai, openalex, opencode, overleaf, pi, reddit, railway, sentry, slack, tavily, umami, xiaohongshu, youtube, zotero };
 export type BrandId = keyof typeof logos;
 export const hasBrandLogo = (id: string): id is BrandId => id in logos;
 

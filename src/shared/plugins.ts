@@ -2,7 +2,7 @@
  * or a token or key as the fallback.
  */
 export type TokenPluginId = 'zotero' | 'slack' | 'notion' | 'github' | 'openalex' | 'umami' | 'railway';
-export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser' | 'google-maps';
+export type PluginId = TokenPluginId | 'arxiv' | 'google-drive' | 'google-sheets' | 'google-docs' | 'tavily' | 'exa' | 'brave' | 'overleaf' | 'linear' | 'sentry' | 'figma' | 'browser' | 'google-maps' | 'xiaohongshu';
 
 export type PluginDefinition = {
   id: PluginId;
@@ -12,8 +12,9 @@ export type PluginDefinition = {
    * sign-in: the app's hosted MCP server, signed in from the browser; desktop: the MCP server of the app's desktop program
    * on this computer; public: a free public service the person always reaches, which a switch offers to every agent
    * (OpenAlex also takes an optional key); browser: the agents' browser, run by the Chrome or Edge on this computer;
+   * site: a site ros.ai reads in its own signed-in browser, after the person logs in there once by hand;
    * unavailable: shown, not connectable yet. */
-  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'public' | 'browser' | 'unavailable';
+  connect: 'token' | 'google' | 'key' | 'sign-in' | 'desktop' | 'public' | 'browser' | 'site' | 'unavailable';
   tokenLabel?: string;
   tokenHint?: string;
   tokenLink?: string;
@@ -50,6 +51,7 @@ export const PLUGINS: PluginDefinition[] = [
   { id: 'browser', uses: ['Agents open websites, click through them and fill in forms', 'Screenshots land on the canvas as File blocks, and every step is listed there', 'A fresh browser each time: no cookies or logins, public websites only'], name: 'Browser', summary: 'Agents browse websites and take screenshots.', connect: 'browser' },
   { id: 'umami', uses: ['Show your website’s visitors, page views and tracked clicks in a Metrics block', 'Reads the numbers only; nothing on your site changes', 'Uses an API key from your Umami Cloud account'], name: 'Umami', summary: 'Your website’s visitors and clicks, for launch numbers.', connect: 'token', tokenLabel: 'Umami API key', tokenHint: 'Create a key under Settings › API keys in Umami Cloud. It reads the websites your account can see.', tokenLink: 'https://cloud.umami.is/settings/api-keys' },
   { id: 'railway', uses: ['Show whether each service of a Railway project is up, and when it last deployed, in a Metrics block', 'Reads only; it never deploys or changes anything', 'Uses an account token from your Railway settings'], name: 'Railway', summary: 'Whether your Railway services are up, for launch numbers.', connect: 'token', tokenLabel: 'Railway account token', tokenHint: 'Create a token under Account Settings › Tokens in Railway, with No workspace chosen so it can read your projects.', tokenLink: 'https://railway.com/account/tokens' },
+  { id: 'xiaohongshu', uses: ['Agents search 小红书 for real people\'s notes on restaurants, shops, trips and products', 'Each note lands on the canvas as a Post block with its photos, text and first comments', 'You log in once, by hand, in a ros.ai window; ros.ai never copies your browser\'s cookies'], name: 'Xiaohongshu', summary: 'Real people\'s notes and photos from 小红书, as Post blocks.', connect: 'site' },
   { id: 'overleaf', uses: ['Write papers in LaTeX with your coauthors'], name: 'Overleaf', summary: 'Write papers in LaTeX with your coauthors.', connect: 'unavailable', unavailableReason: 'Overleaf has no public API. Its Git integration needs a paid Overleaf plan, so this waits for a later round.' },
 ];
 
