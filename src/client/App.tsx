@@ -174,8 +174,8 @@ export function App(){
   // so quick consecutive edits do not trip the server's stale-canvas check.
   const mutationQueue=useRef<Promise<unknown>>(Promise.resolve()),knownRevision=useRef<{projectId:string;revision:number}|null>(null);
   const noteRevision=(id:string,revision:number)=>{const known=knownRevision.current;if(known?.projectId!==id||revision>known.revision)knownRevision.current={projectId:id,revision};};
-  const mutate=(operations:Mutation[],label:string)=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=projectId,seen=detail.project.revision;
-    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const project=await post<Project>(`/api/projects/${id}/mutations`,{operations,label,expectedRevision:knownRevision.current!.revision});noteRevision(id,project.revision);}));
+  const mutate=(operations:Mutation[],label:string,options?:{undoableLayout?:boolean})=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=projectId,seen=detail.project.revision;
+    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const project=await post<Project>(`/api/projects/${id}/mutations`,{operations,label,expectedRevision:knownRevision.current!.revision,...options});noteRevision(id,project.revision);}));
     mutationQueue.current=run.catch(()=>undefined);return run;};
   /** A block clicked or opened joins the trail the glance reads; the last dozen are kept. */
   const lookedAt=(nodeId:string)=>{trail.current=[...trail.current.filter(item=>item.nodeId!==nodeId),{nodeId,at:new Date().toISOString()}].slice(-12);};

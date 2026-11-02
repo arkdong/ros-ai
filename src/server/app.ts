@@ -164,8 +164,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.json(running?.size ? { ...detail, notebooks: detail.notebooks?.map(summary => running.has(summary.nodeId) ? { ...summary, running: true } : summary) } : detail);
   });
   app.post('/api/projects/:id/mutations', (req, res) => {
-    const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
-    res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));
+    const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional(), undoableLayout: z.boolean().optional() }).strict().parse(req.body);
+    res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision, { undoableLayout: body.undoableLayout }));
   });
   app.post('/api/projects/:id/undo', (req, res) => res.json(store.undo(routeId(req.params.id))));
   app.post('/api/projects/:id/redo', (req, res) => res.json(store.redo(routeId(req.params.id))));
