@@ -1,0 +1,71 @@
+# Deploys the cloud gateway and the public demo to the Nebius VM.
+# Runs when main changes the app or deploy/nebius/, and when the private gateway repository (arkdong/ros-ai-cloud)
+# sends the "deploy-cloud" event after a push to its main.
+# Needs repository secrets NEBIUS_SSH_HOST, NEBIUS_SSH_USER, NEBIUS_SSH_KEY and ROS_AI_CLOUD_TOKEN (see docs/nebius-deployment.md).
+name: Deploy to Nebius
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/**
+      - public/**
+      - examples/dutch-ai-adoption/**
+      - examples/tutorial-results/banking.json
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - index.html
+      - vite.config.ts
+      - deploy/nebius/**
+  repository_dispatch:
+    types: [deploy-cloud]
+  workflow_dispatch:
+
+concurrency: deploy-nebius
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Until the VM exists and its secrets are set, the job does nothing instead of failing.
+    env:
+      HOST: ${{ secrets.NEBIUS_SSH_HOST }}
+    steps:
+      - name: Skip until the VM is set up
+        if: env.HOST == ''
+        run: echo "NEBIUS_SSH_HOST is not set, so nothing is deployed."
+
+      - name: Check out the app
+        if: env.HOST != ''
+        uses: actions/checkout@v4
+
+      - name: Check out the gateway (arkdong/ros-ai-cloud)
+        if: env.HOST != ''
+        uses: actions/checkout@v4
+        with:
+          repository: arkdong/ros-ai-cloud
+          token: ${{ secrets.ROS_AI_CLOUD_TOKEN }}
+          path: ros-ai-cloud
+
+      - name: Load the SSH key
+        if: env.HOST != ''
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.NEBIUS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.NEBIUS_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy both repositories to the VM
+        if: env.HOST != ''
+        run: |
+          rsync -az --delete --exclude .git --exclude node_modules --exclude ros-ai-cloud \
+            ./ "${{ secrets.NEBIUS_SSH_USER }}@${{ secrets.NEBIUS_SSH_HOST }}:/opt/ros-ai/"
+          rsync -az --delete --exclude .git --exclude node_modules \
+            ros-ai-cloud/ "${{ secrets.NEBIUS_SSH_USER }}@${{ secrets.NEBIUS_SSH_HOST }}:/opt/ros-ai-cloud/"
+
+      - name: Build and restart
+        if: env.HOST != ''
+        run: |
+          ssh "${{ secrets.NEBIUS_SSH_USER }}@${{ secrets.NEBIUS_SSH_HOST }}" \
+            'cd /opt/ros-ai/deploy/nebius && docker compose up -d --build --remove-orphans && docker image prune -f'
