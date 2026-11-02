@@ -52,7 +52,15 @@
 .direct-canvas .rich-text.markdown-preview strong{color:#26302a}
 .direct-canvas .rich-text.markdown-preview blockquote{margin:0 0 8px;padding:0 0 0 10px;border-left:2px solid #d3dbd6;color:#36413b}
 /* The card cuts a long preview at its own height, so the last lines fade out instead of ending mid-line. */
-.direct-canvas .block-primary-preview:has(>.markdown-preview){mask-image:linear-gradient(to bottom,#000 calc(100% - 30px),transparent)}
+.direct-canvas .block-primary-preview:has(>.markdown-preview:not(.scrolling)){mask-image:linear-gradient(to bottom,#000 calc(100% - 30px),transparent)}
+/* A Text card's face scrolls inside the card, and its empty lines show as space, one line each, as in the source. */
+.direct-canvas .block-primary-preview:has(>.markdown-preview.scrolling){display:flex;flex-direction:column}
+.direct-canvas .rich-text.markdown-preview.scrolling{flex:0 1 auto;min-height:0;max-height:195px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d5d9d6 transparent}
+.direct-canvas .rich-text.markdown-preview.scrolling.more-below{mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
+.direct-canvas .rich-text.markdown-preview.scrolling.more-above{mask-image:linear-gradient(to bottom,transparent,#000 18px)}
+.direct-canvas .rich-text.markdown-preview.scrolling.more-above.more-below{mask-image:linear-gradient(to bottom,transparent,#000 18px,#000 calc(100% - 24px),transparent)}
+.direct-canvas .markdown-preview.scrolling .markdown-preview-body>*{margin-top:0;margin-bottom:0}
+.direct-canvas .markdown-preview.scrolling .markdown-preview-body>h4{margin-bottom:2px}
 /* A Finding card grows to show its whole quote and why it matters, so nothing fades out. */
 .direct-canvas.unified-canvas .research-card.finding-card:not(.expanded-group)>.group-heading{flex-shrink:0}
 .direct-canvas .research-card.finding-card .block-primary-preview{mask-image:none}
