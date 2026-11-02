@@ -10,7 +10,7 @@
 
 ## Windows
 
-The same workflow builds `ros.ai-<version>-x64.exe` on a Windows runner (`npm run app:build` on a Windows PC does the same): a one-click NSIS installer that installs for the current person into `%LOCALAPPDATA%\Programs\ros.ai` without administrator rights, adds Start menu and desktop shortcuts and opens ros.ai. Data and logs are in `%APPDATA%\ros.ai`. Before the release, the workflow installs it silently, opens the installed app and saves a picture of its first window (the `windows-smoke` artifact); the run fails if the window never loads.
+The same workflow builds `ros.ai-<version>-x64.exe` on a Windows runner (`npm run app:build` on a Windows PC does the same): a one-click NSIS installer that installs for the current person under `%LOCALAPPDATA%\Programs` without administrator rights, adds Start menu and desktop shortcuts and opens ros.ai. Data and logs are in `%APPDATA%\ros.ai`. Before the release, the workflow installs it silently, opens the installed app and saves a picture of its first window (the `windows-smoke` artifact); the run fails if the window never loads.
 
 The installer is not code signed yet, so SmartScreen shows "Windows protected your PC" once (More info › Run anyway). To sign it, add `WIN_CSC_LINK` (a code-signing `.pfx` as base64) and `WIN_CSC_KEY_PASSWORD` as repository secrets. Windows apps do not update themselves yet: Settings › General says a new version is out and points to the installer on ros-ai.io, which installs over the old one and keeps every project.
 

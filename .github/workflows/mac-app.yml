@@ -83,11 +83,16 @@ jobs:
         timeout-minutes: 10
         run: |
           installer=$(ls desktop/dist/ros.ai-[0-9]*-${{ matrix.arch }}.exe)
-          powershell -NoProfile -Command "Start-Process -Wait -FilePath '$(cygpath -w "$installer")' -ArgumentList '/S'"
-          dir="$LOCALAPPDATA/Programs/ros.ai" app="$LOCALAPPDATA/Programs/ros.ai/ros-ai.exe"
-          # The uninstaller is the installer's last file.
-          for i in $(seq 1 90); do ls "$dir"/Uninstall*.exe >/dev/null 2>&1 && break; sleep 2; done
-          ls "$dir"
+          powershell -NoProfile -Command "\$p = Start-Process -Wait -PassThru -FilePath '$(cygpath -w "$installer")' -ArgumentList '/S'; Write-Output ('installer exit code ' + \$p.ExitCode)"
+          # electron-builder names the folder after the package (ros-ai); find the installed app wherever it went.
+          app=""
+          for i in $(seq 1 90); do
+            app=$(find "$LOCALAPPDATA/Programs" -maxdepth 2 -iname ros-ai.exe 2>/dev/null | head -n 1)
+            [ -n "$app" ] && ls "$(dirname "$app")"/Uninstall*.exe >/dev/null 2>&1 && break
+            sleep 2
+          done
+          [ -n "$app" ] || { echo "::error::The installer put no ros-ai.exe under $LOCALAPPDATA/Programs."; ls "$LOCALAPPDATA/Programs" || true; find "$LOCALAPPDATA" "$PROGRAMFILES" -maxdepth 3 -iname 'ros-ai.exe' 2>/dev/null || true; exit 1; }
+          echo "Installed at $app"; ls "$(dirname "$app")"
           mkdir -p smoke
           ROS_DESKTOP_SMOKE="$(cygpath -w "$PWD/smoke/windows-first-window.png")" ROS_DATA_DIR="$(cygpath -w "$RUNNER_TEMP/ros-ai-data")" ROS_UPDATE_URL=off \
             timeout 300 "$app" || true
