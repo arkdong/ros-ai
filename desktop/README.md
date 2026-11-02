@@ -1,4 +1,4 @@
-# ros.ai Mac app
+# ros.ai Mac and Windows app
 
 `ros.ai.app` is the local ros.ai in its own window: an Electron shell that starts the same server as `npm start` (on Electron's own Node, so nothing else needs installing) and opens it at `http://127.0.0.1:4310`. Projects, keys, the Python sandbox and agent links are the ones the CLI uses.
 
@@ -7,6 +7,12 @@
 - `.github/workflows/mac-app.yml` builds both architectures on GitHub; it signs and notarizes when the `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` secrets exist, and otherwise produces an unsigned app, signed ad hoc after packing (`after-pack.cjs`) so that a browser download opens after *System Settings → Privacy & Security → Open Anyway*; without that step macOS calls the bundle "damaged", because the renamed bundle no longer matches Electron's own signature. A curl download carries no quarantine mark and opens at once.
 
 `src/main.ts` is the whole window side: pick a free port, start `dist/server/index.mjs` as a child Node process, wait for `/api/health`, open the window, send outside links to the default browser, stop the server on quit, and swap in an update. Logs are in `~/Library/Application Support/ros.ai/desktop/logs/`. The server itself is unchanged; `build.mjs` bundles it with esbuild into `dist/server/` and copies the Python helpers beside it.
+
+## Windows
+
+The same workflow builds `ros.ai-<version>-x64.exe` on a Windows runner (`npm run app:build` on a Windows PC does the same): a one-click NSIS installer that installs for the current person into `%LOCALAPPDATA%\Programs\ros.ai` without administrator rights, adds Start menu and desktop shortcuts and opens ros.ai. Data and logs are in `%APPDATA%\ros.ai`. Before the release, the workflow installs it silently, opens the installed app and saves a picture of its first window (the `windows-smoke` artifact); the run fails if the window never loads.
+
+The installer is not code signed yet, so SmartScreen shows "Windows protected your PC" once (More info › Run anyway). To sign it, add `WIN_CSC_LINK` (a code-signing `.pfx` as base64) and `WIN_CSC_KEY_PASSWORD` as repository secrets. Windows apps do not update themselves yet: Settings › General says a new version is out and points to the installer on ros-ai.io, which installs over the old one and keeps every project.
 
 ## Signing and notarization
 
