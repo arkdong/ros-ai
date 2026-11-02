@@ -12,6 +12,8 @@ Your notes, code, data, files, papers and Notion pages sit on the canvas as bloc
 
 **Mac app:** download it for [Apple silicon](https://ros-ai.io/download/ros.ai-mac-arm64.dmg) or [Intel](https://ros-ai.io/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The build is not signed yet, so the first open says macOS could not verify it. Click Done, then open System Settings › Privacy & Security and choose Open Anyway. After that it opens as usual.
 
+**Windows app:** download the [installer](https://ros-ai.io/download/ros.ai-windows-x64.exe) and run it. It installs for you only, needs no administrator, and opens ros.ai when done. The installer is not signed yet, so Windows SmartScreen may say it protected your PC: click More info, then Run anyway.
+
 **Terminal**, on a Mac, Linux or Windows under WSL:
 
 ```sh

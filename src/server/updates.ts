@@ -259,7 +259,9 @@ export class Updates {
       return !result ? { ...base, latest, state: 'available' } : result.ok ? { ...base, latest, state: 'available', action: 'update' } : steps(result.note, COMMANDS);
     }
     // npm run app on a checkout, Windows, or a copy without git.
-    if (!existsSync(join(this.root, '.git'))) return steps('Download the new version from GitHub.');
+    if (!existsSync(join(this.root, '.git'))) return steps(process.platform === 'win32' && process.env.ROS_DESKTOP
+      ? 'Download the new installer from ros-ai.io and run it. Your projects stay as they are.'
+      : 'Download the new version from GitHub.');
     return process.env.ROS_DESKTOP ? steps('Quit ros.ai, update this checkout, then open it again with npm run app.', 'git pull && npm ci') : steps('Update this checkout, then start ros.ai again.', COMMANDS);
   }
 
