@@ -46,7 +46,7 @@ import type { KindId } from './block-kinds';
 import { AppFrame } from './AppFrame';
 import { appFlags, appVersion, type AppFlag } from '../shared/apps';
 import { FilePreview, type ShownFile } from './FileView';
-import { fileMediaType, fileUrl, isPictureNode, type ImageSize } from '../shared/files';
+import { fileMediaType, fileUrl, isPictureNode, isVideoType, type ImageSize } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
 import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
 import { CodeView, modKey } from './code';
@@ -63,7 +63,7 @@ function notebookCard(detail: ProjectDetail, nodeId: string): Pick<CardData, 'no
  * that, from the picture once it loaded; the address carries the file's version so a replaced file is read again. */
 export function shownFile(projectId: string, node: CanvasNode, entry?: FolderFile, loaded?: ImageSize): ShownFile {
   const image = entry?.image ?? loaded;
-  return { src: `${fileUrl(projectId, node.id)}${entry?.version ? `?v=${entry.version}` : ''}`, mediaType: fileMediaType(node.file?.path ?? '') ?? 'application/octet-stream', ...(entry?.bytes ? { bytes: entry.bytes } : {}), ...(image ? { image } : {}) };
+  return { src: `${fileUrl(projectId, node.id)}${entry?.version ? `?v=${entry.version}` : ''}`, mediaType: fileMediaType(node.file?.path ?? '') ?? 'application/octet-stream', ...(entry?.bytes ? { bytes: entry.bytes } : {}), ...(image ? { image } : {}), ...(entry?.seconds !== undefined ? { seconds: entry.seconds } : {}) };
 }
 /** One icon per kind of block; a Text block's label says what it means. A Google block shows its app's mark. */
 export function KindIcon({ kind, blockType, google, map, metric, post, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; map?: MapView['provider']; metric?: MetricSource; post?: PostPlatform; size?: number }) {
@@ -196,7 +196,7 @@ function resizedCard(edge: ResizeEdge, start: { width: number; height: number },
 const ShownMarkdown = memo(MarkdownPreview);
 const ShownCode = memo(CodeView);
 const ShownArtifact = memo(BlockPreview, (a, b) => a.artifact.id === b.artifact.id && a.artifact.hash === b.artifact.hash && a.compact === b.compact);
-const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes && a.file.image?.width === b.file.image?.width && a.file.image?.height === b.file.image?.height && a.missing === b.missing);
+const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes && a.file.image?.width === b.file.image?.width && a.file.image?.height === b.file.image?.height && a.file.seconds === b.file.seconds && a.missing === b.missing);
 const ShownNotion = memo(NotionBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onRows) === Boolean(b.onRows) && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownDashboard = memo(DashboardBlock, (a, b) => a.projectId === b.projectId && a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view) && JSON.stringify(a.sources) === JSON.stringify(b.sources));
 const ShownMetric = memo(MetricBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && a.title === b.title && JSON.stringify(a.view) === JSON.stringify(b.view));
@@ -288,7 +288,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const [appErrors,setAppErrors]=useState<string[]>([]);
   // The corner that takes keyboard focus and arrow keys.
   const handle:ResizeEdge='se';
-  const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?'Open the picture':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
+  const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?(isVideoType(data.file?.mediaType)?'Open the video':'Open the picture'):'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
   // A picture card is the picture: no kind, title or footer of its own. Its controls and title show over it on hover.
   if(picture)return <article className={`research-card research-block picture-card ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}

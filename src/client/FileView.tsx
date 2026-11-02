@@ -1,15 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { Download, ImageOff, LoaderCircle, Minus, Plus } from 'lucide-react';
+import { Download, ImageOff, LoaderCircle, Minus, Pause, Play, Plus, VideoOff } from 'lucide-react';
 import type { Artifact } from '../shared/types';
-import { fileSize, isPdfType, type ImageSize } from '../shared/files';
+import { fileSize, isPdfType, isVideoType, videoLength, type ImageSize } from '../shared/files';
 import './file-view.css';
 
 type PdfModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 type RenderTask = import('pdfjs-dist/legacy/build/pdf.mjs').RenderTask;
 type TextLayer = import('pdfjs-dist/legacy/build/pdf.mjs').TextLayer;
-/** The file a block shows: its address (which changes with the file's version), type and size, and a picture's pixel size. */
-export type ShownFile = { src: string; mediaType: string; bytes?: number; image?: ImageSize };
+/** The file a block shows: its address (which changes with the file's version), type and size, a picture's or video's
+ * pixel size and a video's length. */
+export type ShownFile = { src: string; mediaType: string; bytes?: number; image?: ImageSize; seconds?: number };
 const OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
 /** The steps a picture zooms through, as a share of its own pixel size; Fit sits between the two that bracket it. */
 const PICTURE_ZOOMS = [25, 50, 75, 100, 150, 200, 300, 400];
@@ -114,8 +115,44 @@ function PdfPage({ doc, number, width, fluid = false, text = false, onRendered }
 /** What a File block shows on its card: a PDF's pages in one scroll with one quiet line about the file, or the picture
  * itself, whole, filling the card. The card's width sets the pages'; resizing redraws them. */
 export function FilePreview({ file, title, missing = false, onSize }: { file: ShownFile; title: string; missing?: boolean; onSize?: (size: ImageSize) => void }) {
+  if (isVideoType(file.mediaType)) return <VideoPreview file={file} title={title} missing={missing} onSize={onSize}/>;
   if (!isPdfType(file.mediaType)) return <PicturePreview file={file} title={title} missing={missing} onSize={onSize}/>;
   return <PdfPreview file={file}/>;
+}
+/** The address a video is shown from: its first frame stands as its poster until it plays. */
+const posterFrame = (src: string) => `${src}#t=0.001`;
+/** The one video playing on the map, so starting another pauses it and opening it carries on where the card was. */
+let playingCard: { src: string; video: HTMLVideoElement } | null = null;
+/** A video on its card: its first frame, whole, in the video's shape, with its length; the button in the middle plays
+ * it in place (the card still drags from anywhere else) and a thin line shows how far it has played. Only the header
+ * is read until it plays; the browser then asks the server for the parts it needs. */
+function VideoPreview({ file, title, missing, onSize }: { file: ShownFile; title: string; missing: boolean; onSize?: (size: ImageSize) => void }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState<string | null>(null), [playing, setPlaying] = useState(false), [played, setPlayed] = useState(0);
+  const [length, setLength] = useState<number | undefined>(file.seconds);
+  useEffect(() => () => { if (playingCard?.video === video.current) playingCard = null; }, []);
+  if (missing || failed === file.src) return <div className="picture-missing"><VideoOff size={18} strokeWidth={1.5}/><span>{title || 'Untitled'}</span><small>{missing ? 'File missing from the project folder' : 'This video does not play here. Open it to use another app.'}</small></div>;
+  const toggle = () => {
+    const element = video.current;
+    if (!element) return;
+    if (!element.paused) { element.pause(); return; }
+    if (playingCard && playingCard.video !== element) playingCard.video.pause();
+    playingCard = { src: file.src, video: element };
+    void element.play().catch(() => undefined);
+  };
+  const shown = length ?? file.seconds;
+  return <div className={`video-card${playing ? ' playing' : ''}`}>
+    <video ref={video} className="picture-preview video-preview" src={posterFrame(file.src)} preload="metadata" playsInline draggable={false} aria-label={title}
+      style={file.image ? { aspectRatio: `${file.image.width} / ${file.image.height}`, width: `min(100%, ${file.image.width}px)` } : undefined}
+      onLoadedMetadata={event => { const element = event.currentTarget; if (element.videoWidth && element.videoHeight) onSize?.({ width: element.videoWidth, height: element.videoHeight }); if (Number.isFinite(element.duration)) setLength(element.duration); }}
+      onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+      onEnded={event => { event.currentTarget.currentTime = 0; setPlayed(0); }}
+      onTimeUpdate={event => { const element = event.currentTarget; if (element.duration > 0) setPlayed(element.currentTime / element.duration); }}
+      onError={() => setFailed(file.src)}/>
+    <button type="button" className="video-play nodrag" aria-label={playing ? `Pause ${title}` : `Play ${title}`} onClick={event => { event.stopPropagation(); toggle(); }} onDoubleClick={event => event.stopPropagation()}>{playing ? <Pause size={18} fill="currentColor" strokeWidth={0}/> : <Play size={18} fill="currentColor" strokeWidth={0}/>}</button>
+    {shown !== undefined && !playing && played === 0 && <span className="video-length">{videoLength(shown)}</span>}
+    {(playing || played > 0) && <span className="video-progress" aria-hidden="true"><span style={{ width: `${played * 100}%` }}/></span>}
+  </div>;
 }
 /** A picture on its card: as wide as the card and as tall as its own shape asks, so the whole picture shows. Its
  * pixel size, known from the folder, gives the card that shape before the picture loads; `onSize` tells the canvas
@@ -177,8 +214,29 @@ function FileLine({ parts }: { parts: string[] }) { return <div className="file-
 /** The opened File block: every page of a PDF in one scroll with zoom (Text shows the text ros.ai read), or the
  * picture, whole, as large as the view allows. */
 export function FileViewer({ file, title, text }: { file: ShownFile; title: string; text?: Artifact }) {
+  if (isVideoType(file.mediaType)) return <VideoViewer file={file} title={title}/>;
   if (!isPdfType(file.mediaType)) return <PictureViewer file={file} title={title}/>;
   return <PdfViewer file={file} title={title} text={text}/>;
+}
+/** The opened video: as large as the view allows in its own shape, its first frame until it plays, with the player's
+ * own controls. A video playing on its card carries on here from the same moment. */
+function VideoViewer({ file, title }: { file: ShownFile; title: string }) {
+  const video = useRef<HTMLVideoElement>(null), [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    const element = video.current, card = playingCard;
+    if (!element || !card || card.src !== file.src || card.video.paused) return;
+    const at = card.video.currentTime;
+    card.video.pause();
+    const start = () => { element.currentTime = at; void element.play().catch(() => undefined); };
+    if (element.readyState >= 1) start(); else element.addEventListener('loadedmetadata', start, { once: true });
+    return () => element.removeEventListener('loadedmetadata', start);
+  }, [file.src]);
+  return <div className="file-viewer picture video fit">
+    <div className="picture-stage">
+      {failed === file.src ? <p className="file-preview-note video-failed"><VideoOff size={16} strokeWidth={1.5}/> This video’s format does not play in ros.ai. Open in plays it in another app.</p>
+        : <video ref={video} src={posterFrame(file.src)} controls playsInline preload="metadata" aria-label={title} onError={() => setFailed(file.src)}/>}
+    </div>
+  </div>;
 }
 /** The opened picture: fitted whole to the view and never larger than its own pixels; the zoom at the corner, or a
  * click on the picture, shows it at its own size and scrolls, and Fit brings the whole picture back. */

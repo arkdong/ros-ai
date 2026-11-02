@@ -81,7 +81,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
       const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
-      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type);
+      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime'].includes(type);
       if (type !== 'application/json' && !file) return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
