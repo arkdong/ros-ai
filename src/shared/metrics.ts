@@ -7,7 +7,7 @@ export const CLOUD_SHOWS: Record<CloudShow, { label: string; keys: readonly stri
   activation: { label: 'Activation', keys: ['users', 'funnel_workspace', 'funnel_source', 'funnel_report'] },
   retention: { label: 'Retention', keys: ['retention_week1', 'retention_week4'] },
   usage: { label: 'Product usage', keys: ['workspaces_week', 'sources_week', 'conversations_week', 'python_runs_week', 'reports_week'] },
-  costs: { label: 'Costs', keys: ['requests_week', 'cost_week'] },
+  costs: { label: 'Costs', keys: ['cost_today', 'cost_week', 'cost_month', 'requests_today', 'requests_week'] },
 };
 export const CLOUD_SHOW_IDS = Object.keys(CLOUD_SHOWS) as CloudShow[];
 
