@@ -1,3 +1,4 @@
+import { pasteBlocks } from './block-paste.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { z, ZodError } from 'zod';
 import { StoreError, type Store } from './store.js';
@@ -167,6 +168,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
     res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));
   });
+  // Blocks pasted from this project or another, with the files and saved versions they show (block-paste.ts).
+  app.post('/api/projects/:id/paste', (req, res) => res.json(pasteBlocks({ store, folders, notebooks }, routeId(req.params.id), req.body)));
   app.post('/api/projects/:id/undo', (req, res) => res.json(store.undo(routeId(req.params.id))));
   app.post('/api/projects/:id/redo', (req, res) => res.json(store.redo(routeId(req.params.id))));
   app.post('/api/projects/:id/chat', async (req, res) => {
