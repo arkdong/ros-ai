@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ArrowUpRight, FileText } from 'lucide-react';
 import type { Artifact } from '../shared/types';
 import { artifactTable } from '../shared/data-view';
@@ -171,11 +171,18 @@ const balance = (text: string, marker: string) => { const parts = text.split(mar
 /** A card-sized excerpt: whole lines while they fit, so emphasis and links stay intact; the card clips the rest.
  *  `scroll` keeps empty lines as space and lets the wheel scroll the text inside the card while there is more to see. */
 export function MarkdownPreview({ text, limit = 420, scroll = false }: { text: string; limit?: number; scroll?: boolean }) {
-  const box = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), thumb = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current; if (!scroll || !el) return;
     const mark = () => {
-      el.classList.toggle('can-scroll', el.scrollHeight > el.clientHeight + 1);
+      const can = el.scrollHeight > el.clientHeight + 1;
+      el.classList.toggle('can-scroll', can); bar.current?.classList.toggle('shown', can);
+      // Our own slim bar, so it shows on every system (macOS hides native ones until you scroll).
+      if (can && bar.current && thumb.current) {
+        const track = el.clientHeight - 8, height = Math.max(18, track * el.clientHeight / el.scrollHeight);
+        Object.assign(bar.current.style, { top: `${el.offsetTop + 4}px`, height: `${track}px` });
+        Object.assign(thumb.current.style, { height: `${height}px`, top: `${(track - height) * el.scrollTop / (el.scrollHeight - el.clientHeight)}px` });
+      }
       el.classList.toggle('more-below', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
       el.classList.toggle('more-above', el.scrollTop > 1);
     };
@@ -204,8 +211,22 @@ export function MarkdownPreview({ text, limit = 420, scroll = false }: { text: s
     break;
   }
   const blocks = <MarkdownBlocks blocks={markdownBlocks(kept.join('\n'), scroll)} render={value => inline(value, [], '')}/>;
+  /** Drag the thumb, or press the track to jump there; works at any canvas zoom. */
+  const drag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const el = box.current, track = bar.current, knob = thumb.current; if (!el || !track || !knob || event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const rect = track.getBoundingClientRect(), zoom = rect.height / track.offsetHeight || 1, room = track.offsetHeight - knob.offsetHeight;
+    const range = el.scrollHeight - el.clientHeight;
+    if (event.target === track) el.scrollTop = ((event.clientY - rect.top) / zoom - knob.offsetHeight / 2) / room * range;
+    const startY = event.clientY, start = el.scrollTop;
+    track.classList.add('dragging'); track.setPointerCapture(event.pointerId);
+    const move = (next: PointerEvent) => { el.scrollTop = start + (next.clientY - startY) / zoom / room * range; };
+    const up = () => { track.classList.remove('dragging'); track.removeEventListener('pointermove', move); track.removeEventListener('pointerup', up); track.removeEventListener('pointercancel', up); };
+    track.addEventListener('pointermove', move); track.addEventListener('pointerup', up); track.addEventListener('pointercancel', up);
+  };
   return scroll
-    ? <div ref={box} className="rich-text markdown-preview scrolling"><div className="markdown-preview-body">{blocks}</div></div>
+    ? <><div ref={box} className="rich-text markdown-preview scrolling"><div className="markdown-preview-body">{blocks}</div></div>
+      <div ref={bar} className="markdown-preview-scrollbar nodrag nopan" aria-hidden="true" onPointerDown={drag}><div ref={thumb} className="markdown-preview-thumb"/></div></>
     : <div className="rich-text markdown-preview">{blocks}</div>;
 }
 

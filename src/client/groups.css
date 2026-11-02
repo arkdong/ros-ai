@@ -54,8 +54,14 @@
 /* The card cuts a long preview at its own height, so the last lines fade out instead of ending mid-line. */
 .direct-canvas .block-primary-preview:has(>.markdown-preview:not(.scrolling)){mask-image:linear-gradient(to bottom,#000 calc(100% - 30px),transparent)}
 /* A Text card's face scrolls inside the card, and its empty lines show as space, one line each, as in the source. */
-.direct-canvas .block-primary-preview:has(>.markdown-preview.scrolling){display:flex;flex-direction:column}
-.direct-canvas .rich-text.markdown-preview.scrolling{flex:0 1 auto;min-height:0;max-height:195px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d5d9d6 transparent}
+.direct-canvas .block-primary-preview:has(>.markdown-preview.scrolling){display:flex;flex-direction:column;position:relative}
+.direct-canvas .rich-text.markdown-preview.scrolling{flex:0 1 auto;min-height:0;max-height:195px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding-right:10px}
+.direct-canvas .rich-text.markdown-preview.scrolling::-webkit-scrollbar{display:none}
+.direct-canvas .markdown-preview-scrollbar{display:none;position:absolute;right:-2px;width:10px;z-index:1;cursor:default}
+.direct-canvas .markdown-preview-scrollbar.shown{display:block}
+.direct-canvas .markdown-preview-thumb{position:absolute;left:3px;right:3px;border-radius:999px;background:#e2e2e2;transition:left .12s,right .12s,background .12s}
+.direct-canvas .research-card:hover .markdown-preview-thumb{background:#d0d0d0}
+.direct-canvas .markdown-preview-scrollbar:hover .markdown-preview-thumb,.direct-canvas .markdown-preview-scrollbar.dragging .markdown-preview-thumb{left:2px;right:2px;background:#b3b3b3}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-below{mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-above{mask-image:linear-gradient(to bottom,transparent,#000 18px)}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-above.more-below{mask-image:linear-gradient(to bottom,transparent,#000 18px,#000 calc(100% - 24px),transparent)}
