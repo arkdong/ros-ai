@@ -506,7 +506,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // The open label menu, and the Group a dragged block would join (outlined while the drag lasts).
   const [labelMenu, setLabelMenu] = useState<{ nodeId: string; left: number; top: number } | null>(null); const closeLabelMenu = useCallback(() => setLabelMenu(null), []);
   const [dropTarget, setDropTarget] = useState<{ id: string; left: number; top: number; width: number; height: number } | null>(null); const dropTargetId = useRef<string | null>(null);
-  const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group'), [dropping, setDropping] = useState(false);
+  const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('Untitled'), [dropping, setDropping] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
   // The link whose word is being edited, and a link just drawn, whose word opens as soon as the canvas shows it.
   const [editingLink, setEditingLink] = useState<{ connectionId: string } | null>(null); const pendingEdit = useRef<string | null>(null);
@@ -727,6 +727,19 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // The picked blocks: those chosen with the Group picker, a selection box or Shift/⌘-clicks, or else the selected one.
   const picked = selecting || groupSelection.length ? groupSelection : selectedId ? [selectedId] : [];
   const deletable = readonly || busy ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
+  // Blocks already selected go straight into a new group when Group is pressed.
+  const groupable = readonly || selecting ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
+  const groupBlocks = (ids: readonly string[], title: string) => {
+    try {
+      const id = crypto.randomUUID(), operations = createGroupOperations(displayed.canvas, ids, id, title, GROUP_INSET);
+      if (!operations.length) return;
+      void mutate(operations, 'Group selected blocks').then(saved => {
+        if (saved === false) return;
+        setSelecting(false); setGroupSelection([]); onExpandedChange([...expandedIds, id]); onSelect(id);
+        setMessage('Group created. Models and authority retained.');
+      });
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+  };
   const removeSelected = () => {
     const parents = new Map(displayed.canvas.nodes.map(node => [node.id, node.parentId]));
     const inPicked = (id: string) => { for (let parent = parents.get(id); parent; parent = parents.get(parent)) if (deletable.includes(parent)) return true; return false; };
@@ -1268,7 +1281,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     { id: 'move', label: 'Move', hint: 'V', icon: <MousePointer2 size={18}/>, pressed: canvasTool.tool === 'move', onClick: () => canvasTool.setTool('move') },
     { id: 'hand', label: 'Hand', hint: 'H, or hold Space', icon: <Hand size={18}/>, pressed: canvasTool.tool === 'hand', onClick: () => canvasTool.setTool('hand') },
     divider('arrange-divider'),
-    { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks' : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
+    { id: 'group', label: selecting ? 'Done' : groupable.length ? 'Group selected' : 'Group', hint: selecting ? 'Stop picking blocks' : groupable.length ? `Put the ${groupable.length === 1 ? 'selected block' : `${groupable.length} selected blocks`} in a new group` : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly || busy, onClick: () => { if (!selecting && groupable.length) { groupBlocks(groupable, 'Untitled'); return; } setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
     ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
     { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
     { id: 'tidy', label: 'Tidy', hint: 'Line blocks up', icon: arranging || animatingLayout ? <LoaderCircle size={18} className="spin"/> : <LayoutGrid size={18}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
@@ -1294,7 +1307,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     {labelMenu && (() => { const target = displayed.canvas.nodes.find(node => node.id === labelMenu.nodeId); return target ? <LabelMenu key={target.id} node={target} left={labelMenu.left} top={labelMenu.top} onClose={closeLabelMenu} onPick={value => { closeLabelMenu(); void mutate([{ type: 'updateNode', id: target.id, patch: labelPatch(target, value) }], value ? `Label as ${value.trim().slice(0, 40)}` : 'Remove label'); }}/> : null; })()}
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
     {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}
-    {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
+    {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>groupBlocks(groupSelection,groupName.trim())}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Click the block to link to</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
     <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
     <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div>
