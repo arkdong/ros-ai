@@ -32,7 +32,8 @@ export function embeddedImages(text: string): string[] {
 export type PasteResult = { project: Project; missing: string[] };
 
 /**
- * Pastes copied blocks. Within one project the copies share what the originals point at. From another project, each
+ * Pastes copied blocks. A File block always gets its own copy of its PDF or image (files/chart 2.png within one
+ * project). Within one project the other copies share what the originals point at. From another project, each
  * block takes what it shows along: a File block's PDF or image, a Post's photos and subtitles and a Text block's
  * embedded images are copied into this project's folder, a saved version (a table, figure or report) is copied into
  * this project, and a Notebook gets its cells. Something that cannot be copied is named in `missing`.
@@ -49,14 +50,15 @@ export function pasteBlocks(deps: { store: Store; folders?: ProjectFolders; note
     const node = operation.node as CanvasNode, original = body.sources[node.id];
     if (!original) continue;
     if (nodeBlockType(node) === 'notebook' && node.kind !== 'group') notebookCopies.push({ from: original, to: node.id });
-    if (same) continue;
-    const artifactId = body.artifacts[node.id];
-    if (artifactId) try { if (store.getArtifact(artifactId).projectId === from) copies.push({ nodeId: node.id, artifactId }); } catch { missing.push(node.title); }
+    // A pasted File block gets its own copy of the PDF or image, beside the original or in this project's folder.
     if (node.file?.path) {
       if (!folders || !folderHere) throw new StoreError(`Choose a folder for this project first, so ${node.title} has a place for its file.`, 409);
       try { if (!folderThere) throw new Error('no folder'); node.file = { path: folders.copyFileFrom(from, node.file.path, projectId) }; }
       catch { missing.push(node.title); }
     }
+    if (same) continue;
+    const artifactId = body.artifacts[node.id];
+    if (artifactId) try { if (store.getArtifact(artifactId).projectId === from) copies.push({ nodeId: node.id, artifactId }); } catch { missing.push(node.title); }
     if (node.post) {
       const post = node.post, paths = [...post.photos.flatMap(photo => photo.path ? [photo.path] : []), ...(post.subtitles?.path ? [post.subtitles.path] : [])];
       const moved = folders && folderHere && folderThere && paths.length ? folders.copyPostFrom(from, paths, projectId, post.title || node.title) : new Map<string, string>();

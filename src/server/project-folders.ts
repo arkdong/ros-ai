@@ -567,7 +567,7 @@ export class ProjectFolders implements NotebookFolders {
   }
   /** Whether the project has a folder ros.ai can use now. */
   hasFolder(projectId: string): boolean { try { this.require(projectId); return true; } catch { return false; } }
-  /** Copies a File block's PDF or image from another project's folder into files/ here, for a block pasted from there. */
+  /** Copies a File block's PDF or image into files/ of this project, from another project's folder or this one, for a pasted block. Returns the new path. */
   copyFileFrom(fromProjectId: string, rel: string, toProjectId: string): string {
     const bytes = this.require(fromProjectId).files.read(rel, FILE_BYTES).bytes;
     return this.saveFile(toProjectId, posix.basename(rel), bytes).path;
