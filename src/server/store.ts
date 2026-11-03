@@ -615,6 +615,38 @@ export class Store {
     return this.transaction(() => this.mutateWithinTransaction(id, operations, label, expectedRevision));
   }
 
+  /**
+   * Pasted blocks, as one step for Undo. A block pasted from another project gets its own copy of the original's saved
+   * version (`copies`), recorded as a run that says where it came from; no model or code runs.
+   */
+  pasteBlocks(id: string, operations: Mutation[], label: string, expectedRevision: number | undefined, copies: { nodeId: string; artifactId: string }[]): Project {
+    return this.transaction(() => {
+      const pasted = this.mutateWithinTransaction(id, operations, label, expectedRevision);
+      const before = this.getHistory(id).cursor, patches: Mutation[] = [];
+      for (const { nodeId, artifactId } of copies) {
+        const node = pasted.canvas.nodes.find(item => item.id === nodeId), source = this.getArtifact(artifactId), at = now();
+        if (!node) continue;
+        const run: Run = { id: randomUUID(), projectId: id, nodeId, request: `Paste ${source.title}`, useSearch: false, status: 'running', createdAt: at, startedAt: at, projectRevision: pasted.revision,
+          node: clone(node), inputs: [], messages: [], provider: 'local', model: 'paste-v1', modelVersion: null, configuration: { kind: 'paste', fromProjectId: source.projectId, fromArtifactId: source.id },
+          tools: [], events: [{ at, type: 'paste', message: 'Copied from another project. No model or code ran.' }], artifactIds: [] };
+        this.createRun(run);
+        const { id: _id, hash: _hash, createdAt: _createdAt, sourceId: _sourceId, projectId: _projectId, nodeId: _nodeId, runId: _runId, content, ...kept } = source;
+        const copy = this.addArtifact({ ...kept, content, projectId: id, nodeId, runId: run.id, metadata: { ...kept.metadata, copiedFrom: { projectId: source.projectId, artifactId: source.id } } });
+        this.updateRun(run.id, { status: 'completed', endedAt: at, artifactIds: [copy.id] });
+        patches.push({ type: 'updateNode', id: nodeId, patch: { artifactId: copy.id } });
+      }
+      if (!patches.length) return pasted;
+      const project = this.mutateWithinTransaction(id, patches, label);
+      // The blocks and their saved versions arrive together, so one Undo takes both away.
+      const history = this.getHistory(id);
+      if (history.cursor === before + 1 && before > 0) {
+        history.stack.splice(before, 1); history.cursor = before;
+        this.db.prepare('UPDATE projects SET history = ? WHERE id = ?').run(JSON.stringify(history), id);
+      }
+      return project;
+    });
+  }
+
   private travelHistory(id: string, direction: -1 | 1): Project {
     return this.transaction(() => {
       const project = this.getProject(id);
