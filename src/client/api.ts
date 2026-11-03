@@ -1,3 +1,4 @@
+import { fileMediaType } from '../shared/files';
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -16,5 +17,5 @@ export function post<T>(path: string, body?: unknown) {
 }
 /** Sends a file as the request body, for example a PDF dropped on the canvas. */
 export async function upload<T>(path: string, file: File): Promise<T> {
-  return api<T>(path, { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' }, signal: AbortSignal.timeout(120_000) });
+  return api<T>(path, { method: 'POST', body: file, headers: { 'Content-Type': file.type || fileMediaType(file.name) || 'application/octet-stream' }, signal: AbortSignal.timeout(Math.max(120_000, file.size / 2_000)) });
 }

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { Share as ShareIcon, Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -46,7 +46,7 @@ import type { KindId } from './block-kinds';
 import { AppFrame } from './AppFrame';
 import { appFlags, appVersion, type AppFlag } from '../shared/apps';
 import { FilePreview, type ShownFile } from './FileView';
-import { fileMediaType, fileUrl, isPictureNode, type ImageSize } from '../shared/files';
+import { fileMediaType, fileUrl, isPictureNode, isVideoType, type ImageSize } from '../shared/files';
 import type { FolderFile } from '../shared/project-folders';
 import { BLOCKS_MIME, copyBlocks, pasteOperations, readCopiedBlocks } from '../shared/canvas-clipboard';
 import { CodeView, modKey } from './code';
@@ -63,7 +63,7 @@ function notebookCard(detail: ProjectDetail, nodeId: string): Pick<CardData, 'no
  * that, from the picture once it loaded; the address carries the file's version so a replaced file is read again. */
 export function shownFile(projectId: string, node: CanvasNode, entry?: FolderFile, loaded?: ImageSize): ShownFile {
   const image = entry?.image ?? loaded;
-  return { src: `${fileUrl(projectId, node.id)}${entry?.version ? `?v=${entry.version}` : ''}`, mediaType: fileMediaType(node.file?.path ?? '') ?? 'application/octet-stream', ...(entry?.bytes ? { bytes: entry.bytes } : {}), ...(image ? { image } : {}) };
+  return { src: `${fileUrl(projectId, node.id)}${entry?.version ? `?v=${entry.version}` : ''}`, mediaType: fileMediaType(node.file?.path ?? '') ?? 'application/octet-stream', ...(entry?.bytes ? { bytes: entry.bytes } : {}), ...(image ? { image } : {}), ...(entry?.seconds !== undefined ? { seconds: entry.seconds } : {}) };
 }
 /** One icon per kind of block; a Text block's label says what it means. A Google block shows its app's mark. */
 export function KindIcon({ kind, blockType, google, map, metric, post, size = 14 }: { kind?: string; blockType?: string; google?: GoogleView['kind']; map?: MapView['provider']; metric?: MetricSource; post?: PostPlatform; size?: number }) {
@@ -198,7 +198,7 @@ function resizedCard(edge: ResizeEdge, start: { width: number; height: number },
 const ShownMarkdown = memo(MarkdownPreview);
 const ShownCode = memo(CodeView);
 const ShownArtifact = memo(BlockPreview, (a, b) => a.artifact.id === b.artifact.id && a.artifact.hash === b.artifact.hash && a.compact === b.compact);
-const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes && a.file.image?.width === b.file.image?.width && a.file.image?.height === b.file.image?.height && a.missing === b.missing);
+const ShownFilePreview = memo(FilePreview, (a, b) => a.title === b.title && a.file.src === b.file.src && a.file.mediaType === b.file.mediaType && a.file.bytes === b.file.bytes && a.file.image?.width === b.file.image?.width && a.file.image?.height === b.file.image?.height && a.file.seconds === b.file.seconds && a.missing === b.missing);
 const ShownNotion = memo(NotionBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && Boolean(a.onRows) === Boolean(b.onRows) && JSON.stringify(a.view) === JSON.stringify(b.view));
 const ShownDashboard = memo(DashboardBlock, (a, b) => a.projectId === b.projectId && a.full === b.full && JSON.stringify(a.view) === JSON.stringify(b.view) && JSON.stringify(a.sources) === JSON.stringify(b.sources));
 const ShownMetric = memo(MetricBlock, (a, b) => a.projectId === b.projectId && a.nodeId === b.nodeId && a.full === b.full && a.title === b.title && JSON.stringify(a.view) === JSON.stringify(b.view));
@@ -313,7 +313,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   const [appErrors,setAppErrors]=useState<string[]>([]);
   // The corner that takes keyboard focus and arrow keys.
   const handle:ResizeEdge='se';
-  const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?'Open the picture':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
+  const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?(isVideoType(data.file?.mediaType)?'Open the video':'Open the picture'):'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
   // A picture card is the picture: no kind, title or footer of its own. Its controls and title show over it on hover.
   if(picture)return <article className={`research-card research-block picture-card${data.height<72||data.width<160?' picture-tiny':data.height<160||data.width<280?' picture-small':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
@@ -495,7 +495,9 @@ type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDet
   /** Filled with a reader of what the map shows, for the glance a message to ROS carries. */
   view?: RefObject<CanvasView | null>;
   /** Pastes copied blocks with what they show (files, saved versions, notebooks); null when it did not happen. */
-  paste?: (body: { operations: Mutation[]; label: string; from: string; sources: Record<string, string>; artifacts: Record<string, string> }) => Promise<{ missing: string[] } | null> };
+  paste?: (body: { operations: Mutation[]; label: string; from: string; sources: Record<string, string>; artifacts: Record<string, string> }) => Promise<{ missing: string[] } | null>;
+  /** Opens Share with where each block is shown now and which Groups are open, so the copy looks like the map. */
+  onShare?: (shown: { layout: Record<string, Box>; open: string[] }) => void };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -526,7 +528,7 @@ function useStableHandlers<T extends Record<string, (...args: never[]) => unknow
   const latest = useRef(handlers); latest.current = handlers;
   return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
 }
-function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste }: Props) {
+function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste , onShare }: Props) {
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The quick Add block menu, placed beside its tile in the tools card.
   const [addMenu, setAddMenu] = useState<{ left: number; top: number; at?: { x: number; y: number } } | null>(null);
@@ -1364,6 +1366,15 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     divider('view-divider'),
     { id: 'all', label: 'See all', hint: 'Every block in view', icon: <Maximize size={18}/>, onClick: () => void fitCanvas(400, true) },
     { id: 'collapse', label: 'Collapse', hint: 'Close every open group', icon: <PanelTopClose size={18}/>, disabled: !expandedIds.length, onClick: () => { onExpandedChange([]); onSelect(null); } },
+    ...(onShare && !historyCanvas ? [divider('share-divider'), { id: 'share', label: 'Share', hint: 'A file anyone can open, without your private things', icon: <ShareIcon size={18}/>, onClick: () => {
+      const layout: Record<string, Box> = {};
+      for (const item of flow.getNodes()) {
+        if (item.type !== 'research' || item.hidden) continue;
+        const absolute = flow.getInternalNode(item.id)?.internals.positionAbsolute, width = item.measured?.width ?? item.width, height = item.measured?.height ?? item.height;
+        if (absolute && width && height) layout[item.id] = { x: Math.round(absolute.x), y: Math.round(absolute.y), width: Math.round(width), height: Math.round(height) };
+      }
+      onShare({ layout, open: expandedIds });
+    } }] : []),
     ...(onDemo || onTour ? [divider('demo-divider'), ...(onDemo ? [{ id: 'demo', label: demoLabel, icon: <BookOpen size={18}/>, onClick: onDemo }] : []), ...(onTour ? [{ id: 'tour', label: 'Tour saved research', icon: <BookOpen size={18}/>, onClick: onTour }] : [])] : []),
   ];
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
