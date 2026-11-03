@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
-import { Share as ShareIcon, Activity, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
+import { Share as ShareIcon, Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -20,7 +20,7 @@ import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel }
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, pictureMinWidth, setCardHeight } from '../shared/card-size';
+import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_SCALES, cardScale, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, pictureMinWidth, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
@@ -118,7 +118,8 @@ type CardData = {
   inputCount: number; resultCount: number; expanded: boolean; preview?: 'added' | 'changed' | 'removed';
   onExpand: () => void; onInspect: () => void; onActivate: () => void; onAdd: () => void; onHandle: (side: Side) => void;
   onSave: (title: string, description: string) => Promise<unknown>; readonly: boolean;
-  outcome: CardOutcome; width: number; height: number; heightSet: boolean; resizePending: boolean;
+  /** `width` and `height` are the card's own size; a shrunk block draws it at `scale` (below 1) on the map. */
+  outcome: CardOutcome; width: number; height: number; scale?: number; heightSet: boolean; resizePending: boolean;
   fileMissing?: boolean;
   results?: ResultPageChoice & { pageCount: number; total: number; start: number };
   onResultChoice: (choice: ResultPageChoice) => void;
@@ -264,7 +265,30 @@ function LabelMenu({ node, left, top, onPick, onClose }: { node: CanvasNode; lef
     {current && <button type="button" role="menuitem" className="card-label-clear" onClick={() => onPick('')}>No label</button>}
   </div>;
 }
-function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
+/** Small, Medium or Full for the picked blocks; each stays whole, drawn smaller. */
+function SizeMenu({ left, top, current, count, onPick, onClose }: { left: number; top: number; current?: number; count: number; onPick: (scale: number) => void; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.focus(); }, []);
+  useEffect(() => {
+    const away = (event: MouseEvent) => { const target = event.target as HTMLElement; if (box.current && !box.current.contains(target) && !target.closest?.('[data-testid="canvas-size"]')) onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key); };
+  }, [onClose]);
+  return <div ref={box} className="card-label-menu card-size-menu nodrag nopan nowheel" role="menu" tabIndex={-1} aria-label={`Size of ${count} block${count === 1 ? '' : 's'}`} style={{ left, top }}>
+    {CARD_SCALES.map(size => <button key={size.id} type="button" role="menuitemradio" aria-checked={current === size.scale} onClick={() => onPick(size.scale)}><span>{size.label}<small>{size.scale === 1 ? 'Own size' : `${Math.round(size.scale * 100)} %`}</small></span>{current === size.scale && <Check size={13}/>}</button>)}
+  </div>;
+}
+/** A shrunk block: the card is laid out at its own size and drawn smaller, so everything it shows stays whole.
+ * Resizing it still works in the card's own units; a move of its edge is scaled back to the map. */
+function ResearchCard(props: NodeProps<ResearchNode>) {
+  const { data } = props, scale = data.scale ?? 1;
+  const onResize = data.onResize;
+  const scaledData = useMemo(() => scale < 1 ? { ...data, onResize: (size: CardResize | null, commit?: boolean) => onResize(size && { ...size, dx: Math.round(size.dx * scale), dy: Math.round(size.dy * scale) }, commit) } : data, [data, scale, onResize]);
+  if (scale >= 1) return <ResearchCardFace {...props}/>;
+  return <div className="scaled-card" style={{ width: data.width, height: data.height, transform: `scale(${scale})` }}><ResearchCardFace {...props} data={scaledData}/></div>;
+}
+function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   const flow = useReactFlow();
   const heading = useRef<HTMLDivElement>(null), resizing = useRef<{ edge: ResizeEdge; x: number; y: number; width: number; height: number; zoom: number } | null>(null);
   const measure = useRef(data.onMeasure); measure.current = data.onMeasure;
@@ -303,7 +327,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
     </div>
     {!data.readonly&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
       {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; the picture keeps its shape`,title:'Drag to resize'}:{'aria-hidden':true}}
-      onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()};data.onActivate();}}
+      onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()*(data.scale??1)};data.onActivate();}}
       onPointerMove={event=>{if(resizing.current)data.onResize(resized(event));}}
       onPointerUp={event=>{const start=resizing.current;if(!start)return;const size=resized(event);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);data.onResize(Math.abs(event.clientX-start.x)+Math.abs(event.clientY-start.y)<3?null:size,true);}}
       onPointerCancel={()=>{resizing.current=null;data.onResize(null);}}
@@ -338,7 +362,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
     </div>
     {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
       {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
-      onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()};data.onActivate();}}
+      onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()*(data.scale??1)};data.onActivate();}}
       onPointerMove={event=>{if(resizing.current)data.onResize(resized(event));}}
       onPointerUp={event=>{const start=resizing.current;if(!start)return;const size=resized(event);resizing.current=null;event.currentTarget.releasePointerCapture(event.pointerId);
         // A click without a drag (the first half of a double-click) changes nothing.
@@ -509,6 +533,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // The quick Add block menu, placed beside its tile in the tools card.
   const [addMenu, setAddMenu] = useState<{ left: number; top: number; at?: { x: number; y: number } } | null>(null);
   // The open label menu, and the Group a dragged block would join (outlined while the drag lasts).
+  const [sizeMenu, setSizeMenu] = useState<{ left: number; top: number } | null>(null); const closeSizeMenu = useCallback(() => setSizeMenu(null), []);
   const [labelMenu, setLabelMenu] = useState<{ nodeId: string; left: number; top: number } | null>(null); const closeLabelMenu = useCallback(() => setLabelMenu(null), []);
   const [dropTarget, setDropTarget] = useState<{ id: string; left: number; top: number; width: number; height: number } | null>(null); const dropTargetId = useRef<string | null>(null);
   const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('Untitled'), [dropping, setDropping] = useState(false);
@@ -661,7 +686,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const pictureShape = (node: CanvasNode): ImageSize | undefined => isPictureNode(node) ? folderFiles?.get(node.id)?.image ?? pictureSizes[node.id] : undefined;
   // A card the researcher made taller keeps that height; others follow their measured content. A picture card is as
   // tall as its picture, which is known before the browser has measured it.
-  const cardSizes = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
+  const fullSizes = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const draft = draftSizes[node.id], initial = initialCardSize({ ...node, width: draft?.width ?? node.width }, cardOutcomes[node.id].text);
     const height = draft?.height ?? setCardHeight(node);
     if (height) return [node.id, { width: initial.width, height }];
@@ -669,6 +694,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const shape = pictureShape(node);
     return [node.id, shape ? { width: initial.width, height: pictureCardHeight(initial.width, shape) } : initial];
   })), [displayed.canvas.nodes, cardOutcomes, cardMeasurements, draftSizes, folderFiles, pictureSizes]);
+  // A shrunk block takes its scaled size on the map; its card is laid out at full size and drawn smaller.
+  const cardSizes = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
+    const size = fullSizes[node.id], scale = cardScale(node);
+    return [node.id, scale < 1 ? { width: Math.round(size.width * scale), height: Math.round(size.height * scale) } : size];
+  })), [displayed.canvas.nodes, fullSizes]);
   /** One page block per row of a database block, linked from it; the person confirmed on the card. */
   const rowBlocks = async (nodeId: string, table: NotionTable): Promise<RowBlocksOutcome | null> => {
     const node = displayed.canvas.nodes.find(item => item.id === nodeId);
@@ -735,6 +765,28 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // The picked blocks: those chosen with the Group picker, a selection box or Shift/⌘-clicks, or else the selected one.
   const picked = selecting || groupSelection.length ? groupSelection : selectedId ? [selectedId] : [];
   const deletable = readonly || busy ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
+  // Shrinking a Group shrinks the blocks inside it; the group's frame follows them.
+  const sizeTargets = useMemo(() => {
+    if (readonly || busy) return [];
+    const nodes = displayed.canvas.nodes, found = new Set<string>(), seen = new Set<string>();
+    const add = (id: string) => { if (seen.has(id)) return; seen.add(id); const node = nodes.find(item => item.id === id); if (!node) return; if (isGroup(node)) nodes.filter(item => item.parentId === id).forEach(item => add(item.id)); else found.add(id); };
+    picked.forEach(add);
+    return nodes.filter(node => found.has(node.id));
+  }, [picked, displayed.canvas.nodes, readonly, busy]);
+  const sizeNow = sizeTargets.length && sizeTargets.every(node => cardScale(node) === cardScale(sizeTargets[0])) ? cardScale(sizeTargets[0]) : undefined;
+  // Blocks shrunk together keep their arrangement: each one's place moves toward the top left of its row of siblings
+  // by the same amount it shrinks, so the gaps between them shrink too.
+  const resizeBlocks = (scale: number) => {
+    setSizeMenu(null);
+    const anchors = new Map<string, { x: number; y: number }>();
+    for (const node of sizeTargets) { const key = node.parentId ?? '', at = anchors.get(key); anchors.set(key, at ? { x: Math.min(at.x, node.x), y: Math.min(at.y, node.y) } : { x: node.x, y: node.y }); }
+    const operations: Mutation[] = sizeTargets.flatMap(node => {
+      const ratio = scale / cardScale(node), at = anchors.get(node.parentId ?? '')!;
+      if (Math.abs(ratio - 1) < 0.001) return [];
+      return [{ type: 'updateNode' as const, id: node.id, patch: { scale: scale >= 1 ? null : scale, x: Math.round(at.x + (node.x - at.x) * ratio), y: Math.round(at.y + (node.y - at.y) * ratio) } }];
+    });
+    if (operations.length) void mutate(operations, scale >= 1 ? 'Show blocks at their own size' : 'Shrink blocks');
+  };
   // Blocks already selected go straight into a new group when Group is pressed.
   const groupable = readonly || selecting ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
   const groupBlocks = (ids: readonly string[], title: string) => {
@@ -928,12 +980,12 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         const direction = node.blockType === 'search' || node.label === 'result';
         // A block an agent made says so on its provenance line: a Result note through its link from the Agent block, a finding through its Result note.
         const origin=blockOrigin(displayed.canvas,node.id);
-        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, training: node.training ? { projectId: detail.project.id, view: node.training } : undefined, metric: node.metric ? { projectId: detail.project.id, view: node.metric } : undefined, dashboard: node.blockType === 'dashboard' ? { projectId: detail.project.id, view: node.dashboard ?? { tiles: [] }, sources: dashboardSources(detail.project.canvas.nodes) } : undefined, post: node.post ? { projectId: detail.project.id, view: node.post } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id), pictureSizes[node.id]) : undefined, picture: isPictureNode(node), onPictureSize: size => learnPictureSize(node.id, size), origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, app:node.blockType==='app'?{ projectId: detail.project.id, version: appVersion(node.app?.source ?? ''), inputs: node.app?.inputs.length ?? 0, watchKey: appWatch, onFocus: blockId => { onSelect(blockId); setFocusRequest(blockId); }, ...(historyCanvas ? { still: 'An App from a saved canvas. It runs on the current canvas.' } : proposal && ['added','changed'].includes(displayed.marks.get(node.id) ?? '') ? { proposalId: proposal.id, leaves: appFlags(node.app?.source ?? '') } : {}) }:undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google,metric,post})=>({id,title,kind,blockType,google:google?.kind,metric:metric?.source,post:post?.platform})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: cardSizes[node.id].width, height: cardSizes[node.id].height, heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)) && !isPictureNode(node), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onBrowse(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, check: node.check ? checkTally(node.check) : node.blockType === 'agent' ? (checked => checked?.check ? checkTally(checked.check) : undefined)(displayed.canvas.nodes.find(item => item.check?.agentNodeId === node.id)) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id, detail.runs)) : undefined, web: node.blockType === 'web' && node.web ? webFace(node) : undefined } }, ...child.nodes);
+        built.push({ id: node.id, type: 'research', parentId: parentId || undefined, position: { x: box.x + (parentId ? GROUP_INSET.x : 0), y: box.y + (parentId ? GROUP_INSET.y : 0) }, width, height, style: { width, height }, selected: groupSelection.includes(node.id) || node.id === selectedId, zIndex: depth, dragHandle: '.group-heading', data: { workLabel, ...notebookCard(detail, node.id), notion: node.notion ? { projectId: detail.project.id, view: node.notion, onRows: readonly ? undefined : table => rowBlocks(node.id, table) } : undefined, training: node.training ? { projectId: detail.project.id, view: node.training } : undefined, metric: node.metric ? { projectId: detail.project.id, view: node.metric } : undefined, dashboard: node.blockType === 'dashboard' ? { projectId: detail.project.id, view: node.dashboard ?? { tiles: [] }, sources: dashboardSources(detail.project.canvas.nodes) } : undefined, post: node.post ? { projectId: detail.project.id, view: node.post } : undefined, google: node.google ? { projectId: detail.project.id, view: node.google, onCopy: readonly || !onGoogleCopy || node.google.kind !== 'sheet' ? undefined : () => onGoogleCopy(node.id) } : undefined, file: node.file ? shownFile(detail.project.id, node, folderFiles?.get(node.id), pictureSizes[node.id]) : undefined, picture: isPictureNode(node), onPictureSize: size => learnPictureSize(node.id, size), origins:Object.fromEntries(displayed.canvas.nodes.map(item=>[item.id,item.title])), blockType:node.blockType, kindName:kindName(node), textLabel:textLabel(node), origin, onLabel:labelMenuOpener(node), code:nodeBlockType(node)==='code'?node.code?.source??detail.artifacts.find(item=>item.id===node.artifactId&&item.kind==='code')?.content??'':undefined, app:node.blockType==='app'?{ projectId: detail.project.id, version: appVersion(node.app?.source ?? ''), inputs: node.app?.inputs.length ?? 0, watchKey: appWatch, onFocus: blockId => { onSelect(blockId); setFocusRequest(blockId); }, ...(historyCanvas ? { still: 'An App from a saved canvas. It runs on the current canvas.' } : proposal && ['added','changed'].includes(displayed.marks.get(node.id) ?? '') ? { proposalId: proposal.id, leaves: appFlags(node.app?.source ?? '') } : {}) }:undefined, primary:isGroup(node)||node.file?undefined:primaryArtifact(node,detail), members:displayed.canvas.nodes.filter(item=>item.parentId===node.id).length, listed:isGroup(node)&&!expanded?groupPreviewMembers(displayed.canvas,node.id).map(({id,title,kind,blockType,google,metric,post})=>({id,title,kind,blockType,google:google?.kind,metric:metric?.source,post:post?.platform})):undefined, chosen:(node.groupHighlights??[]).flatMap(highlight=>{const artifact=detail.artifacts.find(item=>item.id===highlight.artifactId&&item.nodeId===highlight.nodeId&&item.hash===highlight.hash);return artifact?[artifact]:[];}), onHighlightOpen:artifact=>onArtifact(artifact,artifact.nodeId), results: resultPages[node.id], onResultChoice: choice => changeResults(node.id, choice), resizePending: resizingCards.includes(node.id), outcome: cardOutcomes[node.id], width: fullSizes[node.id].width, height: fullSizes[node.id].height, scale: cardScale(node), heightSet: Boolean(draftSizes[node.id]?.height ?? setCardHeight(node)) && !isPictureNode(node), onResize: (size, commit) => resizeCard(node.id, size, commit), onAutoHeight: () => fitHeight(node.id), onMeasure: (width, height) => measureCard(node.id, width, height), kind: node.kind, title: node.title, description: node.description, status, awaitingApproval: runs.some(r => (r.configuration.approval as { status?: string } | undefined)?.status === 'pending'), inputCount: detail.inputs.filter(i => i.nodeId === node.id).length, resultCount: detail.artifacts.filter(a => a.nodeId === node.id && isOutputArtifact(a)).length, expanded, preview: displayed.marks.get(node.id), onExpand: () => toggle(node.id), onInspect: () => {const artifact=node.artifactId?detail.artifacts.find(item=>item.id===node.artifactId):undefined;if(artifact&&!['code','notebook','file'].includes(node.blockType??''))onArtifact(artifact,node.id);else onInspect(node.id);}, onActivate: () => onSelect(node.id), onAdd: () => onBrowse(node.id), onHandle: side => handleClick(node.id, side), onSave: (title, description) => mutate([{ type: 'updateNode', id: node.id, patch: { title, description } }], 'Edit note'), readonly, fileMissing: missingFiles?.has(node.id), agent: node.agent ? agentTurns?.[node.agent.turnId] : undefined, label: node.label, sources: direction ? detail.artifacts.filter(a => a.nodeId === node.id && a.kind === 'source').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : undefined, why: direction ? displayed.canvas.connections.find(c => c.target === node.id && displayed.canvas.nodes.find(n => n.id === c.source)?.blockType === 'agent')?.label : undefined, queries: node.label === 'result' ? runs.filter(r => r.provider === 'tavily').map(r => r.request) : undefined, check: node.check ? checkTally(node.check) : node.blockType === 'agent' ? (checked => checked?.check ? checkTally(checked.check) : undefined)(displayed.canvas.nodes.find(item => item.check?.agentNodeId === node.id)) : undefined, directions: node.blockType === 'agent' ? (({ directions, written, sources, pages, findings }) => ({ total: directions.length, written, sources, pages: pages.length, findings }))(agentDirections(displayed.canvas, detail.artifacts, node.id, detail.runs)) : undefined, web: node.blockType === 'web' && node.web ? webFace(node) : undefined } }, ...child.nodes);
       }
       return { nodes: built, width: right, height: bottom };
     };
     return build(null).nodes;
-  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, draftSizes, cardOutcomes, resizingCards, resultPages, descendantIds, groupSelection, missingFiles, agentTurns, appWatch, folderFiles, pictureSizes]);
+  }, [displayed, expandedIds, detail.runs, detail.inputs, detail.artifacts, selectedId, highlights, readonly, pendingConnection, artifactPlacementRevision, cardSizes, fullSizes, draftSizes, cardOutcomes, resizingCards, resultPages, descendantIds, groupSelection, missingFiles, agentTurns, appWatch, folderFiles, pictureSizes]);
   const [nodes, setNodes] = useState(computedNodes);
   const liveNodes = useRef(nodes); liveNodes.current = nodes;
   const extraContent = useMemo(() => ({}), []);
@@ -1308,6 +1360,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
     { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
     { id: 'tidy', label: 'Tidy', hint: 'Line blocks up', icon: arranging || animatingLayout ? <LoaderCircle size={18} className="spin"/> : <LayoutGrid size={18}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
+    { id: 'size', label: 'Size', hint: sizeTargets.length ? 'Shrink picked blocks; they stay whole' : 'Pick blocks to shrink them', icon: <Minimize2 size={18}/>, testId: 'canvas-size', disabled: !sizeTargets.length, pressed: Boolean(sizeMenu), expanded: Boolean(sizeMenu), onClick: event => { if (sizeMenu) { setSizeMenu(null); return; } const box = area.current?.getBoundingClientRect(), tile = event.currentTarget.getBoundingClientRect(); setSizeMenu({ left: tile.right - (box?.left ?? 0) + 10, top: tile.top - (box?.top ?? 0) }); } },
     { id: 'delete', label: 'Delete', hint: deletable.length > 1 ? `${deletable.length} picked blocks · ⌫` : '⌫', icon: <Trash2 size={18}/>, disabled: !deletable.length, onClick: removeSelected },
     ...(historyItems.length ? [divider('history-divider'), ...historyItems] : []),
     divider('view-divider'),
@@ -1337,6 +1390,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     </div>
     {dockItems.length > 0 && <CanvasDock label="Canvas tools" items={dockItems}/>}
     {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} local={local} onPick={kind => { setAddMenu(null); onAdd(addMenu.at ? null : selectedGroup?.id ?? null, kind.id, addMenu.at); }} onBrowse={kind => { setAddMenu(null); onBrowse(addMenu.at ? null : selectedGroup?.id ?? null, kind?.id, addMenu.at); }} onClose={() => setAddMenu(null)}/>}
+    {sizeMenu && sizeTargets.length > 0 && <SizeMenu left={sizeMenu.left} top={sizeMenu.top} current={sizeNow} count={sizeTargets.length} onPick={resizeBlocks} onClose={closeSizeMenu}/>}
     {labelMenu && (() => { const target = displayed.canvas.nodes.find(node => node.id === labelMenu.nodeId); return target ? <LabelMenu key={target.id} node={target} left={labelMenu.left} top={labelMenu.top} onClose={closeLabelMenu} onPick={value => { closeLabelMenu(); void mutate([{ type: 'updateNode', id: target.id, patch: labelPatch(target, value) }], value ? `Label as ${value.trim().slice(0, 40)}` : 'Remove label'); }}/> : null; })()}
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
     {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}

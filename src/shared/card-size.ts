@@ -20,6 +20,15 @@ export const PICTURE_MIN_WIDTH = 96;
 export const PICTURE_MIN_HEIGHT = 48;
 export const PICTURE_MAX_RATIO = 2;
 
+/** A shrunk block draws its whole card at a fraction of its size, so nothing in it is cut off: Small and Medium, or
+ * Full (no scale). A Group is never shrunk itself; shrinking it shrinks the blocks inside. */
+export const CARD_MIN_SCALE = 0.25;
+export const CARD_SCALES = [{ id: 'small', label: 'Small', scale: 0.4 }, { id: 'medium', label: 'Medium', scale: 0.7 }, { id: 'full', label: 'Full', scale: 1 }] as const;
+/** The fraction of its size a block is drawn at on the map: 1 unless the researcher shrank it. */
+export function cardScale(node: { scale?: number | null; kind?: string }) {
+  return node.kind !== 'group' && typeof node.scale === 'number' && node.scale > 0 && node.scale < 1 ? Math.max(CARD_MIN_SCALE, node.scale) : 1;
+}
+
 /** A closed Group fits what it lists, so a width saved on it (an agent may send one) is not used. A picture card may be
  * narrower than other cards. */
 export function cardWidth(node: { width?: number; kind?: string; blockType?: string; file?: { path: string } | null }) {

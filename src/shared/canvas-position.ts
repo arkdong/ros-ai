@@ -9,7 +9,7 @@ export function savedCanvasPosition(position: { x: number; y: number }, nested: 
   return { x: nested ? Math.max(0, x) : x, y: nested ? Math.max(0, y) : y };
 }
 /** A change that only moves or resizes a block is layout, not research content. */
-export const layoutOnly = (patch: object) => Object.keys(patch).every(key => key === 'x' || key === 'y' || key === 'width' || key === 'height');
+export const layoutOnly = (patch: object) => Object.keys(patch).every(key => key === 'x' || key === 'y' || key === 'width' || key === 'height' || key === 'scale');
 /** What a canvas change does, as the approval modes weigh it. Moving, resizing or regrouping a block arranges it; changing
  * anything else about it edits it. A field sent with the value it already has changes nothing. */
 export type CanvasChange = 'add' | 'arrange' | 'edit' | 'remove';
