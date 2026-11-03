@@ -19,6 +19,7 @@ files:
   - dist/server/**
   - dist/desktop/**
   - dist/app-kit/**
+  - dist/still/**
   - scripts/ros-ai-mcp.mjs
   - examples/**
   - "!**/*.map"

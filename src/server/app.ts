@@ -53,6 +53,7 @@ import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspa
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
+import { attachShareRoutes, ShareCopies, StillPage } from './share-copy.js';
 import { attachSqlRoutes, SqlService } from './sql.js';
 import { attachUpdateRoutes, type Updates } from './updates.js';
 import { attachAppFrameRoutes, type AppFrames } from './app-frames.js';
@@ -109,6 +110,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;AgentWorkspaceTools.webFiles=new WebFileFetcher();folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
+  // Share: a clean copy of the canvas, as a .html canvas file that opens in any browser. Not in the public demo.
+  if(!options.publicDemo)attachShareRoutes(app,new ShareCopies(store,{files:()=>folders,cache:new ProjectCache(store)}),new StillPage(),process.env.ROS_DEV==='1');
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
