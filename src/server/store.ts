@@ -6,7 +6,8 @@ import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
+import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
+import { isPictureNode } from '../shared/files.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type ProjectModelSettings } from '../shared/model-settings.js';
@@ -23,7 +24,11 @@ export type RosChoice = { backend?: string; model?: ModelSelection };
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(CARD_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+/** Only a picture card may be narrower than CARD_MIN_WIDTH: it keeps its picture's shape, so a small one is useful. */
+function narrowOnlyPictures(node: { width?: number; kind?: string; blockType?: string; file?: { path: string } | null }) {
+  if (node.width !== undefined && node.width < CARD_MIN_WIDTH && !isPictureNode(node)) throw new StoreError(`A block is at least ${CARD_MIN_WIDTH} wide; only a picture can be narrower`);
+}
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(PICTURE_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const linkSide = z.enum(['top','right','bottom','left']);
 /** The person's edit of a link on the canvas: its word, or its direction. Not offered to agents, whose canvas tool
@@ -452,6 +457,7 @@ export class Store {
         if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
         added.add(operation.node.id);
         const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(this.asApp(project.id, operation.node), canvas.nodes, added);
+        narrowOnlyPictures(node);
         canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
       } else if (operation.type === 'updateNode') {
         const node = activeNode(operation.id);
@@ -467,6 +473,7 @@ export class Store {
           if (proposal && !arranged) updated = this.placeNode(updated, canvas.nodes.filter(item => item.id !== node.id));
         }
         coordinate.parse(updated.x); coordinate.parse(updated.y);
+        narrowOnlyPictures(updated);
         canvas.nodes = canvas.nodes.map(item => item.id === node.id ? updated : item);
         normalized.push({ type: 'updateNode', id: node.id, patch: { ...patch, ...('x' in operation.patch || 'y' in operation.patch ? { x: updated.x, y: updated.y } : {}) } });
       } else if (operation.type === 'removeNode') {

@@ -43,7 +43,7 @@ export function groupPreviewMembers(canvas: Canvas, groupId: string): CanvasNode
 
 /** Scope coordinates remain stable within their destination. Grouping is one
  * undoable content edit and never manufactures evidence connections. */
-export function createGroupOperations(canvas: Canvas, ids: readonly string[], id: string, title: string): Mutation[] {
+export function createGroupOperations(canvas: Canvas, ids: readonly string[], id: string, title: string, inset = { x: 0, y: 0 }): Mutation[] {
   const picked = canvas.nodes.filter(node => ids.includes(node.id));
   const pickedIds = new Set(picked.map(node => node.id));
   const roots = picked.filter(node => !node.parentId || !pickedIds.has(node.parentId));
@@ -51,7 +51,10 @@ export function createGroupOperations(canvas: Canvas, ids: readonly string[], id
   const parentId = roots[0].parentId ?? null;
   if (roots.some(node => (node.parentId ?? null) !== parentId)) throw new Error('Select blocks in the same group to group them together.');
   const x = Math.min(...roots.map(node => node.x)), y = Math.min(...roots.map(node => node.y));
-  return [{ type: 'addNode', node: { id, title, description: '', kind: 'group', parentId, x, y } },
+  // The frame goes up and left by its content inset, so the blocks stay where they were on the map.
+  const frame = { x: x - inset.x, y: y - inset.y };
+  if (parentId) { frame.x = Math.max(0, frame.x); frame.y = Math.max(0, frame.y); }
+  return [{ type: 'addNode', node: { id, title, description: '', kind: 'group', parentId, ...frame } },
     ...roots.map(node => ({ type: 'updateNode' as const, id: node.id, patch: { parentId: id, x: node.x - x, y: node.y - y } }))];
 }
 
