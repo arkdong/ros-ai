@@ -105,6 +105,7 @@ jobs:
           name: windows-smoke
           path: smoke/
           if-no-files-found: ignore
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         with:
           name: ros.ai-${{ matrix.os }}-${{ matrix.arch }}
@@ -113,6 +114,9 @@ jobs:
             desktop/dist/*.zip
             desktop/dist/*.exe
           if-no-files-found: error
+          # Tagged builds live on as release assets; these copies only need to
+          # last long enough to try a branch build. Keeps Actions storage small.
+          retention-days: 3
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
