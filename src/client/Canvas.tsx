@@ -20,7 +20,7 @@ import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel }
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, PICTURE_MIN_HEIGHT, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, setCardHeight } from '../shared/card-size';
+import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, pictureMinWidth, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
@@ -173,11 +173,12 @@ function resizedCard(edge: ResizeEdge, start: { width: number; height: number },
   const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(value)));
   let width = start.width, height: number | undefined, moveX = 0, moveY = 0;
   if (image) {
+    const narrowest = pictureMinWidth(image);
     if (edge === 'n' || edge === 's') {
-      const wanted = clamp(start.height + (edge === 's' ? dy : -dy), PICTURE_MIN_HEIGHT, CARD_MAX_SET_HEIGHT);
-      width = clamp(wanted * image.width / Math.max(1, image.height), CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-    } else if (edge.includes('e')) width = clamp(start.width + dx, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-    else { moveX = Math.max(start.width - CARD_MAX_WIDTH, Math.min(start.width - CARD_MIN_WIDTH, Math.round(dx / RESIZE_GRID) * RESIZE_GRID)); width = start.width - moveX; }
+      const wanted = clamp(start.height + (edge === 's' ? dy : -dy), 1, CARD_MAX_SET_HEIGHT);
+      width = clamp((wanted - 2) * image.width / Math.max(1, image.height) + 2, narrowest, CARD_MAX_WIDTH);
+    } else if (edge.includes('e')) width = clamp(start.width + dx, narrowest, CARD_MAX_WIDTH);
+    else { moveX = Math.max(start.width - CARD_MAX_WIDTH, Math.min(start.width - narrowest, Math.round(dx / RESIZE_GRID) * RESIZE_GRID)); width = start.width - moveX; }
     height = pictureCardHeight(width, image);
     if (edge.startsWith('n')) moveY = Math.round((start.height - height) / RESIZE_GRID) * RESIZE_GRID;
     return { width, height, dx: moveX, dy: moveY };
@@ -290,7 +291,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
   const handle:ResizeEdge='se';
   const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?'Open the picture':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
   // A picture card is the picture: no kind, title or footer of its own. Its controls and title show over it on hover.
-  if(picture)return <article className={`research-card research-block picture-card ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
+  if(picture)return <article className={`research-card research-block picture-card${data.height<72||data.width<160?' picture-tiny':data.height<160||data.width<280?' picture-small':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading picture-face">
       <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}><ShownFilePreview file={data.file!} title={data.title} missing={data.fileMissing} onSize={data.onPictureSize}/></div>

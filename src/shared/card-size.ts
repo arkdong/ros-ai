@@ -12,14 +12,24 @@ export const CARD_MIN_HEIGHT = 224;
 export const CARD_MAX_HEIGHT = 420;
 /** A card the researcher made taller keeps that height; its content fills it instead of being measured. */
 export const CARD_MAX_SET_HEIGHT = 1200;
-/** A picture card is as tall as its picture at the card's width: never shorter than this, never taller than twice
- * its width (a taller picture shows its top and opens whole) or the set-height limit. */
-export const PICTURE_MIN_HEIGHT = 96;
+/** A picture card is exactly as tall as its picture at the card's width, so it can be made smaller than a text card:
+ * down to this width, and only as narrow as keeps its picture at least PICTURE_MIN_HEIGHT tall (a wide banner stops
+ * wider). It is never taller than twice its width (a taller picture shows its top and opens whole) or the set-height
+ * limit. */
+export const PICTURE_MIN_WIDTH = 96;
+export const PICTURE_MIN_HEIGHT = 48;
 export const PICTURE_MAX_RATIO = 2;
 
-/** A closed Group fits what it lists, so a width saved on it (an agent may send one) is not used. */
-export function cardWidth(node: { width?: number; kind?: string }) {
-  return node.kind === 'group' ? CARD_DEFAULT_WIDTH : Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
+/** A closed Group fits what it lists, so a width saved on it (an agent may send one) is not used. A picture card may be
+ * narrower than other cards. */
+export function cardWidth(node: { width?: number; kind?: string; blockType?: string; file?: { path: string } | null }) {
+  if (node.kind === 'group') return CARD_DEFAULT_WIDTH;
+  return Math.min(CARD_MAX_WIDTH, Math.max(isPictureNode(node) ? PICTURE_MIN_WIDTH : CARD_MIN_WIDTH, node.width ?? CARD_DEFAULT_WIDTH));
+}
+/** The narrowest a picture card goes: its picture stays at least PICTURE_MIN_HEIGHT tall. */
+export function pictureMinWidth(image: ImageSize) {
+  const shown = Math.min(PICTURE_MIN_HEIGHT, image.height);
+  return Math.min(CARD_MAX_WIDTH, Math.max(PICTURE_MIN_WIDTH, Math.ceil(shown * image.width / Math.max(1, image.height)) + 2));
 }
 
 /** The height the researcher gave a card by resizing it, or undefined while the card follows its content. A closed
@@ -32,7 +42,7 @@ export function setCardHeight(node: { height?: number | null; kind?: string; blo
  * its own size when it is smaller than that, within the picture bounds. */
 export function pictureCardHeight(width: number, image: ImageSize) {
   const drawn = Math.round(Math.min(Math.max(1, width - 2), image.width) * image.height / Math.max(1, image.width)) + 2;
-  return Math.max(PICTURE_MIN_HEIGHT, Math.min(CARD_MAX_SET_HEIGHT, width * PICTURE_MAX_RATIO, drawn));
+  return Math.max(3, Math.min(CARD_MAX_SET_HEIGHT, width * PICTURE_MAX_RATIO, drawn));
 }
 /** The height a card takes at the size the browser measured: a card of text between its minimum and the preview
  * limit, a picture card as tall as its picture. */
@@ -40,7 +50,7 @@ export function pictureCardHeight(width: number, image: ImageSize) {
 export const DASHBOARD_MAX_HEIGHT = 720;
 export function measuredCardHeight(measured: number, picture = false, dashboard = false) {
   if (dashboard) return Math.min(DASHBOARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
-  return picture ? Math.max(PICTURE_MIN_HEIGHT, Math.min(CARD_MAX_SET_HEIGHT, measured)) : Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
+  return picture ? Math.max(3, Math.min(CARD_MAX_SET_HEIGHT, measured)) : Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
 }
 /** The most room a card can take below its top, for placing new blocks clear of it. */
 export function cardFootprintHeight(node: { height?: number | null; kind?: string }) {
