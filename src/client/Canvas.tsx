@@ -331,7 +331,7 @@ function ResearchCard({ id, data, selected }: NodeProps<ResearchNode>) {
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
           :data.blockType==='search'?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}<ul className="search-queries">{data.description.split('\n').filter(Boolean).slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul></div>
           :data.label==='result'&&data.description===RESULT_PLACEHOLDER?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}{data.queries?.length?<ul className="search-queries">{data.queries.slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul>:<p className="block-empty-hint">{data.description}</p>}</div>
-          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.map?<ShownMap view={data.map}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:data.metric?<ShownMetric projectId={data.metric.projectId} nodeId={id} view={data.metric.view} title={data.title}/>:data.dashboard?<ShownDashboard projectId={data.dashboard.projectId} view={data.dashboard.view} sources={data.dashboard.sources}/>:data.post?<PostCard projectId={data.post.projectId} nodeId={id} post={data.post.view} title={data.title}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.map?<ShownMap view={data.map}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:data.metric?<ShownMetric projectId={data.metric.projectId} nodeId={id} view={data.metric.view} title={data.title}/>:data.dashboard?<ShownDashboard projectId={data.dashboard.projectId} view={data.dashboard.view} sources={data.dashboard.sources}/>:data.post?<PostCard projectId={data.post.projectId} nodeId={id} post={data.post.view} title={data.title}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={20_000} scroll/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
@@ -465,11 +465,13 @@ export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; 
 /** The map as it is right now, read when a message goes to ROS: the blocks picked together (a ⌘-click or a box) and the blocks inside
  * the visible part of the map, nearest its middle first, or 'all' when every block shown is in view. */
 export type CanvasView = () => { picked: string[]; onScreen: string[] | 'all' };
-type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId, at?: { x: number; y: number }) => void; onBrowse: (parentId: string | null, kind?: KindId, at?: { x: number; y: number }) => void; local?: boolean; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
+type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string, options?: { undoableLayout?: boolean }) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId, at?: { x: number; y: number }) => void; onBrowse: (parentId: string | null, kind?: KindId, at?: { x: number; y: number }) => void; local?: boolean; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
   onGoogleCopy?: (nodeId: string) => Promise<boolean>;
   /** Filled with a reader of what the map shows, for the glance a message to ROS carries. */
-  view?: RefObject<CanvasView | null> };
+  view?: RefObject<CanvasView | null>;
+  /** Pastes copied blocks with what they show (files, saved versions, notebooks); null when it did not happen. */
+  paste?: (body: { operations: Mutation[]; label: string; from: string; sources: Record<string, string>; artifacts: Record<string, string> }) => Promise<{ missing: string[] } | null> };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -500,7 +502,7 @@ function useStableHandlers<T extends Record<string, (...args: never[]) => unknow
   const latest = useRef(handlers); latest.current = handlers;
   return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
 }
-function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view }: Props) {
+function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste }: Props) {
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The quick Add block menu, placed beside its tile in the tools card.
   const [addMenu, setAddMenu] = useState<{ left: number; top: number; at?: { x: number; y: number } } | null>(null);
@@ -690,9 +692,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     };
     if (!Object.keys(patch).length) { clear(); return; }
     resizeCommits.current.add(id); setResizingCards([...resizeCommits.current]);
-    void mutate([{ type: 'updateNode', id, patch }], 'Resize block').finally(() => { clear(); resizeCommits.current.delete(id); setResizingCards([...resizeCommits.current]); });
+    void mutate([{ type: 'updateNode', id, patch }], 'Resize block', { undoableLayout: true }).finally(() => { clear(); resizeCommits.current.delete(id); setResizingCards([...resizeCommits.current]); });
   };
-  const fitHeight = (id: string) => { if (!readonly) void mutate([{ type: 'updateNode', id, patch: { height: null } }], 'Fit block to its content'); };
+  const fitHeight = (id: string) => { if (!readonly) void mutate([{ type: 'updateNode', id, patch: { height: null } }], 'Fit block to its content', { undoableLayout: true }); };
   const toggle = (id: string) => { if (!displayed.canvas.nodes.some(node=>node.id===id&&isGroup(node))) return; const open = expandedIds.includes(id); onExpandedChange(open ? expandedIds.filter(n => n !== id) : [...expandedIds, id]); onSelect(id); };
   const connect = (source: string, target: string) => {
     if (readonly || source === target || connectionBusy.current) return;
@@ -709,6 +711,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); setEditingLink(null); }
   };
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 4500); return () => clearTimeout(timer); }, [message]);
+  // Copy and paste answer with a small toast; a paste's toast offers Undo.
+  const [toast, setToast] = useState<{ text: string; undo?: boolean; key: number } | null>(null);
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), toast.undo ? 5000 : 2200); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setPendingConnection(null); setSelectedEdge(null); setEditingLink(null); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
   // Delete the picked blocks, or the selected one; a block inside another picked group goes with it.
   // A Text block's label is picked from a menu under its caption; a Report or Finding keeps the label its type implies.
@@ -835,13 +840,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // ⌘/Ctrl C copies the picked blocks and ⌘/Ctrl V pastes them as new blocks. Text being edited or
   // selected keeps the browser's own copy and paste.
   const copySelected = (event: ClipboardEvent) => {
-    const copy = copyBlocks(displayed.canvas, picked, detail.project.id);
+    const copy = copyBlocks(displayed.canvas, picked, detail.project.id, detail.project.title);
     if (!copy || !event.clipboardData) return;
     const roots = copy.nodes.filter(node => !copy.nodes.some(item => item.id === node.parentId));
     const text = JSON.stringify(copy), plain = roots.map(node => node.title).join('\n');
     event.clipboardData.setData(BLOCKS_MIME, text); event.clipboardData.setData('text/plain', plain); event.preventDefault();
     lastCopy = { text, plain };
-    setMessage(roots.length === 1 ? `Copied ${roots[0].title}.` : `Copied ${roots.length} blocks.`);
+    setToast({ text: roots.length === 1 ? `Copied ${roots[0].title}` : `Copied ${roots.length} blocks`, key: Date.now() });
   };
   const pasteCopied = (event: ClipboardEvent) => {
     const data = event.clipboardData, plain = data?.getData('text/plain') ?? '';
@@ -851,17 +856,23 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!copy) return;
     event.preventDefault();
     if (readonly || busy) { setMessage(readonly ? 'This canvas is read only. Go back to the current canvas to paste.' : 'Still saving. Paste again in a moment.'); return; }
-    const { operations, ids } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
+    const { operations, ids, sources } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
     const title = copy.nodes.find(node => !copy.nodes.some(item => item.id === node.parentId))?.title;
-    void mutate(operations, ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`).then(saved => {
-      if (saved === false) return;
+    const label = ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`;
+    const originals = new Map(copy.nodes.map(node => [node.id, node]));
+    const artifacts = Object.fromEntries(Object.entries(sources).flatMap(([copied, original]) => { const artifactId = originals.get(original)?.artifactId; return artifactId ? [[copied, artifactId]] : []; }));
+    const saving = paste ? paste({ operations, label, from: copy.projectId, sources, artifacts }) : mutate(operations, label).then(saved => saved === false ? null : { missing: [] });
+    void saving.then(result => {
+      if (!result) return;
       // Several pasted blocks stay picked, so they can be dragged on together.
       setGroupSelection(selecting || ids.length > 1 ? ids : []); onSelect(selecting || ids.length !== 1 ? null : ids[0]);
       // The nearest free spot can be off screen on a full canvas; then the view moves to the pasted blocks.
       const first = operations.find(op => op.type === 'addNode' && op.node.id === ids[0]), box = area.current?.getBoundingClientRect();
       const at = first?.type === 'addNode' && !first.node.parentId ? flow.flowToScreenPosition({ x: first.node.x, y: first.node.y }) : null;
       if (!at || !box || at.x < box.left || at.y < box.top || at.x > box.right - 120 || at.y > box.bottom - 120) setFrameRequest(ids);
-      setMessage(`${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}. Undo takes it away.`);
+      const elsewhere = copy.projectId !== detail.project.id && copy.projectTitle ? ` from ${copy.projectTitle}` : '';
+      const lost = result.missing.length ? ` · ${result.missing.length === 1 ? `${result.missing[0]} came without its file` : `${result.missing.length} came without their files`}` : '';
+      setToast({ text: `${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}${elsewhere}${lost}`, undo: true, key: Date.now() });
     });
   };
   const clipboardRef = useRef({ copy: copySelected, paste: pasteCopied }); clipboardRef.current = { copy: copySelected, paste: pasteCopied };
@@ -1320,7 +1331,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}
     {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>groupBlocks(groupSelection,groupName.trim())}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Click the block to link to</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
-    <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
+    <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}{toast && <div key={toast.key} className="canvas-toast" role="status"><Check size={14} aria-hidden="true"/><span>{toast.text}</span>{toast.undo && onUndo && <button type="button" onClick={() => { setToast(null); onUndo(); }}>Undo</button>}</div>}</div>
     <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div>
   </div>;
 }

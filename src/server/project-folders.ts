@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { closeSync, constants, createReadStream, createWriteStream, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
+import { closeSync, constants, copyFileSync, createReadStream, createWriteStream, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync, type FSWatcher, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -629,6 +629,43 @@ export class ProjectFolders implements NotebookFolders {
     const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extensionOf(name).toLowerCase(), this.mapped(record));
     await files.writeStream(path, body, fileLimit(name));
     return { path };
+  }
+  /** Whether the project has a folder ros.ai can use now. */
+  hasFolder(projectId: string): boolean { try { this.require(projectId); return true; } catch { return false; } }
+  /** Copies a File block's PDF or image into files/ of this project, from another project's folder or this one, for a pasted block. Returns the new path. */
+  copyFileFrom(fromProjectId: string, rel: string, toProjectId: string): string {
+    // A video may be gigabytes: it is copied on disk, never read into memory.
+    if (isVideoType(fileMediaType(rel))) {
+      const source = this.require(fromProjectId).files, { record, files } = this.require(toProjectId), info = source.stat(rel);
+      if (!info?.isFile()) throw new StoreError(`${rel} is missing from the project folder.`, 404);
+      if (info.size > fileLimit(rel)) throw new StoreError(tooLarge(rel), 413);
+      const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(rel)), extensionOf(rel).toLowerCase(), this.mapped(record));
+      copyFileSync(source.resolve(rel), files.resolve(path, true), constants.COPYFILE_EXCL);
+      return path;
+    }
+    const bytes = this.require(fromProjectId).files.read(rel, FILE_BYTES).bytes;
+    return this.saveFile(toProjectId, posix.basename(rel), bytes).path;
+  }
+  /** Copies a Post block's photos and subtitles from another project's posts/ into a free posts/<name> here. Returns each new path by its old one. */
+  copyPostFrom(fromProjectId: string, paths: string[], toProjectId: string, name: string): Map<string, string> {
+    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId), folder = this.postFolder(toProjectId, name), moved = new Map<string, string>();
+    for (const rel of new Set(paths)) {
+      if (!postPath(rel)) continue;
+      const next = posix.join(folder, rel.split('/').slice(2).join('/'));
+      if (!postPath(next)) continue;
+      try { files.write(next, source.read(rel, FILE_BYTES).bytes); moved.set(rel, next); } catch { /* a missing photo stays a link to the original page */ }
+    }
+    return moved;
+  }
+  /** Copies the folder images a pasted Text block embeds into the same place in this project's folder, unless a file is already there. */
+  copyNoteImagesFrom(fromProjectId: string, fromNodeId: string, sources: string[], toProjectId: string): void {
+    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId);
+    for (const src of new Set(sources)) {
+      try {
+        const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(posix.relative(source.root, found.absolute).split(sep).join('/'));
+        if (!files.exists(rel)) files.write(rel, source.read(rel, FILE_BYTES).bytes);
+      } catch { /* an image ros.ai cannot find stays as written */ }
+    }
   }
   /** A block of the project, for routes that check its saved paths. */
   storeNode(projectId: string, nodeId: string): CanvasNode | undefined { return this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId); }

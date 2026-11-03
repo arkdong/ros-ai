@@ -120,7 +120,12 @@ export class StoreError extends Error {
 
 type JsonRow = { data: string };
 type NodePresentation = Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>;
-type HistoryState = { stack: Canvas[]; cursor: number; presentation?: Record<string, NodePresentation> };
+type LayoutFields = { x?: number; y?: number; width?: number | null; height?: number | null };
+/** A layout change the person made by hand (a resize), kept as its own undo step: per block, the fields it changed. */
+type LayoutStep = Record<string, { parentId: string | null; before: LayoutFields; after: LayoutFields }>;
+/** `layouts[i]`, when set, marks stack entry i as a layout step rather than a content change. */
+type HistoryState = { stack: Canvas[]; cursor: number; presentation?: Record<string, NodePresentation>; layouts?: (LayoutStep | null)[] };
+export type MutateOptions = { /** Keep a layout-only change (a resize) as its own undo step. */ undoableLayout?: boolean };
 
 // Layout is a current preference, not research content. Compare canonical content
 // so old position-only entries can be skipped without rewriting their snapshots.
@@ -132,12 +137,46 @@ function canvasContent(canvas: Canvas): string {
   });
 }
 
-function contentCursor(history: HistoryState, canvas: Canvas, direction: -1 | 1): number | undefined {
+/** Where undo or redo lands: the nearest entry with other content, or a layout step crossed on the way, whose
+ * fields are then set back (undo) or again (redo). */
+function historyStop(history: HistoryState, canvas: Canvas, direction: -1 | 1): { cursor: number; layout?: { step: LayoutStep; side: 'before' | 'after' } } | undefined {
   const content = canvasContent(canvas);
   for (let cursor = history.cursor + direction; cursor >= 0 && cursor < history.stack.length; cursor += direction) {
-    if (canvasContent(history.stack[cursor]) !== content) return cursor;
+    const step = history.layouts?.[direction < 0 ? cursor + 1 : cursor];
+    if (step) return { cursor, layout: { step, side: direction < 0 ? 'before' : 'after' } };
+    if (canvasContent(history.stack[cursor]) !== content) return { cursor };
   }
   return undefined;
+}
+const LAYOUT_FIELDS = ['x', 'y', 'width', 'height'] as const;
+/** The layout fields each block changed between two canvases with the same content. */
+function layoutStep(before: Canvas, after: Canvas): LayoutStep {
+  const previous = new Map(before.nodes.map(node => [node.id, node]));
+  const step: LayoutStep = {};
+  for (const node of after.nodes) {
+    const old = previous.get(node.id);
+    if (!old || (old.parentId ?? null) !== (node.parentId ?? null)) continue;
+    const from: LayoutFields = {}, to: LayoutFields = {};
+    for (const field of LAYOUT_FIELDS) {
+      if ((old[field] ?? null) === (node[field] ?? null)) continue;
+      (from as Record<string, number | null>)[field] = old[field] ?? null;
+      (to as Record<string, number | null>)[field] = node[field] ?? null;
+    }
+    if (Object.keys(from).length) step[node.id] = { parentId: node.parentId ?? null, before: from, after: to };
+  }
+  return step;
+}
+function applyLayout(canvas: Canvas, step: LayoutStep, side: 'before' | 'after'): Canvas {
+  return { ...canvas, nodes: canvas.nodes.map(node => {
+    const change = step[node.id];
+    if (!change || change.parentId !== (node.parentId ?? null)) return node;
+    const next = { ...node };
+    for (const [field, value] of Object.entries(change[side]) as [keyof LayoutFields, number | null][]) {
+      if (value === null) delete next[field];
+      else (next as Record<string, unknown>)[field] = value;
+    }
+    return next;
+  }) };
 }
 
 // Coordinates are relative to the owning group, so remember each parent scope
@@ -365,7 +404,7 @@ export class Store {
   detail(id: string): ProjectDetail {
     const project = this.getProject(id);
     const history = this.getHistory(id);
-    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: contentCursor(history, project.canvas, -1) !== undefined, canRedo: contentCursor(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
+    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: historyStop(history, project.canvas, -1) !== undefined, canRedo: historyStop(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
   }
 
   private getHistory(id: string): HistoryState {
@@ -580,7 +619,7 @@ export class Store {
     return updated;
   }
 
-  private mutateWithinTransaction(id: string, operations: Mutation[], label: string, expectedRevision?: number): Project {
+  private mutateWithinTransaction(id: string, operations: Mutation[], label: string, expectedRevision?: number, options: MutateOptions = {}): Project {
     const project = this.getProject(id);
     if (expectedRevision !== undefined && expectedRevision !== project.revision) throw new StoreError('The canvas has changed. Refresh and review the latest version.', 409);
     const { canvas } = this.applyOperations(project, operations, false);
@@ -592,6 +631,18 @@ export class Store {
     const history = this.getHistory(id);
     rememberPresentation(history, project.canvas);
     rememberPresentation(history, canvas);
+    if (canvasContent(canvas) === canvasContent(project.canvas) && options.undoableLayout) {
+      // A resize by hand is its own undo step, so Cmd+Z puts the block back; other layout stays out of undo.
+      const step = layoutStep(project.canvas, canvas);
+      if (Object.keys(step).length) {
+        const layouts = (history.layouts ?? []).slice(0, history.cursor + 1);
+        layouts[history.cursor + 1] = step;
+        history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
+        history.cursor++;
+        history.layouts = Array.from(layouts, entry => entry ?? null);
+        return this.commitCanvas(project, canvas, checkedLabel, history);
+      }
+    }
     if (canvasContent(canvas) === canvasContent(project.canvas)) {
       // Do not advance content revision, append a snapshot, or discard redo.
       // Captured evidence and approvals keep their original immutable inputs.
@@ -601,6 +652,7 @@ export class Store {
       return updated;
     }
     history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
+    if (history.layouts) history.layouts = history.layouts.slice(0, history.cursor + 1);
     history.cursor++;
     // Blocks restored from the project folder were counted when they were first added.
     if (!checkedLabel.endsWith(' from the project folder')) {
@@ -611,19 +663,52 @@ export class Store {
     return this.commitCanvas(project, canvas, checkedLabel, history);
   }
 
-  mutate(id: string, operations: Mutation[], label: string, expectedRevision?: number): Project {
-    return this.transaction(() => this.mutateWithinTransaction(id, operations, label, expectedRevision));
+  mutate(id: string, operations: Mutation[], label: string, expectedRevision?: number, options?: MutateOptions): Project {
+    return this.transaction(() => this.mutateWithinTransaction(id, operations, label, expectedRevision, options));
+  }
+
+  /**
+   * Pasted blocks, as one step for Undo. A block pasted from another project gets its own copy of the original's saved
+   * version (`copies`), recorded as a run that says where it came from; no model or code runs.
+   */
+  pasteBlocks(id: string, operations: Mutation[], label: string, expectedRevision: number | undefined, copies: { nodeId: string; artifactId: string }[]): Project {
+    return this.transaction(() => {
+      const pasted = this.mutateWithinTransaction(id, operations, label, expectedRevision);
+      const before = this.getHistory(id).cursor, patches: Mutation[] = [];
+      for (const { nodeId, artifactId } of copies) {
+        const node = pasted.canvas.nodes.find(item => item.id === nodeId), source = this.getArtifact(artifactId), at = now();
+        if (!node) continue;
+        const run: Run = { id: randomUUID(), projectId: id, nodeId, request: `Paste ${source.title}`, useSearch: false, status: 'running', createdAt: at, startedAt: at, projectRevision: pasted.revision,
+          node: clone(node), inputs: [], messages: [], provider: 'local', model: 'paste-v1', modelVersion: null, configuration: { kind: 'paste', fromProjectId: source.projectId, fromArtifactId: source.id },
+          tools: [], events: [{ at, type: 'paste', message: 'Copied from another project. No model or code ran.' }], artifactIds: [] };
+        this.createRun(run);
+        const { id: _id, hash: _hash, createdAt: _createdAt, sourceId: _sourceId, projectId: _projectId, nodeId: _nodeId, runId: _runId, content, ...kept } = source;
+        const copy = this.addArtifact({ ...kept, content, projectId: id, nodeId, runId: run.id, metadata: { ...kept.metadata, copiedFrom: { projectId: source.projectId, artifactId: source.id } } });
+        this.updateRun(run.id, { status: 'completed', endedAt: at, artifactIds: [copy.id] });
+        patches.push({ type: 'updateNode', id: nodeId, patch: { artifactId: copy.id } });
+      }
+      if (!patches.length) return pasted;
+      const project = this.mutateWithinTransaction(id, patches, label);
+      // The blocks and their saved versions arrive together, so one Undo takes both away.
+      const history = this.getHistory(id);
+      if (history.cursor === before + 1 && before > 0) {
+        history.stack.splice(before, 1); history.cursor = before;
+        this.db.prepare('UPDATE projects SET history = ? WHERE id = ?').run(JSON.stringify(history), id);
+      }
+      return project;
+    });
   }
 
   private travelHistory(id: string, direction: -1 | 1): Project {
     return this.transaction(() => {
       const project = this.getProject(id);
       const history = this.getHistory(id);
-      const cursor = contentCursor(history, project.canvas, direction);
-      if (cursor === undefined) throw new StoreError(direction < 0 ? 'Nothing to undo' : 'Nothing to redo', 409);
-      history.cursor = cursor;
+      const stop = historyStop(history, project.canvas, direction);
+      if (stop === undefined) throw new StoreError(direction < 0 ? 'Nothing to undo' : 'Nothing to redo', 409);
+      history.cursor = stop.cursor;
       rememberPresentation(history, project.canvas);
-      const canvas = restoreContent(history, history.stack[cursor], project.canvas);
+      const restored = restoreContent(history, history.stack[stop.cursor], project.canvas);
+      const canvas = stop.layout ? applyLayout(restored, stop.layout.step, stop.layout.side) : restored;
       rememberPresentation(history, canvas);
       return this.commitCanvas(project, canvas, direction < 0 ? 'Undo canvas edit' : 'Redo canvas edit', history);
     });

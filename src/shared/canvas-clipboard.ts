@@ -4,10 +4,10 @@ import { LAYOUT_GAP } from './layout.js';
 import type { Canvas, CanvasNode, Connection, Mutation } from './types.js';
 
 /** Copied blocks: the picked ones, everything inside a picked Group, and the links between them. */
-export type CopiedBlocks = { kind: 'ros-blocks'; version: 1; projectId: string; nodes: CanvasNode[]; connections: Connection[] };
+export type CopiedBlocks = { kind: 'ros-blocks'; version: 1; projectId: string; /** Named in the toast when the blocks are pasted into another project. */ projectTitle?: string; nodes: CanvasNode[]; connections: Connection[] };
 export const BLOCKS_MIME = 'application/x-ros-blocks';
 
-export function copyBlocks(canvas: Canvas, ids: readonly string[], projectId: string): CopiedBlocks | null {
+export function copyBlocks(canvas: Canvas, ids: readonly string[], projectId: string, projectTitle?: string): CopiedBlocks | null {
   const byId = new Map(canvas.nodes.map(node => [node.id, node]));
   const picked = new Set(ids.filter(id => byId.has(id)));
   // A block inside a picked Group travels with its Group, so it is not copied twice.
@@ -17,7 +17,7 @@ export function copyBlocks(canvas: Canvas, ids: readonly string[], projectId: st
   const nodes = roots.flatMap(node => [node, ...groupMembers(canvas, node.id)]);
   const copied = new Set(nodes.map(node => node.id));
   const connections = canvas.connections.filter(connection => copied.has(connection.source) && copied.has(connection.target));
-  return structuredClone({ kind: 'ros-blocks', version: 1, projectId, nodes, connections });
+  return structuredClone({ kind: 'ros-blocks', version: 1, projectId, ...(projectTitle ? { projectTitle } : {}), nodes, connections });
 }
 
 export function readCopiedBlocks(text: string): CopiedBlocks | null {
@@ -35,9 +35,10 @@ const GRID = 24, grid = (value: number) => Math.ceil(value / GRID) * GRID;
  * copy lands on the nearest free spot right of or below the copied blocks, and pasting again finds the next one.
  * A pasted block keeps its Group when that Group is still on this canvas. An Agent block's link to its turn and
  * a Group's chosen highlights stay with the original. In another project, links to saved results and decisions
- * stay behind too, because they belong to the original project. `measure` gives a block's size as shown.
+ * stay behind too, because they belong to the original project; the server copies saved versions and folder files
+ * (`sources` names each copy's original). `measure` gives a block's size as shown.
  */
-export function pasteOperations(copy: CopiedBlocks, canvas: Canvas, projectId: string, newId: () => string = () => crypto.randomUUID(), measure?: (node: CanvasNode) => BlockSize | undefined): { operations: Mutation[]; ids: string[] } {
+export function pasteOperations(copy: CopiedBlocks, canvas: Canvas, projectId: string, newId: () => string = () => crypto.randomUUID(), measure?: (node: CanvasNode) => BlockSize | undefined): { operations: Mutation[]; ids: string[]; sources: Record<string, string> } {
   const ids = new Map(copy.nodes.map(node => [node.id, newId()]));
   const present = new Set(canvas.nodes.map(node => node.id)), sameProject = copy.projectId === projectId;
   const parentOf = (node: CanvasNode) => node.parentId && present.has(node.parentId) ? node.parentId : null;
@@ -62,17 +63,23 @@ export function pasteOperations(copy: CopiedBlocks, canvas: Canvas, projectId: s
     const { id, parentId, agent, artifactId, decisions, groupHighlights, code, ...kept } = structuredClone(original);
     const copiedParent = parentId ? ids.get(parentId) : undefined;
     if (!copiedParent) roots.push(ids.get(id)!);
+    // An App reads, and a Dashboard shows, the copies of blocks copied with it, or the originals when they are still on this canvas.
+    const block = (nodeId: string) => ids.get(nodeId) ?? (present.has(nodeId) ? nodeId : undefined);
     const node: CanvasNode = {
       ...kept, id: ids.get(id)!,
       // Blocks inside a copied Group keep their place in it; only the outermost blocks move.
       parentId: copiedParent ?? parentOf(original),
       ...(copiedParent ? {} : { x: original.x + spot.right * column, y: original.y + spot.down * row }),
       ...(code ? { code: sameProject ? code : { ...code, inputArtifactId: null } } : {}),
+      ...(kept.app ? { app: { ...kept.app, inputs: kept.app.inputs.flatMap(input => block(input) ?? []) } } : {}),
+      ...(kept.dashboard ? { dashboard: { ...kept.dashboard, tiles: kept.dashboard.tiles.flatMap(tile => { const shown = block(tile.block); return shown ? [{ ...tile, block: shown }] : []; }) } } : {}),
+      // A notebook's running Python stays with the original; the server copies its cells.
+      ...(kept.notebook ? { notebook: { path: kept.notebook.path } } : {}),
       ...(sameProject && artifactId ? { artifactId } : {}),
       ...(sameProject && decisions?.length ? { decisions } : {}),
     };
     return { type: 'addNode' as const, node };
   });
   for (const connection of copy.connections) operations.push({ type: 'addConnection', connection: { ...connection, id: newId(), source: ids.get(connection.source)!, target: ids.get(connection.target)! } });
-  return { operations, ids: roots };
+  return { operations, ids: roots, sources: Object.fromEntries([...ids].map(([original, copied]) => [copied, original])) };
 }
