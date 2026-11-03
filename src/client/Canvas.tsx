@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
 import { Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Pencil, Pin, Play, Plus, Redo2, Settings2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
@@ -20,7 +20,7 @@ import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel }
 import { api } from './api';
 import type { ExperimentCapabilities } from '../shared/experiments';
 import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
-import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_SCALES, PICTURE_MIN_HEIGHT, cardScale, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, setCardHeight } from '../shared/card-size';
+import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_SCALES, cardScale, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, pictureMinWidth, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
 import { resultPage, changeResultPageSize, type ResultPageChoice } from '../shared/result-pages';
@@ -174,11 +174,12 @@ function resizedCard(edge: ResizeEdge, start: { width: number; height: number },
   const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(value)));
   let width = start.width, height: number | undefined, moveX = 0, moveY = 0;
   if (image) {
+    const narrowest = pictureMinWidth(image);
     if (edge === 'n' || edge === 's') {
-      const wanted = clamp(start.height + (edge === 's' ? dy : -dy), PICTURE_MIN_HEIGHT, CARD_MAX_SET_HEIGHT);
-      width = clamp(wanted * image.width / Math.max(1, image.height), CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-    } else if (edge.includes('e')) width = clamp(start.width + dx, CARD_MIN_WIDTH, CARD_MAX_WIDTH);
-    else { moveX = Math.max(start.width - CARD_MAX_WIDTH, Math.min(start.width - CARD_MIN_WIDTH, Math.round(dx / RESIZE_GRID) * RESIZE_GRID)); width = start.width - moveX; }
+      const wanted = clamp(start.height + (edge === 's' ? dy : -dy), 1, CARD_MAX_SET_HEIGHT);
+      width = clamp((wanted - 2) * image.width / Math.max(1, image.height) + 2, narrowest, CARD_MAX_WIDTH);
+    } else if (edge.includes('e')) width = clamp(start.width + dx, narrowest, CARD_MAX_WIDTH);
+    else { moveX = Math.max(start.width - CARD_MAX_WIDTH, Math.min(start.width - narrowest, Math.round(dx / RESIZE_GRID) * RESIZE_GRID)); width = start.width - moveX; }
     height = pictureCardHeight(width, image);
     if (edge.startsWith('n')) moveY = Math.round((start.height - height) / RESIZE_GRID) * RESIZE_GRID;
     return { width, height, dx: moveX, dy: moveY };
@@ -314,7 +315,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   const handle:ResizeEdge='se';
   const openButton=<button className="icon-button card-open" aria-label={`Open ${data.title}`} data-tip={group?'Open group details':notebook?'Open notebook':code?'Open code and results':data.app?'Open the App, its code and inputs':picture?'Open the picture':'Open content'} data-hint={group?undefined:'or double-click the block'} onClick={event=>{event.stopPropagation();data.onInspect();}}><ArrowUpRight size={15}/></button>;
   // A picture card is the picture: no kind, title or footer of its own. Its controls and title show over it on hover.
-  if(picture)return <article className={`research-card research-block picture-card ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
+  if(picture)return <article className={`research-card research-block picture-card${data.height<72||data.width<160?' picture-tiny':data.height<160||data.width<280?' picture-small':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
     <div ref={heading} className="group-heading picture-face">
       <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}><ShownFilePreview file={data.file!} title={data.title} missing={data.fileMissing} onSize={data.onPictureSize}/></div>
@@ -354,7 +355,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
           :data.blockType==='search'?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}<ul className="search-queries">{data.description.split('\n').filter(Boolean).slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul></div>
           :data.label==='result'&&data.description===RESULT_PLACEHOLDER?<div className="search-face">{data.why&&<p className="search-why" title={data.why}>{data.why}</p>}{data.queries?.length?<ul className="search-queries">{data.queries.slice(0,3).map((query,index)=><li key={index} title={query}><SearchIcon size={12}/><span>{query}</span></li>)}</ul>:<p className="block-empty-hint">{data.description}</p>}</div>
-          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.map?<ShownMap view={data.map}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:data.metric?<ShownMetric projectId={data.metric.projectId} nodeId={id} view={data.metric.view} title={data.title}/>:data.dashboard?<ShownDashboard projectId={data.dashboard.projectId} view={data.dashboard.view} sources={data.dashboard.sources}/>:data.post?<PostCard projectId={data.post.projectId} nodeId={id} post={data.post.view} title={data.title}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={data.heightSet?8000:undefined}/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
+          :data.web?<WebFace data={data.web}/>:data.app?<AppFace id={id} data={data} onErrors={setAppErrors}/>:data.file?<ShownFilePreview file={data.file} title={data.title}/>:data.notion?<ShownNotion projectId={data.notion.projectId} nodeId={id} view={data.notion.view} onRows={data.notion.onRows?notionRows:undefined}/>:data.google?<ShownGoogle projectId={data.google.projectId} nodeId={id} view={data.google.view} onCopy={data.google.onCopy?googleCopy:undefined}/>:data.map?<ShownMap view={data.map}/>:data.training?<ShownTraining projectId={data.training.projectId} nodeId={id} view={data.training.view}/>:data.metric?<ShownMetric projectId={data.metric.projectId} nodeId={id} view={data.metric.view} title={data.title}/>:data.dashboard?<ShownDashboard projectId={data.dashboard.projectId} view={data.dashboard.view} sources={data.dashboard.sources}/>:data.post?<PostCard projectId={data.post.projectId} nodeId={id} post={data.post.view} title={data.title}/>:code?(data.code?<ShownCode className="block-code-source nowheel" code={data.code}/>:<p className="block-empty-hint">No code yet</p>):data.primary?<ShownArtifact artifact={data.primary}/>:data.description?<ShownMarkdown text={splitSources(data.description).body} limit={20_000} scroll/>:notebook?<p className="block-empty-hint">No cells yet</p>:null}</div>
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
@@ -488,11 +489,13 @@ export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; 
 /** The map as it is right now, read when a message goes to ROS: the blocks picked together (a ⌘-click or a box) and the blocks inside
  * the visible part of the map, nearest its middle first, or 'all' when every block shown is in view. */
 export type CanvasView = () => { picked: string[]; onScreen: string[] | 'all' };
-type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId) => void; onBrowse: (parentId: string | null, kind?: KindId) => void; local?: boolean; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
+type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; onReuse: (artifact: Artifact, nodeId?: string) => void; onPin: (artifact: Artifact, nodeId: string) => void; onMoveHighlight: (id: string, nodeId: string, position: { x: number; y: number }) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string, options?: { undoableLayout?: boolean }) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId, at?: { x: number; y: number }) => void; onBrowse: (parentId: string | null, kind?: KindId, at?: { x: number; y: number }) => void; local?: boolean; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
   onGoogleCopy?: (nodeId: string) => Promise<boolean>;
   /** Filled with a reader of what the map shows, for the glance a message to ROS carries. */
-  view?: RefObject<CanvasView | null> };
+  view?: RefObject<CanvasView | null>;
+  /** Pastes copied blocks with what they show (files, saved versions, notebooks); null when it did not happen. */
+  paste?: (body: { operations: Mutation[]; label: string; from: string; sources: Record<string, string>; artifacts: Record<string, string> }) => Promise<{ missing: string[] } | null> };
 type Box = { x: number; y: number; width: number; height: number };
 function overlaps(a: Box, b: Box) { return a.x < b.x + b.width + 32 && a.x + a.width + 32 > b.x && a.y < b.y + b.height + 32 && a.y + a.height + 32 > b.y; }
 /** One stable result footprint shared by display and Arrange, independent of old child positions. */
@@ -523,15 +526,15 @@ function useStableHandlers<T extends Record<string, (...args: never[]) => unknow
   const latest = useRef(handlers); latest.current = handlers;
   return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
 }
-function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view }: Props) {
+function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, onReuse, onPin, onMoveHighlight, highlights, mutate, onAdd, onBrowse, local = true, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste }: Props) {
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The quick Add block menu, placed beside its tile in the tools card.
-  const [addMenu, setAddMenu] = useState<{ left: number; top: number } | null>(null);
+  const [addMenu, setAddMenu] = useState<{ left: number; top: number; at?: { x: number; y: number } } | null>(null);
   // The open label menu, and the Group a dragged block would join (outlined while the drag lasts).
   const [sizeMenu, setSizeMenu] = useState<{ left: number; top: number } | null>(null); const closeSizeMenu = useCallback(() => setSizeMenu(null), []);
   const [labelMenu, setLabelMenu] = useState<{ nodeId: string; left: number; top: number } | null>(null); const closeLabelMenu = useCallback(() => setLabelMenu(null), []);
   const [dropTarget, setDropTarget] = useState<{ id: string; left: number; top: number; width: number; height: number } | null>(null); const dropTargetId = useRef<string | null>(null);
-  const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('New group'), [dropping, setDropping] = useState(false);
+  const [selecting, setSelecting] = useState(false), [groupSelection, setGroupSelection] = useState<string[]>([]), [groupName, setGroupName] = useState('Untitled'), [dropping, setDropping] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
   // The link whose word is being edited, and a link just drawn, whose word opens as soon as the canvas shows it.
   const [editingLink, setEditingLink] = useState<{ connectionId: string } | null>(null); const pendingEdit = useRef<string | null>(null);
@@ -719,9 +722,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     };
     if (!Object.keys(patch).length) { clear(); return; }
     resizeCommits.current.add(id); setResizingCards([...resizeCommits.current]);
-    void mutate([{ type: 'updateNode', id, patch }], 'Resize block').finally(() => { clear(); resizeCommits.current.delete(id); setResizingCards([...resizeCommits.current]); });
+    void mutate([{ type: 'updateNode', id, patch }], 'Resize block', { undoableLayout: true }).finally(() => { clear(); resizeCommits.current.delete(id); setResizingCards([...resizeCommits.current]); });
   };
-  const fitHeight = (id: string) => { if (!readonly) void mutate([{ type: 'updateNode', id, patch: { height: null } }], 'Fit block to its content'); };
+  const fitHeight = (id: string) => { if (!readonly) void mutate([{ type: 'updateNode', id, patch: { height: null } }], 'Fit block to its content', { undoableLayout: true }); };
   const toggle = (id: string) => { if (!displayed.canvas.nodes.some(node=>node.id===id&&isGroup(node))) return; const open = expandedIds.includes(id); onExpandedChange(open ? expandedIds.filter(n => n !== id) : [...expandedIds, id]); onSelect(id); };
   const connect = (source: string, target: string) => {
     if (readonly || source === target || connectionBusy.current) return;
@@ -738,6 +741,9 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); setEditingLink(null); }
   };
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 4500); return () => clearTimeout(timer); }, [message]);
+  // Copy and paste answer with a small toast; a paste's toast offers Undo.
+  const [toast, setToast] = useState<{ text: string; undo?: boolean; key: number } | null>(null);
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), toast.undo ? 5000 : 2200); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setPendingConnection(null); setSelectedEdge(null); setEditingLink(null); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
   // Delete the picked blocks, or the selected one; a block inside another picked group goes with it.
   // A Text block's label is picked from a menu under its caption; a Report or Finding keeps the label its type implies.
@@ -778,6 +784,19 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       return [{ type: 'updateNode' as const, id: node.id, patch: { scale: scale >= 1 ? null : scale, x: Math.round(at.x + (node.x - at.x) * ratio), y: Math.round(at.y + (node.y - at.y) * ratio) } }];
     });
     if (operations.length) void mutate(operations, scale >= 1 ? 'Show blocks at their own size' : 'Shrink blocks');
+  };
+  // Blocks already selected go straight into a new group when Group is pressed.
+  const groupable = readonly || selecting ? [] : picked.filter(id => displayed.canvas.nodes.some(node => node.id === id));
+  const groupBlocks = (ids: readonly string[], title: string) => {
+    try {
+      const id = crypto.randomUUID(), operations = createGroupOperations(displayed.canvas, ids, id, title, GROUP_INSET);
+      if (!operations.length) return;
+      void mutate(operations, 'Group selected blocks').then(saved => {
+        if (saved === false) return;
+        setSelecting(false); setGroupSelection([]); onExpandedChange([...expandedIds, id]); onSelect(id);
+        setMessage('Group created. Models and authority retained.');
+      });
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
   };
   const removeSelected = () => {
     const parents = new Map(displayed.canvas.nodes.map(node => [node.id, node.parentId]));
@@ -873,13 +892,13 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   // ⌘/Ctrl C copies the picked blocks and ⌘/Ctrl V pastes them as new blocks. Text being edited or
   // selected keeps the browser's own copy and paste.
   const copySelected = (event: ClipboardEvent) => {
-    const copy = copyBlocks(displayed.canvas, picked, detail.project.id);
+    const copy = copyBlocks(displayed.canvas, picked, detail.project.id, detail.project.title);
     if (!copy || !event.clipboardData) return;
     const roots = copy.nodes.filter(node => !copy.nodes.some(item => item.id === node.parentId));
     const text = JSON.stringify(copy), plain = roots.map(node => node.title).join('\n');
     event.clipboardData.setData(BLOCKS_MIME, text); event.clipboardData.setData('text/plain', plain); event.preventDefault();
     lastCopy = { text, plain };
-    setMessage(roots.length === 1 ? `Copied ${roots[0].title}.` : `Copied ${roots.length} blocks.`);
+    setToast({ text: roots.length === 1 ? `Copied ${roots[0].title}` : `Copied ${roots.length} blocks`, key: Date.now() });
   };
   const pasteCopied = (event: ClipboardEvent) => {
     const data = event.clipboardData, plain = data?.getData('text/plain') ?? '';
@@ -889,17 +908,23 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!copy) return;
     event.preventDefault();
     if (readonly || busy) { setMessage(readonly ? 'This canvas is read only. Go back to the current canvas to paste.' : 'Still saving. Paste again in a moment.'); return; }
-    const { operations, ids } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
+    const { operations, ids, sources } = pasteOperations(copy, displayed.canvas, detail.project.id, undefined, node => { const shown = flow.getNode(node.id); return shown?.width && shown.height ? { width: shown.width, height: shown.height } : undefined; });
     const title = copy.nodes.find(node => !copy.nodes.some(item => item.id === node.parentId))?.title;
-    void mutate(operations, ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`).then(saved => {
-      if (saved === false) return;
+    const label = ids.length === 1 ? `Paste ${title}` : `Paste ${ids.length} blocks`;
+    const originals = new Map(copy.nodes.map(node => [node.id, node]));
+    const artifacts = Object.fromEntries(Object.entries(sources).flatMap(([copied, original]) => { const artifactId = originals.get(original)?.artifactId; return artifactId ? [[copied, artifactId]] : []; }));
+    const saving = paste ? paste({ operations, label, from: copy.projectId, sources, artifacts }) : mutate(operations, label).then(saved => saved === false ? null : { missing: [] });
+    void saving.then(result => {
+      if (!result) return;
       // Several pasted blocks stay picked, so they can be dragged on together.
       setGroupSelection(selecting || ids.length > 1 ? ids : []); onSelect(selecting || ids.length !== 1 ? null : ids[0]);
       // The nearest free spot can be off screen on a full canvas; then the view moves to the pasted blocks.
       const first = operations.find(op => op.type === 'addNode' && op.node.id === ids[0]), box = area.current?.getBoundingClientRect();
       const at = first?.type === 'addNode' && !first.node.parentId ? flow.flowToScreenPosition({ x: first.node.x, y: first.node.y }) : null;
       if (!at || !box || at.x < box.left || at.y < box.top || at.x > box.right - 120 || at.y > box.bottom - 120) setFrameRequest(ids);
-      setMessage(`${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}. Undo takes it away.`);
+      const elsewhere = copy.projectId !== detail.project.id && copy.projectTitle ? ` from ${copy.projectTitle}` : '';
+      const lost = result.missing.length ? ` · ${result.missing.length === 1 ? `${result.missing[0]} came without its file` : `${result.missing.length} came without their files`}` : '';
+      setToast({ text: `${ids.length === 1 ? `Pasted ${title}` : `Pasted ${ids.length} blocks`}${elsewhere}${lost}`, undo: true, key: Date.now() });
     });
   };
   const clipboardRef = useRef({ copy: copySelected, paste: pasteCopied }); clipboardRef.current = { copy: copySelected, paste: pasteCopied };
@@ -1305,6 +1330,15 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const rect = control.getBoundingClientRect(), fits = rect.right + 10 + 280 <= frame.right - 16;
     setAddMenu({ left: fits ? rect.right - frame.left + 10 : rect.left - frame.left - 10 - 280, top: rect.top - frame.top - 6 });
   };
+  // Double-clicking empty map opens the same menu at the pointer, and the block it adds lands there, centred on the spot.
+  const openAddMenuAt = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (readonly || busy || hand || !(event.target as HTMLElement).classList.contains('react-flow__pane')) return;
+    const frame = area.current?.getBoundingClientRect();
+    if (!frame) return;
+    const spot = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }), fits = event.clientX + 8 + 280 <= frame.right - 16;
+    onSelect(null);
+    setAddMenu({ left: fits ? event.clientX - frame.left + 8 : event.clientX - frame.left - 8 - 280, top: event.clientY - frame.top - 6, at: { x: Math.round(spot.x - CARD_SIZE.width / 2), y: Math.round(spot.y - 24) } });
+  };
   // The map's tools, in the groups the dock draws: add, pointer, arrange, history, view, demo. Add block is the dock's
   // one black tile, and its hint says what a block can be. An empty map has its Add a block button in the middle
   // instead, and shows the dock only when there is something to undo.
@@ -1320,7 +1354,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     { id: 'move', label: 'Move', hint: 'V', icon: <MousePointer2 size={18}/>, pressed: canvasTool.tool === 'move', onClick: () => canvasTool.setTool('move') },
     { id: 'hand', label: 'Hand', hint: 'H, or hold Space', icon: <Hand size={18}/>, pressed: canvasTool.tool === 'hand', onClick: () => canvasTool.setTool('hand') },
     divider('arrange-divider'),
-    { id: 'group', label: selecting ? 'Done' : 'Group', hint: selecting ? 'Stop picking blocks' : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly, onClick: () => { setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
+    { id: 'group', label: selecting ? 'Done' : groupable.length ? 'Group selected' : 'Group', hint: selecting ? 'Stop picking blocks' : groupable.length ? `Put the ${groupable.length === 1 ? 'selected block' : `${groupable.length} selected blocks`} in a new group` : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly || busy, onClick: () => { if (!selecting && groupable.length) { groupBlocks(groupable, 'Untitled'); return; } setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
     ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
     { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
     { id: 'tidy', label: 'Tidy', hint: 'Line blocks up', icon: arranging || animatingLayout ? <LoaderCircle size={18} className="spin"/> : <LayoutGrid size={18}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
@@ -1334,7 +1368,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   ];
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
-    onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
+    onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}
+    onDoubleClick={openAddMenuAt}>
     <ReactFlow<ResearchNode | ArtifactNode, LinkEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} {...flowHandlers}
       connectionMode={ConnectionMode.Loose} connectOnClick={false} connectionRadius={28} nodesDraggable={!readonly && !animatingLayout} nodeDragThreshold={0} nodesConnectable={!readonly} selectNodesOnDrag={false}
       panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
@@ -1343,14 +1378,14 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
     </div>
     {dockItems.length > 0 && <CanvasDock label="Canvas tools" items={dockItems}/>}
-    {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} local={local} onPick={kind => { setAddMenu(null); onAdd(selectedGroup?.id ?? null, kind.id); }} onBrowse={kind => { setAddMenu(null); onBrowse(selectedGroup?.id ?? null, kind?.id); }} onClose={() => setAddMenu(null)}/>}
+    {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} local={local} onPick={kind => { setAddMenu(null); onAdd(addMenu.at ? null : selectedGroup?.id ?? null, kind.id, addMenu.at); }} onBrowse={kind => { setAddMenu(null); onBrowse(addMenu.at ? null : selectedGroup?.id ?? null, kind?.id, addMenu.at); }} onClose={() => setAddMenu(null)}/>}
     {sizeMenu && sizeTargets.length > 0 && <SizeMenu left={sizeMenu.left} top={sizeMenu.top} current={sizeNow} count={sizeTargets.length} onPick={resizeBlocks} onClose={closeSizeMenu}/>}
     {labelMenu && (() => { const target = displayed.canvas.nodes.find(node => node.id === labelMenu.nodeId); return target ? <LabelMenu key={target.id} node={target} left={labelMenu.left} top={labelMenu.top} onClose={closeLabelMenu} onPick={value => { closeLabelMenu(); void mutate([{ type: 'updateNode', id: target.id, patch: labelPatch(target, value) }], value ? `Label as ${value.trim().slice(0, 40)}` : 'Remove label'); }}/> : null; })()}
     {dropTarget && <div className="drop-target-outline" style={{ left: dropTarget.left, top: dropTarget.top, width: dropTarget.width, height: dropTarget.height }}/>}
     {!nodes.length && <div className="canvas-empty"><h2>Give a question room.</h2><p>Add what you know, or a task to explore what you don’t.</p><button type="button" className="canvas-empty-add" data-testid="add-node" aria-haspopup="dialog" aria-expanded={Boolean(addMenu)} disabled={readonly || busy} onClick={event => openAddMenu(event.currentTarget)}><Plus size={16}/>Add a block</button></div>}
-    {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>{try{const id=crypto.randomUUID(),operations=createGroupOperations(displayed.canvas,groupSelection,id,groupName.trim());void mutate(operations,'Group selected blocks').then(saved=>{if(saved!==false){setSelecting(false);setGroupSelection([]);onExpandedChange([...expandedIds,id]);onSelect(id);setMessage('Group created. Models and authority retained.');}});}catch(error){setMessage(error instanceof Error?error.message:String(error));}}}>Group selected</button></div>}
+    {selecting&&<div className="canvas-group-toolbar nodrag nopan"><span>{groupSelection.length} selected · click blocks</span><input aria-label="New group title" value={groupName} maxLength={200} onChange={event=>setGroupName(event.target.value)}/><button className="primary small" disabled={!groupSelection.length||!groupName.trim()} onClick={()=>groupBlocks(groupSelection,groupName.trim())}>Group selected</button></div>}
     {pendingConnection && <div className="connection-instruction" role="status"><GitBranch size={16}/><span>Click the block to link to</span><button className="icon-button" aria-label="Cancel connection" onClick={() => setPendingConnection(null)}><X size={15}/></button></div>}
-    <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}</div>
+    <div className="canvas-notices">{notices}{proposalCard && !proposalAnchors.length && proposalCard}{message && <div className="canvas-notice canvas-feedback" role="status">{message}</div>}{toast && <div key={toast.key} className="canvas-toast" role="status"><Check size={14} aria-hidden="true"/><span>{toast.text}</span>{toast.undo && onUndo && <button type="button" onClick={() => { setToast(null); onUndo(); }}>Undo</button>}</div>}</div>
     <div className="canvas-tools"><button className="icon-button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 180 })}><Minus size={17}/></button><button className="icon-button" aria-label="Fit canvas" title="Fit at readable zoom; See all shows everything" onClick={() => void fitCanvas()}><Focus size={18}/></button><button className="icon-button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 180 })}><Plus size={17}/></button></div>
   </div>;
 }

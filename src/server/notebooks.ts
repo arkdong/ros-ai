@@ -211,6 +211,12 @@ export class NotebookService {
     this.node(projectId, nodeId);
     this.replace(projectId, nodeId, parseIpynb(content), `${path} changed in another app`, hash);
   }
+  /** A pasted Notebook block gets the cells and outputs of the one it was copied from, in this project or another. */
+  copyFrom(fromProjectId: string, fromNodeId: string, toProjectId: string, toNodeId: string): void {
+    this.node(toProjectId, toNodeId);
+    const { metadata, nbformatMinor, cells } = this.content(fromProjectId, fromNodeId);
+    this.replace(toProjectId, toNodeId, structuredClone({ metadata, nbformatMinor, cells }), 'Pasted');
+  }
   private replace(projectId: string, nodeId: string, parsed: ReturnType<typeof parseIpynb>, reason: string, fileHash?: string): Stored {
     const current = this.content(projectId, nodeId), pristine = current.revision === 1 && current.cells.every(cell => !cell.source.trim() && !cell.outputs?.length);
     if (!pristine) this.store.saveRecord<Previous>(PREVIOUS, this.key(projectId, nodeId), projectId, { content: current, reason, at: now() });
