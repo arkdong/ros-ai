@@ -5,7 +5,7 @@ import { checkSourcesRequest } from '../shared/source-check';
 import type { ResearchPolicy } from '../shared/research';
 import { api, post, upload } from './api';
 import { emptyPosition, previewCanvas, ResearchCanvas, shownFile, type CanvasView } from './Canvas';
-import { fileMediaType, fileSize, fileTypeName, isPictureNode } from '../shared/files';
+import { fileMediaType, fileSize, fileTypeName, isPictureNode, videoLength } from '../shared/files';
 import { BrandLogo } from './brand-logos';
 import { kindName, labelFixed, labelPatch } from '../shared/vocabulary';
 import { ArtifactViewer } from './ArtifactViewer';
@@ -198,10 +198,10 @@ export function App(){
   const showTourStage=(nodeId:string)=>{setArtifact(null);setInspectorId(null);setDialog(null);revealNode(nodeId);setExpandedIds(current=>[...new Set([...current,nodeId])]);};
   // The guided demo shows each step's new blocks together.
   const frameBlocks=(ids:string[])=>{setArtifact(null);setInspectorId(null);setDialog(null);setFocusId(null);if(selectedId)selectBlock(null);setFrame({ids,key:Date.now()});};
-  /** A PDF or image chosen or dropped is saved into files/ in the project folder; the block shows it from there. */
+  /** A PDF, image or video chosen or dropped is saved into files/ in the project folder; the block shows it from there. */
   const saveFile=async(file:File)=>{
     if(!detail)throw new Error('Open a project first.');
-    if(!fileMediaType(file.name))throw new Error(`${file.name} is not a PDF or a PNG, JPEG, WebP or GIF image.`);
+    if(!fileMediaType(file.name))throw new Error(`${file.name} is not a PDF, a PNG, JPEG, WebP or GIF image, or an MP4 or MOV video.`);
     if(!folderStatus?.attached)throw new Error('Choose a project folder first (the folder chip above the canvas); the file is saved there.');
     return upload<{path:string}>(`/api/projects/${detail.project.id}/folder/files?name=${encodeURIComponent(file.name)}`,file);
   };
@@ -338,7 +338,7 @@ export function App(){
   const inspectorPicture=Boolean(detail&&inspectorNode&&isPictureNode(inspectorNode));
   const pictureFile=inspectorPicture&&detail&&inspectorNode?shownFile(detail.project.id,inspectorNode,inspectorFile):undefined;
   const pictureChips=pictureFile&&detail&&inspectorNode&&!inspectorFile?.missing?<>{inspectorFile&&!historical&&!proposedNode&&<OpenIn projectId={detail.project.id} nodeId={inspectorNode.id} onError={report}/>}<a className="chip-button" href={pictureFile.src} download={`${inspectorNode.title.replace(/[\\/:]+/gu,'-')}${/\.[a-z0-9]+$/iu.exec(inspectorNode.file?.path??'')?.[0]??''}`} title="Save a copy"><Download size={12}/>Download</a></>:null;
-  const pictureStatus=pictureFile?inspectorFile?.missing?'File missing':[fileTypeName(pictureFile.mediaType),pictureFile.image?`${pictureFile.image.width} × ${pictureFile.image.height}`:'',pictureFile.bytes?fileSize(pictureFile.bytes):''].filter(Boolean).join(' · '):undefined;
+  const pictureStatus=pictureFile?inspectorFile?.missing?'File missing':[fileTypeName(pictureFile.mediaType),pictureFile.image?`${pictureFile.image.width} × ${pictureFile.image.height}`:'',pictureFile.seconds!==undefined?videoLength(pictureFile.seconds):'',pictureFile.bytes?fileSize(pictureFile.bytes):''].filter(Boolean).join(' · '):undefined;
   const blockFrame=(parts:{head?:ReactNode;foot?:ReactNode;status?:ReactNode;body:ReactNode})=>detail&&inspectorNode?<BlockSheet key={inspectorNode.id} node={inspectorNode} mode={blockView} onMode={setBlockView} onClose={()=>setInspectorId(null)} onRename={!historical&&!proposedNode&&!inspectorNode.notion&&inspectorNode.blockType!=='agent'?title=>void mutate([{type:'updateNode',id:inspectorNode.id,patch:{title}}],'Rename block'):undefined} head={parts.head} foot={parts.foot} status={parts.status} picture={inspectorPicture?inspectorFile?.image??null:undefined} pictureCaption={Boolean(inspectorNode.description)}>{inspectorFile&&!inspectorPicture&&!historical&&!proposedNode&&inspectorNode.blockType!=='agent'&&<FileBar projectId={detail.project.id} file={inspectorFile} onError={report}/>}{parts.body}</BlockSheet>:null;
   const blockTalk=detail&&inspectorNode?{messages:detail.messages.filter(message=>message.nodeId===inspectorNode.id).length,runs:detail.runs.filter(run=>run.nodeId===inspectorNode.id).length}:{messages:0,runs:0};
   const talkChip=(blockTalk.messages>0||blockTalk.runs>0)&&<button type="button" className={`chip-button${blockChat?' set':''}`} aria-pressed={blockChat} onClick={()=>setBlockChat(!blockChat)}><MessageSquare size={12}/>Conversation{blockTalk.messages>0&&` · ${blockTalk.messages}`}</button>;
