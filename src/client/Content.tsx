@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ArrowUpRight, FileText } from 'lucide-react';
 import type { Artifact } from '../shared/types';
 import { artifactTable } from '../shared/data-view';
@@ -69,7 +69,7 @@ export function InlineText({ text }: { text: string }) {
 }
 
 type MarkdownList = { type: 'list'; ordered: boolean; items: { text: string; value?: number; children: MarkdownList[] }[] };
-type MarkdownBlock = { type: 'heading'; level: number; text: string } | MarkdownList | { type: 'table'; header: string[]; rows: string[][] } | { type: 'quote' | 'code' | 'paragraph'; text: string } | { type: 'rule' };
+type MarkdownBlock = { type: 'heading'; level: number; text: string } | MarkdownList | { type: 'table'; header: string[]; rows: string[][] } | { type: 'quote' | 'code' | 'paragraph'; text: string } | { type: 'rule' } | { type: 'blank'; lines: number };
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/u;
 const ITEM = /^(\s*)(?:([-*+•])|(\d{1,4})[.)])\s+(.*)$/u;
 const RULE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/u;
@@ -79,14 +79,19 @@ const TABLE_RULE = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/u;
 const cells = (line: string) => line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split('|').map(cell => cell.trim());
 
 /** Line-based Markdown: a heading, list, table, quote or code fence starts its own block even without a blank line before it. */
-function markdownBlocks(text: string): MarkdownBlock[] {
+function markdownBlocks(text: string, blanks = false): MarkdownBlock[] {
   const lines = text.replace(/\r\n?/gu, '\n').split('\n'), blocks: MarkdownBlock[] = [];
   const table = (index: number) => lines[index].includes('|') && index + 1 < lines.length && TABLE_RULE.test(lines[index + 1]) && lines[index + 1].includes('-');
   // As in CommonMark, only a bullet or a list starting at 1 interrupts a paragraph.
   const starts = (index: number) => { const item = RULE.test(lines[index]) ? null : ITEM.exec(lines[index]); return HEADING.test(lines[index]) || RULE.test(lines[index]) || FENCE.test(lines[index]) || QUOTE.test(lines[index]) || table(index) || Boolean(item && (item[2] || item[3] === '1')); };
   for (let i = 0; i < lines.length;) {
     const line = lines[i];
-    if (!line.trim()) { i++; continue; }
+    if (!line.trim()) {
+      // With `blanks`, empty lines between blocks stay as space, one line each, the way the source shows them.
+      const from = i; while (i < lines.length && !lines[i].trim()) i++;
+      if (blanks && blocks.length && i < lines.length) blocks.push({ type: 'blank', lines: i - from });
+      continue;
+    }
     const fence = FENCE.exec(line), heading = HEADING.exec(line);
     if (fence) {
       const body: string[] = [];
@@ -152,6 +157,7 @@ function MarkdownBlocks({ blocks, render }: { blocks: MarkdownBlock[]; render: (
     : block.type === 'quote' ? <blockquote key={i}>{lines(block.text)}</blockquote>
     : block.type === 'code' ? <pre key={i} className="md-code"><code>{block.text}</code></pre>
     : block.type === 'rule' ? <hr key={i}/>
+    : block.type === 'blank' ? <div key={i} className="md-blank" aria-hidden="true" style={{ height: `${block.lines * 1.55}em` }}/>
     : block.text.includes('![') ? <div key={i} className="report-paragraph">{render(block.text)}</div> : <p key={i}>{render(block.text)}</p>)}</>;
 }
 
@@ -162,8 +168,35 @@ export function RichText({ text, sources = [], scope = '', onArtifact }: { text:
 
 /** Drop a marker left open by a cut, rather than show it. */
 const balance = (text: string, marker: string) => { const parts = text.split(marker); return parts.length % 2 ? text : `${parts.slice(0, -1).join(marker)}${parts.at(-1)}`; };
-/** A card-sized excerpt: whole lines while they fit, so emphasis and links stay intact; the card clips the rest. */
-export function MarkdownPreview({ text, limit = 420 }: { text: string; limit?: number }) {
+/** A card-sized excerpt: whole lines while they fit, so emphasis and links stay intact; the card clips the rest.
+ *  `scroll` keeps empty lines as space and lets the wheel scroll the text inside the card while there is more to see. */
+export function MarkdownPreview({ text, limit = 420, scroll = false }: { text: string; limit?: number; scroll?: boolean }) {
+  const box = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), thumb = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current; if (!scroll || !el) return;
+    const mark = () => {
+      const can = el.scrollHeight > el.clientHeight + 1;
+      el.classList.toggle('can-scroll', can); bar.current?.classList.toggle('shown', can);
+      // Our own slim bar, so it shows on every system (macOS hides native ones until you scroll).
+      if (can && bar.current && thumb.current) {
+        const track = el.clientHeight - 8, height = Math.max(18, track * el.clientHeight / el.scrollHeight);
+        Object.assign(bar.current.style, { top: `${el.offsetTop + 4}px`, height: `${track}px` });
+        Object.assign(thumb.current.style, { height: `${height}px`, top: `${(track - height) * el.scrollTop / (el.scrollHeight - el.clientHeight)}px` });
+      }
+      el.classList.toggle('more-below', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+      el.classList.toggle('more-above', el.scrollTop > 1);
+    };
+    // A native listener runs before the canvas's own wheel handler, so stopping it here keeps the map still.
+    // Pinch zoom (ctrl) and a wheel the text can't use any more still reach the canvas.
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      const down = event.deltaY > 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 1, up = event.deltaY < 0 && el.scrollTop > 0;
+      if (down || up) event.stopPropagation();
+    };
+    const resize = new ResizeObserver(mark); resize.observe(el); if (el.firstElementChild) resize.observe(el.firstElementChild);
+    el.addEventListener('wheel', wheel, { passive: true }); el.addEventListener('scroll', mark, { passive: true }); mark();
+    return () => { resize.disconnect(); el.removeEventListener('wheel', wheel); el.removeEventListener('scroll', mark); };
+  }, [scroll]);
   const kept: string[] = []; let used = 0;
   for (const line of text.trim().split('\n')) {
     if (used + line.length <= limit) { kept.push(line); used += line.length + 1; continue; }
@@ -177,7 +210,24 @@ export function MarkdownPreview({ text, limit = 420 }: { text: string; limit?: n
     }
     break;
   }
-  return <div className="rich-text markdown-preview"><MarkdownBlocks blocks={markdownBlocks(kept.join('\n'))} render={value => inline(value, [], '')}/></div>;
+  const blocks = <MarkdownBlocks blocks={markdownBlocks(kept.join('\n'), scroll)} render={value => inline(value, [], '')}/>;
+  /** Drag the thumb, or press the track to jump there; works at any canvas zoom. */
+  const drag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const el = box.current, track = bar.current, knob = thumb.current; if (!el || !track || !knob || event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const rect = track.getBoundingClientRect(), zoom = rect.height / track.offsetHeight || 1, room = track.offsetHeight - knob.offsetHeight;
+    const range = el.scrollHeight - el.clientHeight;
+    if (event.target === track) el.scrollTop = ((event.clientY - rect.top) / zoom - knob.offsetHeight / 2) / room * range;
+    const startY = event.clientY, start = el.scrollTop;
+    track.classList.add('dragging'); track.setPointerCapture(event.pointerId);
+    const move = (next: PointerEvent) => { el.scrollTop = start + (next.clientY - startY) / zoom / room * range; };
+    const up = () => { track.classList.remove('dragging'); track.removeEventListener('pointermove', move); track.removeEventListener('pointerup', up); track.removeEventListener('pointercancel', up); };
+    track.addEventListener('pointermove', move); track.addEventListener('pointerup', up); track.addEventListener('pointercancel', up);
+  };
+  return scroll
+    ? <><div ref={box} className="rich-text markdown-preview scrolling"><div className="markdown-preview-body">{blocks}</div></div>
+      <div ref={bar} className="markdown-preview-scrollbar nodrag nopan" aria-hidden="true" onPointerDown={drag}><div ref={thumb} className="markdown-preview-thumb"/></div></>
+    : <div className="rich-text markdown-preview">{blocks}</div>;
 }
 
 export function Evidence({ sources, onAttach, scope = '' }: { sources: Artifact[]; onAttach?: (artifact: Artifact) => void; scope?: string }) {

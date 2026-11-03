@@ -53,6 +53,23 @@ function sources(answer: Answer<{ x: string | null; y: number }[]>, kind: string
 }
 const ago = (at: string) => { const minutes = Math.round((Date.now() - Date.parse(at)) / 60_000); return minutes < 60 ? `${Math.max(1, minutes)} min ago` : minutes < 48 * 60 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`; };
 
+/** The sign-up answers ros.ai cloud gives with its numbers: one value per answer ("Heard from a friend or colleague"),
+ * then how many skipped the question. Nothing when this cloud does not ask it yet. */
+export function signupSources(raw: unknown): MetricValue[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const { sources, skipped } = raw as { sources?: unknown; skipped?: unknown };
+  // "A search engine" reads "Heard from a search engine"; names such as GitHub keep their capitals.
+  const lower = (label: string) => !/^(GitHub|Hacker|AI\b)/u.test(label) ? label[0].toLowerCase() + label.slice(1) : label;
+  const answers = Array.isArray(sources) ? sources.filter((item): item is { key: string; label: string; count: number } =>
+    Boolean(item) && typeof item.key === 'string' && typeof item.label === 'string' && typeof item.count === 'number').slice(0, 12) : [];
+  if (!answers.length && typeof skipped !== 'number') return [];
+  return [
+    ...answers.map(item => ({ key: `heard:${item.key}`, label: `Heard from ${lower(item.label)}`, value: item.count })),
+    ...(answers.length ? [] : [{ key: 'heard', label: 'Heard about ros.ai from', value: null, note: 'No new account has answered yet.' }]),
+    ...(typeof skipped === 'number' ? [{ key: 'heard:skipped', label: 'Skipped the question', value: skipped }] : []),
+  ];
+}
+
 /** Metric blocks: launch numbers read live from a service, with a trend kept in the project folder's cache.
  * ros.ai only reads, with the sign-in or key the person already gave it; nothing about the person is sent anywhere. */
 export class MetricViews {
@@ -149,7 +166,7 @@ export class MetricViews {
     if (!this.options.cloud) throw new StoreError('ros.ai cloud is off in this copy of ros.ai.', 404);
     const stats = await this.options.cloud.stats(), number = (key: string) => typeof stats[key] === 'number' ? stats[key] as number : null;
     const value = (key: string, label: string): MetricValue => { const found = number(key); return { key, label, value: found, ...(found === null ? { note: 'ros.ai cloud did not give this number.' } : {}) }; };
-    const values = [
+    const values: MetricValue[] = [
       value('users', 'Accounts'), value('signups_today', 'Sign-ups today'), value('downloads', 'Downloads'), value('active_week', 'Hosted ROS users, 7 days'),
       value('signups_week', 'Sign-ups, 7 days'), value('downloads_week', 'Downloads, 7 days'), value('requests_week', 'Hosted ROS requests, 7 days'),
       value('cost_week', 'Hosted ROS cost, 7 days (US$)'), value('feedback', 'Feedback notes'), value('feedback_week', 'Feedback notes, 7 days'),
@@ -161,8 +178,12 @@ export class MetricViews {
       { ...value('retention_week1', 'Week-1 retention (%)'), ...(number('retention_week1') === null && 'researchers_week' in stats ? { note: 'Nobody signed up 7 to 13 days ago yet.' } : {}) },
       { ...value('retention_week4', 'Week-4 retention (%)'), ...(number('retention_week4') === null && 'researchers_week' in stats ? { note: 'Nobody signed up 28 to 34 days ago yet.' } : {}) },
     ];
+    // "How did you hear about ros.ai?", answered once at a new account's first app sign-in: accounts per answer, most first.
+    const heard = signupSources(stats.signup_sources);
+    values.push(...heard);
     // Narrowed to one area: its numbers, in its order (a key it names that this cloud does not give is shown as missing).
-    const shown = show ? CLOUD_SHOWS[show].keys.map(key => values.find(item => item.key === key) ?? value(key, key)) : values;
+    // Acquisition also lists where sign-ups heard about ros.ai.
+    const shown = show ? [...CLOUD_SHOWS[show].keys.map(key => values.find(item => item.key === key) ?? value(key, key)), ...(show === 'acquisition' ? heard : [])] : values;
     return { source: 'cloud', title: show ? `ros.ai cloud · ${CLOUD_SHOWS[show].label}` : 'ros.ai cloud', link: this.options.cloud.url, values: shown, fetchedAt: new Date().toISOString() };
   }
 

@@ -160,3 +160,47 @@ test('layout and content undo leave captured results, selections and spending au
   f.store.redo(id);
   assert.deepEqual({ run: f.store.getRun(run.id), artifact: f.store.getArtifact(artifact.id), inputs: f.store.detail(id).inputs, usage: f.store.listUsage(), admission: f.store.records('admission', id) }, captured);
 });
+
+test('a resize by hand is one undo step: undo puts the size and place back, redo applies it again', t => {
+  const f = fixture(t), id = f.project.id;
+  f.store.mutate(id, [{ type: 'addNode', node: node('a') }, { type: 'addNode', node: node('b', { x: 480 }) }], 'Add');
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { x: -96, width: 600, height: 360 } }], 'Resize block', undefined, { undoableLayout: true });
+  // Automatic spacing after the resize stays out of undo.
+  f.store.mutate(id, [{ type: 'updateNode', id: 'b', patch: { x: 552 } }], 'Adjust canvas spacing');
+  assert.equal(f.store.detail(id).canUndo, true);
+  let undone = f.store.undo(id).canvas;
+  assert.deepEqual(undone.nodes.find(item => item.id === 'a'), node('a'));
+  assert.equal(undone.nodes.find(item => item.id === 'b')!.x, 552, 'Layout not part of the resize stays');
+  assert.equal(undone.nodes.length, 2, 'The first undo only reverses the resize');
+  f.reopen();
+  assert.equal(f.store.detail(id).canRedo, true);
+  assert.deepEqual(f.store.redo(id).canvas.nodes.find(item => item.id === 'a'), node('a', { x: -96, width: 600, height: 360 }));
+  f.store.undo(id);
+  undone = f.store.undo(id).canvas;
+  assert.equal(undone.nodes.length, 0, 'The next undo reverses the add');
+  f.store.redo(id);
+  assert.deepEqual(f.store.redo(id).canvas.nodes.find(item => item.id === 'a'), node('a', { x: -96, width: 600, height: 360 }));
+  assert.equal(f.store.detail(id).canRedo, false);
+});
+
+test('each resize is its own step, fitting to content is undoable, and a new edit clears resize redo', t => {
+  const f = fixture(t), id = f.project.id;
+  f.store.mutate(id, [{ type: 'addNode', node: node('a') }], 'Add');
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { width: 500 } }], 'Resize block', undefined, { undoableLayout: true });
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { width: 700, height: 400 } }], 'Resize block', undefined, { undoableLayout: true });
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { height: null } }], 'Fit block to its content', undefined, { undoableLayout: true });
+  assert.deepEqual(f.store.getProject(id).canvas.nodes[0], node('a', { width: 700 }));
+  assert.deepEqual(f.store.undo(id).canvas.nodes[0], node('a', { width: 700, height: 400 }));
+  assert.deepEqual(f.store.undo(id).canvas.nodes[0], node('a', { width: 500 }));
+  assert.deepEqual(f.store.undo(id).canvas.nodes[0], node('a'));
+  f.store.redo(id);
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { title: 'Renamed' } }], 'Rename');
+  assert.equal(f.store.detail(id).canRedo, false);
+  assert.deepEqual(f.store.undo(id).canvas.nodes[0], node('a', { width: 500 }), 'Undoing the rename keeps the size');
+  assert.deepEqual(f.store.undo(id).canvas.nodes[0], node('a'));
+  // A resize that changes nothing adds no step.
+  f.store.redo(id); f.store.redo(id);
+  const before = f.store.detail(id);
+  f.store.mutate(id, [{ type: 'updateNode', id: 'a', patch: { width: 500 } }], 'Resize block', undefined, { undoableLayout: true });
+  assert.deepEqual(f.store.detail(id), before);
+});

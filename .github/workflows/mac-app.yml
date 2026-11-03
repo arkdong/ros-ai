@@ -1,11 +1,12 @@
-# Builds ros.ai.app for Apple silicon and Intel Macs, each on a Mac of that architecture so the native
-# packages (the Claude Code binary inside the Agent SDK, PDF rendering) match. Start it by hand
-# (Actions → Mac app → Run workflow) or push a v* tag. A tag publishes a GitHub release once both Macs'
-# DMGs and zips are attached: installed apps update from the zips (src/server/updates.ts), so a release
-# never shows up half-built, and its tag must match the version in package.json.
-# With the five Apple secrets below the app is signed and notarized; without them it is unsigned and
-# macOS asks for "Open Anyway" once.
-name: Mac app
+# Builds the ros.ai app: ros.ai.app for Apple silicon and Intel Macs, each on a Mac of that architecture so the
+# native packages (the Claude Code binary inside the Agent SDK, PDF rendering) match, and a Windows installer on
+# Windows. Start it by hand (Actions → Desktop app → Run workflow) or push a v* tag. A tag publishes a GitHub
+# release once every build is attached: installed Mac apps update from the zips (src/server/updates.ts), so a
+# release never shows up half-built, and its tag must match the version in package.json.
+# With the five Apple secrets below the Mac app is signed and notarized; without them it is unsigned and macOS asks
+# for "Open Anyway" once. With WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD the Windows installer is signed; without them
+# Windows SmartScreen asks once (More info, then Run anyway).
+name: Desktop app
 on:
   workflow_dispatch:
   push:
@@ -18,12 +19,20 @@ jobs:
       matrix:
         include:
           - runner: macos-latest
+            os: mac
             arch: arm64
           - runner: macos-15-intel
+            os: mac
+            arch: x64
+          - runner: windows-latest
+            os: windows
             arch: x64
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       # An app that calls itself older than its release would offer the same update forever.
@@ -40,7 +49,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Build the app
+      - name: Build the Mac app
+        if: matrix.os == 'mac'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -57,13 +67,56 @@ jobs:
           else
             node desktop/run.mjs --build --${{ matrix.arch }}
           fi
+      - name: Build the Windows installer
+        if: matrix.os == 'windows'
+        env:
+          # Only a Windows certificate: CSC_LINK holds the Apple one.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then echo "No Windows certificate: building an unsigned installer."; export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          node desktop/run.mjs --build --${{ matrix.arch }}
+      # Install the way a person would (no administrator), open the installed app, and keep a picture of its first
+      # window: the run fails when ros.ai does not start on Windows.
+      - name: Install and open the Windows app
+        if: matrix.os == 'windows'
+        timeout-minutes: 10
+        run: |
+          installer=$(ls desktop/dist/ros.ai-[0-9]*-${{ matrix.arch }}.exe)
+          powershell -NoProfile -Command "\$p = Start-Process -Wait -PassThru -FilePath '$(cygpath -w "$installer")' -ArgumentList '/S'; Write-Output ('installer exit code ' + \$p.ExitCode)"
+          # electron-builder names the folder after the package (ros-ai); find the installed app wherever it went.
+          app=""
+          for i in $(seq 1 90); do
+            app=$(find "$LOCALAPPDATA/Programs" -maxdepth 2 -iname ros-ai.exe 2>/dev/null | head -n 1)
+            [ -n "$app" ] && ls "$(dirname "$app")"/Uninstall*.exe >/dev/null 2>&1 && break
+            sleep 2
+          done
+          [ -n "$app" ] || { echo "::error::The installer put no ros-ai.exe under $LOCALAPPDATA/Programs."; ls "$LOCALAPPDATA/Programs" || true; find "$LOCALAPPDATA" "$PROGRAMFILES" -maxdepth 3 -iname 'ros-ai.exe' 2>/dev/null || true; exit 1; }
+          echo "Installed at $app"; ls "$(dirname "$app")"
+          mkdir -p smoke
+          ROS_DESKTOP_SMOKE="$(cygpath -w "$PWD/smoke/windows-first-window.png")" ROS_DATA_DIR="$(cygpath -w "$RUNNER_TEMP/ros-ai-data")" ROS_UPDATE_URL=off \
+            timeout 300 "$app" || true
+          log="$APPDATA/ros.ai/desktop/logs/server.log"
+          [ -f "$log" ] && { echo "--- server log"; tail -n 40 "$log"; cp "$log" smoke/; }
+          [ -s smoke/windows-first-window.png ] || { echo "::error::The installed Windows app did not open its window."; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows' && always()
+        with:
+          name: windows-smoke
+          path: smoke/
+          if-no-files-found: ignore
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         with:
-          name: ros.ai-mac-${{ matrix.arch }}
+          name: ros.ai-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.zip
+            desktop/dist/*.exe
           if-no-files-found: error
+          # Tagged builds live on as release assets; these copies only need to
+          # last long enough to try a branch build. Keeps Actions storage small.
+          retention-days: 3
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -73,16 +126,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: ros.ai-mac-*
+          pattern: ros.ai-*
           merge-multiple: true
           path: dist
       # Fixed names beside the versioned files, so ros-ai.io can link the latest build directly:
-      # https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg
-      - name: Add fixed-name copies of the DMGs
+      # https://github.com/arkdong/ros-ai/releases/latest/download/ros.ai-mac-arm64.dmg (and ros.ai-windows-x64.exe)
+      - name: Add fixed-name copies of the installers
         run: |
           for arch in arm64 x64; do
             cp dist/ros.ai-[0-9]*-"$arch".dmg "dist/ros.ai-mac-$arch.dmg"
           done
+          cp dist/ros.ai-[0-9]*-x64.exe dist/ros.ai-windows-x64.exe
       # A draft first, published only once every file is attached.
       - uses: softprops/action-gh-release@v2
         with:
@@ -91,6 +145,7 @@ jobs:
           files: |
             dist/*.dmg
             dist/*.zip
+            dist/*.exe
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,4 +1,4 @@
-# ros.ai Mac app packaging. Run through `npm run app:build` at the repository root (desktop/run.mjs), which
+# ros.ai Mac and Windows app packaging. Run through `npm run app:build` at the repository root (desktop/run.mjs), which
 # bundles the server and the window code into dist/ first. The app directory is the repository root, so the
 # runtime dependencies of package.json ship with it; everything in devDependencies stays out.
 appId: io.ros-ai.app
@@ -47,6 +47,20 @@ mac:
   extendInfo:
     NSHumanReadableCopyright: MIT licence
     LSMinimumSystemVersion: "12.0"
+# Windows: one installer that needs no administrator, installs for this person only and opens ros.ai when done.
+# Not code signed yet, so Windows SmartScreen asks once: More info, then Run anyway.
+win:
+  icon: build/icon.png
+  target: [nsis]
+  artifactName: ros.ai-${version}-${arch}.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ros.ai
+  deleteAppDataOnUninstall: false
 dmg:
   title: ros.ai ${version}
   contents:
