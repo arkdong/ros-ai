@@ -174,8 +174,8 @@ export function App(){
   // so quick consecutive edits do not trip the server's stale-canvas check.
   const mutationQueue=useRef<Promise<unknown>>(Promise.resolve()),knownRevision=useRef<{projectId:string;revision:number}|null>(null);
   const noteRevision=(id:string,revision:number)=>{const known=knownRevision.current;if(known?.projectId!==id||revision>known.revision)knownRevision.current={projectId:id,revision};};
-  const mutate=(operations:Mutation[],label:string)=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=projectId,seen=detail.project.revision;
-    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const project=await post<Project>(`/api/projects/${id}/mutations`,{operations,label,expectedRevision:knownRevision.current!.revision});noteRevision(id,project.revision);}));
+  const mutate=(operations:Mutation[],label:string,options?:{undoableLayout?:boolean})=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=projectId,seen=detail.project.revision;
+    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const project=await post<Project>(`/api/projects/${id}/mutations`,{operations,label,expectedRevision:knownRevision.current!.revision,...options});noteRevision(id,project.revision);}));
     mutationQueue.current=run.catch(()=>undefined);return run;};
   /** Pasted blocks go through the server, which copies the files and saved versions they show from the project they came from. */
   const pasteBlocks=(body:{operations:Mutation[];label:string;from:string;sources:Record<string,string>;artifacts:Record<string,string>})=>{if(!projectId||!detail||historical)return Promise.resolve(null);const id=projectId,seen=detail.project.revision;let missing:string[]=[];
