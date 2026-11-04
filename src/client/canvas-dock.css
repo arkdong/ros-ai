@@ -117,3 +117,26 @@
 .proposal-preview .proposal-actions .text-button { font-size:12px; color:#6b6b6b; }
 /* A proposal's card sits beside the blocks it changes. */
 .proposal-anchor .proposal-preview { width: 360px; max-width: calc(100vw - 48px); margin: 0; }
+
+/* Copy and paste answer with a small toast that rises in at the top of the map; a paste's toast offers Undo. */
+.canvas-notices .canvas-toast {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 1px solid #eeeeee;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px #0000000f;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  animation: canvas-toast-rise 160ms ease-out;
+}
+.canvas-toast > span { overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+.canvas-toast > svg { flex: none; color: var(--ink); }
+.canvas-toast > button { margin-left: 3px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.canvas-toast > button:hover { text-decoration: underline; }
+@keyframes canvas-toast-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .canvas-toast { animation: none; } }

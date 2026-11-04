@@ -6,7 +6,7 @@ import { useDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
 import { date, Evidence, RichText, time } from './Content';
 import { MarkdownEditor } from './MarkdownEditor';
-import { isImageType, noteImageUrl } from '../shared/files';
+import { isImageType, isVideoType, noteImageUrl } from '../shared/files';
 import './detail-polish.css';
 import { NotionBlock } from './NotionView';
 import { GoogleBlock } from './GoogleView';
@@ -78,7 +78,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
   const primary = isGroup(node) ? undefined : primaryArtifact(node, detail), children = detail.project.canvas.nodes.filter(item => item.parentId === node.id);
   const thread = useRef<HTMLDivElement>(null);
   // A picture fills the view; its text is a caption under it.
-  const picture = Boolean(file && isImageType(file.mediaType));
+  const picture = Boolean(file && (isImageType(file.mediaType) || isVideoType(file.mediaType)));
   // A Data block can query the project's data with SQL.
   const sqlShown = Boolean(sql) && !readOnly && node.blockType === 'dataset' && !node.notion && !file;
   const [sqlOpen, setSqlOpen] = useState(false);

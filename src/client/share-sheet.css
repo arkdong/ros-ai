@@ -1,0 +1,30 @@
+/* The Share sheet: the preview of what leaves, the switches, the hidden finds and one black action. */
+.modal.share-sheet { width: min(1040px, calc(100vw - 48px)); max-width: none; height: min(680px, calc(100vh - 48px)); max-height: none; padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; }
+.share-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 14px 20px; border-bottom: 1px solid #eeeeee; }
+.share-head h2 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.share-preview { position: relative; min-width: 0; border-right: 1px solid #eeeeee; }
+.share-still { position: absolute; inset: 0; }
+.share-still .still-card:hover { border-color: #171717; }
+.share-loading { position: absolute; inset: 0; display: grid; place-items: center; color: #6b6b6b; font-size: 13px; padding: 24px; text-align: center; background: #fafafa; }
+.share-preview-hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #8a8a8a; background: rgba(250, 250, 250, .9); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+.share-side { overflow: auto; padding: 6px 18px 16px; font-size: 13.5px; }
+.share-side h3 { margin: 14px 0 4px; font-size: 12px; font-weight: 500; color: #8a8a8a; }
+.share-row { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid #f1f1f1; cursor: default; }
+.share-row:last-of-type { border-bottom: 0; }
+.share-count { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #6b6b6b; font-size: 12.5px; white-space: nowrap; }
+.share-quiet { margin: 6px 0; color: #8a8a8a; font-size: 13px; }
+.share-finds { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.share-find-kind { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 4px 0 2px; }
+.share-dot { width: 8px; height: 8px; border-radius: 50%; background: #e7c75b; flex: none; }
+.share-find { display: flex; align-items: center; gap: 8px; padding: 3px 0 3px 16px; }
+.share-find code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: #f7f7f7; padding: 2px 6px; border-radius: 5px; }
+.share-find .text-button, .share-find .share-count { margin-left: auto; flex: none; }
+.share-foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px 12px 20px; border-top: 1px solid #eeeeee; }
+.share-foot-note { color: #6b6b6b; font-size: 13px; min-width: 0; }
+.share-foot .primary { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; }
+@media (max-width: 760px) {
+  .share-body { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 1fr) auto; }
+  .share-preview { border-right: 0; border-bottom: 1px solid #eeeeee; }
+  .share-side { max-height: 40vh; }
+}

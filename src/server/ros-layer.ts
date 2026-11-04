@@ -213,7 +213,9 @@ export class RosLayer {
     const started = Date.now(), look = this.look(input, false), id = randomUUID();
     const record = (outcome: TurnRecord['outcome'], extra: Partial<TurnRecord> = {}) => this.store.saveRecord<TurnRecord>('ros-layer-turn', id, input.projectId, { id, turnId: input.turnId, at: now(), source: input.source, blocks: look.added.length, loose: look.added.filter(node => !node.parentId && !look.canvas.connections.some(edge => edge.source === node.id || edge.target === node.id)).length, chatOnly: look.chatOnly, outcome, proposals: look.proposals, ...extra });
     if (!this.on()) { record('off'); return null; }
-    if (!look.candidates.length && !look.chatOnly) { record('nothing'); return { layer: { state: 'skipped', note: 'Nothing was left loose.' } }; }
+    // An answer given only in chat stays in chat: questions, summaries and ideas are conversation, and the person puts
+    // one on the map with "Put this on the map" when they want to keep it (Adam's pick, 2026-11-04).
+    if (!look.candidates.length) { record('nothing'); return { layer: { state: 'skipped', note: look.chatOnly ? 'The answer stays in chat.' : 'Nothing was left loose.' } }; }
     const choice = this.engine();
     let plan: LandingPlan | null = null, fallback = false;
     const asked = Date.now();
@@ -221,7 +223,7 @@ export class RosLayer {
       try { plan = await this.ask(input, look, choice, choice.engine === 'local' && hurry ? AbortSignal.any([signal, hurry]) : signal); }
       catch (error) { if (signal.aborted) throw error; fallback = true; console.error(`ROS layer: ${choice.engine} ROS did not arrange this turn: ${error instanceof Error ? error.message : error}`); }
     }
-    plan ??= landingRules(input, look, look.chatOnly, false);
+    plan ??= landingRules(input, look, false, false);
     const askMs = Date.now() - asked;
     const engine: LayerEngine = fallback || !choice.selection ? 'layout' : choice.engine;
     if (!plan || (!plan.place.length && !plan.newGroups.length && !plan.links.length && !plan.rescue)) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Everything already had its place.' } }; }
@@ -313,7 +315,7 @@ export class RosLayer {
   /** Asks ROS for the shape under its contract (landingAsk) and keeps what checks out (landingPlan). A reply that does
    * not parse throws, and ros.ai's rules step in. */
   private async ask(input: LandInput, look: Look, choice: LayerChoice, signal: AbortSignal): Promise<LandingPlan> {
-    const asked = landingAsk(input, look, look.chatOnly);
+    const asked = landingAsk(input, look, false);
     const request: ModelRequest = { messages: asked.messages, maxOutputTokens: choice.engine === 'hosted' ? 2000 : 900 };
     const { response } = await this.execution.layerComplete(input.projectId, request, AbortSignal.any([signal, AbortSignal.timeout(BUDGET_MS[choice.engine as 'local' | 'hosted'])]), choice.selection!);
     return landingPlan(response.content, asked, look, input.request);

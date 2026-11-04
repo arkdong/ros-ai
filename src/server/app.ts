@@ -1,3 +1,4 @@
+import { pasteBlocks } from './block-paste.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { z, ZodError } from 'zod';
 import { StoreError, type Store } from './store.js';
@@ -52,6 +53,7 @@ import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspa
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
+import { attachShareRoutes, ShareCopies, StillPage } from './share-copy.js';
 import { attachSqlRoutes, SqlService } from './sql.js';
 import { attachUpdateRoutes, type Updates } from './updates.js';
 import { attachAppFrameRoutes, type AppFrames } from './app-frames.js';
@@ -81,7 +83,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
       const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
-      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type);
+      const file = /\/folder\/files$/u.test(req.path) && ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime'].includes(type);
       if (type !== 'application/json' && !file) return res.status(415).json({ error: 'Send ros.ai requests as JSON.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -108,6 +110,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;AgentWorkspaceTools.webFiles=new WebFileFetcher();folders.start();}
   attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
+  // Share: a clean copy of the canvas, as a .html canvas file that opens in any browser. Not in the public demo.
+  if(!options.publicDemo)attachShareRoutes(app,new ShareCopies(store,{files:()=>folders,cache:new ProjectCache(store)}),new StillPage(),process.env.ROS_DEV==='1');
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
   if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
   if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
@@ -164,9 +168,11 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.json(running?.size ? { ...detail, notebooks: detail.notebooks?.map(summary => running.has(summary.nodeId) ? { ...summary, running: true } : summary) } : detail);
   });
   app.post('/api/projects/:id/mutations', (req, res) => {
-    const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional() }).strict().parse(req.body);
-    res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision));
+    const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional(), undoableLayout: z.boolean().optional() }).strict().parse(req.body);
+    res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision, { undoableLayout: body.undoableLayout }));
   });
+  // Blocks pasted from this project or another, with the files and saved versions they show (block-paste.ts).
+  app.post('/api/projects/:id/paste', (req, res) => res.json(pasteBlocks({ store, folders, notebooks }, routeId(req.params.id), req.body)));
   app.post('/api/projects/:id/undo', (req, res) => res.json(store.undo(routeId(req.params.id))));
   app.post('/api/projects/:id/redo', (req, res) => res.json(store.redo(routeId(req.params.id))));
   app.post('/api/projects/:id/chat', async (req, res) => {

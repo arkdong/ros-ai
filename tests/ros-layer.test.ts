@@ -209,11 +209,16 @@ test('while the agent’s change still waits, ROS’s row waits on it and is acc
   } finally { f.close(); }
 });
 
-test('an answer given only in chat goes on the map as a group of its sections beside what it is about', async () => {
+test('an answer given only in chat stays in chat, and "Put this on the map" puts it beside what it is about', async () => {
   const f = fixture();
   try {
-    const result = await f.layer.land(f.input([], { reply: ANSWER, request: 'Summarise what we know, starting from Background reading' }), new AbortController().signal);
-    assert.equal(result!.action!.title, 'Put the answer on the map: 3 blocks in “Remote work and productivity”, 1 link');
+    const input = f.input([], { reply: ANSWER, request: 'Summarise what we know, starting from Background reading' });
+    const result = await f.layer.land(input, new AbortController().signal);
+    assert.equal(result?.layer.state, 'skipped');
+    assert.equal(result?.layer.note, 'The answer stays in chat.');
+    assert(!f.store.getProject(f.project.id).canvas.nodes.some(item => item.title === 'Remote work and productivity'));
+    const action = f.layer.toMap(input);
+    assert.equal(action.title, 'Put the answer on the map: 3 blocks in “Remote work and productivity”, 1 link');
     const canvas = f.store.getProject(f.project.id).canvas, group = canvas.nodes.find(item => item.title === 'Remote work and productivity')!;
     assert.equal(group.kind, 'group');
     const sections = canvas.nodes.filter(item => item.parentId === group.id);
@@ -222,9 +227,6 @@ test('an answer given only in chat goes on the map as a group of its sections be
     const background = f.node('background')!;
     assert(group.x > background.x && group.y >= background.y);
     assert(canvas.connections.some(edge => edge.source === group.id && edge.target === 'background' && edge.label === 'builds on'));
-    // A short reply is conversation and stays in chat.
-    const second = await f.layer.land(f.input([], { turnId: randomUUID(), reply: 'Done.' }), new AbortController().signal);
-    assert.equal(second?.layer.state, 'skipped');
   } finally { f.close(); }
 });
 

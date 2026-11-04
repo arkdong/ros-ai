@@ -7,6 +7,7 @@ import { cpSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildAppKit } from '../scripts/build-app-kit.mjs';
+import { buildStill } from '../scripts/build-still.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = (path) => resolve(root, 'dist', path);
@@ -21,4 +22,6 @@ cpSync(resolve(root, 'src/server/experiment_worker.py'), out('server/experiment_
 await build({ entryPoints: [resolve(root, 'desktop/src/main.ts')], outfile: out('desktop/main.cjs'), bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'], sourcemap: true, logLevel: 'warning' });
 // The kit App pages load from their sealed frame; the app ships it built, without the libraries it bundles.
 await buildAppKit({ root });
-console.log('Bundled dist/server/index.mjs, dist/desktop/main.cjs and dist/app-kit');
+// The page a shared canvas file carries.
+await buildStill({ root });
+console.log('Bundled dist/server/index.mjs, dist/desktop/main.cjs, dist/app-kit and dist/still');

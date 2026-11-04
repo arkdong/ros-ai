@@ -8,6 +8,7 @@ import { Store } from '../src/server/store.js';
 import type { ProjectFolders } from '../src/server/project-folders.js';
 import type { ProjectFolderStatus } from '../src/shared/project-folders.js';
 import type { ProjectDetail } from '../src/shared/types.js';
+import { movie } from './video-fixture.js';
 
 /** A one-page PDF with a text layer, written by hand so the test needs no PDF library. */
 function pdf(text: string): Buffer {
@@ -95,5 +96,50 @@ test('A PDF or image in the project folder becomes a File block that the server 
     assert.notEqual((await fetch(`${f.base}/api/projects/${project.id}/nodes/escape/file`)).status, 200);
     await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.problems.some(problem => problem.path === '../outside.pdf'), 'the bad path to be reported');
     assert.equal(Buffer.compare(pdf('Hello file block'), (await import('node:fs')).readFileSync(join(f.folder, 'paper.pdf'))), 0);
+  } finally { await f.close(); }
+});
+
+test('An MP4 or MOV becomes a File block whose video is streamed in parts and whose shape and length come from its header', async () => {
+  const f = await fixture();
+  try {
+    const project = await f.post<{ id: string; revision: number }>('/api/projects', { title: 'Video blocks' });
+    mkdirSync(join(f.folder, 'clips'), { recursive: true });
+    const clip = movie({ width: 1280, height: 720, seconds: 12.5, mdat: 3_000_000 }), phone = movie({ width: 1920, height: 1080, seconds: 4, rotate: true });
+    writeFileSync(join(f.folder, 'clips', 'walk.mp4'), clip);
+    await f.post(`/api/projects/${project.id}/folder`, { path: f.folder });
+    const status = await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.unplaced.length === 1, 'the folder listing');
+    assert.deepEqual(status.unplaced.map(file => [file.path, file.kind]), [['clips/walk.mp4', 'video']]);
+    assert.doesNotThrow(() => f.folders.placeable(project.id, 'clips/walk.mp4'));
+    const { nodeId } = await f.post<{ nodeId: string }>(`/api/projects/${project.id}/folder/add`, { path: 'clips/walk.mp4' });
+    const listed = await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.files.some(file => file.nodeId === nodeId && file.version), 'the video version');
+    const entry = listed.files.find(file => file.nodeId === nodeId)!;
+    assert.deepEqual([entry.bytes, entry.image, entry.seconds], [clip.length, { width: 1280, height: 720 }, 12.5]);
+
+    // The browser asks for parts: the server answers each with only those bytes.
+    const url = `${f.base}/api/projects/${project.id}/nodes/${nodeId}/file`;
+    const whole = await fetch(url, { method: 'HEAD' });
+    assert.equal(whole.status, 200); assert.equal(whole.headers.get('accept-ranges'), 'bytes'); assert.equal(whole.headers.get('content-type'), 'video/mp4'); assert.equal(whole.headers.get('content-length'), String(clip.length));
+    const first = await fetch(url, { headers: { Range: 'bytes=0-99' } });
+    assert.equal(first.status, 206); assert.equal(first.headers.get('content-range'), `bytes 0-99/${clip.length}`);
+    assert.equal(Buffer.compare(Buffer.from(await first.arrayBuffer()), clip.subarray(0, 100)), 0);
+    const tail = await fetch(url, { headers: { Range: 'bytes=-50' } });
+    assert.equal(tail.status, 206); assert.equal(Buffer.compare(Buffer.from(await tail.arrayBuffer()), clip.subarray(clip.length - 50)), 0);
+    const open = await fetch(url, { headers: { Range: `bytes=${clip.length - 10}-` } });
+    assert.equal(open.status, 206); assert.equal((await open.arrayBuffer()).byteLength, 10);
+    assert.equal((await fetch(url, { headers: { Range: `bytes=${clip.length}-` } })).status, 416);
+
+    // A dropped MOV is written to files/ as it arrives, then a block shows it upright.
+    const saved = await f.json<{ path: string }>(`/api/projects/${project.id}/folder/files?name=${encodeURIComponent('Phone clip.MOV')}`, { method: 'POST', headers: { 'Content-Type': 'video/quicktime' }, body: new Uint8Array(phone) });
+    assert.equal(saved.path, 'files/Phone clip.mov');
+    assert.equal(Buffer.compare((await import('node:fs')).readFileSync(join(f.folder, saved.path)), phone), 0);
+    const current = await f.json<ProjectDetail>(`/api/projects/${project.id}`);
+    await f.post(`/api/projects/${project.id}/mutations`, { label: 'Add a dropped video', expectedRevision: current.project.revision, operations: [{ type: 'addNode', node: { id: 'dropped', title: 'Phone clip', description: '', x: 0, y: 480, kind: 'topic', blockType: 'file', file: { path: saved.path } } }] });
+    const adopted = await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.files.some(file => file.nodeId === 'dropped' && file.image), 'the dropped video to be recorded');
+    assert.deepEqual(adopted.files.find(file => file.nodeId === 'dropped')!.image, { width: 1080, height: 1920 });
+    assert.equal((await fetch(`${f.base}/api/projects/${project.id}/nodes/dropped/file`)).headers.get('content-type'), 'video/quicktime');
+    // An empty upload leaves nothing behind.
+    const empty = await fetch(`${f.base}/api/projects/${project.id}/folder/files?name=empty.mp4`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: new Uint8Array() });
+    assert.equal(empty.status, 400);
+    assert.equal((await import('node:fs')).readdirSync(join(f.folder, 'files')).filter(name => name.startsWith('.ros-ai-') || name.startsWith('empty')).length, 0);
   } finally { await f.close(); }
 });
