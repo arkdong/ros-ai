@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Express } from 'express';
@@ -77,12 +78,17 @@ function toolGuard(root: string | null, web: boolean): HookCallback {
     return {};
   };
 }
-/** A page on the public internet: never ros.ai itself, this computer or its network. */
-async function publicPage(url: unknown) {
+/** A page on the public internet: never ros.ai itself, this computer or its network. Claude Code follows a redirect to
+ * the same name with or without "www." by itself, without asking here again, so that name must be public too. */
+export async function publicPage(url: unknown, find: (host: string) => Promise<{ address: string }[]> = host => lookup(host, { all: true })) {
   if (typeof url !== 'string') return false;
   let host: string;
-  try { const parsed = new URL(url); if (!/^https?:$/u.test(parsed.protocol)) return false; host = parsed.hostname.replace(/^\[|\]$/gu, ''); } catch { return false; }
-  try { const addresses = await lookup(host, { all: true }); return addresses.length > 0 && addresses.every(item => !privateAddress(item.address)); } catch { return false; }
+  try { const parsed = new URL(url); if (!/^https?:$/u.test(parsed.protocol)) return false; host = parsed.hostname.replace(/^\[|\]$/gu, '').toLowerCase(); } catch { return false; }
+  if (isIP(host)) return !privateAddress(host);
+  const bare = host.replace(/^www\./u, ''), names = [...new Set([host, bare, `www.${bare}`])];
+  const found = await Promise.all(names.map(name => find(name).catch(() => [])));
+  // The page's own name must be found; a variant that is not found cannot be reached either.
+  return found[0].length > 0 && found.every(addresses => addresses.every(item => !privateAddress(item.address)));
 }
 /** Its own web steps in words, as the turn shows them. */
 function webStep(name: string, input: unknown) {

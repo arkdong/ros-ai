@@ -20,6 +20,26 @@ export function privateAddress(address: string): boolean {
     || (first === 0x2001 && groups[1] === 0x0db8) || (first === 0x0100 && groups.slice(1, 4).every(group => group === 0));
 }
 
+/** An address on this computer itself or its link: loopback, unspecified and link-local, however it is written, and the
+ * IPv6 forms that carry such an IPv4 address. Addresses on the local network are not this computer. A text that is not
+ * an address counts as local, so it is refused. */
+export function localAddress(address: string): boolean {
+  const version = isIP(address);
+  if (version === 4) return localIPv4(address.split('.').map(Number));
+  if (version !== 6) return true;
+  const groups = ipv6Groups(address);
+  if (!groups) return true;
+  const zeros = (count: number) => groups.slice(0, count).every(group => group === 0);
+  const embedded = (high: number, low: number) => localIPv4([high >> 8, high & 255]);
+  // ::1 and :: are judged as the IPv4 0.0.0.1 and 0.0.0.0 they also spell.
+  if (zeros(6)) return embedded(groups[6], groups[7]);
+  if (zeros(5) && groups[5] === 0xffff) return embedded(groups[6], groups[7]);
+  if (groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every(group => group === 0)) return embedded(groups[6], groups[7]);
+  if (groups[0] === 0x2002) return embedded(groups[1], groups[2]);
+  return (groups[0] & 0xffc0) === 0xfe80;
+}
+const localIPv4 = ([a, b]: number[]) => a === 127 || a === 0 || (a === 169 && b === 254);
+
 function privateIPv4([a, b, c]: number[]): boolean {
   return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
     || (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) || (a === 203 && b === 0 && c === 113);

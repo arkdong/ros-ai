@@ -143,6 +143,15 @@ function installUpdate(message: unknown) {
 }
 
 const local = (target: string) => { try { const { hostname } = new URL(target); return hostname === '127.0.0.1' || hostname === 'localhost'; } catch { return false; } };
+/** Hands a link to the default browser or mail app. The system opens any address with whatever app answers its scheme
+ * (file:, smb:, an installed app's own scheme), without asking, so a link on the canvas opens only as a web page or an
+ * email. */
+const OUTSIDE = new Set(['http:', 'https:', 'mailto:']);
+function openOutside(target: string) {
+  let address: URL;
+  try { address = new URL(target); } catch { return; }
+  if (OUTSIDE.has(address.protocol)) void shell.openExternal(address.href);
+}
 const origin = (target: string) => { try { return new URL(target).origin; } catch { return ''; } };
 /** An App block's page: ros.ai serves it on a second local port, never the window's own (src/server/app-frames.ts). */
 const appPage = (target: string | undefined) => { try { const page = new URL(target ?? ''); return local(page.href) && page.port !== new URL(url).port && /^\/app\/[A-Za-z0-9_-]{32}$/u.test(page.pathname); } catch { return false; } };
@@ -187,12 +196,12 @@ function showOnlyRosAi(contents: Electron.WebContents, closeIfEmpty: boolean) {
   const elsewhere = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
     if (!event.isMainFrame || local(event.url)) return;
     event.preventDefault();
-    void shell.openExternal(event.url);
+    openOutside(event.url);
     if (closeIfEmpty && !shown) setImmediate(() => BrowserWindow.fromWebContents(contents)?.close());
   };
   contents.on('will-navigate', elsewhere);
   contents.on('will-redirect', elsewhere);
-  contents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; void shell.openExternal(target); return { action: 'deny' }; });
+  contents.setWindowOpenHandler(({ url: target }) => { if (local(target)) return { action: 'allow' }; openOutside(target); return { action: 'deny' }; });
   contents.on('did-create-window', child => showOnlyRosAi(child.webContents, true));
 }
 

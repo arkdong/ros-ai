@@ -5,6 +5,17 @@ export const MAX_MAP_PINS = 200;
 /** Google Maps takes at most this many stops in one route link (origin, waypoints and destination). */
 export const MAX_ROUTE_STOPS = 10;
 
+/** Google's keyless map embed for a place, or the whole world without one. ros.ai's page shows it through the App
+ * server (AppFrames.mapEmbed), so its own frame rules name no site on the web. */
+export function googleEmbedLink(place: { lat: number; lng: number; name: string } | null): string {
+  if (!place) return 'https://www.google.com/maps?q=&z=2&output=embed';
+  return `https://www.google.com/maps?${new URLSearchParams({ q: `${place.lat.toFixed(6)},${place.lng.toFixed(6)} (${place.name})`, z: '16', output: 'embed' })}`;
+}
+
+/** A pin's own link, when it is a web page. Any other address (file:, javascript:, a scheme an app on this computer
+ * answers) could start something there with one click, so a pin never offers one. */
+export const pinLink = (url: string | undefined): string | undefined => url !== undefined && /^https?:\/\/[^\s/]/iu.test(url.trim()) ? url.trim() : undefined;
+
 const at = (pin: Pick<MapPin, 'lat' | 'lng'>) => `${pin.lat.toFixed(6)},${pin.lng.toFixed(6)}`;
 
 /** The pin in Google Maps, through its public link, which needs no key. With a name it searches the name near the

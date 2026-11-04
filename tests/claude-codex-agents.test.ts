@@ -8,7 +8,7 @@ import { ExecutionService } from '../src/server/execution.js';
 import { Authority } from '../src/server/authority.js';
 import type { ExperimentService } from '../src/server/experiments.js';
 import { AssistantService } from '../src/server/assistant.js';
-import { ClaudeAgentService } from '../src/server/claude-agent.js';
+import { ClaudeAgentService, publicPage } from '../src/server/claude-agent.js';
 import { CodexAgentService, codexStatusRecord } from '../src/server/codex-agent.js';
 
 // Claude Code and Codex are two agents each inside ros.ai: one on the person's subscription, one on an API key.
@@ -88,4 +88,18 @@ test('each project picks one of the four agents, and the ROS bar and the turn fo
     for (const [name, value] of Object.entries(saved)) if (value === undefined) delete process.env[name]; else process.env[name] = value;
     await assistant.shutdown(); await codex.shutdown(); await claude.shutdown(); await f.close();
   }
+});
+
+test('Claude Code reads a page only when its name, and the same name with or without "www.", are all public', async () => {
+  const dns: Record<string, string[]> = {
+    'news.example': ['93.184.216.34'], 'www.news.example': ['93.184.216.35'],
+    // Claude Code would follow a redirect from the public name to its www twin, which points at this computer.
+    'trap.example': ['93.184.216.34'], 'www.trap.example': ['127.0.0.1'],
+    'www.router.example': ['93.184.216.34'], 'router.example': ['192.168.1.1'],
+    'lone.example': ['93.184.216.34'],
+  };
+  const find = async (host: string) => { const found = dns[host]; if (!found) throw new Error('ENOTFOUND'); return found.map(address => ({ address })); };
+  for (const [url, read] of [['https://news.example/today', true], ['https://www.news.example/today', true], ['https://lone.example/', true], ['https://trap.example:4310/api/projects', false], ['https://www.router.example/', false],
+    ['https://missing.example/', false], ['http://127.0.0.1:4310/', false], ['https://93.184.216.34/', true], ['file:///etc/passwd', false], [42, false]] as const)
+    assert.equal(await publicPage(url, find), read, String(url));
 });

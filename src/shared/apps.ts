@@ -13,6 +13,17 @@ export const APP_WATCHDOG_MS = 5_000;
 /** The most a page may keep with ros.state: filters, answers, a selection. */
 export const APP_STATE_BYTES = 64_000;
 
+/** A frame's start tag as HTML and XML parsers read one: the tag name whole, in any case, with or without a namespace
+ * prefix. Parsers take tag names from the text as written, so HTML without this match holds no frame. A frame is a page
+ * of its own, beyond the kit's reach, so ros.ai does not open an App page whose HTML holds one, and the kit refuses HTML
+ * that does. The prefix stops at the next "<", which keeps the match linear on any text. */
+export const APP_FRAME_TAG = /<(?:[^\s/>:<]+:)?(?:iframe|frame|frameset|object|embed|fencedframe|portal)(?![^\s/>])/iu;
+/** The line (from 1) of the first frame tag in an App page, or 0 when it holds none. */
+export function appFrameLine(source: string): number {
+  const match = APP_FRAME_TAG.exec(source);
+  return match ? source.slice(0, match.index).split('\n').length : 0;
+}
+
 /** A Code block whose language is html is an App. The tools agents learned on 24 October can write one this way. */
 export const isHtmlLanguage = (language: string | undefined) => /^(html?|xhtml)$/iu.test(language?.trim() ?? '');
 
@@ -72,6 +83,8 @@ const LEAVING: [RegExp, string][] = [
   [/\b(fetch|XMLHttpRequest|WebSocket|EventSource|WebTransport|sendBeacon)\b/u, 'opens a network connection'],
   [/\b(RTCPeerConnection|RTCDataChannel)\b/u, 'opens a peer-to-peer connection'],
   [/\b(location\s*\.\s*href\s*=(?!=)|location\s*\.\s*(assign|replace)\s*\(|location\s*=(?!=)|window\s*\.\s*open\s*\(|(top|parent|opener)\s*\.\s*location\b)/u, 'navigates away from the page'],
+  [APP_FRAME_TAG, 'holds a frame, so ros.ai will not open the page'],
+  [/\bjavascript\s*:/iu, 'opens a javascript: address, which the frame blocks'],
   [/<\s*(form|iframe|frame|object|embed)\b/iu, 'embeds or submits to another page'],
   [/\bhref\s*=\s*["']?\s*(https?:)?\/\//iu, 'links to a web page'],
   [/\b(src|action|srcset|poster|data)\s*=\s*["']?\s*(https?:)?\/\//iu, 'loads something from the web'],

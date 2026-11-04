@@ -9,8 +9,11 @@ import { isSearchProvider, searchLabels } from '../shared/search.js';
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const bytes = (value: unknown) => Buffer.byteLength(typeof value === 'string' ? value : JSON.stringify(value), 'utf8');
 const json = (content: string | undefined) => { try { return object(JSON.parse(content ?? '')); } catch { return {}; } };
-/** Exports keep file names, never the folders they came from. URLs are left intact. */
-export const withoutPaths = (value: string) => value.replace(/(?<![\w:/.])(?:[A-Za-z]:\\|\/)(?:[^\s"'\\/:]+[\\/])+([^\s"'\\/:]+)/gu, '$1');
+/** Exports keep file names, never the folders they came from, also folders whose names hold spaces ("/Users/Ada
+ * Lovelace/Google Drive/survey.csv" keeps "survey.csv"). URLs are left intact. */
+const FOLDER = String.raw`[^\s"'\\/:]+(?: [^\s"'\\/:]+){0,8}`;
+const PATH = new RegExp(String.raw`(?<![\w:/.])(?:[A-Za-z]:\\|\/)(?:${FOLDER}[\\/])+([^\s"'\\/:]+)`, 'gu');
+export const withoutPaths = (value: string) => value.replace(PATH, '$1');
 const version = (artifact: Artifact): RecordVersion => ({ id: artifact.id, title: withoutPaths(artifact.title), kind: artifact.kind, hash: artifact.hash });
 
 function lineage(artifact: Artifact, byId: Map<string, Artifact>): Artifact[] {

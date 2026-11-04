@@ -14,7 +14,7 @@ import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type Pr
 import { DOI, PAPER_ID } from '../shared/papers.js';
 import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
-import { MAX_MAP_PINS } from '../shared/maps.js';
+import { MAX_MAP_PINS, pinLink } from '../shared/maps.js';
 import { MAX_POST_COMMENTS, MAX_POST_PHOTOS, POST_COMMENT_TEXT, POST_PLATFORMS, POST_SUBTITLES_KEPT, POST_TEXT } from '../shared/posts.js';
 import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
@@ -22,6 +22,10 @@ import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, 
 export type RosChoice = { backend?: string; model?: ModelSelection };
 
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
+/** Names every plain object already has (`__proto__`, `constructor`, `toString`…). A block with one of them as its id is
+ * read as that built-in wherever blocks are looked up by id, such as its approval mode, so new blocks may not use them. */
+export const RESERVED_IDS: ReadonlySet<string> = new Set(Object.getOwnPropertyNames(Object.prototype));
+export const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
 /** Only a picture card may be narrower than CARD_MIN_WIDTH: it keeps its picture's shape, so a small one is useful. */
@@ -35,7 +39,7 @@ const linkSide = z.enum(['top','right','bottom','left']);
  * keeps the shape of the training snapshot; they add and remove links. */
 const updateConnectionSchema = z.object({ type: z.literal('updateConnection'), id: identifier, patch: z.object({ label: z.string().max(200).optional(), source: identifier.optional(), target: identifier.optional(), sourceHandle: linkSide.optional(), targetHandle: linkSide.optional() }).strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict();
 const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
-  z.object({ type: z.literal('addNode'), node: z.object({ id: identifier, ...fields }).strict() }).strict(),
+  z.object({ type: z.literal('addNode'), node: z.object({ id: blockIdSchema, ...fields }).strict() }).strict(),
   z.object({ type: z.literal('updateNode'), id: identifier, patch: z.object(fields).partial().strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict(),
   z.object({ type: z.literal('removeNode'), id: identifier }).strict(),
   z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
@@ -86,7 +90,9 @@ export const postViewSchema = z.object({
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
 /** A Map block's pins (see MapView). Kept out of nodeFields, so the canvas tool agents see reads as the training snapshot
  * has it; agents place pins with ros_place_pins. */
-export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: z.string().trim().url().max(2000).optional(), place: z.string().trim().max(300).optional() }).strict();
+/** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). */
+export const pinUrlSchema = z.string().trim().url().max(2000).refine(url => pinLink(url) !== undefined, 'A pin links to a web page: give an http or https address.');
+export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: pinUrlSchema.optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
 /** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
  * tool agents see reads as the training snapshot has it; agents pin numbers with ros_pin_to_dashboard. */
