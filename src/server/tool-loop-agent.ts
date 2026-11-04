@@ -5,6 +5,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
 import { AGENT_LOOP_INSTRUCTIONS, selectionText } from './agent-prompt.js';
+import { ANSWER_IN_CHAT } from './canvas-grammar.js';
 import type { ChatMessage, ModelTool, ToolCall } from './providers.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import type { ModelSelection } from '../shared/model-settings.js';
@@ -122,7 +123,7 @@ export class ToolLoopAgentService {
     const budget = found?.local ? Math.min(remote, Math.max(8_000, (found.model.contextTokens - 2_048) * 3 - toolBytes)) : remote;
     const messages: ChatMessage[] = [
       { role: 'system', content: AGENT_LOOP_INSTRUCTIONS },
-      { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}` },
+      { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}${ANSWER_IN_CHAT}\n\nResearcher's message:\n${message}` },
     ];
     const id = randomUUID();
     let attempt: Attempt = { id, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', selection: request.selection, label, requests: 0, toolCalls: 0, estimatedUsd: 0, usageIds: [], events: [], reply: '' };
