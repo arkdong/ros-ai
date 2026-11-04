@@ -90,8 +90,10 @@ export const postViewSchema = z.object({
 const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
 /** A Map block's pins (see MapView). Kept out of nodeFields, so the canvas tool agents see reads as the training snapshot
  * has it; agents place pins with ros_place_pins. */
-/** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). */
-export const pinUrlSchema = z.string().trim().url().max(2000).refine(url => pinLink(url) !== undefined, 'A pin links to a web page: give an http or https address.');
+/** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). Any other
+ * link is left out rather than refused, so a map saved with one earlier can still be edited; the agent tool that places
+ * pins refuses such a link with a reason. */
+export const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
 export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: pinUrlSchema.optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
 /** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
