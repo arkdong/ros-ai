@@ -13,7 +13,9 @@ const POINT_MS = 60 * 60_000;
 const MAX_POINTS = 2_200;
 const GITHUB = 'https://api.github.com';
 
-type Read = Omit<MetricRead, 'history'>;
+/** A fresh read. `past`: earlier days a tool keeps itself (ros.ai cloud's spend a day), merged into the block's history so
+ * lines and bars show at once instead of after days of reads; never saved with the read. */
+type Read = Omit<MetricRead, 'history'> & { past?: MetricPoint[] };
 type Saved = { read: Read; history: MetricPoint[] };
 type Options = { githubToken?: () => string | undefined; umamiKey?: () => string | undefined; railwayToken?: () => string | undefined; cloud?: { url: string; stats: () => Promise<Record<string, unknown>> }; fetch?: typeof fetch };
 type Answer<T> = { ok: true; data: T } | { ok: false; status: number };
@@ -53,6 +55,23 @@ function sources(answer: Answer<{ x: string | null; y: number }[]>, kind: string
 }
 const ago = (at: string) => { const minutes = Math.round((Date.now() - Date.parse(at)) / 60_000); return minutes < 60 ? `${Math.max(1, minutes)} min ago` : minutes < 48 * 60 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`; };
 
+/** ros.ai cloud's hosted ROS spend a day (the last 30 days), as points at the end of each earlier UTC day for the
+ * "today" numbers, so a bars tile on today's cost shows the past month at once. Today itself comes from the read. */
+export function costDays(raw: unknown, now = new Date()): MetricPoint[] {
+  if (!Array.isArray(raw)) return [];
+  const today = now.toISOString().slice(0, 10);
+  const given = new Map(raw.flatMap(item => item && typeof item.day === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(item.day) && item.day < today && typeof item.cost === 'number' && typeof item.requests === 'number'
+    ? [[item.day as string, { cost_today: item.cost as number, requests_today: item.requests as number }]] : []));
+  if (!given.size) return [];
+  // Days without requests are left out by the cloud; here they count as nothing spent, from the first day it lists.
+  const points: MetricPoint[] = [];
+  for (let at = Date.parse(`${[...given.keys()].sort()[0]}T00:00:00Z`); new Date(at).toISOString().slice(0, 10) < today; at += 86_400_000) {
+    const day = new Date(at).toISOString().slice(0, 10);
+    points.push({ at: `${day}T23:59:00.000Z`, values: given.get(day) ?? { cost_today: 0, requests_today: 0 } });
+  }
+  return points.slice(-30);
+}
+
 /** The sign-up answers ros.ai cloud gives with its numbers: one value per answer ("Heard from a friend or colleague"),
  * then how many skipped the question. Nothing when this cloud does not ask it yet. */
 export function signupSources(raw: unknown): MetricValue[] {
@@ -85,7 +104,7 @@ export class MetricViews {
     }
     if (held && !refresh && Date.now() - held.at < FRESH_MS) return { ...held.saved.read, history: held.saved.history };
     try {
-      const read = await this.fresh(view), saved = { read, history: addPoint(held?.saved.history ?? [], read) };
+      const { past, ...read } = await this.fresh(view), saved = { read, history: addPast(addPoint(held?.saved.history ?? [], read), past) };
       this.reads.set(key, { at: Date.now(), saved });
       if (projectId) this.cache?.write(projectId, 'metric', key, saved);
       return { ...read, history: saved.history };
@@ -169,7 +188,8 @@ export class MetricViews {
     const values: MetricValue[] = [
       value('users', 'Accounts'), value('signups_today', 'Sign-ups today'), value('downloads', 'Downloads'), value('active_week', 'Hosted ROS users, 7 days'),
       value('signups_week', 'Sign-ups, 7 days'), value('downloads_week', 'Downloads, 7 days'), value('requests_week', 'Hosted ROS requests, 7 days'),
-      value('cost_week', 'Hosted ROS cost, 7 days (US$)'), value('feedback', 'Feedback notes'), value('feedback_week', 'Feedback notes, 7 days'),
+      value('cost_today', 'Hosted ROS cost today (US$)'), value('cost_week', 'Hosted ROS cost, 7 days (US$)'), value('cost_month', 'Hosted ROS cost, 30 days (US$)'),
+      value('requests_today', 'Hosted ROS requests today'), value('feedback', 'Feedback notes'), value('feedback_week', 'Feedback notes, 7 days'),
       // From the app's usage counts (Settings › General › Usage counts), sent by signed-in apps.
       value('researchers_week', 'Active researchers, 7 days'), value('researchers_month', 'Active researchers, 30 days'),
       value('funnel_workspace', 'Accounts that made a project'), value('funnel_source', 'Accounts that added a source'), value('funnel_report', 'Accounts that made a report'),
@@ -184,7 +204,7 @@ export class MetricViews {
     // Narrowed to one area: its numbers, in its order (a key it names that this cloud does not give is shown as missing).
     // Acquisition also lists where sign-ups heard about ros.ai.
     const shown = show ? [...CLOUD_SHOWS[show].keys.map(key => values.find(item => item.key === key) ?? value(key, key)), ...(show === 'acquisition' ? heard : [])] : values;
-    return { source: 'cloud', title: show ? `ros.ai cloud · ${CLOUD_SHOWS[show].label}` : 'ros.ai cloud', link: this.options.cloud.url, values: shown, fetchedAt: new Date().toISOString() };
+    return { source: 'cloud', title: show ? `ros.ai cloud · ${CLOUD_SHOWS[show].label}` : 'ros.ai cloud', link: this.options.cloud.url, values: shown, fetchedAt: new Date().toISOString(), past: costDays(stats.cost_days) };
   }
 
   private async umamiAsk<T>(path: string): Promise<Answer<T>> {
@@ -275,6 +295,22 @@ export class MetricViews {
     const up = rows.filter(row => row.tone === 'good').length;
     return { source: 'railway', title: found.project.name, link: `https://railway.com/project/${project}`, values: [{ key: 'up', label: `Services online (of ${rows.length})`, value: up }, ...rows], fetchedAt: new Date().toISOString() };
   }
+}
+
+/** Earlier days from the tool itself, one point at the end of each UTC day: a key goes in only for days the block's own
+ * reads have not covered, so what the block saw itself always wins. */
+export function addPast(history: MetricPoint[], past: MetricPoint[] | undefined): MetricPoint[] {
+  if (!past?.length) return history;
+  const day = (at: string) => at.slice(0, 10), seen = new Map<string, Set<string>>();
+  for (const point of history) for (const key of Object.keys(point.values)) {
+    const days = seen.get(key) ?? new Set<string>(); days.add(day(point.at)); seen.set(key, days);
+  }
+  const added = past.flatMap(point => {
+    const values = Object.fromEntries(Object.entries(point.values).filter(([key]) => !seen.get(key)?.has(day(point.at))));
+    return Object.keys(values).length ? [{ at: point.at, values }] : [];
+  });
+  if (!added.length) return history;
+  return [...history, ...added].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-MAX_POINTS);
 }
 
 function addPoint(history: MetricPoint[], read: Read): MetricPoint[] {
