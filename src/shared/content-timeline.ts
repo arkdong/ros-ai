@@ -1,7 +1,7 @@
-import type { Artifact, Change, ProjectDetail } from './types';
+import type { Artifact, ChangeSummary, ProjectDetail } from './types';
 
 export type ContentTimelineEntry =
-  | {kind:'canvas'; id:string; createdAt:string; change:Change}
+  | {kind:'canvas'; id:string; createdAt:string; change:ChangeSummary}
   | {kind:'evidence'; id:string; createdAt:string; title:string; artifacts:Artifact[]};
 
 /** Evidence milestones are a read-only index of saved versions, never undo states. */

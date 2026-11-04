@@ -30,7 +30,7 @@ export class ConnectionBudgets {
 
   private saved(provider: ConnectionBudgetProvider) { return this.store.globalRecord<Allowance>(namespace, provider); }
   private accounted(saved: Allowance): number {
-    const usage = new Map(this.store.listUsage().filter(row => row.provider === saved.provider).map(row => [row.id, row]));
+    const usage = new Map(this.store.usageLedger().filter(row => row.provider === saved.provider).map(row => [row.id, row]));
     return saved.admissions.reduce((total, admission) => {
       const row = usage.get(admission.usageId);
       if (admission.settledUnits !== undefined) return Math.min(Number.MAX_SAFE_INTEGER, total + Math.max(admission.settledUnits, chargeUnits(row?.estimatedUsd ?? 0)));
@@ -116,7 +116,7 @@ export class ConnectionBudgets {
     return this.store.atomic(() => {
       const saved = this.saved(provider), admission = saved?.admissions.find(item => item.usageId === usageId);
       if (!saved || !admission || admission.settledUnits !== undefined) throw new StoreError('This request reservation is missing or already settled.', 409);
-      const row = this.store.listUsage().find(item => item.id === usageId);
+      const row = this.store.getUsage(usageId);
       this.store.updateUsage(usageId, { estimatedUsd: reportedUsd, status: 'settled', reportedUsage: { ...(row?.reportedUsage as Record<string, unknown> | null ?? {}), ...reportedUsage } });
       this.store.saveGlobalRecord(namespace, provider, { ...saved, admissions: saved.admissions.map(item => item === admission ? { ...item, settledUnits: chargeUnits(reportedUsd) } : item) } satisfies Allowance);
       return this.status(provider);

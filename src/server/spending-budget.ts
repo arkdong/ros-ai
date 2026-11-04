@@ -18,7 +18,7 @@ export class SpendingBudget {
   private saved(scope: string) { return this.store.globalRecord<Saved | { monthlyUsd: null }>('spending-budget', scope)?.monthlyUsd ?? null; }
   private spent(projectId?: string) {
     const start = monthStart();
-    return this.store.listUsage().filter(row => Date.parse(row.createdAt) >= start && (!projectId || usageProject(this.store, row) === projectId)).reduce((sum, row) => sum + counted(row), 0);
+    return this.store.usageLedger().filter(row => Date.parse(row.createdAt) >= start && (!projectId || usageProject(this.store, row) === projectId)).reduce((sum, row) => sum + counted(row), 0);
   }
   status(projectId?: string | null): BudgetStatus {
     const line = (monthlyUsd: number | null, spentUsd: number) => ({ monthlyUsd, spentUsd, leftUsd: monthlyUsd === null ? null : Math.max(0, monthlyUsd - spentUsd) });
@@ -42,7 +42,7 @@ export class SpendingBudget {
   credit(provider: string): ProviderCredit | null {
     const saved = this.store.globalRecord<{ amountUsd: number; setAt: string } | null>('provider-credit', provider);
     if (!saved) return null;
-    const since = Date.parse(saved.setAt), spentUsd = this.store.listUsage().filter(row => row.provider === provider && Date.parse(row.createdAt) >= since).reduce((sum, row) => sum + counted(row), 0);
+    const since = Date.parse(saved.setAt), spentUsd = this.store.usageLedger().filter(row => row.provider === provider && Date.parse(row.createdAt) >= since).reduce((sum, row) => sum + counted(row), 0);
     return { amountUsd: saved.amountUsd, setAt: saved.setAt, spentUsd, leftUsd: Math.max(0, saved.amountUsd - spentUsd) };
   }
   setCredit(provider: string, amountUsd: unknown) {

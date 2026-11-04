@@ -4,7 +4,7 @@ import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import type { Authority } from './authority.js';
-import { forgetNotebookNames, reviewNotebookCell, type NotebookNames } from './review-code.js';
+import { forgetNotebookNames, reviewNotebookCell, reviewNotebookCells, type NotebookNames } from './review-code.js';
 import type { Confine, PythonRuntime } from './local-python.js';
 import type { NetworkGate, NetworkSession } from './network-gate.js';
 /** Sandboxed Python without Docker, and the proxy that gives it network. */
@@ -304,23 +304,32 @@ export class NotebookService {
     if (this.authority.policy(projectId).stopped) throw new StoreError('Research is stopped in this project. Resume it before running cells.', 409);
     const queued: string[] = [];
     let approval: NotebookRunResult['approval'];
+    // The cells to queue, each code cell once; empty cells and cells already waiting are left out.
+    const picked: { cellId: string; source: string; fingerprint: string; reviewable: string }[] = [];
     for (const cellId of body.run) {
       const cell = content.cells.find(item => item.id === cellId && item.cell_type === 'code');
       if (!cell) throw new StoreError('That cell is not a code cell in this notebook.', 404);
-      if (!cell.source.trim() || live.queue.some(item => item.cellId === cellId)) continue;
+      if (!cell.source.trim() || live.queue.some(item => item.cellId === cellId) || picked.some(item => item.cellId === cellId)) continue;
       const fingerprint = sha(JSON.stringify([projectId, nodeId, cellId, sha(cell.source)]));
       // %matplotlib inline and similar setup lines do nothing in ros.ai, so the reviewer reads them as pass.
       const reviewable = cell.source.replace(/^(\s*)%(?:matplotlib|config|load_ext|reload_ext|autoreload)\b.*$/gmu, '$1pass');
-      // Each cell is reviewed with the names the cells before it leave, as an error cancels every cell after it.
-      const last = live.queue.at(-1) ?? live.running, before = (last ? last.names : live.settled) ?? {};
-      const reviewed = mode === 'review' ? reviewNotebookCell(reviewable, before) : undefined;
-      const decision = this.authority.review(projectId, { kind: 'experiment', nodeId, fingerprint, code: cell.source, reviewed });
+      picked.push({ cellId, source: cell.source, fingerprint, reviewable });
+    }
+    // Each cell is reviewed with the names the cells before it leave, as an error cancels every cell after it. The
+    // reviewer reads them all in one process; a cell it could not reach is reviewed on its own.
+    const last = live.queue.at(-1) ?? live.running;
+    let before = (last ? last.names : live.settled) ?? {};
+    const reviews = mode === 'review' ? reviewNotebookCells(picked.map(item => ({ code: item.reviewable, approved: body.approve?.[item.cellId] === item.fingerprint })), before) : [];
+    for (const [index, { cellId, source, fingerprint, reviewable }] of picked.entries()) {
+      const reviewed = mode === 'review' ? reviews[index] ?? reviewNotebookCell(reviewable, before) : undefined;
+      const decision = this.authority.review(projectId, { kind: 'experiment', nodeId, fingerprint, code: source, reviewed });
       if (decision.outcome === 'deny') throw new StoreError(decision.reason, 409);
       const approved = decision.outcome === 'escalate' && body.approve?.[cellId] === fingerprint;
       if (decision.outcome === 'escalate' && !approved) { approval = { cellId, fingerprint, reason: decision.reason }; break; }
       // Names carry over only while every cell in the session was reviewed or is known not to change them.
-      const names = mode !== 'review' ? undefined : approved ? forgetNotebookNames(reviewable, before) : reviewed!.names;
-      live.queue.push({ execution: randomUUID(), cellId, source: cell.source, reviewable, ...(names ? { names } : {}), queuedAt: now(), approval: { mode, outcome: approved ? 'approved' : 'allow', reason: decision.reason } });
+      const names = mode !== 'review' ? undefined : approved ? reviews[index]?.names ?? forgetNotebookNames(reviewable, before) : reviewed!.names ?? {};
+      if (names) before = names;
+      live.queue.push({ execution: randomUUID(), cellId, source, reviewable, ...(names ? { names } : {}), queuedAt: now(), approval: { mode, outcome: approved ? 'approved' : 'allow', reason: decision.reason } });
       queued.push(cellId);
       this.emit(live.key, { type: 'cell', cellId, state: 'queued' });
     }

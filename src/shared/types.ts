@@ -148,6 +148,8 @@ export type Message = {id:string; projectId:string; nodeId:string|null; role:'us
  * agent turn); accepting one moves the others still pending onto the new canvas revision. */
 export type Proposal = {id:string; projectId:string; baseRevision:number; summary:string; operations:Mutation[]; status:'pending'|'accepted'|'dismissed'; createdAt:string; after?:string[]; batch?:string};
 export type Change = {id:string; projectId:string; revision:number; label:string; canvas:Canvas; createdAt:string};
+/** A change as the project page lists it: the canvas it saved is fetched only when someone opens it. */
+export type ChangeSummary = Omit<Change,'canvas'>;
 export type Artifact = {id:string; projectId:string; nodeId:string; runId:string; kind:'result'|'source'|'dataset'|'code'|'table'|'metric'|'plot'|'log'|'notebook'; title:string; content:string; hash:string; createdAt:string; url?:string; locator?:string; capture?:'search-snippet'|'full-content'|'generated'|'external'; sourceId?:string; mediaType?:string; metadata?:Record<string,unknown>};
 export type SelectedInput = {id:string; projectId:string; nodeId:string; artifactId:string; excerpt:string; createdAt:string};
 export type RunStatus = 'queued'|'running'|'completed'|'failed'|'cancelled'|'interrupted';
@@ -155,5 +157,5 @@ export type ModelMessage = {role:'system'|'user'|'assistant'; content:string};
 export type RunEvent = {at:string; type:string; message:string; data?:unknown};
 export type Run = {id:string; projectId:string; nodeId:string; request:string; useSearch:boolean; status:RunStatus; retryOf?:string; createdAt:string; startedAt?:string; endedAt?:string; projectRevision:number; node:CanvasNode; inputs:(SelectedInput & {artifact:Artifact})[]; messages:ModelMessage[]; provider:string; model:string; modelVersion:string|null; configuration:Record<string,unknown>; tools:unknown[]; events:RunEvent[]; artifactIds:string[]; error?:string; usage?:unknown; cost?:unknown};
 export type UsageRecord = {id:string; provider:string; purpose:string; runId?:string; reservedUsd:number; estimatedUsd:number|null; reportedUsage:unknown; status:'reserved'|'settled'|'uncertain'; basis:string; createdAt:string};
-export type ProjectDetail = {project:Project; messages:Message[]; proposals:Proposal[]; changes:Change[]; runs:Run[]; artifacts:Artifact[]; inputs:SelectedInput[]; canUndo:boolean; canRedo:boolean; highlights?:import('./research.js').Highlight[]; notebooks?:import('./notebooks.js').NotebookSummary[]};
+export type ProjectDetail = {project:Project; messages:Message[]; proposals:Proposal[]; changes:ChangeSummary[]; runs:Run[]; artifacts:Artifact[]; inputs:SelectedInput[]; canUndo:boolean; canRedo:boolean; highlights?:import('./research.js').Highlight[]; notebooks?:import('./notebooks.js').NotebookSummary[]};
 export type ConnectionStatus = {provider:string; configured:boolean; model?:string; detail:string; limitUsd:number; accountedUsd:number};

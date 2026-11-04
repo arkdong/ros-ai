@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, apiErrorHandler } from '../src/server/app.js';
@@ -141,5 +142,47 @@ test('An MP4 or MOV becomes a File block whose video is streamed in parts and wh
     const empty = await fetch(`${f.base}/api/projects/${project.id}/folder/files?name=empty.mp4`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: new Uint8Array() });
     assert.equal(empty.status, 400);
     assert.equal((await import('node:fs')).readdirSync(join(f.folder, 'files')).filter(name => name.startsWith('.ros-ai-') || name.startsWith('empty')).length, 0);
+  } finally { await f.close(); }
+});
+
+test('A file lost when its folder moved is looked for among files of its size, and a search that found nothing waits for the folder to change', async () => {
+  const f = await fixture();
+  try {
+    const project = await f.post<{ id: string }>('/api/projects', { title: 'Moved folder' });
+    mkdirSync(join(f.folder, 'figures'), { recursive: true });
+    writeFileSync(join(f.folder, 'figures', 'plot.png'), png);
+    await f.post(`/api/projects/${project.id}/folder`, { path: f.folder });
+    const { nodeId } = await f.post<{ nodeId: string }>(`/api/projects/${project.id}/folder/add`, { path: 'figures/plot.png' });
+    await f.until(() => f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`), value => value.files.some(file => file.nodeId === nodeId && file.version), 'the picture to be recorded');
+    // Other pictures: five the same size that differ in one byte, and thirty of other sizes.
+    mkdirSync(join(f.folder, 'others'));
+    for (let index = 0; index < 5; index++) { const twin = Buffer.from(png); twin[30] ^= index + 1; writeFileSync(join(f.folder, 'others', `twin ${index}.png`), twin); }
+    for (let index = 0; index < 30; index++) writeFileSync(join(f.folder, 'others', `other ${index}.png`), Buffer.concat([png, Buffer.alloc(index + 1)]));
+    // The folder is moved and the picture is lost on the way; then the folder is opened from its new place.
+    const moved = `${f.folder} moved`;
+    renameSync(f.folder, moved);
+    unlinkSync(join(moved, 'figures', 'plot.png'));
+    const others = join(realpathSync(moved), 'others');
+    const reads = (run: () => unknown) => {
+      let count = 0;
+      const open = fs.openSync;
+      fs.openSync = ((...args: Parameters<typeof fs.openSync>) => { if (String(args[0]).startsWith(others)) count++; return open(...args); }) as typeof fs.openSync;
+      syncBuiltinESMExports();
+      try { run(); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+      return count;
+    };
+    const sync = () => (f.folders as unknown as { syncNow(projectId: string, write: boolean): void }).syncNow(project.id, false);
+    assert.equal(reads(() => f.folders.openFolder(moved)), 5, 'Only the pictures of the lost one’s size are read');
+    assert.equal(reads(sync), 0, 'Nothing changed in the folder, so the search is not run again');
+    assert.equal(reads(sync), 0);
+    // The picture turns up under another name: the next pass finds it and the block follows it.
+    writeFileSync(join(moved, 'others', 'plot again.png'), png);
+    const found = reads(sync);
+    assert.ok(found >= 1 && found <= 6, `read ${found} files`);
+    const status = await f.json<ProjectFolderStatus>(`/api/projects/${project.id}/folder`);
+    const entry = status.files.find(file => file.nodeId === nodeId)!;
+    assert.equal(entry.path, 'others/plot again.png');
+    assert.equal(entry.missing, undefined);
+    assert.deepEqual((await f.json<ProjectDetail>(`/api/projects/${project.id}`)).project.canvas.nodes.find(node => node.id === nodeId)?.file, { path: 'others/plot again.png' });
   } finally { await f.close(); }
 });

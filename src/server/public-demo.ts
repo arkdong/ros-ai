@@ -23,7 +23,7 @@ function permitted(method:string,path:string):boolean {
   const rules:Record<string,RegExp[]> = {
     GET:[/^\/api\/(projects(?:\/trash)?|connections|demo-scenarios)$/,
       new RegExp(`^${project}(?:/(?:demo-session|policy|research|assistant|models|resources|reviews))?$`),
-      new RegExp(`^${project}/resources/[a-zA-Z0-9_-]+$`)],
+      new RegExp(`^${project}/(?:resources|changes)/[a-zA-Z0-9_-]+$`)],
     POST:[/^\/api\/(demo-sessions|projects)$/,
       new RegExp(`^${project}/(?:mutations|undo|redo|inputs|highlights|trash|restore|demo-session/advance)$`),
       new RegExp(`^${project}/resources/[a-zA-Z0-9_-]+/use$`)],

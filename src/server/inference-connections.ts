@@ -75,7 +75,7 @@ export class InferenceConnections{
   }
   private ids(){return [...new Set([...(this.store.globalRecord<{connections:InferenceConnectionStatus[]}>(indexNamespace,'all')?.connections??[]).map(item=>item.id),...this.connections.map(item=>item.id)])];}
   private syncIndex(){this.store.saveGlobalRecord(indexNamespace,'all',{connections:this.ids().map(id=>this.status(id))});}
-  private accounted(state:State){const usage=new Map(this.store.listUsage().map(row=>[row.id,row]));return state.admissions.reduce((total,item)=>{const row=usage.get(item.usageId);return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(item.reservedUnits,units(row?.reservedUsd??0),units(row?.estimatedUsd??0)));},0);}
+  private accounted(state:State){const usage=new Map(this.store.usageLedger().map(row=>[row.id,row]));return state.admissions.reduce((total,item)=>{const row=usage.get(item.usageId);return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(item.reservedUnits,units(row?.reservedUsd??0),units(row?.estimatedUsd??0)));},0);}
   status(id:string,requiredUsd?:number):InferenceConnectionStatus{
     idSchema.parse(id);const config=this.connections.find(item=>item.id===id),state=this.state(id);
     if(!config&&!state)throw new StoreError('Inference connection not found.',404);

@@ -73,7 +73,7 @@ export class CombinedNebiusBudget {
   }
 
   private accountedUnits(saved = this.saved()): number {
-    const usage = new Map(this.store.listUsage().filter(row => row.provider === 'nebius').map(row => [row.id, row]));
+    const usage = new Map(this.store.usageLedger().filter(row => row.provider === 'nebius').map(row => [row.id, row]));
     return (saved?.admissions ?? []).reduce((total, admission) => {
       const row = admission.kind === 'inference' ? usage.get(admission.attemptId) : undefined;
       // Reported higher usage is additional evidence, never a reason to refund a

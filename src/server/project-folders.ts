@@ -64,7 +64,7 @@ type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Obse
 type OutputEntry = { path: string; hash: string; artifactId: string };
 /** ros.ai's side of the sync. `hash` is the content ros.ai and the file last agreed on. */
 type FolderRecord = { projectId: string; path: string; device: number; inode: number; attachedAt: string; files: Record<string, FileEntry>; outputs: Record<string, OutputEntry[]>; board?: string };
-type Listed = { path: string; size: number };
+type Listed = { path: string; size: number; mtimeMs: number };
 /** `keep` is a file already on disk that matches, though ros.ai would write it differently. */
 type Rendered = { bytes: Buffer; extension: string; artifactId?: string; keep?: string };
 
@@ -278,7 +278,7 @@ class FolderFiles {
         if (entry.name.startsWith('.')) continue;
         const child = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) { if (level < depth && !SKIPPED_FOLDERS.has(entry.name)) walk(join(folder, entry.name), child, level + 1); }
-        else if (entry.isFile()) { try { found.push({ path: child, size: lstatSync(join(folder, entry.name)).size }); } catch { /* removed while listing */ } }
+        else if (entry.isFile()) { try { const info = lstatSync(join(folder, entry.name)); found.push({ path: child, size: info.size, mtimeMs: info.mtimeMs }); } catch { /* removed while listing */ } }
       }
     };
     walk(this.root, '', 0);
@@ -536,7 +536,9 @@ export class ProjectFolders implements NotebookFolders {
   private connect(projectId: string, root: string, manifest?: Manifest, rebuild = false): void {
     const info = statSync(root), previous = this.load(projectId);
     const record: FolderRecord = { projectId, path: root, device: info.dev, inode: info.ino, attachedAt: now(), files: previous?.files ?? {}, outputs: previous?.outputs ?? {}, ...(previous?.board ? { board: previous.board } : {}) };
-    for (const entry of Object.values(record.files)) delete entry.disk;
+    // Times from before the move say nothing about the files now, so each file is read again. The last known size stays:
+    // a file missing after the move is looked for among files of that size only.
+    for (const entry of Object.values(record.files)) if (entry.disk) entry.disk = { ...entry.disk, mtimeMs: -1 };
     const files = new FolderFiles(root);
     if (rebuild && manifest) this.rebuild(record, files, manifest);
     else if (manifest) {
@@ -1012,7 +1014,7 @@ export class ProjectFolders implements NotebookFolders {
       let seen: ReturnType<ProjectFolders['observe']>;
       try { seen = this.observe(files, entry); } catch (error) { entry.problem = `${message(error)}`; continue; }
       if (!seen) {
-        const moved = this.findMoved(record, files, entry, listing);
+        const moved = this.findMoved(record, files, entry, listing, nodeId);
         if (!moved) { entry.missing = true; continue; }
         renamed.push(`${entry.path} → ${moved.path}`);
         entry.path = moved.path; entry.disk = moved.observed; entry.missing = false;
@@ -1052,16 +1054,22 @@ export class ProjectFolders implements NotebookFolders {
     } catch (error) { for (const [entry] of agreed) entry.problem = `${entry.path} could not be read back: ${message(error)}`; }
   }
 
-  /** A file renamed or moved in another app is found again by its content. */
-  private findMoved(record: FolderRecord, files: FolderFiles, entry: FileEntry, listing: Listed[]): { path: string; observed: Observed } | null {
+  /** A file renamed or moved in another app is found again by its content. A search that found nothing is not run again
+   * until the files it read change, so a file that stays missing no longer has every sync read the folder's files. */
+  private findMoved(record: FolderRecord, files: FolderFiles, entry: FileEntry, listing: Listed[], nodeId: string): { path: string; observed: Observed } | null {
     if (!entry.hash) return null;
-    const mapped = this.mapped(record), extension = extensionOf(entry.path).toLowerCase();
-    for (const file of listing) {
-      if (mapped.has(file.path.toLowerCase()) || extensionOf(file.path).toLowerCase() !== extension || (entry.disk && file.size !== entry.disk.size)) continue;
-      try { const read = readFolderFile(files, file.path, entry.kind); if (read.observed.hash === entry.hash) return { path: file.path, observed: read.observed }; } catch { /* unreadable files are not matches */ }
+    const mapped = this.mapped(record), extension = extensionOf(entry.path).toLowerCase(), key = `${record.projectId}:${nodeId}`;
+    const candidates = listing.filter(file => !mapped.has(file.path.toLowerCase()) && extensionOf(file.path).toLowerCase() === extension && (!entry.disk || file.size === entry.disk.size));
+    const searched = sha(JSON.stringify([entry.hash, entry.kind, candidates]));
+    if (this.searched.get(key) === searched) return null;
+    for (const file of candidates) {
+      try { const read = readFolderFile(files, file.path, entry.kind); if (read.observed.hash === entry.hash) { this.searched.delete(key); return { path: file.path, observed: read.observed }; } } catch { /* unreadable files are not matches */ }
     }
+    this.searched.set(key, searched);
     return null;
   }
+  /** Searches for a missing file that found nothing, by project and block: a key for the files they read. */
+  private readonly searched = new Map<string, string>();
 
   private readArtifactFile(record: FolderRecord, projectId: string, node: CanvasNode, entry: FileEntry, text: string, hash: string): void {
     if (entry.kind === 'dataset') { parseCsv(text, true); this.capture(projectId, node, { kind: 'dataset', title: node.title, content: text, mediaType: 'text/csv', path: entry.path }); return; }
