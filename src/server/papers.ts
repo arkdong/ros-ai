@@ -12,6 +12,7 @@ import type { CanvasNode, PaperRef, PaperSource } from '../shared/types.js';
 import { zoteroAppProblem, type ZoteroApp } from '../shared/plugins.js';
 import { privateAddress } from './private-address.js';
 import type { ProjectFolders } from './project-folders.js';
+import { publicFetch } from './public-fetch.js';
 import type { AppTool, BuiltInApp } from './remote-apps.js';
 import { StoreError, type Store } from './store.js';
 
@@ -161,6 +162,8 @@ class TooLarge extends Error { constructor() { super('larger than ros.ai reads')
 
 export class Papers {
   private readonly fetcher: typeof fetch;
+  /** For PDF links, which come from the web: it connects only to the public address it checks. */
+  private readonly downloads: typeof fetch;
   private readonly lookup: (host: string) => Promise<{ address: string }[]>;
   private readonly bases: typeof BASES;
   private readonly spacing: number;
@@ -174,6 +177,7 @@ export class Papers {
   private zoteroWait = 0;
   constructor(private readonly store: Store, private readonly keys: Keys, options: Options = {}) {
     this.fetcher = options.fetcher ?? fetch;
+    this.downloads = options.fetcher ?? publicFetch();
     this.lookup = options.lookup ?? (host => dnsLookup(host, { all: true, verbatim: true }));
     this.bases = { ...BASES, ...options.bases };
     this.spacing = options.spacing ?? ARXIV_SPACING;
@@ -205,9 +209,9 @@ export class Papers {
   }
   private known(id: string) { const kept = this.kept.get(id); return kept && Date.now() - kept.at < PAPER_TTL ? kept.paper : undefined; }
 
-  private request(url: string, headers: Record<string, string>, signal?: AbortSignal, redirect: RequestRedirect = 'error', timeout = TIMEOUT) {
+  private request(url: string, headers: Record<string, string>, signal?: AbortSignal, redirect: RequestRedirect = 'error', timeout = TIMEOUT, fetcher = this.fetcher) {
     const limit = AbortSignal.timeout(timeout);
-    return this.fetcher(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, redirect, signal: signal ? AbortSignal.any([signal, limit]) : limit });
+    return fetcher(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, redirect, signal: signal ? AbortSignal.any([signal, limit]) : limit });
   }
   /** Why a source refused, in words the person can act on. */
   private refusal(source: PaperSource, response: Response, single = false): StoreError {
@@ -386,7 +390,7 @@ export class Papers {
     let current = href;
     for (let hop = 0; hop <= hops; hop++) {
       const url = await this.publicUrl(current), arxiv = /(^|\.)arxiv\.org$/u.test(url.hostname) || url.href.startsWith(this.bases.arxivPdf);
-      const fetchOnce = () => this.request(url.href, { Accept: 'application/pdf,*/*;q=0.5' }, signal, 'manual', PDF_TIMEOUT);
+      const fetchOnce = () => this.request(url.href, { Accept: 'application/pdf,*/*;q=0.5' }, signal, 'manual', PDF_TIMEOUT, this.fixed.has(url.hostname) ? this.fetcher : this.downloads);
       const response = arxiv ? await this.arxivTurn(fetchOnce, signal) : await fetchOnce();
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         await response.body?.cancel().catch(() => undefined);

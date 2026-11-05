@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { FILE_BYTES } from '../shared/files.js';
 import { readLimited } from './papers.js';
 import { privateAddress } from './private-address.js';
+import { publicFetch } from './public-fetch.js';
 import type { AppTool, RemoteApps } from './remote-apps.js';
 import { StoreError } from './store.js';
 
@@ -68,7 +69,7 @@ export class NotionFileSaver {
   private readonly lookup: (host: string) => Promise<{ address: string }[]>;
   private readonly isAllowed: (url: URL) => boolean;
   constructor(private readonly apps: Pick<RemoteApps, 'connected' | 'call'>, options: Options = {}) {
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? publicFetch();
     this.lookup = options.lookup ?? (host => dnsLookup(host, { all: true }));
     this.isAllowed = options.isAllowed ?? notionFileHost;
   }

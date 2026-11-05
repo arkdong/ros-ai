@@ -8,7 +8,7 @@ import type { ExecutionService } from '../src/server/execution.js';
 import type { ExperimentService } from '../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
 import { Geocoder } from '../src/server/geocode.js';
-import { googleMapsLink, googleRouteLink, pointInLink } from '../src/shared/maps.js';
+import { googleMapsLink, googleRouteLink, pinLink, pointInLink } from '../src/shared/maps.js';
 
 // A stand-in OpenStreetMap that knows two places in Amsterdam.
 const PLACES: Record<string, { name: string; display_name: string; lat: string; lon: string }> = {
@@ -104,5 +104,26 @@ test('The person\'s own edit keeps a map\'s pins within bounds', () => {
     assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'm', patch: { map: { pins: [{ id: 'p', name: 'Off the globe', lat: 120, lng: 0 }] } } }], 'Bad pin'));
     store.mutate(project.id, [{ type: 'updateNode', id: 'm', patch: { map: { pins: [{ id: 'p', name: 'Delft', lat: 52.0116, lng: 4.3571 }] } } }], 'Pin Delft');
     assert.equal(store.getProject(project.id).canvas.nodes[0].map!.pins[0].name, 'Delft');
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('A pin links only to a web page, so a click never opens a file, a script or another app', async () => {
+  assert.equal(pinLink(' https://cafedejaren.nl/ '), 'https://cafedejaren.nl/');
+  assert.equal(pinLink('http://example.org/page'), 'http://example.org/page');
+  for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'smb://server/share', 'vscode://file/x', 'ms-msdt:/id', 'mailto:a@b.c', 'https:///x', 'data:text/html,x', undefined])
+    assert.equal(pinLink(url), undefined, String(url));
+  const dir = mkdtempSync(join(tmpdir(), 'ros-map-')), store = new Store(join(dir, 'store'));
+  try {
+    const project = store.createProject('Links');
+    store.mutate(project.id, [{ type: 'addNode', node: { id: 'm', title: 'Map', description: '', kind: 'topic', blockType: 'map', map: { pins: [] }, x: 0, y: 0 } }], 'Add Map');
+    // The agent tool refuses another kind of link, with a reason.
+    await assert.rejects(toolkit(store, project.id).call('ros_place_pins', { summary: 'x', rationale: 'y', nodeId: 'm', pins: [{ name: 'Place', lat: 52, lng: 4, url: 'file:///System/Applications/Calculator.app' }] }), /http or https/u);
+    // A saved map keeps only web links, and one that held another kind earlier can still be edited.
+    for (const url of ['javascript:alert(1)', 'file:///Users/adam/.ssh/id_rsa', 'smb://server/share']) {
+      store.mutate(project.id, [{ type: 'updateNode', id: 'm', patch: { map: { pins: [{ id: 'p', name: 'Place', lat: 52, lng: 4, url }] } } }], 'Pin');
+      assert.equal(store.getProject(project.id).canvas.nodes[0].map!.pins[0].url, undefined, url);
+    }
+    store.mutate(project.id, [{ type: 'updateNode', id: 'm', patch: { map: { pins: [{ id: 'p', name: 'Place', lat: 52, lng: 4, url: 'https://example.org/' }] } } }], 'Pin');
+    assert.equal(store.getProject(project.id).canvas.nodes[0].map!.pins[0].url, 'https://example.org/');
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

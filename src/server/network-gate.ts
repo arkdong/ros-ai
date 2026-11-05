@@ -6,6 +6,7 @@ import type { Express, Request, Response } from 'express';
 import { z } from 'zod';
 
 import type { PythonRuntime, PythonSetupEvent } from './local-python.js';
+import { localAddress } from './private-address.js';
 import type { Store } from './store.js';
 
 /** Network for sandboxed Python, the way Claude Code gives its sandbox network: the sandbox may reach only a proxy
@@ -24,11 +25,9 @@ export const PRESET_SITES = ['pypi.org', 'files.pythonhosted.org'];
 const WAIT_MS = 120_000;
 
 const hostSchema = z.string().min(1).max(253).regex(/^[a-z0-9.-]+$|^\[?[0-9a-f:.]+\]?$/iu);
-const blockedAddress = (address: string) => {
-  const ip = address.replace(/^::ffff:/iu, '');
-  // ros.ai itself and other services on this computer stay out of reach, so a cell cannot call ros.ai's own API.
-  return /^127\.|^0\.|^169\.254\./u.test(ip) || ip === '::1' || ip === '::' || /^fe80:/iu.test(ip);
-};
+// ros.ai itself and other services on this computer stay out of reach, so a cell cannot call ros.ai's own API. The
+// address is read as an address, so every way of writing 127.0.0.1 or ::1 is caught.
+const blockedAddress = (address: string) => localAddress(address);
 
 /** One Python process's proxy. `waiting` is true while a site waits for the person, so wall-clock limits can pause. */
 export type NetworkSession = { port: number; waiting: () => boolean; close: () => void };

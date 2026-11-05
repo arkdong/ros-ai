@@ -30,7 +30,7 @@ import { isAcpAgent, type AcpAgentId } from '../shared/acp-agents.js';
 import type { AppFrames } from './app-frames.js';
 import { APP_GUIDE } from './app-guide.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, appVersion, isHtmlLanguage } from '../shared/apps.js';
-import { MAX_MAP_PINS, googleMapsLink } from '../shared/maps.js';
+import { MAX_MAP_PINS, googleMapsLink, pinLink } from '../shared/maps.js';
 import { MAX_LOOKUPS, type Geocoder } from './geocode.js';
 import { keepPost, postSubtitles, postTitle, type Posts } from './posts.js';
 import { MAX_POST_HITS, MAX_POSTS_ADDED, POST_PLATFORM_NAMES, POST_PLATFORMS, postPlatform } from '../shared/posts.js';
@@ -57,7 +57,7 @@ const placePinsSchema = z.object({
     place: z.string().trim().min(1).max(300).optional().describe('An address or a name with its town to look up, such as "Café de Jaren, Nieuwe Doelenstraat, Amsterdam". Used when lat and lng are left out; without it the name is looked up'),
     lat: z.number().finite().min(-90).max(90).optional(), lng: z.number().finite().min(-180).max(180).optional(),
     note: z.string().max(2000).optional().describe('One or two lines shown with the pin: why it is there, opening hours, a price'),
-    url: z.string().trim().url().max(2000).optional().describe('The place\'s own website or a page about it'),
+    url: z.string().trim().url().max(2000).refine(url => pinLink(url) !== undefined, 'Give an http or https address.').optional().describe('The place\'s own website or a page about it (http or https)'),
   }).strict()).min(1).max(50),
 }).strict();
 /** Metrics blocks, one per source. An Umami website or Railway project may be named by its domain or name, or left out when the key reaches one. */

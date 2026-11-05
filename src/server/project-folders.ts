@@ -16,13 +16,13 @@ import { videoInfo, type VideoInfo } from './video-size.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
-import { MAX_MAP_PINS } from '../shared/maps.js';
+import { MAX_MAP_PINS, pinLink } from '../shared/maps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { dashboardViewSchema, mapPinSchema, metricViewSchema, paperSchema, postViewSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { dashboardViewSchema, mapPinSchema, metricViewSchema, paperSchema, postViewSchema, RESERVED_IDS, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -288,11 +288,12 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric', 'dashboard', 'post']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined), post: postViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u).refine(id => !RESERVED_IDS.has(id)), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric', 'dashboard', 'post']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined), post: postViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
     // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
-    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
+    // A pin's link that is not a web page is left out on its own (older copies took any address).
+    map: z.object({ pins: z.array(mapPinSchema.extend({ url: z.string().max(2000).transform(pinLink).optional() }).strict()).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
     // A Dashboard block's tiles, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
     dashboard: dashboardViewSchema.optional().catch(undefined),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), scale: z.number().optional().catch(undefined), file: z.string().max(1000).optional(),

@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { FILE_BYTES } from '../shared/files.js';
 import { readLimited } from './papers.js';
 import { privateAddress } from './private-address.js';
+import { publicFetch } from './public-fetch.js';
 
 /** Pictures and PDFs from the web, downloaded into the project folder so a File block can show them. An agent gives a
  * File block a web address instead of a folder path: the address of an image or PDF, or of a page whose main picture
@@ -66,7 +67,8 @@ export class WebFileFetcher {
   private readonly fetcher: typeof fetch;
   private readonly lookup: (host: string) => Promise<{ address: string }[]>;
   constructor(options: Options = {}) {
-    this.fetcher = options.fetcher ?? fetch;
+    // The check below gives the reason in words; the connection itself goes only to the address it checks.
+    this.fetcher = options.fetcher ?? publicFetch();
     this.lookup = options.lookup ?? (host => dnsLookup(host, { all: true }));
   }
   /** Downloads an image or PDF; for a web page, the picture it names for link previews. Throws with a short reason. */
