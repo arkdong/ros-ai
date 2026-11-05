@@ -39,7 +39,8 @@ export class NetworkGate {
   private readonly pending = new Map<string, Pending>();
   private readonly listeners = new Set<(event: NetworkEvent) => void>();
 
-  constructor(private readonly store: Store) {}
+  /** waitMs: how long a question waits for the person before the site counts as refused. */
+  constructor(private readonly store: Store, private readonly waitMs = WAIT_MS) {}
 
   mode(): NetworkMode { return this.store.globalRecord<{ mode: NetworkMode }>(SETTINGS, 'settings')?.mode === 'full' ? 'full' : 'ask'; }
   setMode(mode: NetworkMode): NetworkMode { this.store.saveGlobalRecord(SETTINGS, 'settings', { mode }); return mode; }
@@ -78,7 +79,8 @@ export class NetworkGate {
       const settle = (allowed: boolean) => { session.waiting--; (allowed ? session.once : session.denied).add(host); resolve(allowed); };
       if (waiting) { const previous = waiting.resolve; waiting.resolve = allowed => { previous(allowed); settle(allowed); }; return; }
       const request: NetworkRequest = { id: randomUUID(), host, projectId: session.projectId, source: session.source, at: new Date().toISOString() };
-      const timer = setTimeout(() => { this.pending.delete(request.id); settle(false); this.emit({ type: 'settled', id: request.id }); }, WAIT_MS);
+      // An unanswered question is denied for every request that waits on it, not only the first.
+      const timer = setTimeout(() => { const item = this.pending.get(request.id); this.pending.delete(request.id); (item?.resolve ?? settle)(false); this.emit({ type: 'settled', id: request.id }); }, this.waitMs);
       timer.unref();
       this.pending.set(request.id, { ...request, session: session.id, resolve: settle, timer });
       this.emit({ type: 'request', request });

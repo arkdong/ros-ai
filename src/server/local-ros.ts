@@ -53,9 +53,10 @@ type ModelItem = { type: string; path: string; size: number; lfs?: { oid: string
 type Job = { stop: AbortController; done: number; total: number; model: string; samples: [number, number][]; note?: string };
 type UpdateJob = Job & { switching?: boolean };
 
-/** A download that failed in a way trying again can fix: a dropped or stalled connection, a server error, a short file. */
+/** A download that failed in a way trying again can fix: a dropped or stalled connection, a server error, a short file.
+ * `mismatch`: a whole file that is not the one listed (too long, or another checksum), which one more try may fix. */
 export class DownloadError extends Error {
-  constructor(message: string, readonly retry: boolean) { super(message); this.name = 'DownloadError'; }
+  constructor(message: string, readonly retry: boolean, readonly mismatch = false) { super(message); this.name = 'DownloadError'; }
 }
 const gigabytes = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
 const fileName = (path: string) => path.split('/').pop()!;
@@ -162,18 +163,22 @@ export class LocalRos {
 
   /** One step of a download, tried again after a dropped connection or a server error, while the status says so. */
   private async again<T>(work: () => Promise<T>, signal: AbortSignal, job = this.job): Promise<T> {
-    for (let tries = 0; ; tries++) {
+    for (let tries = 0, mismatches = 0; ; tries++) {
       const before = job?.done ?? 0;
       try {
         const value = await work();
         if (job) job.note = undefined;
         return value;
       } catch (error) {
+        // A whole file that is not the one listed is downloaded once more, in case it was damaged on the way. A second
+        // one means the file on the server changed, and downloading it again and again would not help.
+        const mismatch = error instanceof DownloadError && error.mismatch;
+        if (mismatch && ++mismatches > 1 && !signal.aborted) throw new DownloadError(`${error.message} That happened twice, so the download stopped: the file on the server may have changed. Try again later.`, false);
         // A try that got further than the one before starts the count again.
-        if ((job?.done ?? 0) > before) tries = 0;
+        if (!mismatch && (job?.done ?? 0) > before) tries = 0;
         const wait = tries < MAX_TRIES ? this.waits[Math.min(tries, this.waits.length - 1)] : undefined;
         if (signal.aborted || !transient(error) || wait === undefined) throw error;
-        if (job) { job.note = `The connection dropped. Trying again in ${wait} s.`; job.samples = []; }
+        if (job) { job.note = mismatch ? `The file did not match its listing. Downloading it once more in ${wait} s.` : `The connection dropped. Trying again in ${wait} s.`; job.samples = []; }
         await sleep(wait * 1000, signal);
         if (job) job.note = 'Trying again…';
       }
@@ -333,9 +338,9 @@ export class LocalRos {
       caps: { maxInputBytes: 64000, maxOutputTokens: 8000, timeoutMs: 300000, maxConcurrent: 1, maxResponseBytes: 256000 },
     };
     const connection = existing ? this.connections.update(existing.id, fields) : this.connections.create(fields);
-    const status = this.connections.status(connection.id);
-    this.connections.saveAllowance(connection.id, { requestCeiling: Math.max(10000, status.usedRequests), usdCeiling: status.usdCeiling, enabled: true, acknowledged: true });
     if (connection.id !== installed.connectionId) this.save({ ...installed, connectionId: connection.id });
+    // However many requests ROS has served, the allowance grows with them, so a start never fails on usage.
+    this.connections.keepAllowance(connection.id, { requestCeiling: 10000, usdCeiling: this.connections.status(connection.id).usdCeiling });
   }
 
   remove(): LocalRosStatus {
@@ -421,11 +426,13 @@ export async function fetchFile(item: Download, signal: AbortSignal, progress: (
     if (stalled.signal.aborted && !signal.aborted) throw new DownloadError(`The download from ${new URL(item.url).host} stalled.`, true);
     throw error;
   } finally { clearTimeout(timer); }
-  if (statSync(part).size !== item.bytes) throw new DownloadError('The download ended early. It picks up where it stopped.', true);
+  const size = statSync(part).size;
+  if (size > item.bytes) { rmSync(part, { force: true }); throw new DownloadError(`The server sent a longer file than it lists (${size} bytes, not ${item.bytes}), so it was deleted.`, true, true); }
+  if (size < item.bytes) throw new DownloadError('The download ended early. It picks up where it stopped.', true);
   if (item.sha256) {
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(part)) hash.update(chunk as Buffer);
-    if (hash.digest('hex') !== item.sha256) { rmSync(part, { force: true }); throw new DownloadError('The downloaded file did not match its published checksum, so it was deleted.', true); }
+    if (hash.digest('hex') !== item.sha256) { rmSync(part, { force: true }); throw new DownloadError('The downloaded file did not match its published checksum, so it was deleted.', true, true); }
   }
   renameSync(part, item.file);
 }

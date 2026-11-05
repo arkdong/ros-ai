@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -201,31 +201,84 @@ export function proxyEnv(port: number, certFile: string): Record<string, string>
     REQUESTS_CA_BUNDLE: certFile, PIP_DISABLE_PIP_VERSION_CHECK: '1' };
 }
 
-/** Memory and process caps the OS sandbox does not set: checks the process group twice a second and stops it at the cap. */
-export function watchGroup(pid: number, limits: { memoryMb: number; processes: number }, onLimit: (reason: string) => void): () => void {
-  let busy = false;
-  const timer = setInterval(() => {
-    if (busy) return;
-    busy = true;
-    execFile('ps', ['-A', '-o', 'pgid=', '-o', 'rss='], { timeout: 2000, maxBuffer: 5_000_000 }, (error, stdout) => {
-      busy = false;
-      if (error) return;
-      let rss = 0, count = 0;
-      for (const line of String(stdout).split('\n')) {
-        const [group, kb] = line.trim().split(/\s+/u).map(Number);
-        if (group === pid) { rss += kb || 0; count += 1; }
-      }
-      if (rss > limits.memoryMb * 1024) onLimit(`used more than ${limits.memoryMb >= 1024 ? `${limits.memoryMb / 1024} GB` : `${limits.memoryMb} MB`} of memory`);
-      else if (count > limits.processes) onLimit(`started more than ${limits.processes} processes`);
-    });
-  }, 500);
-  timer.unref();
-  return () => clearInterval(timer);
-}
+type ProcessRow = { pid: number; ppid: number; pgid: number; rss: number };
+const processRows = () => new Promise<ProcessRow[] | undefined>(resolve => execFile('ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'pgid=', '-o', 'rss='], { timeout: 2000, maxBuffer: 5_000_000 }, (error, stdout) => {
+  if (error) return resolve(undefined);
+  resolve(String(stdout).split('\n').map(line => line.trim().split(/\s+/u).map(Number)).filter(values => values.length === 4 && values.every(Number.isInteger))
+    .map(([pid, ppid, pgid, rss]) => ({ pid: pid!, ppid: ppid!, pgid: pgid!, rss: rss! })));
+}));
+const signalled = (target: number, signal: NodeJS.Signals) => { try { process.kill(target, signal); } catch { /* already gone */ } };
 
-/** Ends a confined Python and everything it started. */
-export function killGroup(pid: number | undefined, signal: NodeJS.Signals = 'SIGKILL'): void {
-  if (!pid) return;
-  try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch { /* already gone */ } }
+/** A confined Python and every process it starts, also one that leaves its process group for a session of its own
+ * (start_new_session): found by parent or group twice a second and remembered, so one whose parent ended is still
+ * found. They are held to the memory and process caps together and ended together. When Python itself ends, the rest
+ * are ended, and its output is closed after a short grace even if a process ros.ai never saw still holds it open, so
+ * a run, Stop and Restart always finish. */
+export class ProcessTree {
+  private readonly root: number;
+  private readonly timer: NodeJS.Timeout;
+  private known = new Set<number>();
+  private groups: Set<number>;
+  private busy = false;
+  private ended = false;
+
+  constructor(child: ChildProcess, limits: { memoryMb: number; processes: number }, onLimit: (reason: string) => void, graceMs = 1000) {
+    if (!child.pid) throw new Error('Python did not start.');
+    // Started detached, so Python leads a session and process group of its own.
+    this.root = child.pid;
+    this.groups = new Set([this.root]);
+    this.timer = setInterval(() => {
+      if (this.busy) return;
+      this.busy = true;
+      void processRows().then(rows => {
+        this.busy = false;
+        if (!rows || this.ended) return;
+        const members = this.find(rows), rss = members.reduce((sum, row) => sum + row.rss, 0);
+        if (rss > limits.memoryMb * 1024) onLimit(`used more than ${limits.memoryMb >= 1024 ? `${limits.memoryMb / 1024} GB` : `${limits.memoryMb} MB`} of memory`);
+        else if (members.length > limits.processes) onLimit(`started more than ${limits.processes} processes`);
+      });
+    }, 500);
+    this.timer.unref();
+    child.once('exit', () => {
+      this.end();
+      // What Python wrote before it ended fits in the pipes' buffers, and is read in the input pass the immediate waits for.
+      const closing = setTimeout(() => setImmediate(() => { child.stdin?.destroy(); child.stdout?.destroy(); child.stderr?.destroy(); }), graceMs);
+      child.once('close', () => clearTimeout(closing));
+    });
+  }
+
+  /** Ends every process of the run: paused first, so none starts another while the rest are found, then all killed.
+   * Safe to call again; each call ends what has been found by then. */
+  end(): void {
+    this.ended = true;
+    clearInterval(this.timer);
+    this.signal('SIGSTOP');
+    void processRows().then(rows => { if (rows) this.find(rows); this.signal('SIGKILL'); });
+  }
+
+  /** The run's processes in a listing: Python, those remembered from earlier listings, those whose parent is one of
+   * them, and those in their process groups. A process can only join a group of its own session, and every session
+   * here was started by the run, so no other program's process is taken. */
+  private find(rows: ProcessRow[]): ProcessRow[] {
+    const found = new Map<number, ProcessRow>(), groups = new Set(this.groups);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const row of rows) {
+        if (found.has(row.pid) || !(row.pid === this.root || this.known.has(row.pid) || found.has(row.ppid) || groups.has(row.pgid))) continue;
+        found.set(row.pid, row);
+        groups.add(row.pgid);
+        grew = true;
+      }
+    }
+    // Only what is running now is kept, so a number the system gives a new process later is never taken for the run's.
+    this.known = new Set([...found.keys()].filter(pid => pid !== this.root));
+    this.groups = new Set([this.root, ...[...found.values()].map(row => row.pgid)]);
+    return [...found.values()];
+  }
+
+  private signal(signal: NodeJS.Signals): void {
+    for (const group of this.groups) signalled(-group, signal);
+    for (const pid of [this.root, ...this.known]) signalled(pid, signal);
+  }
 }
 

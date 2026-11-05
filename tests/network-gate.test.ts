@@ -57,3 +57,16 @@ test('a session reports waiting while a site waits for the person, so wall-clock
     assert.equal(proxy.waiting(), false);
   } finally { proxy.close(); }
 });
+
+test('a question nobody answers refuses every connection that waits on it, and the session stops waiting', async () => {
+  const gate = new NetworkGate(memoryStore(), 200); let asked = 0;
+  gate.subscribe(event => { if (event.type === 'request') asked++; });
+  const proxy = await gate.open('p1', 'A Code block');
+  try {
+    // Two connections to the same site share one question; when it goes unanswered, both are refused.
+    const statuses = await Promise.all([connectStatus(proxy.port, 'quiet.invalid:443'), connectStatus(proxy.port, 'quiet.invalid:443')]);
+    assert.equal(asked, 1);
+    for (const status of statuses) assert.match(status, /^403/u);
+    assert.equal(proxy.waiting(), false);
+  } finally { proxy.close(); }
+});

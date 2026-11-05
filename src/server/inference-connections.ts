@@ -16,7 +16,8 @@ const namespace='inference-connection';
 const indexNamespace='inference-registry';
 const UNITS_PER_USD=1_000_000_000;
 const units=(usd:number)=>Number.isFinite(usd)&&usd>=0?Math.min(Number.MAX_SAFE_INTEGER,Math.ceil(usd*UNITS_PER_USD)):Number.MAX_SAFE_INTEGER;
-const ceilingUnits=(usd:number)=>Math.floor(usd*UNITS_PER_USD);
+// A ceiling saved in dollars is read back to the unit it was saved from, so one equal to the usage is not a unit below it.
+const ceilingUnits=(usd:number)=>Math.round(usd*UNITS_PER_USD);
 const idSchema=z.string().regex(/^custom-[a-f0-9-]{36}$/);
 const keySchema=z.string().trim().min(1).max(4096).refine(value=>!/[\s\x00-\x1f\x7f]/.test(value),'Enter one API key without spaces.');
 const makerSchema=z.object({id:z.enum(['nvidia','moonshot','openai','unknown']),label:z.string().trim().min(1).max(60),monogram:z.string().trim().min(1).max(4)}).strict();
@@ -127,8 +128,21 @@ export class InferenceConnections{
     // Migrating a retained remote identity to loopback never erases historical
     // charges. Its ceiling can retain those charges, but new local use debits $0.
     if(status.destination==='local-unverified'&&input.usdCeiling>Math.max(status.usdCeiling,status.accountedUsd))throw new StoreError('Loopback inference uses request/resource caps and no new provider USD debit. Retain only an existing historical USD ceiling, or use zero for a new connection.');
-    if(input.requestCeiling<status.usedRequests||ceilingUnits(input.usdCeiling)<units(status.accountedUsd))throw new StoreError('New ceilings cannot be below already retained connection usage.',409);
+    if(input.requestCeiling<status.usedRequests||ceilingUnits(input.usdCeiling)<ceilingUnits(status.accountedUsd))throw new StoreError('New ceilings cannot be below already retained connection usage.',409);
     this.writeState(id,{allowanceEnabled:true,requestCeiling:input.requestCeiling,usdCeiling:input.usdCeiling});return this.status(id);
+  }
+  /** The allowance of a connection ros.ai keeps itself (ros.ai cloud, Local ROS): the size the service allows, and never
+   * below what was already used, so a sign-in or a start does not fail however much the connection has served. */
+  keepAllowance(id:string,ceilings:{requestCeiling:number;usdCeiling:number}){
+    if(!this.connections.some(item=>item.id===id))throw new StoreError('Inference connection not found.',404);
+    const status=this.status(id);
+    this.writeState(id,{allowanceEnabled:true,requestCeiling:Math.max(ceilings.requestCeiling,status.usedRequests),usdCeiling:Math.max(ceilings.usdCeiling,status.accountedUsd)});
+    return this.status(id);
+  }
+  /** The configured connection to this endpoint, if there is one. */
+  connectionTo(address:string):string|undefined{
+    const fingerprint=endpoint(address).fingerprint;
+    return this.connections.find(item=>endpoint(item.endpoint).fingerprint===fingerprint)?.id;
   }
   pause(id:string,supplied:unknown){z.object({}).strict().parse(supplied);this.status(id);this.writeState(id,{allowanceEnabled:false});return this.status(id);}
   assertRevision(id:string,expectedRevision:number){if(this.status(id).revision!==expectedRevision)throw new StoreError('Inference connection or allowance changed during preparation. No new dispatch occurred; review its current terms.',409);}

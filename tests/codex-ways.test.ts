@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // Codex runs inside ros.ai on the person's ChatGPT subscription or on the OpenAI API key from the Agents page. These check
 // what ros.ai hands the Codex process: read-only and kept to the project either way, and the key only on the key.
 const { codexProcessArgs, childEnvironment, codexIsolation } = await import('../src/server/codex-app-server.js');
-const { tokenUsd } = await import('../src/server/codex-agent.js');
+const { tokenUsd, codexPart, codexAnswer } = await import('../src/server/codex-agent.js');
 
 const config = (args: string[]) => new Map(args.flatMap((arg, index) => args[index - 1] === '-c' ? [arg.split(/=(.*)/su).slice(0, 2) as [string, string]] : []));
 const protocol = { appServer: true, dynamicTools: true, interrupt: true, restrictedReadAccess: false, permissionProfiles: false };
@@ -69,4 +69,24 @@ test('a turn on the key is priced from the token counts Codex reports, with cach
   near(tokenUsd('gpt-5.4-mini', counts), 0.45 + 0.03 + 0.045);
   // Reasoning tokens Codex leaves out of outputTokens still count, as output.
   near(tokenUsd('gpt-5.4', { ...counts, totalTokens: 1_030_000 }), 1.5 + 0.1 + 0.45);
+});
+
+test('Codex’s sentences before its tool calls stay apart from each other and out of its answer', () => {
+  const text = { reply: '', messageId: '', answerFrom: 0 };
+  let lastTool = 0;
+  const say = (itemId: string, part: string) => { text.reply += codexPart(text, itemId, part); };
+  say('msg-1', 'I’ll read the selected'); say('msg-1', ' block.');
+  lastTool = text.reply.length;
+  say('msg-2', 'Now I’ll propose the groups.');
+  lastTool = text.reply.length;
+  say('msg-3', 'Grouped five notes'); say('msg-3', ' into three themes.');
+  assert.equal(text.reply, 'I’ll read the selected block.\n\nNow I’ll propose the groups.\n\nGrouped five notes into three themes.');
+  assert.equal(codexAnswer(text, lastTool), 'Grouped five notes into three themes.');
+  // A Codex that names no messages: the answer is what came after the last tool call.
+  const unnamed = { reply: '', messageId: '', answerFrom: 0 };
+  unnamed.reply += codexPart(unnamed, '', 'Reading. ');
+  const mark = unnamed.reply.length;
+  unnamed.reply += codexPart(unnamed, '', 'Done: two themes.');
+  assert.equal(codexAnswer(unnamed, mark), 'Done: two themes.');
+  assert.equal(codexAnswer(unnamed, unnamed.reply.length), 'Reading. Done: two themes.');
 });

@@ -131,17 +131,19 @@ export class CloudAccount {
     const catalogue = modelsSchema.parse(models.body).data;
     // A cloud on this computer (development) is recorded without a USD debit, like any loopback server.
     const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(this.url!).hostname);
-    const prior = this.account(), existing = prior && this.connections.statuses().find(item => item.id === prior.connectionId && !item.deleted);
+    // The connection the account names, or one to this cloud that an earlier sign-in left without its account.
+    const prior = this.account(), existing = (prior && this.connections.statuses().find(item => item.id === prior.connectionId && !item.deleted)?.id) || this.connections.connectionTo(`${this.url}/v1`);
     const fields = {
       name: 'ros.ai cloud', endpoint: `${this.url}/v1`, apiKey: token, enabled: true,
       models: catalogue.map(item => ({ id: item.id, label: item.id === 'ros' ? 'ROS' : item.id === 'ros-deep' ? 'ROS, thinking deeper' : item.id, contextTokens: item.context_length, inputUsdPerMillion: loopback ? 0 : item.pricing.input_usd_per_million, outputUsdPerMillion: loopback ? 0 : item.pricing.output_usd_per_million, maker: { id: 'nvidia' as const, label: 'NVIDIA Nemotron', monogram: 'N' } })),
       caps: { maxInputBytes: 64000, maxOutputTokens: Math.min(...catalogue.map(item => item.max_output_tokens)), timeoutMs: 120000, maxConcurrent: 4, maxResponseBytes: 256000 },
     };
-    const connection = existing ? this.connections.update(existing.id, fields) : this.connections.create(fields);
+    const connection = existing ? this.connections.update(existing, fields) : this.connections.create(fields);
+    // Saved with the connection, so Sign out can always revoke the token the connection holds.
+    this.save({ token, email: String(me.body?.user?.email ?? ''), connectionId: connection.id });
     // ros.ai cloud enforces the real free allowance; this local ceiling only mirrors its size.
     const status = this.connections.status(connection.id);
-    this.connections.saveAllowance(connection.id, { requestCeiling: Math.max(10000, status.usedRequests), usdCeiling: loopback ? status.usdCeiling : Math.max(100, status.accountedUsd), enabled: true, acknowledged: true });
-    this.save({ token, email: String(me.body?.user?.email ?? ''), connectionId: connection.id });
+    this.connections.keepAllowance(connection.id, { requestCeiling: 10000, usdCeiling: loopback ? status.usdCeiling : 100 });
   }
 
   /** Whether this copy of ros.ai has a ros.ai cloud at all (ROS_CLOUD_URL is not off). */

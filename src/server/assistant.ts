@@ -31,6 +31,7 @@ import {pluginMatches} from '../shared/plugin-hints.js';
 import {glanceHint,glanceSchema,glanceText,keepGlance} from './glance.js';
 import type {RosLayer} from './ros-layer.js';
 import {TurnFileService} from './turn-files.js';
+import {inTurn} from './turn-context.js';
 
 const now=()=>new Date().toISOString();
 const id=z.string().min(1).max(128);
@@ -274,7 +275,7 @@ export class AssistantService {
     for(const pass of this.layering.values())pass.hurry.abort();
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
     // The project folder is looked at before the turn starts and after it ends, so the turn can show what it changed.
-    active.done=Promise.resolve().then(()=>this.files.begin(projectId,turn.id)).then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.settle(projectId,turn.id));
+    active.done=Promise.resolve().then(()=>this.files.begin(projectId,turn.id)).then(()=>inTurn(turn.id,()=>this.drive(projectId,turn.id,controller.signal))).finally(()=>this.settle(projectId,turn.id));
     return done();
   }
   /** A thread is busy while a turn of it runs, or while a stopped one is still winding down. */
@@ -665,14 +666,11 @@ export class AssistantService {
       if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});
     }finally{this.layering.delete(turnId);}
   }
-  /** Another thread of the project is still working and has changes waiting for the person on the map as it is now.
-   * ROS's row, once accepted, moves the map on and would make those stale, so ROS waits for them; a thread whose changes
-   * land at once, or that has proposed nothing yet, does not hold ROS up. */
+  /** Another thread of the project is still working. ROS's row moves the map on, which would leave that thread's changes
+   * out of date: those waiting for the person, and those it has yet to propose from the map it read when it started. So
+   * ROS waits for every running thread, also one whose changes land at once or that has proposed nothing yet. */
   private holdsChanges(projectId:string,turnId:string){
-    const others=this.turns(projectId).filter(item=>item.status==='running'&&item.id!==turnId);
-    if(!others.length)return false;
-    const pending=(id:string)=>{try{return this.store.proposalStatus(projectId,id)==='pending';}catch{return false;}};
-    return others.some(item=>item.actions.some(action=>action.by!=='ros'&&action.proposalId&&pending(action.proposalId)));
+    return this.turns(projectId).some(item=>item.status==='running'&&item.id!==turnId);
   }
   /** An agent working from outside ros.ai proposed a change: ROS arranges the turn once the agent has been quiet a while. */
   arrangeLater(projectId:string,turnId:string){

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-import { confinedEnv, killGroup, proxyEnv, PYTHON_PACKAGES, watchGroup, type Confine, type PythonRuntime } from './local-python.js';
+import { confinedEnv, ProcessTree, proxyEnv, PYTHON_PACKAGES, type Confine, type PythonRuntime } from './local-python.js';
 import type { NetworkGate, NetworkSession } from './network-gate.js';
 
 import type { RemoteExecutionState } from '../shared/experiments.js';
@@ -243,7 +243,7 @@ export class LocalPythonBackend implements ExecutionBackend {
     if (input.csv !== undefined) files.push(['dataset.csv', input.csv]);
     for (const [filename, content] of files) writeFileSync(join(inputs, filename), content, { mode: 0o444 });
     chmodSync(inputs, 0o555);
-    let stopped: string | undefined, child: ReturnType<typeof spawn> | undefined, proxy: NetworkSession | undefined;
+    let stopped: string | undefined, tree: ProcessTree | undefined, proxy: NetworkSession | undefined;
     const done = (async (): Promise<SandboxResult> => {
       const result: SandboxResult = { status: 'failed', outputs: [], stdout: '', stderr: '', exitCode: null, signal: null, runtime: capabilities.runtime, startedAt, endedAt: '', enforcement: [...capabilities.enforcement] };
       const close = () => {
@@ -265,9 +265,8 @@ export class LocalPythonBackend implements ExecutionBackend {
         let wire = '', stderr = '', wireBytes = 0, errorMessage: string | undefined, ended = false;
         const proc = spawn(wrapped.command, wrapped.args, { cwd: work, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
           env: confinedEnv(work, tmp, { ROS_SANDBOX_INPUT: inputs, ...(packages ? { ROS_SANDBOX_PACKAGES: packages } : {}), ...(proxy ? proxyEnv(proxy.port, this.runtime.certFile) : {}) }) });
-        child = proc;
-        const end = (message: string) => { errorMessage ??= message; killGroup(proc.pid); };
-        const unwatch = proc.pid ? watchGroup(proc.pid, codeLimits, reason => end(`Isolated experiment ${reason}.`)) : () => undefined;
+        const end = (message: string) => { errorMessage ??= message; tree?.end(); };
+        tree = proc.pid ? new ProcessTree(proc, codeLimits, reason => end(`Isolated experiment ${reason}.`)) : undefined;
         // The wall clock stops while a site waits for the person to allow or deny it.
         let elapsed = 0, last = Date.now();
         const timer = setInterval(() => {
@@ -288,8 +287,8 @@ export class LocalPythonBackend implements ExecutionBackend {
         const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
           if (ended) return;
           ended = true;
-          clearInterval(timer); unwatch();
-          killGroup(proc.pid);
+          clearInterval(timer);
+          tree?.end();
           result.exitCode = exitCode; result.signal = signal; result.stderr = stderr;
           try {
             let decoded: z.infer<typeof resultSchema> | undefined;
@@ -308,7 +307,7 @@ export class LocalPythonBackend implements ExecutionBackend {
         proc.on('close', finish);
       });
     })();
-    return { done, cancel: (reason = 'User stopped this isolated experiment.') => { stopped ??= reason; killGroup(child?.pid); } };
+    return { done, cancel: (reason = 'User stopped this isolated experiment.') => { stopped ??= reason; tree?.end(); } };
   }
 }
 

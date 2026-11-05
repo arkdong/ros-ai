@@ -148,3 +148,25 @@ test('ROS\'s agent works step by step on a local model that calls tools, and say
     assert.match(JSON.stringify(ollama.chats[1]!.messages.at(-1)), /Block a/u, 'the canvas read went back to the model');
   } finally { await loop.shutdown(); await execution.shutdown(); await ollama.close(); f.close(); }
 });
+
+test('two threads run ROS\'s step-by-step agent at the same time, each asking the model in its own lane', async () => {
+  // The model holds the first question until the second arrives, so the two turns overlap.
+  const held: (() => void)[] = [];
+  const model = await listen((req, res, input) => {
+    if (req.url !== '/v1/chat/completions') return void res.writeHead(404).end();
+    const answer = () => chat([], input, res);
+    if (held.length) { held.splice(0).forEach(release => release()); answer(); } else held.push(answer);
+  });
+  const f = workspace();
+  const connection = f.inference.create({ name: 'Ollama', endpoint: `http://127.0.0.1:${model.port}/v1`, enabled: true, caps: { ...caps, maxConcurrent: 2 }, models: [{ id: 'agent', label: 'agent', contextTokens: 32768, tools: true, inputUsdPerMillion: 0, outputUsdPerMillion: 0 }] });
+  f.inference.saveAllowance(connection.id, { requestCeiling: 100, usdCeiling: 0, enabled: true, acknowledged: true });
+  const execution = new ExecutionService(f.store, { inference: f.inference, includeSetupUsage: false });
+  const loop = new ToolLoopAgentService(f.store, execution, { authority: { policy: () => ({ stopped: false }) } } as unknown as ExperimentService);
+  const selection = { provider: connection.id, model: 'agent' };
+  execution.models.update(f.project.id, { selection });
+  try {
+    const turn = (threadId: string) => loop.execute({ projectId: f.project.id, threadId, nodeIds: [], artifactIds: [], turnId: `turn-${threadId}`, message: 'What is on the map?', signal: new AbortController().signal, onEvent: () => {}, selection });
+    const replies = await Promise.all([turn('thread-a'), turn('thread-b')]);
+    assert.deepEqual(replies.map(result => result.reply), ['The map has two blocks.', 'The map has two blocks.']);
+  } finally { held.splice(0).forEach(release => release()); await loop.shutdown(); await execution.shutdown(); await model.close(); f.close(); }
+});

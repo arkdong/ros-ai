@@ -73,7 +73,7 @@ test('ROS on this computer downloads through a dropped connection, then starts a
     create: (fields: { endpoint: string; name: string }) => { created.push(fields); return { id: 'local-1' }; },
     update: () => { throw new Error('nothing to update'); },
     status: () => ({ usedRequests: 0, usdCeiling: 0 }),
-    saveAllowance: () => undefined,
+    keepAllowance: () => undefined,
     remove: () => undefined,
   };
   const local = new LocalRos(dir, connections as unknown as ConstructorParameters<typeof LocalRos>[1], [0.05, 0.05]);
@@ -123,6 +123,44 @@ test('a download the person started picks up again when ros.ai starts, and stops
     assert.equal(later.status().state, 'not-downloaded');
   } finally {
     globalThis.fetch = real;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a model file that is not the one listed is downloaded once more, then the download stops and says why', { skip: process.platform !== 'linux' || process.arch !== 'x64' ? 'needs the Linux x64 build name' : false }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ros-local-'));
+  const env = process.env.ROS_LOCAL_ENGINE_TAG;
+  process.env.ROS_LOCAL_ENGINE_TAG = 'latest';
+  const engine = engineArchive(dir, 'b42'), model = Buffer.alloc(300_000, 7), other = Buffer.alloc(300_000, 8);
+  const asset = { name: 'llama-b42-bin-ubuntu-x64.tar.gz', size: engine.length, browser_download_url: 'https://github.test/b42/engine.tar.gz', digest: `sha256:${sha(engine)}` };
+  // The listing names one file; the server sends another of the same length, then one longer than listed.
+  let listed = { size: model.length, sha: sha(model) }, downloads = 0;
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.startsWith('http://127.0.0.1')) return real(input, init);
+    if (url.endsWith('/releases/latest')) return Response.json({ tag_name: 'b42', assets: [asset] });
+    if (url === asset.browser_download_url) return new Response(engine);
+    if (url.includes('/api/models/')) return Response.json([{ type: 'file', path: 'ros-nemotron-4b-r2b-Q4_K_M.gguf', size: 140, lfs: { oid: listed.sha, size: listed.size } }]);
+    if (url.includes('/resolve/main/ros-nemotron-4b-r2b-Q4_K_M.gguf')) { downloads++; return new Response(listed.size === model.length ? other : model); }
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
+  const local = new LocalRos(dir, { statuses: () => [] } as unknown as ConstructorParameters<typeof LocalRos>[1], [0.05]);
+  try {
+    local.download();
+    await until(() => local.status().state === 'failed', 'the download to stop');
+    assert.equal(downloads, 2);
+    assert.match(local.status().error ?? '', /did not match its published checksum.*happened twice/u);
+
+    listed = { size: model.length - 10, sha: sha(model.subarray(0, model.length - 10)) }; downloads = 0;
+    local.download();
+    await until(() => local.status().state === 'failed', 'the download to stop again');
+    assert.equal(downloads, 2);
+    assert.match(local.status().error ?? '', /longer file than it lists \(300000 bytes, not 299990\).*happened twice/u);
+  } finally {
+    local.shutdown();
+    globalThis.fetch = real;
+    if (env === undefined) delete process.env.ROS_LOCAL_ENGINE_TAG; else process.env.ROS_LOCAL_ENGINE_TAG = env;
     rmSync(dir, { recursive: true, force: true });
   }
 });

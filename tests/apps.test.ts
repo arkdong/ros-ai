@@ -57,8 +57,8 @@ const LINEAR_TOOLS: Tool[] = [
 
 /** Linear's stand-in: protected-resource and server metadata, registration, an authorization page that approves at once, a token endpoint that checks PKCE. */
 async function signInServer(calls: Call[]) {
-  const clients = new Map<string, string[]>(), codes = new Map<string, { challenge: string; redirect: string; client: string }>(), tokens = new Set<string>();
-  const seen = { registered: 0, authorized: 0, resource: '' };
+  const clients = new Map<string, string[]>(), codes = new Map<string, { challenge: string; redirect: string; client: string }>(), tokens = new Set<string>(), refreshTokens = new Set<string>();
+  const seen = { registered: 0, authorized: 0, resource: '', refreshes: 0 };
   let base = '';
   const serve = mcp(LINEAR_TOOLS, calls, bearer => Boolean(bearer && tokens.has(bearer)), res => json(res, { error: 'invalid_token' }, 401, { 'www-authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"` }));
   const server = await listen(async (req, res, url, text) => {
@@ -77,18 +77,30 @@ async function signInServer(calls: Call[]) {
       res.writeHead(302, { location: `${redirect}?code=${code}&state=${encodeURIComponent(url.searchParams.get('state') ?? '')}` }); return void res.end();
     }
     if (url.pathname === '/token') {
-      const form = new URLSearchParams(text), grant = codes.get(form.get('code') ?? '');
+      const form = new URLSearchParams(text);
+      // A refresh token works once, as Notion's do; the answer takes a moment, as a real one does.
+      if (form.get('grant_type') === 'refresh_token') {
+        seen.refreshes++;
+        const used = form.get('refresh_token') ?? '';
+        if (!refreshTokens.delete(used)) return json(res, { error: 'invalid_grant', error_description: 'The refresh token was already used.' }, 400);
+        await delay(50);
+        const token = `linear-${randomBytes(6).toString('hex')}`, refresh = `refresh-${randomBytes(6).toString('hex')}`; tokens.add(token); refreshTokens.add(refresh);
+        return json(res, { access_token: token, token_type: 'bearer', expires_in: 3600, refresh_token: refresh });
+      }
+      const grant = codes.get(form.get('code') ?? '');
       const verifier = form.get('code_verifier') ?? '';
       if (!grant || grant.redirect !== form.get('redirect_uri') || grant.client !== form.get('client_id') || createHash('sha256').update(verifier).digest('base64url') !== grant.challenge) return json(res, { error: 'invalid_grant' }, 400);
       codes.delete(form.get('code')!);
-      const token = `linear-${randomBytes(6).toString('hex')}`; tokens.add(token);
+      const token = `linear-${randomBytes(6).toString('hex')}`; tokens.add(token); refreshTokens.add('refresh-1');
       return json(res, { access_token: token, token_type: 'bearer', expires_in: 3600, refresh_token: 'refresh-1' });
     }
     if (url.pathname === '/mcp') return serve(req, res, text);
     res.writeHead(404).end();
   });
   base = server.base;
-  return { ...server, seen };
+  /** The access tokens given so far stop working, as an hour after the sign-in. */
+  const expire = () => tokens.clear();
+  return { ...server, seen, expire };
 }
 
 function fixture(tokens: Partial<Record<TokenPluginId, string>> = {}) {
@@ -155,6 +167,22 @@ test('Linear signs in once in the browser, with ros.ai registering itself and PK
     assert.equal(again.disconnect('linear').connected, false);
     assert.equal(new RemoteApps(f.dir, {}).status('linear').connected, false);
   } finally { AgentWorkspaceTools.apps = undefined; delete process.env.ROS_APP_LINEAR_URL; await linear.close(); f.close(); }
+});
+
+test('Two calls that find the sign-in expired together share one refresh, and the account stays signed in', async () => {
+  const calls: Call[] = [], linear = await signInServer(calls), f = fixture();
+  process.env.ROS_APP_LINEAR_URL = `${linear.base}/mcp`;
+  try {
+    const started = await f.apps.begin('linear', 'http://127.0.0.1:4310/api/apps/callback');
+    const back = new URL((await fetch(started.url!, { redirect: 'manual' })).headers.get('location')!);
+    await f.apps.finish({ state: back.searchParams.get('state'), code: back.searchParams.get('code') }, started.nonce!);
+    await f.apps.call('linear', 'get_team', {});
+    linear.expire();
+    const [issues, team] = await Promise.all([f.apps.call('linear', 'list_issues', { query: 'bug' }), f.apps.call('linear', 'get_team', {})]);
+    assert.deepEqual([issues.text, team.text], ['list_issues ran with {"query":"bug"}', 'get_team ran with {}']);
+    assert.equal(linear.seen.refreshes, 1);
+    assert.equal(f.apps.status('linear').connected, true);
+  } finally { delete process.env.ROS_APP_LINEAR_URL; await linear.close(); f.close(); }
 });
 
 test('a sign-in from a suggestion opens in its own window, whose page tells ros.ai; one from the Mac app finishes in the system browser', async () => {
@@ -231,6 +259,21 @@ test('GitHub uses its hosted MCP server with the token from its Plugins card, co
     f.tokens.github = 'ghp_wrong';
     await assert.rejects(f.apps.tools('github'), /GitHub did not accept the sign-in or token on its Plugins card/u);
     assert.throws(() => f.apps.disconnect('github'), /Remove the token there/u);
+  } finally { delete process.env.ROS_APP_GITHUB_URL; await github.close(); f.close(); }
+});
+
+test('A change sent to an app whose answer fails on ros.ai’s side is not sent again; a read is', async () => {
+  const calls: Call[] = [];
+  // The app makes the change, then answers without the structured result its tool promised, so the answer fails its check.
+  const checked = { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] };
+  const github = await listen((req, res, _url, text) => mcp([{ name: 'get_me', description: 'Who am I', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true }, outputSchema: checked } as Tool, { name: 'create_issue', description: 'Open an issue', inputSchema: { type: 'object' }, outputSchema: checked } as Tool], calls, value => value === 'ghp_first', res => json(res, { message: 'Bad credentials' }, 401))(req, res, text));
+  const f = fixture({ github: 'ghp_first' });
+  process.env.ROS_APP_GITHUB_URL = `${github.base}/mcp/`;
+  try {
+    await assert.rejects(f.apps.call('github', 'create_issue', { title: 'Fix the export' }), /cannot tell whether the change was made, and did not send it again/u);
+    assert.deepEqual(calls.map(call => call.name), ['create_issue']);
+    await assert.rejects(f.apps.call('github', 'get_me', {}));
+    assert.deepEqual(calls.map(call => call.name), ['create_issue', 'get_me', 'get_me']);
   } finally { delete process.env.ROS_APP_GITHUB_URL; await github.close(); f.close(); }
 });
 

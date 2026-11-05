@@ -34,8 +34,9 @@ const DOC_MARKDOWN = '# Interview notes\n\nThe team met **twice**.\n\n![Chart of
 const column = (letters: string) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 /** Google leaves out the empty cells that end a row. */
 const trimmed = (rows: unknown[][]) => rows.map(row => { const copy = [...row]; while (copy.length && (copy.at(-1) === '' || copy.at(-1) === undefined)) copy.pop(); return copy; });
-function google(options: { sheetsOff?: boolean; markdown?: boolean } = {}) {
-  const requests: { url: URL; method: string; auth: string }[] = [], tabs = [budget, plan];
+function google(options: { sheetsOff?: boolean; markdown?: boolean; long?: boolean } = {}) {
+  // long: a third tab with one row more than a Data block holds.
+  const requests: { url: URL; method: string; auth: string }[] = [], tabs = [budget, plan, ...(options.long ? [{ id: 9001, title: 'Every visit', shown: [['Visit'], ...Array.from({ length: 200_001 }, (_, index) => [String(index + 1)])] }] : [])];
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
   const range = (tab: Tab, a1: string, raw: boolean) => {
     const [, c1 = '', r1 = '', c2 = '', r2 = ''] = /^([A-Z]*)(\d*)(?::([A-Z]*)(\d*))?$/u.exec(a1) ?? [];
@@ -67,7 +68,7 @@ function google(options: { sheetsOff?: boolean; markdown?: boolean } = {}) {
 }
 
 /** ros.ai with a Google Drive sign-in already saved (as an owner-only file), and a project with a folder for the cache. */
-function fixture(options: { connected?: boolean; sheetsOff?: boolean; markdown?: boolean } = {}) {
+function fixture(options: { connected?: boolean; sheetsOff?: boolean; markdown?: boolean; long?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'ros-google-')), api = google(options);
   if (options.connected !== false) {
     mkdirSync(join(dir, 'connections'), { recursive: true, mode: 0o700 });
@@ -89,6 +90,9 @@ test('Google links and bare file IDs name the file, its kind and the tab a sheet
   assert.deepEqual(googleLink(`https://drive.google.com/file/d/${DOC}/view`), { fileId: DOC });
   assert.deepEqual(googleLink(`https://drive.google.com/open?id=${DOC}`), { fileId: DOC });
   assert.deepEqual(googleLink(` ${SHEET} `), { fileId: SHEET });
+  // A browser signed in to a second Google account.
+  assert.deepEqual(googleLink(`https://docs.google.com/spreadsheets/u/1/d/${SHEET}/edit#gid=815`), { fileId: SHEET, kind: 'sheet', gid: 815 });
+  assert.deepEqual(googleLink(`https://docs.google.com/document/u/0/d/${DOC}/edit`), { fileId: DOC, kind: 'doc' });
   for (const wrong of [`http://docs.google.com/spreadsheets/d/${SHEET}/edit`, `https://docs.google.com.evil.example/spreadsheets/d/${SHEET}`, 'https://docs.google.com/spreadsheets/d/short/edit', 'not a link', `https://docs.google.com/spreadsheets/d/${SHEET.slice(0, 8)}!x/edit`]) assert.equal(googleLink(wrong), null, wrong);
   // Images Google embeds as data become marks, so a doc's text stays small.
   assert.equal(docText(DOC_MARKDOWN), '# Interview notes\n\nThe team met **twice**.\n\n*(image: Chart of answers)*\n\n*(image)*\n\n- Ada: yes');
@@ -195,6 +199,16 @@ test('Copying a Sheet block’s tab makes a Data block beside it with every row,
     f.store.mutate(project.id, [{ type: 'addNode', node: { id: 'doc-block', title: 'Notes', description: '', x: 0, y: 400, blockType: 'google', google: { fileId: DOC, kind: 'doc' } } }], 'Add Google Doc');
     await assert.rejects(f.workspace.copy(f.store, project.id, 'doc-block'), /Only a Google Sheet block can be copied/u);
     assert(f.requests.every(request => request.method === 'GET'));
+  } finally { f.close(); }
+});
+
+test('A tab longer than a Data block holds is refused rather than copied in part', async () => {
+  const f = fixture({ long: true });
+  try {
+    const project = f.store.createProject('Visits');
+    f.store.mutate(project.id, [{ type: 'addNode', node: sheetNode('sheet-block', 'Every visit') }], 'Add Google Sheet');
+    await assert.rejects(f.workspace.copy(f.store, project.id, 'sheet-block'), /more than 200,000 rows, more than a Data block holds/u);
+    assert.equal(f.store.getProject(project.id).canvas.nodes.length, 1);
   } finally { f.close(); }
 });
 

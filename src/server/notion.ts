@@ -23,9 +23,13 @@ function chunks(content: string) {
   return parts.length ? parts : [''];
 }
 
-/** A page or database ID from an ID or any Notion link (the last 32 hex characters). */
+/** A page or database ID from an ID or any Notion link. A link names its page or database in the path: after "?v="
+ * comes a database's view and after "#" a block on the page, so those are left out. A row opened beside its database
+ * puts the row's page after "p=", and that page is the one the link shows. */
 export function notionId(value: string): string {
-  const hex = value.replace(/-/g, '').match(/[0-9a-f]{32}(?![0-9a-f])/gi)?.at(-1);
+  const [path, rest = ''] = value.trim().split(/(?=[?#])/u, 2);
+  const opened = /^\?(?:[^#]*&)?p=([0-9a-f-]{32,36})(?:[&#]|$)/iu.exec(rest)?.[1];
+  const hex = (opened ?? path).replace(/-/g, '').match(/[0-9a-f]{32}(?![0-9a-f])/gi)?.at(-1);
   if (!hex) throw new StoreError('Give a Notion page or database ID or link.');
   const h = hex.toLowerCase();
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
@@ -153,15 +157,22 @@ export class NotionApi {
       const { database } = await this.database(id, signal);
       return { kind: 'database' as const, id: database.id, title: databaseTitle(database), url: database.url, description: text(database.description), columns: Object.entries(database.properties ?? {}).map(([name, value]: [string, any]) => ({ name, type: value.type, ...(value[value.type]?.options ? { options: value[value.type].options.map((option: Json) => option.name) } : {}) })), instruction: 'Query its rows with ros_notion_query.' };
     }
+    // A read stops before the block that would not fit, and its cursor is that block (Notion's cursors are block IDs),
+    // so the next read starts there and nothing is skipped. One block longer than a whole read is shown cut, marked.
     const lines: string[] = [];
     let next: string | undefined = cursor, length = 0;
-    do {
+    read: do {
       const children = await this.call('GET', `/v1/blocks/${id}/children?page_size=100${next ? `&start_cursor=${encodeURIComponent(next)}` : ''}`, undefined, signal);
-      for (const block of children.results ?? []) { const line = blockLine(block); if (line) { lines.push(line); length += line.length + 1; } }
+      for (const block of children.results ?? []) {
+        const line = blockLine(block);
+        if (!line) continue;
+        if (lines.length && length + line.length > CONTENT_CHARACTERS) { next = String(block.id); break read; }
+        lines.push(line.length > CONTENT_CHARACTERS ? `${line.slice(0, CONTENT_CHARACTERS)} [this block is cut here: ${line.length - CONTENT_CHARACTERS} more characters]` : line);
+        length += line.length + 1;
+      }
       next = children.has_more ? children.next_cursor : undefined;
     } while (next && length < CONTENT_CHARACTERS);
-    const content = lines.join('\n');
-    return { kind: 'page' as const, id: page.id, title: pageTitle(page), url: page.url, parent: page.parent, properties: properties(page), content: content.slice(0, CONTENT_CHARACTERS), ...(next || content.length > CONTENT_CHARACTERS ? { nextCursor: next ?? null, note: 'Content continues; pass nextCursor to read further.' } : {}) };
+    return { kind: 'page' as const, id: page.id, title: pageTitle(page), url: page.url, parent: page.parent, properties: properties(page), content: lines.join('\n'), ...(next ? { nextCursor: next, more: 'The page continues: read again with this nextCursor as cursor.' } : {}) };
   }
   async query(target: string, filter: Json | undefined, sorts: Json[] | undefined, limit: number, cursor: string | undefined, signal?: AbortSignal) {
     const id = notionId(target);
@@ -194,7 +205,7 @@ export class NotionApi {
         props = { title: { title: rich(write.title) } };
       }
       const children = write.content ? textBlocks(write.content) : [];
-      return { method: 'POST', path: '/v1/pages', body: { parent: schema ? { database_id: parent } : { page_id: parent }, properties: props, ...(children.length ? { children } : {}) }, target, preview: `Create "${write.title}" in ${target.kind} "${target.title}".${Object.keys(write.properties).length ? `\n${shown(write.properties)}` : ''}${write.content ? `\n\n${write.content.slice(0, 4000)}` : ''}` };
+      return { method: 'POST', path: '/v1/pages', body: { parent: schema ? { database_id: parent } : { page_id: parent }, properties: props, ...(children.length ? { children } : {}) }, target, preview: `Create "${write.title}" in ${target.kind} "${target.title}".${Object.keys(write.properties).length ? `\n${shown(write.properties)}` : ''}${write.content ? `\n\n${write.content}` : ''}` };
     }
     const pageId = notionId(write.pageId);
     const page = await this.call('GET', `/v1/pages/${pageId}`, undefined, signal);
@@ -203,7 +214,7 @@ export class NotionApi {
       const schema = Object.fromEntries(Object.entries(page.properties ?? {}).map(([name, value]: [string, any]) => [name, value.type as string]));
       return { method: 'PATCH', path: `/v1/pages/${pageId}`, body: { properties: typedProperties(schema, write.properties) }, target, preview: `Change these properties of "${target.title}":\n${shown(write.properties)}` };
     }
-    if (write.type === 'append') return { method: 'PATCH', path: `/v1/blocks/${pageId}/children`, body: { children: textBlocks(write.content) }, target, preview: `Add to the end of "${target.title}":\n\n${write.content.slice(0, 4000)}` };
+    if (write.type === 'append') return { method: 'PATCH', path: `/v1/blocks/${pageId}/children`, body: { children: textBlocks(write.content) }, target, preview: `Add to the end of "${target.title}":\n\n${write.content}` };
     return { method: 'POST', path: '/v1/comments', body: { parent: { page_id: pageId }, rich_text: rich(write.text) }, target, preview: `Comment on "${target.title}":\n\n${write.text}` };
   }
   /** Files attached to a page's file properties, with Notion's links (signed for about an hour, so fetch them at once). */
