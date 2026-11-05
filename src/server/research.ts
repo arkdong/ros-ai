@@ -38,23 +38,34 @@ function contextText(value:string,maxBytes:number):string {
  */
 export class ResearchService {
   private active=new Map<string,Promise<void>>();
+  /** The sessions the timer looks at: those waiting on an experiment or able to adopt its explicit retry. Other sessions
+   * do not change on their own, so the timer no longer reads every project twice a second. */
+  private polled=new Set<string>();
+  private static polls(s:ResearchSession){return ['running','waiting','interrupted'].includes(s.status)&&s.phase==='experiment'&&Boolean(s.currentRunId);}
   private closed=false;
   private timer:ReturnType<typeof setInterval>;
   readonly authority:Authority;
   constructor(private store:Store,private execution:ExecutionService,private experiments:ExperimentService){
     this.authority=experiments.authority;
     for(const project of store.listProjects())for(const session of this.list(project.id))if(['running','waiting'].includes(session.status))this.save({...session,status:'interrupted',error:'Service restarted. Continue explicitly to inspect captured outcomes and resume within remaining limits.'});
+    for(const session of store.recordsOfKind<ResearchSession>('research'))if(ResearchService.polls(session))this.polled.add(session.id);
     this.timer=setInterval(()=>{
       if(this.closed)return;
-      for(const p of this.store.listProjects())for(const saved of this.list(p.id)){
-        const s=this.adoptRevision(saved);
-        if(s.status==='waiting'&&s.phase==='experiment'&&s.currentRunId){const run=this.store.getRun(s.currentRunId);if(!activeRun(run)){this.save({...s,status:'running'});this.launch(s.id);}}
+      for(const id of [...this.polled]){
+        try{
+          const saved=this.store.record<ResearchSession>('research',id);
+          if(!saved||!ResearchService.polls(saved)){this.polled.delete(id);continue;}
+          // A session whose project is in Trash waits there until the project is restored.
+          if(this.store.inTrash(saved.projectId))continue;
+          const s=this.adoptRevision(saved);
+          if(s.status==='waiting'&&s.phase==='experiment'&&s.currentRunId){const run=this.store.getRun(s.currentRunId);if(!activeRun(run)){this.save({...s,status:'running'});this.launch(s.id);}}
+        }catch{/* Looked at again on the next tick. */}
       }
     },500);this.timer.unref();
   }
   list(projectId:string){return this.store.records<ResearchSession>('research',projectId);}
   get(id:string){const s=this.store.record<ResearchSession>('research',id);if(!s)throw new StoreError('Research session not found.',404);return s;}
-  private save(s:ResearchSession){s.updatedAt=now();return this.store.saveRecord('research',s.id,s.projectId,s);}
+  private save(s:ResearchSession){s.updatedAt=now();const saved=this.store.saveRecord('research',s.id,s.projectId,s);if(ResearchService.polls(s))this.polled.add(s.id);else this.polled.delete(s.id);return saved;}
   private event(id:string,message:string){const s=this.get(id);s.events.push({at:now(),message});return this.save(s);}
   private adoptRevision(s:ResearchSession):ResearchSession {
     if(!['running','waiting','interrupted'].includes(s.status)||s.phase!=='experiment'||!s.currentRunId)return s;

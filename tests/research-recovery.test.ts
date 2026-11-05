@@ -423,3 +423,18 @@ test('retry adoption updates an interrupted cursor without resuming it and leave
   }
   assert.equal(f.model.requests.length, 0); assert.equal(f.sandbox.starts.length, 0);
 });
+
+test('the research timer reads no projects while no session waits on an experiment, nor one in Trash', async t => {
+  const f = fixture(t);
+  for (let index = 0; index < 5; index++) f.store.createProject(`Idle ${index}`);
+  // A session that waits on an experiment in a project now in Trash waits there.
+  const trashed = f.store.createProject('In Trash');
+  f.store.saveRecord('research', 'trashed-session', trashed.id, { id: 'trashed-session', projectId: trashed.id, status: 'waiting', phase: 'experiment', currentRunId: 'some-run', runIds: ['some-run'], events: [] });
+  f.store.trashProject(trashed.id);
+  f.research();
+  const read = { projects: 0, runs: 0 }, listProjects = f.store.listProjects.bind(f.store), listRuns = f.store.listRuns.bind(f.store);
+  f.store.listProjects = (() => { read.projects++; return listProjects(); }) as typeof f.store.listProjects;
+  f.store.listRuns = ((projectId: string) => { read.runs++; return listRuns(projectId); }) as typeof f.store.listRuns;
+  await delay(1200);
+  assert.deepEqual(read, { projects: 0, runs: 0 });
+});

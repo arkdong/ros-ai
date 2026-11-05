@@ -61,6 +61,26 @@ test('line edits and unified patches', () => {
   assert.match(unifiedPatch('n.md', 'added', lineEdits([], ['one'])!), /@@ -0,0 \+1,1 @@\n\+one/);
 });
 
+test('line edits are the shortest and rebuild the new file; a long file rewritten whole is left as too different', () => {
+  let seed = 7;
+  const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const shortest = (a: string[], b: string[]) => {
+    const table = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => i + j));
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) table[i][j] = a[i - 1] === b[j - 1] ? table[i - 1][j - 1] : 1 + Math.min(table[i - 1][j], table[i][j - 1]);
+    return table[a.length][b.length];
+  };
+  for (let round = 0; round < 200; round++) {
+    const a = Array.from({ length: Math.floor(random() * 30) }, () => 'abcde'[Math.floor(random() * 5)]);
+    const b = Array.from({ length: Math.floor(random() * 30) }, () => 'abcde'[Math.floor(random() * 5)]);
+    const edits = lineEdits(a, b)!;
+    assert.deepEqual(edits.filter(edit => edit.op !== '+').map(edit => edit.line), a);
+    assert.deepEqual(edits.filter(edit => edit.op !== '-').map(edit => edit.line), b);
+    assert.equal(edits.filter(edit => edit.op !== ' ').length, shortest(a, b));
+  }
+  const old = Array.from({ length: 40_000 }, (_, i) => `line ${i}`), rewritten = old.map(line => `${line} again`);
+  assert.equal(lineEdits(old, rewritten), undefined);
+});
+
 test('a turn records the files that changed in the project folder, with diffs', async () => {
   const f = fixture();
   try {
@@ -221,4 +241,28 @@ test('deleting a thread or moving the project to Trash waits for a stopped agent
     assert.deepEqual(rejections, []);
     f.store.restoreProject(f.project.id);
   } finally { process.off('unhandledRejection', note); await f.close(); }
+});
+
+test('a streamed answer is saved with its turn every 40 ms, not for every piece, and the page hears it as it comes', async () => {
+  const words = Array.from({ length: 400 }, (_, index) => `w${index} `), whole = words.join('');
+  const f: ReturnType<typeof fixture> = fixture([], [async () => {
+    const request = f.agentRequests.at(-1)!, at = new Date().toISOString();
+    for (const word of words.slice(0, 200)) request.onEvent({ at, type: 'delta', message: word });
+    await delay(150);
+    for (const word of words.slice(200)) request.onEvent({ at, type: 'delta', message: word });
+    return whole;
+  }]);
+  try {
+    const save = f.store.saveRecord.bind(f.store);
+    let turnSaves = 0;
+    f.store.saveRecord = ((namespace: string, ...rest: unknown[]) => { if (namespace === 'assistant-turn') turnSaves++; return (save as (...args: unknown[]) => unknown)(namespace, ...rest); }) as typeof f.store.saveRecord;
+    const heard: string[] = [], stop = f.assistant.subscribe(f.project.id, live => heard.push(live.reply));
+    f.assistant.setBackend(f.project.id, { backend: 'codex' });
+    f.assistant.start(f.project.id, { message: 'Stream the answer' });
+    await settled(f);
+    stop();
+    assert.equal(f.assistant.state(f.project.id).turns.at(-1)!.reply, whole);
+    assert.ok(heard.some(text => text.startsWith('w0 w1 ') && text.length < whole.length), 'Part of the answer was heard while it streamed');
+    assert.ok(turnSaves < 40, `${turnSaves} saves for ${words.length} pieces`);
+  } finally { await f.close(); }
 });

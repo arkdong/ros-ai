@@ -16,7 +16,7 @@ import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
 import { MAX_MAP_PINS } from '../shared/maps.js';
 import { MAX_POST_COMMENTS, MAX_POST_PHOTOS, POST_COMMENT_TEXT, POST_PLATFORMS, POST_SUBTITLES_KEPT, POST_TEXT } from '../shared/posts.js';
-import type { Artifact, Canvas, CanvasNode, Change, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, Change, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 
 /** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
 export type RosChoice = { backend?: string; model?: ModelSelection };
@@ -125,7 +125,7 @@ type LayoutFields = { x?: number; y?: number; width?: number | null; height?: nu
 type LayoutStep = Record<string, { parentId: string | null; before: LayoutFields; after: LayoutFields }>;
 /** `layouts[i]`, when set, marks stack entry i as a layout step rather than a content change. */
 type HistoryState = { stack: Canvas[]; cursor: number; presentation?: Record<string, NodePresentation>; layouts?: (LayoutStep | null)[] };
-export type MutateOptions = { /** Keep a layout-only change (a resize) as its own undo step. */ undoableLayout?: boolean };
+export type MutateOptions = { /** Keep a layout-only change (a resize) as its own undo step. */ undoableLayout?: boolean; /** Finish the undo step just made instead of adding one, so one Undo takes both away. */ sameStep?: boolean };
 
 // Layout is a current preference, not research content. Compare canonical content
 // so old position-only entries can be skipped without rewriting their snapshots.
@@ -147,6 +147,31 @@ function historyStop(history: HistoryState, canvas: Canvas, direction: -1 | 1): 
     if (canvasContent(history.stack[cursor]) !== content) return { cursor };
   }
   return undefined;
+}
+/** How far back Undo goes. Every step keeps the whole canvas and each edit reads and writes all of them, so without a
+ * limit every project slowed down with each edit, typing included, until it was unusable. */
+export const HISTORY_STEPS = 100;
+function trimHistory(history: HistoryState): void {
+  const extra = history.stack.length - HISTORY_STEPS;
+  if (extra <= 0) return;
+  history.stack = history.stack.slice(extra);
+  if (history.layouts) history.layouts = history.layouts.slice(extra);
+  history.cursor = Math.max(0, history.cursor - extra);
+}
+/** A short key for a canvas's content, kept beside each saved change so listing the changes never reads the canvases. */
+const contentKey = (canvas: Canvas) => createHash('sha256').update(canvasContent(canvas)).digest('base64url');
+const asObject = (value: unknown): Record<string, unknown> | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+/** The trace fields that budgets, totals and the Usage page read. */
+const LEDGER_TRACE = ['authorizationId', 'projectId', 'assistantTurnId', 'nodeId', 'model', 'credits'] as const;
+/** A request record as budgets, totals and the Usage page read it: its amounts, status and those trace fields, without
+ * the request, prompts and reply it saved, which run to 50 to 200 KB a request. */
+function ledgerEntry(usage: UsageRecord): UsageRecord {
+  const trace = asObject(usage.reportedUsage);
+  if (!trace) return { ...usage, reportedUsage: usage.reportedUsage ?? null };
+  const kept: Record<string, unknown> = {}, response = asObject(trace.response), tokens = asObject(response?.usage);
+  for (const key of LEDGER_TRACE) if (trace[key] !== undefined && (trace[key] === null || typeof trace[key] !== 'object')) kept[key] = trace[key];
+  if (response) kept.response = { ...(tokens ? { usage: { inputTokens: tokens.inputTokens, outputTokens: tokens.outputTokens } } : {}), ...(response.credits !== undefined ? { credits: response.credits } : {}) };
+  return { ...usage, reportedUsage: kept };
 }
 const LAYOUT_FIELDS = ['x', 'y', 'width', 'height'] as const;
 /** The layout fields each block changed between two canvases with the same content. */
@@ -231,6 +256,11 @@ export class Store {
       CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), node_id TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id), data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS inputs (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), node_id TEXT NOT NULL, artifact_id TEXT NOT NULL REFERENCES artifacts(id), data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS usage_ledger (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      -- A request record changed by anything, an earlier ros.ai on the same data included, loses its slim copy until
+      -- usageLedger makes it again, so the copy is never out of date.
+      CREATE TRIGGER IF NOT EXISTS usage_ledger_changed AFTER UPDATE ON usage BEGIN DELETE FROM usage_ledger WHERE id = OLD.id; END;
+      CREATE TRIGGER IF NOT EXISTS usage_ledger_removed AFTER DELETE ON usage BEGIN DELETE FROM usage_ledger WHERE id = OLD.id; END;
       CREATE TABLE IF NOT EXISTS workspace_records (namespace TEXT NOT NULL, id TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id), data TEXT NOT NULL, PRIMARY KEY(namespace,id));
       CREATE TABLE IF NOT EXISTS global_records (namespace TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(namespace,id));
       CREATE INDEX IF NOT EXISTS messages_scope ON messages(project_id, node_id);
@@ -238,6 +268,12 @@ export class Store {
       CREATE INDEX IF NOT EXISTS artifacts_project ON artifacts(project_id);
       CREATE INDEX IF NOT EXISTS inputs_project ON inputs(project_id);
     `);
+    // Each saved change also keeps its label, time and a key for its content beside the canvas, so the project page lists
+    // changes without reading every canvas. Changes saved before these columns get them the first time they are listed.
+    const changeColumns = new Set((this.db.prepare('PRAGMA table_info(changes)').all() as { name: string }[]).map(column => column.name));
+    for (const column of ['label', 'created_at', 'content']) if (!changeColumns.has(column)) this.db.exec(`ALTER TABLE changes ADD COLUMN ${column} TEXT`);
+    // The list is read from this index alone: the canvases sit in the same rows, and reading past them is most of the cost.
+    this.db.exec('CREATE INDEX IF NOT EXISTS changes_list ON changes(project_id, revision, id, label, created_at, content)');
     // Preparation/import clients may join a running service. Only the owning
     // service startup should reconcile interrupted work.
     if (options.recoverInterrupted !== false) this.transaction(() => {
@@ -257,11 +293,7 @@ export class Store {
         run.events.push({ at: run.endedAt, type: 'interrupted', message: run.error });
         this.db.prepare('UPDATE runs SET data = ? WHERE id = ?').run(JSON.stringify(run), run.id);
       }
-      for (const usage of this.listUsage()) {
-        if (usage.status !== 'reserved') continue;
-        usage.status = 'uncertain';
-        this.db.prepare('UPDATE usage SET data = ? WHERE id = ?').run(JSON.stringify(usage), usage.id);
-      }
+      for (const usage of this.usageLedger()) if (usage.status === 'reserved') this.updateUsage(usage.id, { status: 'uncertain' });
     });
   }
 
@@ -289,6 +321,10 @@ export class Store {
     return row ? JSON.parse(row.data) as T : undefined;
   }
   records<T>(namespace:string,projectId:string):T[] { this.getProject(projectId); return this.all<T>('SELECT data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid',namespace,projectId); }
+  /** Whether a project is in Trash, read without the project itself. */
+  inTrash(projectId:string):boolean { return Boolean(this.db.prepare('SELECT 1 FROM project_trash WHERE project_id = ?').get(projectId)); }
+  /** Every record of one kind, in every project, Trash included, without reading the projects. */
+  recordsOfKind<T>(namespace:string):T[] { return this.all<T>('SELECT data FROM workspace_records WHERE namespace = ? ORDER BY rowid',namespace); }
   /** The project's records of one kind with their ids, for records that do not carry their own id (agent sessions). */
   recordEntries<T>(namespace:string,projectId:string):{id:string;value:T}[] { this.getProject(projectId); return (this.db.prepare('SELECT id, data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid').all(namespace,projectId) as {id:string;data:string}[]).map(row => ({ id: row.id, value: JSON.parse(row.data) as T })); }
   saveRecord<T>(namespace:string,id:string,projectId:string,value:T):T {
@@ -372,6 +408,7 @@ export class Store {
     return this.transaction(() => {
       const history = this.getHistory(id);
       history.stack = history.stack.map(convert);
+      this.undoable.delete(id);
       const updated = { ...project, canvas };
       this.db.prepare('UPDATE projects SET data=?, history=? WHERE id=?').run(JSON.stringify(updated), JSON.stringify(history), id);
       if (JSON.stringify(grouped) !== JSON.stringify(project.canvas)) {
@@ -403,8 +440,21 @@ export class Store {
 
   detail(id: string): ProjectDetail {
     const project = this.getProject(id);
-    const history = this.getHistory(id);
-    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo: historyStop(history, project.canvas, -1) !== undefined, canRedo: historyStop(history, project.canvas, 1) !== undefined, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
+    const { canUndo, canRedo } = this.undoState(project);
+    return { project, messages: this.all<Message>('SELECT data FROM messages WHERE project_id = ? ORDER BY rowid', id), proposals: this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', id), changes: this.listChanges(id), runs: this.listRuns(id), artifacts: this.listArtifacts(id), inputs: this.all<SelectedInput>('SELECT data FROM inputs WHERE project_id = ? ORDER BY rowid', id), canUndo, canRedo, highlights:this.records('highlight',id), notebooks:this.records('notebook-summary',id) };
+  }
+
+  /** Whether Undo and Redo have somewhere to go. The page asks on every reload, so the answer is kept until the canvas
+   * changes: every edit, undo and redo gives the project a new revision or time. */
+  private readonly undoable = new Map<string, { at: string; canUndo: boolean; canRedo: boolean }>();
+  private undoState(project: Project): { canUndo: boolean; canRedo: boolean } {
+    const at = `${project.revision}:${project.updatedAt}`, known = this.undoable.get(project.id);
+    if (known?.at === at) return known;
+    const history = this.getHistory(project.id);
+    const state = { at, canUndo: historyStop(history, project.canvas, -1) !== undefined, canRedo: historyStop(history, project.canvas, 1) !== undefined };
+    // Inside a transaction the state may still be rolled back.
+    if (this.transactionDepth === 0) this.undoable.set(project.id, state);
+    return state;
   }
 
   private getHistory(id: string): HistoryState {
@@ -415,7 +465,7 @@ export class Store {
 
   private recordChange(project: Project, label: string): void {
     const change: Change = { id: randomUUID(), projectId: project.id, revision: project.revision, label, canvas: clone(project.canvas), createdAt: project.updatedAt };
-    this.db.prepare('INSERT INTO changes(id, project_id, revision, data) VALUES (?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change));
+    this.db.prepare('INSERT INTO changes(id, project_id, revision, data, label, created_at, content) VALUES (?, ?, ?, ?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change), label, change.createdAt, contentKey(change.canvas));
   }
 
   private placeNode(node: CanvasNode, others: CanvasNode[], fresh: ReadonlySet<string> = new Set()): CanvasNode {
@@ -642,6 +692,7 @@ export class Store {
         history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
         history.cursor++;
         history.layouts = Array.from(layouts, entry => entry ?? null);
+        trimHistory(history);
         return this.commitCanvas(project, canvas, checkedLabel, history);
       }
     }
@@ -653,9 +704,11 @@ export class Store {
       this.committed(id);
       return updated;
     }
-    history.stack = [...history.stack.slice(0, history.cursor + 1), clone(canvas)];
-    if (history.layouts) history.layouts = history.layouts.slice(0, history.cursor + 1);
-    history.cursor++;
+    const at = options.sameStep && history.cursor > 0 ? history.cursor : history.cursor + 1;
+    history.stack = [...history.stack.slice(0, at), clone(canvas)];
+    if (history.layouts) history.layouts = history.layouts.slice(0, at);
+    history.cursor = at;
+    trimHistory(history);
     // Blocks restored from the project folder were counted when they were first added.
     if (!checkedLabel.endsWith(' from the project folder')) {
       const added = operations.flatMap(operation => operation.type === 'addNode' ? [operation.node as Partial<CanvasNode>] : []);
@@ -675,8 +728,8 @@ export class Store {
    */
   pasteBlocks(id: string, operations: Mutation[], label: string, expectedRevision: number | undefined, copies: { nodeId: string; artifactId: string }[]): Project {
     return this.transaction(() => {
-      const pasted = this.mutateWithinTransaction(id, operations, label, expectedRevision);
-      const before = this.getHistory(id).cursor, patches: Mutation[] = [];
+      const revision = this.getProject(id).revision;
+      const pasted = this.mutateWithinTransaction(id, operations, label, expectedRevision), patches: Mutation[] = [];
       for (const { nodeId, artifactId } of copies) {
         const node = pasted.canvas.nodes.find(item => item.id === nodeId), source = this.getArtifact(artifactId), at = now();
         if (!node) continue;
@@ -690,14 +743,8 @@ export class Store {
         patches.push({ type: 'updateNode', id: nodeId, patch: { artifactId: copy.id } });
       }
       if (!patches.length) return pasted;
-      const project = this.mutateWithinTransaction(id, patches, label);
       // The blocks and their saved versions arrive together, so one Undo takes both away.
-      const history = this.getHistory(id);
-      if (history.cursor === before + 1 && before > 0) {
-        history.stack.splice(before, 1); history.cursor = before;
-        this.db.prepare('UPDATE projects SET history = ? WHERE id = ?').run(JSON.stringify(history), id);
-      }
-      return project;
+      return this.mutateWithinTransaction(id, patches, label, undefined, { sameStep: pasted.revision > revision });
     });
   }
 
@@ -718,14 +765,33 @@ export class Store {
 
   undo(id: string): Project { return this.travelHistory(id, -1); }
   redo(id: string): Project { return this.travelHistory(id, 1); }
-  listChanges(id: string): Change[] {
+  /** The project's content changes, each without its canvas (getChange has it). A change that left the content as it was,
+   * such as moving blocks, is left out. */
+  listChanges(id: string): ChangeSummary[] {
     this.getProject(id);
-    let previous: string | undefined;
-    return this.all<Change>('SELECT data FROM changes WHERE project_id = ? ORDER BY revision', id).filter(change => {
-      const content = canvasContent(change.canvas), meaningful = previous === undefined || content !== previous;
-      previous = content;
-      return meaningful;
+    const rows = this.db.prepare('SELECT id, revision, label, created_at, content FROM changes WHERE project_id = ? ORDER BY revision').all(id) as { id: string; revision: number; label: string | null; created_at: string | null; content: string | null }[];
+    // Changes saved before the label, time and content columns existed get them once. Their saved data stays as it was.
+    const missing = rows.filter(row => row.content === null);
+    if (missing.length) this.transaction(() => {
+      for (const row of missing) {
+        const change = JSON.parse((this.db.prepare('SELECT data FROM changes WHERE id = ?').get(row.id) as JsonRow).data) as Change;
+        Object.assign(row, { label: change.label, created_at: change.createdAt, content: contentKey(change.canvas) });
+        this.db.prepare('UPDATE changes SET label = ?, created_at = ?, content = ? WHERE id = ?').run(row.label, row.created_at, row.content, row.id);
+      }
     });
+    let previous: string | null = null;
+    return rows.filter(row => {
+      const meaningful = previous === null || row.content !== previous;
+      previous = row.content;
+      return meaningful;
+    }).map(row => ({ id: row.id, projectId: id, revision: row.revision, label: row.label ?? '', createdAt: row.created_at ?? '' }));
+  }
+  /** One saved change with its canvas, for looking at the canvas as it was then. */
+  getChange(projectId: string, changeId: string): Change {
+    this.getProject(projectId);
+    const row = this.db.prepare('SELECT data FROM changes WHERE project_id = ? AND id = ?').get(projectId, changeId) as JsonRow | undefined;
+    if (!row) throw new StoreError('Change not found', 404);
+    return JSON.parse(row.data) as Change;
   }
 
   /** A model's suggested moves are nudged to a free spot. `arranged` moves were laid out by ros.ai itself,
@@ -951,7 +1017,10 @@ export class Store {
     if (record.estimatedUsd !== null) z.number().finite().nonnegative().parse(record.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(record.status);
     if (record.runId) this.getRun(record.runId);
-    this.db.prepare('INSERT INTO usage(id, data) VALUES (?, ?)').run(record.id, JSON.stringify(record));
+    this.transaction(() => {
+      this.db.prepare('INSERT INTO usage(id, data) VALUES (?, ?)').run(record.id, JSON.stringify(record));
+      this.writeLedger(record);
+    });
     return clone(record);
   }
 
@@ -961,11 +1030,38 @@ export class Store {
     const updated = { ...record, ...clone(patch) };
     if (updated.estimatedUsd !== null) z.number().finite().nonnegative().parse(updated.estimatedUsd);
     z.enum(['reserved', 'settled', 'uncertain']).parse(updated.status);
-    this.db.prepare('UPDATE usage SET data = ? WHERE id = ?').run(JSON.stringify(updated), id);
+    this.transaction(() => {
+      this.db.prepare('UPDATE usage SET data = ? WHERE id = ?').run(JSON.stringify(updated), id);
+      this.writeLedger(updated);
+    });
     return updated;
   }
+  private writeLedger(usage: UsageRecord): void {
+    this.db.prepare('INSERT INTO usage_ledger(id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(usage.id, JSON.stringify(ledgerEntry(usage)));
+  }
 
+  /** Every request record in full, with the request, prompts and reply it saved. Budgets and totals use usageLedger. */
   listUsage(): UsageRecord[] { return this.all<UsageRecord>('SELECT data FROM usage ORDER BY rowid'); }
+  /** Every request record, in the order listUsage gives, with only what budgets, totals and the Usage page read (see
+   * ledgerEntry). Checked on every paid request, so it reads the saved requests and replies only of records that have no
+   * slim copy yet: those saved before the copy existed, or changed since by an earlier ros.ai. */
+  usageLedger(): UsageRecord[] {
+    const unlisted = this.db.prepare('SELECT id FROM usage WHERE id NOT IN (SELECT id FROM usage_ledger)').all() as { id: string }[];
+    if (unlisted.length) this.transaction(() => {
+      const read = this.db.prepare('SELECT data FROM usage WHERE id = ?');
+      for (const { id } of unlisted) { const row = read.get(id) as JsonRow | undefined; if (row) this.writeLedger(JSON.parse(row.data) as UsageRecord); }
+    });
+    return this.all<UsageRecord>('SELECT usage_ledger.data FROM usage_ledger JOIN usage ON usage.id = usage_ledger.id ORDER BY usage.rowid');
+  }
+  /** One request record in full. */
+  getUsage(id: string): UsageRecord | undefined {
+    const row = this.db.prepare('SELECT data FROM usage WHERE id = ?').get(id) as JsonRow | undefined;
+    return row ? JSON.parse(row.data) as UsageRecord : undefined;
+  }
+  /** The project a run belongs to, read without the run itself. */
+  runProjectId(runId: string): string | undefined {
+    return (this.db.prepare('SELECT project_id FROM runs WHERE id = ?').get(runId) as { project_id: string } | undefined)?.project_id;
+  }
 }
 
 /** A proposal that adds several blocks to one scope is laid out by ros.ai as a
