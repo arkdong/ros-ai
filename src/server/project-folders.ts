@@ -4,7 +4,7 @@ import { closeSync, constants, copyFileSync, createReadStream, createWriteStream
 import { homedir } from 'node:os';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { basename, delimiter, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import express, { type Express } from 'express';
 import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
@@ -16,13 +16,13 @@ import { videoInfo, type VideoInfo } from './video-size.js';
 import { GROUP_FOOTER, GROUP_INSET } from '../shared/layout.js';
 import { facingSides } from '../shared/links.js';
 import { APP_SOURCE_LIMIT, MAX_APP_INPUTS } from '../shared/apps.js';
-import { MAX_MAP_PINS } from '../shared/maps.js';
+import { MAX_MAP_PINS, pinLink } from '../shared/maps.js';
 import { FOLDER_DIRECTORIES, type FolderChoice, type OpenApp, type FolderFileKind, type FolderProblem, type FolderSuggestion, type ProjectFolderStatus, type UnplacedFile } from '../shared/project-folders.js';
 import type { Artifact, CanvasNode, Mutation, NotionView, Project, Run } from '../shared/types.js';
 import { ArtifactEditingService } from './artifact-editing.js';
 import type { KernelFolder } from './notebook-kernel.js';
 import type { NotebookFolders, NotebookService } from './notebooks.js';
-import { dashboardViewSchema, mapPinSchema, metricViewSchema, paperSchema, postViewSchema, Store, StoreError, trainingViewSchema } from './store.js';
+import { dashboardViewSchema, mapPinSchema, metricViewSchema, paperSchema, postViewSchema, RESERVED_IDS, Store, StoreError, trainingViewSchema } from './store.js';
 import { moveToTrash } from './system-trash.js';
 
 const RECORD = 'project-folder';
@@ -64,7 +64,7 @@ type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Obse
 type OutputEntry = { path: string; hash: string; artifactId: string };
 /** ros.ai's side of the sync. `hash` is the content ros.ai and the file last agreed on. */
 type FolderRecord = { projectId: string; path: string; device: number; inode: number; attachedAt: string; files: Record<string, FileEntry>; outputs: Record<string, OutputEntry[]>; board?: string };
-type Listed = { path: string; size: number };
+type Listed = { path: string; size: number; mtimeMs: number };
 /** `keep` is a file already on disk that matches, though ros.ai would write it differently. */
 type Rendered = { bytes: Buffer; extension: string; artifactId?: string; keep?: string };
 
@@ -282,7 +282,7 @@ class FolderFiles {
         if (entry.name.startsWith('.')) continue;
         const child = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) { if (level < depth && !SKIPPED_FOLDERS.has(entry.name)) walk(join(folder, entry.name), child, level + 1); }
-        else if (entry.isFile()) { try { found.push({ path: child, size: lstatSync(join(folder, entry.name)).size }); } catch { /* removed while listing */ } }
+        else if (entry.isFile()) { try { const info = lstatSync(join(folder, entry.name)); found.push({ path: child, size: info.size, mtimeMs: info.mtimeMs }); } catch { /* removed while listing */ } }
       }
     };
     walk(this.root, '', 0);
@@ -292,11 +292,12 @@ class FolderFiles {
 
 const manifestSchema = z.object({
   app: z.literal('ros.ai'), format: z.literal(1), projectId: z.string().min(1).max(200), title: z.string().max(200),
-  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric', 'dashboard', 'post']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined), post: postViewSchema.optional().catch(undefined),
+  blocks: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u).refine(id => !RESERVED_IDS.has(id)), title: z.string().trim().min(1).max(200), kind: z.enum(['topic', 'activity', 'unspecified', 'group']), blockType: z.enum(['note', 'action', 'dataset', 'figure', 'code', 'notebook', 'report', 'agent', 'search', 'finding', 'notion', 'file', 'google', 'app', 'training', 'web', 'map', 'metric', 'dashboard', 'post']).optional(), label: z.string().max(40).optional(), notion: z.object({ url: z.string().max(500), filter: z.string().max(1000).optional(), columns: z.array(z.string().max(100)).max(30).optional(), kind: z.enum(['database', 'page']).optional() }).strict().optional(), google: z.object({ fileId: z.string().max(200), kind: z.enum(['sheet', 'doc']), sheet: z.string().max(200).optional() }).strict().optional(), training: trainingViewSchema.optional().catch(undefined), metric: metricViewSchema.optional().catch(undefined), post: postViewSchema.optional().catch(undefined),
     // Where a paper's PDF came from; an entry ros.ai cannot read is left out rather than failing the manifest.
     paper: paperSchema.optional().catch(undefined),
     // A Map block's pins, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
-    map: z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
+    // A pin's link that is not a web page is left out on its own (older copies took any address).
+    map: z.object({ pins: z.array(mapPinSchema.extend({ url: z.string().max(2000).transform(pinLink).optional() }).strict()).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict().optional().catch(undefined),
     // A Dashboard block's tiles, which have no file of their own; an entry ros.ai cannot read is left out rather than failing the manifest.
     dashboard: dashboardViewSchema.optional().catch(undefined),
     parentId: z.string().nullable(), x: z.number().finite(), y: z.number().finite(), width: z.number().int().optional(), height: z.number().int().optional(), scale: z.number().optional().catch(undefined), file: z.string().max(1000).optional(),
@@ -540,7 +541,9 @@ export class ProjectFolders implements NotebookFolders {
   private connect(projectId: string, root: string, manifest?: Manifest, rebuild = false): void {
     const info = statSync(root), previous = this.load(projectId);
     const record: FolderRecord = { projectId, path: root, device: info.dev, inode: info.ino, attachedAt: now(), files: previous?.files ?? {}, outputs: previous?.outputs ?? {}, ...(previous?.board ? { board: previous.board } : {}) };
-    for (const entry of Object.values(record.files)) delete entry.disk;
+    // Times from before the move say nothing about the files now, so each file is read again. The last known size stays:
+    // a file missing after the move is looked for among files of that size only.
+    for (const entry of Object.values(record.files)) if (entry.disk) entry.disk = { ...entry.disk, mtimeMs: -1 };
     const files = new FolderFiles(root);
     if (rebuild && manifest) this.rebuild(record, files, manifest);
     else if (manifest) {
@@ -666,7 +669,8 @@ export class ProjectFolders implements NotebookFolders {
     const source = this.require(fromProjectId).files, { files } = this.require(toProjectId);
     for (const src of new Set(sources)) {
       try {
-        const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(posix.relative(source.root, found.absolute).split(sep).join('/'));
+        // The folder's own path rules (posix.relative cannot read C:\ paths), then the / that project paths use.
+        const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(relative(source.root, found.absolute).split(sep).join('/'));
         if (!files.exists(rel)) files.write(rel, source.read(rel, FILE_BYTES).bytes);
       } catch { /* an image ros.ai cannot find stays as written */ }
     }
@@ -839,10 +843,12 @@ export class ProjectFolders implements NotebookFolders {
     if (how !== 'default' && !reveal && !app) throw new StoreError('That app is not available on this computer.', 404);
     // Terminals open in the file's folder.
     const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
-    // Code opens in a text editor: the default app for .py or .sh files can run them instead. The project folder itself opens rather than being selected in its parent.
+    // Code opens in a text editor (TextEdit on a Mac, Notepad on Windows): the default app for .py, .js or .sh files can
+    // run them instead, outside the sandbox. The project folder itself opens rather than being selected in its parent.
     const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
       : process.platform === 'darwin' ? ['/usr/bin/open', reveal && entry ? ['-R', target] : entry?.kind === 'code' || entry?.kind === 'app' ? ['-t', target] : [target]]
-      : process.platform === 'win32' ? ['explorer.exe', [(reveal || entry?.kind === 'app') && entry ? `/select,${target}` : target]] : ['xdg-open', [(reveal || entry?.kind === 'app') && entry ? dirname(target) : target]];
+      : process.platform === 'win32' ? (entry?.kind === 'code' && !reveal ? ['notepad.exe', [target]] : ['explorer.exe', [(reveal || entry?.kind === 'app') && entry ? `/select,${target}` : target]])
+      : ['xdg-open', [(reveal || entry?.kind === 'app') && entry ? dirname(target) : target]];
     await launch(command, args);
     return { path: entry?.path ?? '.' };
   }
@@ -1018,7 +1024,7 @@ export class ProjectFolders implements NotebookFolders {
       let seen: ReturnType<ProjectFolders['observe']>;
       try { seen = this.observe(files, entry); } catch (error) { entry.problem = `${message(error)}`; continue; }
       if (!seen) {
-        const moved = this.findMoved(record, files, entry, listing);
+        const moved = this.findMoved(record, files, entry, listing, nodeId);
         if (!moved) { entry.missing = true; continue; }
         renamed.push(`${entry.path} → ${moved.path}`);
         entry.path = moved.path; entry.disk = moved.observed; entry.missing = false;
@@ -1058,16 +1064,22 @@ export class ProjectFolders implements NotebookFolders {
     } catch (error) { for (const [entry] of agreed) entry.problem = `${entry.path} could not be read back: ${message(error)}`; }
   }
 
-  /** A file renamed or moved in another app is found again by its content. */
-  private findMoved(record: FolderRecord, files: FolderFiles, entry: FileEntry, listing: Listed[]): { path: string; observed: Observed } | null {
+  /** A file renamed or moved in another app is found again by its content. A search that found nothing is not run again
+   * until the files it read change, so a file that stays missing no longer has every sync read the folder's files. */
+  private findMoved(record: FolderRecord, files: FolderFiles, entry: FileEntry, listing: Listed[], nodeId: string): { path: string; observed: Observed } | null {
     if (!entry.hash) return null;
-    const mapped = this.mapped(record), extension = extensionOf(entry.path).toLowerCase();
-    for (const file of listing) {
-      if (mapped.has(file.path.toLowerCase()) || extensionOf(file.path).toLowerCase() !== extension || (entry.disk && file.size !== entry.disk.size)) continue;
-      try { const read = readFolderFile(files, file.path, entry.kind); if (read.observed.hash === entry.hash) return { path: file.path, observed: read.observed }; } catch { /* unreadable files are not matches */ }
+    const mapped = this.mapped(record), extension = extensionOf(entry.path).toLowerCase(), key = `${record.projectId}:${nodeId}`;
+    const candidates = listing.filter(file => !mapped.has(file.path.toLowerCase()) && extensionOf(file.path).toLowerCase() === extension && (!entry.disk || file.size === entry.disk.size));
+    const searched = sha(JSON.stringify([entry.hash, entry.kind, candidates]));
+    if (this.searched.get(key) === searched) return null;
+    for (const file of candidates) {
+      try { const read = readFolderFile(files, file.path, entry.kind); if (read.observed.hash === entry.hash) { this.searched.delete(key); return { path: file.path, observed: read.observed }; } } catch { /* unreadable files are not matches */ }
     }
+    this.searched.set(key, searched);
     return null;
   }
+  /** Searches for a missing file that found nothing, by project and block: a key for the files they read. */
+  private readonly searched = new Map<string, string>();
 
   private readArtifactFile(record: FolderRecord, projectId: string, node: CanvasNode, entry: FileEntry, text: string, hash: string): void {
     if (entry.kind === 'dataset') { parseCsv(text, true); this.capture(projectId, node, { kind: 'dataset', title: node.title, content: text, mediaType: 'text/csv', path: entry.path }); return; }
@@ -1260,9 +1272,29 @@ export class ProjectFolders implements NotebookFolders {
         return [{ id: connection.id, fromNode: connection.source, toNode: connection.target, fromSide: sides.source, toSide: sides.target, ...(connection.label ? { label: connection.label } : {}) }];
       }),
     };
-    const name = `${safeFileBase(project.title)}.canvas`;
-    this.writeIfChanged(files, name, Buffer.from(`${JSON.stringify(board, null, 1)}\n`, 'utf8'));
+    const bytes = Buffer.from(`${JSON.stringify(board, null, 1)}\n`, 'utf8'), name = this.boardName(record, files, project, bytes);
+    this.writeIfChanged(files, name, bytes);
     record.board = name;
+  }
+  /** The board is named after the project, unless a file of that name is the person's own (an Obsidian canvas in a vault
+   * of the same name), which ros.ai never writes over: then it is "<title> (ros.ai).canvas". */
+  private boardName(record: FolderRecord, files: FolderFiles, project: Project, bytes: Buffer): string {
+    const base = safeFileBase(project.title);
+    for (let index = 1; index < 50; index++) {
+      const name = index === 1 ? `${base}.canvas` : `${base} (ros.ai${index > 2 ? ` ${index - 1}` : ''}).canvas`;
+      if (record.board?.toLowerCase() === name.toLowerCase() || !files.exists(name) || this.ownBoard(files, name, project, bytes)) return name;
+    }
+    throw new StoreError(`ros.ai found no free name for the board of ${project.title}.`);
+  }
+  /** A board ros.ai wrote, perhaps from another computer before this one kept its name: it shows blocks of this project. */
+  private ownBoard(files: FolderFiles, rel: string, project: Project, bytes: Buffer): boolean {
+    try {
+      const held = files.read(rel, 20_000_000).bytes;
+      if (held.equals(bytes)) return true;
+      const board = JSON.parse(held.toString('utf8')) as { nodes?: unknown };
+      const ids = new Set(project.canvas.nodes.map(node => node.id));
+      return Array.isArray(board.nodes) && board.nodes.some(node => typeof (node as { id?: unknown } | null)?.id === 'string' && ids.has((node as { id: string }).id));
+    } catch { return false; }
   }
 
   /** Moves a file out of the way. Changed files and block files go to .ros-ai/trash; unchanged outputs ros.ai can write again are deleted. */

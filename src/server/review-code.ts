@@ -6,7 +6,10 @@ export type CodeReview = { allowed: boolean; reason: string };
 // it is never interpolated into this script or evaluated in the host process.
 const PARSER = String.raw`
 import ast, json, resource, sys
-resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
+MODE = sys.argv[1] if len(sys.argv) > 1 else "code"
+# A second of CPU for one review; a batch of notebook cells shares ten.
+CPU = 10 if MODE == "batch" else 1
+resource.setrlimit(resource.RLIMIT_CPU, (CPU, CPU))
 resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -53,7 +56,6 @@ FORBIDDEN_ATTRS = set("os sys subprocess socket pathlib ctypes ctypeslib builtin
 IN_MEMORY = {"remove", "rename", "replace", "loads", "format"}
 BUILTINS = set("print len min max sum abs round sorted enumerate range zip all any int float str bool list tuple set dict frozenset reversed next iter isinstance issubclass filter map slice divmod pow hash ValueError TypeError RuntimeError KeyError IndexError ZeroDivisionError AssertionError Exception NotImplementedError StopIteration".split())
 HELPERS = {"table", "metric", "plot", "export_csv", "conclusion"}
-MODE = sys.argv[1] if len(sys.argv) > 1 else "code"
 if MODE != "code":
     # Notebook cells run with the project folder mounted read-only and no network, so reading data files is
     # ordinary analysis. Writing files, pickles and anything unfamiliar still asks.
@@ -274,17 +276,9 @@ def forget(source, env):
             names.add(node.rest)
     return {name: kind for name, kind in env.items() if name not in names and kind not in ("call:local-function", "call:local-lambda")}
 
-try:
-    if MODE == "code":
-        source, env = sys.stdin.read(20001), None
-    else:
-        payload = json.loads(sys.stdin.read(400001))
-        source, env = payload.get("code"), carried(payload.get("env"))
-        if not isinstance(source, str):
-            raise Escalate("The cell source is missing.")
-    if MODE == "forget":
-        result = {"env": forget(source, env)}
-    else:
+def review(source, env):
+    """One program or notebook cell (env: the names earlier cells left, None for a program)."""
+    try:
         if not source.strip() or len(source.encode("utf-8")) > 20000:
             raise Escalate("Code must be nonempty and no larger than 20 KB.")
         tree = ast.parse(source, mode="exec")
@@ -293,8 +287,46 @@ try:
         checker = Checker(env)
         checker.visit(tree)
         result = {"allowed": True, "reason": "Syntax review found only recognized numerical/data/plot operations and captured-output helpers. This is a conservative syntax check, not proof of research relevance or sandbox safety."}
-        if MODE == "notebook":
+        if env is not None:
             result["env"] = {name: kind for name, kind in checker.env.items() if not (kind == "call:" + name and name in BUILTINS | HELPERS)}
+        return result
+    except (Escalate, SyntaxError, ValueError, RecursionError) as error:
+        return {"allowed": False, "reason": str(error)[:800] or "Python syntax could not be reviewed."}
+    except BaseException:
+        return {"allowed": False, "reason": "Python syntax review failed; human review is required."}
+
+def batch(cells, env):
+    """Notebook cells in order, each with the names the cells before it leave, as the cells run. A cell the reviewer
+    does not allow ends the batch, unless the person approved it: then its names are forgotten and the next is reviewed."""
+    results = []
+    for cell in cells:
+        source, approved = cell.get("code"), cell.get("approved") is True
+        if not isinstance(source, str):
+            break
+        outcome = {"allowed": False, "reason": "Cells longer than 20 KB are not reviewed automatically."} \
+            if not source.strip() or len(source.encode("utf-8")) > 20000 else review(source, env)
+        if outcome["allowed"]:
+            env = carried(outcome["env"])
+        elif approved:
+            outcome["env"] = forget(source, env)
+            env = carried(outcome["env"])
+        results.append(outcome)
+        if not outcome["allowed"] and not approved:
+            break
+    return results
+
+try:
+    if MODE == "code":
+        result = review(sys.stdin.read(20001), None)
+    elif MODE == "batch":
+        payload = json.loads(sys.stdin.read(25000001))
+        result = {"results": batch([cell for cell in payload.get("cells", []) if isinstance(cell, dict)], carried(payload.get("env")))}
+    else:
+        payload = json.loads(sys.stdin.read(400001))
+        source, env = payload.get("code"), carried(payload.get("env"))
+        if not isinstance(source, str):
+            raise Escalate("The cell source is missing.")
+        result = {"env": forget(source, env)} if MODE == "forget" else review(source, env)
 except (Escalate, SyntaxError, ValueError, RecursionError) as error:
     result = {"allowed": False, "reason": str(error)[:800] or "Python syntax could not be reviewed."}
 except BaseException:
@@ -340,6 +372,29 @@ export function reviewNotebookCell(code: string, names: NotebookNames, options: 
   const decision = notebookParser('notebook', code, names, options.python) as { allowed?: unknown; reason?: unknown; env?: unknown } | undefined;
   if (typeof decision?.allowed !== 'boolean' || typeof decision.reason !== 'string') return { allowed: false, reason: 'The trusted Python syntax reviewer is unavailable or timed out; human review is required.', names };
   return { allowed: decision.allowed, reason: decision.reason.slice(0, 1000), names: decision.allowed ? notebookNames(decision.env) : names };
+}
+/** Notebook cells reviewed in order in one Python process, each with the names the cells before it leave, as a run of
+ * many cells queues them (a process per cell held the server for seconds on a long notebook). `approved`: the person
+ * approved the cell, so a cell the reviewer does not allow forgets its names and the next is reviewed; otherwise such
+ * a cell is the last result. `names` are the names after each cell: set when it was allowed or approved. Returns []
+ * when the reviewer could not run, so each cell can be reviewed on its own. */
+export function reviewNotebookCells(cells: { code: string; approved: boolean }[], names: NotebookNames, options: { python?: string } = {}): (CodeReview & { names?: NotebookNames })[] {
+  if (!cells.length) return [];
+  const result = spawnSync(options.python ?? '/usr/bin/python3', ['-I', '-S', '-c', PARSER, 'batch'], {
+    input: JSON.stringify({ cells, env: names }), encoding: 'utf8', timeout: Math.min(30_000, 1500 + 100 * cells.length), maxBuffer: 64_000_000,
+    env: { PATH: '/usr/bin:/bin', LC_ALL: 'C.UTF-8' },
+  });
+  if (result.status !== 0 || result.error) return [];
+  try {
+    const { results } = JSON.parse(result.stdout) as { results?: unknown };
+    if (!Array.isArray(results)) return [];
+    const reviews: (CodeReview & { names?: NotebookNames })[] = [];
+    for (const item of results as { allowed?: unknown; reason?: unknown; env?: unknown }[]) {
+      if (typeof item?.allowed !== 'boolean' || typeof item.reason !== 'string') return reviews;
+      reviews.push({ allowed: item.allowed, reason: item.reason.slice(0, 1000), ...(item.env !== undefined ? { names: notebookNames(item.env) } : {}) });
+    }
+    return reviews;
+  } catch { return []; }
 }
 /** After a cell runs without review, the names it may have changed are no longer trusted. */
 export function forgetNotebookNames(code: string, names: NotebookNames, options: { python?: string } = {}): NotebookNames {

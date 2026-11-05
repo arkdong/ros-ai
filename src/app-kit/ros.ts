@@ -4,7 +4,7 @@
  * MCP Apps message format (JSON-RPC over postMessage), where ros.ai's requests are tools: read, watch, save, focus.
  * The frame itself is the boundary (sandbox, CSP connect-src 'none', its own origin); the kit is a convenience.
  */
-import { APP_PROTOCOL, APP_STATE_BYTES, type AppBlock, type AppInputContent, type AppSession } from '../shared/apps.js';
+import { APP_FRAME_TAG, APP_PROTOCOL, APP_STATE_BYTES, type AppBlock, type AppInputContent, type AppSession } from '../shared/apps.js';
 
 type Row = Record<string, unknown>;
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: number };
@@ -13,6 +13,157 @@ type ToolResult = { content?: { type: string; text?: string }[]; structuredConte
 // Before any of the page's own code runs: no WebRTC, the one network path a Content-Security-Policy does not close.
 for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver']) {
   try { Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false }); } catch { /* already gone */ }
+}
+sealFrames();
+
+/** Nor in a frame inside the page. Every frame is a page of its own with WebRTC back, and the page can use its window
+ * (window[0]) the moment the frame joins a document, before any check after the fact could take it out; a frame made
+ * from inline HTML (srcdoc, or a blank page) is one no content policy stops. So a frame never joins any tree here, on
+ * the page or off it, so no tree can carry one in later: ros.ai does not open a page whose own HTML holds a frame tag,
+ * every call that puts a node into a tree refuses a frame, every call that reads HTML refuses a frame tag, a parsed
+ * document that holds a frame is refused, and so is pasted or dropped HTML with one. A frame that arrives some other way
+ * is taken out before the page's next script runs. Every browser function used here is taken now, before the page's own
+ * code could replace it, and nothing here reads a property the page could have added. */
+function sealFrames() {
+  type Fn = (...args: unknown[]) => unknown;
+  const FRAMES = 'iframe,frame,frameset,object,embed,fencedframe,portal';
+  /** Any tag at all: document.write's text reaches the parser in pieces, so a frame tag could be split across calls. */
+  const ANY_TAG = /<([a-z!?/]|$)/iu;
+  const apply = Reflect.apply, describe = Object.getOwnPropertyDescriptor, define = Object.defineProperty, toText = String, Refusal = DOMException;
+  const call = (fn: Fn | undefined, self: unknown, ...args: unknown[]) => fn ? apply(fn, self, args) : undefined;
+  const read = (fn: Fn | undefined, self: unknown) => { try { return call(fn, self); } catch { return undefined; } };
+  const method = (owner: object | undefined, name: string) => { const value = owner ? describe(owner, name)?.value : undefined; return typeof value === 'function' ? value as Fn : undefined; };
+  const getter = (owner: object | undefined, name: string) => (owner ? describe(owner, name)?.get : undefined) as Fn | undefined;
+  const exec = RegExp.prototype.exec as Fn, lower = String.prototype.toLowerCase as Fn;
+  const typeOf = getter(Node.prototype, 'nodeType'), shadowOf = getter(Element.prototype, 'shadowRoot'), contentOf = getter(HTMLTemplateElement.prototype, 'content');
+  const lengthOf = getter(NodeList.prototype, 'length'), itemOf = method(NodeList.prototype, 'item'), matches = method(Element.prototype, 'matches'), remove = method(Element.prototype, 'remove');
+  const selectAll: Record<number, Fn | undefined> = { 1: method(Element.prototype, 'querySelectorAll'), 9: method(Document.prototype, 'querySelectorAll'), 11: method(DocumentFragment.prototype, 'querySelectorAll') };
+  const roots = new WeakMap<object, ShadowRoot>(), rootOf = WeakMap.prototype.get as Fn, keepRoot = WeakMap.prototype.set as Fn;
+  const refuse = (what = 'App pages cannot hold frames. Show the content on the page itself.'): never => { throw new Refusal(what, 'NotSupportedError'); };
+  const holds = (pattern: RegExp, text: string) => call(exec, pattern, text) !== null;
+  /** Visits each frame in a node and under it, its shadow trees and templates included. Without visit, stops at the first. */
+  const anyFrame = (node: unknown, visit?: (frame: unknown) => void): boolean => {
+    const type = read(typeOf, node);
+    if (type !== 1 && type !== 9 && type !== 11) return false;
+    const all = call(selectAll[type], node, '*'), count = call(lengthOf, all) as number;
+    let found = false;
+    for (let index = type === 1 ? -1 : 0; index < count; index++) {
+      const element = index < 0 ? node : call(itemOf, all, index);
+      const inner = [read(shadowOf, element) ?? call(rootOf, roots, element), call(matches, element, 'template') ? read(contentOf, element) : undefined];
+      if (call(matches, element, FRAMES)) { found = true; if (!visit) return true; visit(element); }
+      for (let at = 0; at < 2; at++) if (inner[at] && anyFrame(inner[at], visit)) { found = true; if (!visit) return true; }
+    }
+    return found;
+  };
+  const seal = (owner: object | undefined, name: string, wrap: (original: Fn) => Fn) => {
+    const original = method(owner, name);
+    if (owner && original) define(owner, name, { value: wrap(original), writable: false, configurable: false, enumerable: describe(owner, name)?.enumerable });
+  };
+  const setter = (owner: object, name: string, check: (value: unknown) => unknown) => {
+    const property = describe(owner, name), set = property?.set;
+    if (property && set) define(owner, name, { get: property.get, enumerable: property.enumerable, configurable: false, set(this: unknown, value: unknown) { apply(set, this, [check(value)]); } });
+  };
+
+  // A frame taken out the moment it appears, in the page and in every shadow tree. Taken out at the next pause, so the
+  // calls below are the seal and this is the backstop.
+  const observe = method(MutationObserver.prototype, 'observe'), addedOf = getter(MutationRecord.prototype, 'addedNodes');
+  const watching: MutationObserverInit = Object.setPrototypeOf({ childList: true, subtree: true }, null);
+  const observer = new MutationObserver(records => {
+    for (let record = 0; record < records.length; record++) {
+      const added = call(addedOf, records[record]), count = call(lengthOf, added) as number;
+      for (let index = 0; index < count; index++) anyFrame(call(itemOf, added, index), frame => call(remove, frame));
+    }
+  });
+  call(observe, observer, document, watching);
+
+  // Nodes put into a tree.
+  const nodes = (original: Fn): Fn => function (this: unknown, ...args: unknown[]) {
+    for (let index = 0; index < args.length; index++) if (anyFrame(args[index])) refuse();
+    return apply(original, this, args);
+  };
+  for (const name of ['appendChild', 'insertBefore', 'replaceChild']) seal(Node.prototype, name, nodes);
+  for (const owner of [Element.prototype, Document.prototype, DocumentFragment.prototype]) for (const name of ['append', 'prepend', 'replaceChildren', 'moveBefore']) seal(owner, name, nodes);
+  for (const owner of [Element.prototype, CharacterData.prototype, DocumentType.prototype]) for (const name of ['before', 'after', 'replaceWith']) seal(owner, name, nodes);
+  seal(Element.prototype, 'insertAdjacentElement', nodes);
+  for (const name of ['insertNode', 'surroundContents']) seal(Range.prototype, name, nodes);
+  setter(Document.prototype, 'body', value => { if (anyFrame(value)) refuse(); return value; });
+  // Closed shadow trees are kept, so a frame in one is still found, and watched like the page.
+  seal(Element.prototype, 'attachShadow', original => function (this: unknown, ...args: unknown[]) {
+    const root = apply(original, this, args);
+    call(keepRoot, roots, this, root);
+    try { call(observe, observer, root, watching); } catch { /* the calls above still seal it */ }
+    return root;
+  });
+
+  // HTML read into a tree. Each text is read once, so what is checked is what is parsed.
+  const html = (value: unknown) => { const text = toText(value); if (holds(APP_FRAME_TAG, text)) refuse(); return text; };
+  const htmlAt = (at: number) => (original: Fn): Fn => function (this: unknown, ...args: unknown[]) {
+    if (args.length > at) args[at] = html(args[at]);
+    return apply(original, this, args);
+  };
+  for (const owner of [Element.prototype, ShadowRoot.prototype]) {
+    // These two take null as empty, as the browser does.
+    for (const name of ['innerHTML', 'outerHTML']) setter(owner, name, value => html(value === null ? '' : value));
+    for (const name of ['setHTMLUnsafe', 'setHTML']) seal(owner, name, htmlAt(0));
+  }
+  seal(Element.prototype, 'insertAdjacentHTML', htmlAt(1));
+  seal(Range.prototype, 'createContextualFragment', htmlAt(0));
+  for (const name of ['parseHTMLUnsafe', 'parseHTML']) seal(Document, name, htmlAt(0));
+  seal(Document.prototype, 'execCommand', original => function (this: unknown, ...args: unknown[]) {
+    if (args.length) args[0] = toText(args[0]);
+    if (call(lower, args[0]) === 'inserthtml' && args.length > 2 && args[2] !== undefined) args[2] = html(args[2]);
+    return apply(original, this, args);
+  });
+  for (const name of ['write', 'writeln']) seal(Document.prototype, name, original => function (this: unknown, ...args: unknown[]) {
+    let text = '';
+    for (let index = 0; index < args.length; index++) text += toText(args[index]);
+    if (holds(ANY_TAG, text)) refuse('App pages cannot write HTML with document.write. Build the page with the DOM instead.');
+    return apply(original, this, [text]);
+  });
+  // Parsers whose text a check could not read the way they do (an XML entity can spell a tag): their result is checked.
+  const parsed = (original: Fn): Fn => function (this: unknown, ...args: unknown[]) {
+    const result = apply(original, this, args);
+    if (anyFrame(result)) refuse();
+    return result;
+  };
+  seal(typeof DOMParser === 'function' ? DOMParser.prototype : undefined, 'parseFromString', parsed);
+  for (const name of ['transformToFragment', 'transformToDocument']) seal(typeof XSLTProcessor === 'function' ? XSLTProcessor.prototype : undefined, name, parsed);
+
+  // HTML pasted or dropped onto the page.
+  const dataOf = method(DataTransfer.prototype, 'getData'), cancel = method(Event.prototype, 'preventDefault'), halt = method(Event.prototype, 'stopImmediatePropagation');
+  const guard = (transferOf: Fn | undefined) => (event: Event) => {
+    const transfer = read(transferOf, event);
+    let text = '';
+    try { text = toText(call(dataOf, transfer, 'text/html') ?? ''); } catch { /* nothing to read */ }
+    if (holds(APP_FRAME_TAG, text)) { call(cancel, event); call(halt, event); }
+  };
+  const listen = method(EventTarget.prototype, 'addEventListener');
+  call(listen, window, 'paste', guard(getter(ClipboardEvent.prototype, 'clipboardData')), true);
+  call(listen, window, 'drop', guard(getter(DragEvent.prototype, 'dataTransfer')), true);
+
+  // And no way into a frame's page from here.
+  for (const owner of [HTMLIFrameElement.prototype, HTMLFrameElement.prototype, HTMLObjectElement.prototype]) for (const name of ['contentWindow', 'contentDocument']) {
+    const property = describe(owner, name);
+    if (property?.get) define(owner, name, { get: () => null, enumerable: property.enumerable, configurable: false });
+  }
+
+  // Nor a javascript: address, which makes a new page from text, without this kit. The page's policy requires Trusted
+  // Types, so the browser asks this policy before it runs one, and before any HTML or script text reaches the page, and
+  // the page cannot make a policy of its own. So the HTML checks above hold for every call that reads HTML, named or not.
+  const NAVIGATION = /^(Location|Navigation)\b/u, WRITE = /^Document writeln?$/u;
+  const types = (window as unknown as { trustedTypes?: { createPolicy: (name: string, rules: object) => unknown } }).trustedTypes;
+  try {
+    types?.createPolicy('default', {
+      createHTML: (value: unknown, _type: unknown, sink: unknown) => {
+        const text = toText(value);
+        if (holds(WRITE, toText(sink))) { if (holds(ANY_TAG, text)) refuse('App pages cannot write HTML with document.write. Build the page with the DOM instead.'); }
+        else if (holds(APP_FRAME_TAG, text)) refuse();
+        return text;
+      },
+      createScript: (value: unknown, _type: unknown, sink: unknown) => holds(NAVIGATION, toText(sink)) ? null : toText(value),
+      createScriptURL: (value: unknown) => toText(value),
+    });
+  } catch { /* A browser without Trusted Types: the seal above still holds. */ }
 }
 
 const host = window.parent, embedded = host !== window;

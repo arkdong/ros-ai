@@ -5,10 +5,11 @@ import type { AddressInfo } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Express } from 'express';
 import { z } from 'zod';
-import { APP_SOURCE_LIMIT, APP_STATE_BYTES, MAX_APP_INPUTS, appFlags, appInputs, appVersion, findReadable, proposedCanvas, readableBlocks, type AppBlock, type AppFrameGrant, type AppInputContent, type AppMode, type AppSession } from '../shared/apps.js';
+import { APP_SOURCE_LIMIT, APP_STATE_BYTES, MAX_APP_INPUTS, appFlags, appFrameLine, appInputs, appVersion, findReadable, proposedCanvas, readableBlocks, type AppBlock, type AppFrameGrant, type AppInputContent, type AppMode, type AppSession } from '../shared/apps.js';
 import { primaryArtifact } from '../shared/blocks.js';
 import { artifactTable, columnSummary, type TableData } from '../shared/data-view.js';
 import { groupMembers } from '../shared/groups.js';
+import { googleEmbedLink } from '../shared/maps.js';
 import { METRIC_TOOLS, metricTable } from '../shared/metrics.js';
 import type { Artifact, Canvas, CanvasNode, ProjectDetail } from '../shared/types.js';
 import { kindName, textLabel } from '../shared/vocabulary.js';
@@ -66,14 +67,20 @@ function typedTable(data: TableData, extra?: (index: number) => Record<string, s
 }
 const imageAddress = (artifact: Artifact) => artifact.mediaType === 'image/png' ? `data:image/png;base64,${artifact.content}` : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`;
 
-/** Where Google's keyless map embed lives: the path itself and below it. */
+/** Where Google's keyless map embed lives: the path itself and below it. Only the map page on the App server may frame it. */
 const GOOGLE_EMBED = 'https://www.google.com/maps https://www.google.com/maps/';
+const MAX_MAPS = 500;
+const place = z.object({ lat: z.coerce.number().finite().min(-90).max(90), lng: z.coerce.number().finite().min(-180).max(180), name: z.string().trim().min(1).max(200) }).strict();
+const attribute = (text: string) => text.replace(/&/gu, '&amp;').replace(/"/gu, '&quot;').replace(/</gu, '&lt;');
 export class AppFrames {
   private readonly servers: Server[] = [];
   private port = 0;
   private mainPort = 0;
   private readonly grants = new Map<string, Grant>();
   private readonly pages = new Map<string, Grant>();
+  /** Map pages by their address on the App server: the Google embed each one shows, and back. */
+  private readonly maps = new Map<string, string>();
+  private readonly mapTokens = new Map<string, string>();
   /** The last errors each live App reported, for agents reading the canvas. */
   private readonly recent = new Map<string, AppError[]>();
   constructor(private readonly store: Store, private readonly kit: AppKit, private readonly options: { browser?: BrowserService } = {}) {}
@@ -106,9 +113,24 @@ export class AppFrames {
   stop() { for (const server of this.servers) server.close(); this.servers.length = 0; this.port = 0; }
 
   /** The policy ros.ai's own pages carry: frames load only from here. The browser checks it before any navigation of an
-   * App's frame, so a page that sends its frame elsewhere (a link, a refresh, a script) is stopped before it asks. Google's
-   * keyless map embed (Google Maps blocks without a key) is the one page elsewhere, and only under google.com/maps. */
-  framePolicy(): string { return `frame-src ${this.port ? ['localhost', '127.0.0.1'].map(host => `http://${host}:${this.port}`).join(' ') : ''} ${GOOGLE_EMBED}`.replace(/\s+/gu, ' '); }
+   * App's frame, so a page that sends its frame elsewhere (a link, a refresh, a script) is stopped before it asks. That
+   * holds for every site: Google's keyless map embed is framed by a map page here (mapEmbed), not by ros.ai's page, so an
+   * App cannot send its frame, with its inputs in the address, to google.com/maps either. While the App server is not
+   * running no App page can load, so maps frame Google's embed directly, as they do in the demo. */
+  framePolicy(): string { return `frame-src ${this.port ? ['localhost', '127.0.0.1'].map(host => `http://${host}:${this.port}`).join(' ') : GOOGLE_EMBED}`; }
+  /** The address of a page here that shows Google's keyless map embed for a place (Google Maps blocks without a key).
+   * Each page shows one fixed embed under a random address, so an App that sends its frame here carries nothing to Google. */
+  mapEmbed(at: unknown, mainHost?: string): string {
+    if (!this.port) throw new StoreError('App pages are still starting. Try again in a moment.', 503);
+    const target = googleEmbedLink(at === null ? null : place.parse(at));
+    let token = this.mapTokens.get(target);
+    if (!token) {
+      token = randomBytes(24).toString('base64url');
+      for (const [oldest, embed] of this.maps) { if (this.maps.size < MAX_MAPS) break; this.maps.delete(oldest); this.mapTokens.delete(embed); }
+      this.maps.set(token, target); this.mapTokens.set(target, token);
+    }
+    return `http://${this.frameHost(mainHost)}:${this.port}/map/${token}`;
+  }
   /** The other loopback name than the one ros.ai's page is on, so App pages are another site to the browser. */
   private frameHost(mainHost?: string) { return /^localhost(:\d+)?$/iu.test(mainHost ?? '') ? '127.0.0.1' : 'localhost'; }
   private policy(): string {
@@ -116,7 +138,8 @@ export class AppFrames {
     const ancestors = ['127.0.0.1', 'localhost'].map(host => `http://${host}:${this.mainPort}`).join(' ');
     return ['sandbox allow-scripts', "default-src 'none'", `script-src 'unsafe-inline' 'unsafe-eval' ${kit}`, `style-src 'unsafe-inline' ${kit}`, 'img-src data: blob:', `font-src data: ${kit}`,
       'media-src data: blob:', "connect-src 'none'", "worker-src 'none'", "child-src 'none'", "frame-src 'none'", "object-src 'none'", "manifest-src 'none'", "form-action 'none'", "base-uri 'none'",
-      `frame-ancestors ${ancestors}`].join('; ');
+      // The kit's policy sees all HTML and script text first, and stops javascript: addresses (a new page without the kit).
+      "require-trusted-types-for 'script'", 'trusted-types default', `frame-ancestors ${ancestors}`].join('; ');
   }
   private serve(req: IncomingMessage, res: ServerResponse) {
     const end = (status: number, text: string) => { res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }).end(text); };
@@ -128,9 +151,26 @@ export class AppFrames {
     if (page) {
       const grant = this.pages.get(page[1]);
       if (!grant || grant.expires < Date.now()) return end(404, 'This App page has closed. Reload the App in ros.ai.');
+      // The kit seals the page before its own code runs, so no page goes out before the kit can.
+      if (!this.kit.file('ros.js')) {
+        this.kit.ready().then(() => this.serve(req, res), error => end(503, `App pages cannot open: the ros.ai kit could not be built. ${message(error)}`));
+        return;
+      }
+      const frame = appFrameLine(grant.source);
+      if (frame) return end(422, `ros.ai does not open this App page: line ${frame} holds a frame (an iframe, frame, object or embed tag). A frame is a page of its own that the App's seal cannot reach, so App pages cannot hold one. Show the content on the page itself.`);
       const body = Buffer.from(framedPage(grant.source), 'utf8');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length, 'Content-Security-Policy': this.policy(), 'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-DNS-Prefetch-Control': 'off', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+      res.end(req.method === 'HEAD' ? undefined : body);
+      return;
+    }
+    const map = /^\/map\/([A-Za-z0-9_-]{32})$/u.exec(path), embed = map ? this.maps.get(map[1]) : undefined;
+    if (map) {
+      if (!embed) return end(404, 'This map has closed. Reload it in ros.ai.');
+      const ancestors = ['127.0.0.1', 'localhost'].map(host => `http://${host}:${this.mainPort}`).join(' ');
+      const body = Buffer.from(`<!doctype html><meta charset="utf-8"><title>Google Maps</title><style>html,body{margin:0;height:100%;overflow:hidden}iframe{display:block;border:0;width:100%;height:100%}</style><iframe title="Google Maps" src="${attribute(embed)}" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', 'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Content-Security-Policy': ["default-src 'none'", "style-src 'unsafe-inline'", `frame-src ${GOOGLE_EMBED}`, "base-uri 'none'", "form-action 'none'", `frame-ancestors ${ancestors}`].join('; ') });
       res.end(req.method === 'HEAD' ? undefined : body);
       return;
     }
@@ -315,6 +355,12 @@ export class AppFrames {
     if (target.source !== undefined && target.source.length > APP_SOURCE_LIMIT) throw new StoreError(`An App page holds at most ${APP_SOURCE_LIMIT / 1000} KB.`);
     if ((target.inputs?.length ?? 0) > MAX_APP_INPUTS) throw new StoreError(`An App reads at most ${MAX_APP_INPUTS} blocks.`);
     const grant = this.issue(projectId, { ...target, mode: 'check', mainHost: `127.0.0.1:${this.mainPort}` });
+    const frameLine = appFrameLine(grant.source);
+    if (frameLine) {
+      this.revoke(grant.token);
+      return { version: grant.version, started: false, errors: [], failedCalls: [], reads: [], outline: '', leaves: appFlags(grant.source),
+        note: `ros.ai does not open this page: line ${frameLine} holds a frame (an iframe, frame, object or embed tag), and App pages cannot hold one. Show the content on the page itself.` };
+    }
     const window = await browser.checkWindow([`http://127.0.0.1:${this.mainPort}`, `http://localhost:${this.port}`]);
     try {
       await window.page.goto(`http://127.0.0.1:${this.mainPort}/app-check.html#${encodeURIComponent(JSON.stringify({ token: grant.token, url: grant.url, title: grant.title }))}`, { waitUntil: 'load' });
@@ -346,6 +392,11 @@ export class AppFrames {
 export function attachAppFrameRoutes(app: Express, frames: AppFrames | undefined) {
   const routeId = (value: unknown) => id.parse(value);
   app.get('/api/apps/settings', (_req, res) => res.json(frames?.settings() ?? { agents: false, running: false }));
+  // A Map block's Google embed: from the App server, or (without one, as in the demo) from Google itself.
+  app.get('/api/map-embed', (req, res) => {
+    const at = req.query.lat === undefined && req.query.lng === undefined && req.query.name === undefined ? null : place.parse(req.query);
+    res.json({ url: frames ? frames.mapEmbed(at, req.headers.host) : googleEmbedLink(at) });
+  });
   app.put('/api/apps/settings', (req, res) => {
     const { agents } = z.object({ agents: z.boolean() }).strict().parse(req.body);
     if (!frames) throw new StoreError('Apps run in ros.ai on your computer.', 409);

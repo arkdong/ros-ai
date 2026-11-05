@@ -8,10 +8,16 @@ type PdfModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 type RenderTask = import('pdfjs-dist/legacy/build/pdf.mjs').RenderTask;
 type TextLayer = import('pdfjs-dist/legacy/build/pdf.mjs').TextLayer;
+type PdfWorker = import('pdfjs-dist/legacy/build/pdf.mjs').PDFWorker;
 /** The file a block shows: its address (which changes with the file's version), type and size, a picture's or video's
  * pixel size and a video's length. */
 export type ShownFile = { src: string; mediaType: string; bytes?: number; image?: ImageSize; seconds?: number };
-const OPEN_DOCUMENTS = 12, ZOOMS = [50, 75, 100, 125, 150, 200, 300];
+const ZOOMS = [50, 75, 100, 125, 150, 200, 300];
+/** PDFs kept open while no card or sheet shows them, so opening one again is quick. Each holds its whole file. */
+const IDLE_DOCUMENTS = 4;
+/** A drawn page is capped at this many pixels (about 48 MB), so a page zoomed far in is drawn a little softer instead
+ * of taking hundreds of megabytes. */
+const MAX_PAGE_PIXELS = 12_000_000;
 /** The steps a picture zooms through, as a share of its own pixel size; Fit sits between the two that bracket it. */
 const PICTURE_ZOOMS = [25, 50, 75, 100, 150, 200, 300, 400];
 
@@ -21,23 +27,41 @@ let pdfjsLoad: Promise<PdfModule> | null = null;
 function loadPdfjs(): Promise<PdfModule> {
   return pdfjsLoad ??= Promise.all([import('pdfjs-dist/legacy/build/pdf.mjs'), import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')]).then(([pdfjs, worker]) => { pdfjs.GlobalWorkerOptions.workerSrc = worker.default; return pdfjs; });
 }
-const documents = new Map<string, Promise<PdfDocument>>();
-/** One open document per address. The address carries the file's version, so a replaced file is read again. */
-function openPdf(src: string): Promise<PdfDocument> {
-  const open = documents.get(src);
-  if (open) return open;
-  const document = loadPdfjs().then(pdfjs => pdfjs.getDocument({ url: src, disableRange: true, disableStream: true }).promise);
-  documents.set(src, document);
-  document.catch(() => documents.delete(src));
-  if (documents.size > OPEN_DOCUMENTS) { const [oldest] = documents; documents.delete(oldest[0]); void oldest[1].then(value => value.cleanup()).catch(() => undefined); }
-  return document;
+/** Every PDF is read in one pdf.js worker; a worker per PDF kept a copy of each file for as long as the page was open. */
+let pdfWorker: PdfWorker | null = null;
+type OpenPdf = { doc: Promise<PdfDocument>; users: number };
+/** The open documents, least recently used first. */
+const documents = new Map<string, OpenPdf>();
+/** One open document per address, shared by every card and sheet that shows it. The address carries the file's version,
+ * so a replaced file is read again. */
+function openPdf(src: string): OpenPdf {
+  const known = documents.get(src);
+  if (known) { documents.delete(src); documents.set(src, known); return known; }
+  const open: OpenPdf = { doc: loadPdfjs().then(pdfjs => {
+    if (!pdfWorker || pdfWorker.destroyed) pdfWorker = new pdfjs.PDFWorker();
+    return pdfjs.getDocument({ url: src, disableRange: true, disableStream: true, worker: pdfWorker }).promise;
+  }), users: 0 };
+  documents.set(src, open);
+  open.doc.catch(() => { if (documents.get(src) === open) documents.delete(src); });
+  return open;
+}
+/** Past IDLE_DOCUMENTS, the documents nothing shows are closed, longest unused first, which frees their files in the
+ * worker. A document something shows is never closed. */
+function closeIdlePdfs() {
+  const idle = [...documents].filter(([, open]) => open.users === 0);
+  for (const [src, open] of idle.slice(0, Math.max(0, idle.length - IDLE_DOCUMENTS))) {
+    documents.delete(src);
+    void open.doc.then(doc => doc.loadingTask.destroy()).catch(() => undefined);
+  }
 }
 function usePdf(src: string): { doc: PdfDocument | null; error: string } {
   const [state, setState] = useState<{ src: string; doc: PdfDocument | null; error: string }>({ src, doc: null, error: '' });
   useEffect(() => {
     let live = true;
-    openPdf(src).then(doc => { if (live) setState({ src, doc, error: '' }); }, (reason: unknown) => { if (live) setState({ src, doc: null, error: reason instanceof Error ? reason.message : 'The PDF could not be read.' }); });
-    return () => { live = false; };
+    const open = openPdf(src);
+    open.users++;
+    open.doc.then(doc => { if (live) setState({ src, doc, error: '' }); }, (reason: unknown) => { if (live) setState({ src, doc: null, error: reason instanceof Error ? reason.message : 'The PDF could not be read.' }); });
+    return () => { live = false; open.users--; closeIdlePdfs(); };
   }, [src]);
   return state.src === src ? state : { doc: null, error: '' };
 }
@@ -65,9 +89,9 @@ function useSettled(value: number, wait = 160): number {
   return settled === 0 ? value : settled;
 }
 
-/** One page drawn at a CSS width, sharp on high-density screens. The page is drawn off screen and then shown in one
- * step, so a redraw never blanks the page. A fluid page fills its box and scales while a new width is drawn. With
- * `text`, pdf.js lays the page's words over it as invisible text, so they can be selected and copied. */
+/** One page drawn at a CSS width, sharp on high-density screens up to MAX_PAGE_PIXELS. The page is drawn off screen and
+ * then shown in one step, so a redraw never blanks the page. A fluid page fills its box and scales while a new width is
+ * drawn. With `text`, pdf.js lays the page's words over it as invisible text, so they can be selected and copied. */
 function PdfPage({ doc, number, width, fluid = false, text = false, onRendered }: { doc: PdfDocument; number: number; width: number; fluid?: boolean; text?: boolean; onRendered?: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null), words = useRef<HTMLDivElement>(null);
   const rendered = useRef(onRendered); rendered.current = onRendered;
@@ -78,21 +102,33 @@ function PdfPage({ doc, number, width, fluid = false, text = false, onRendered }
       const base = page.getViewport({ scale: 1 }), ratio = window.devicePixelRatio || 1;
       const scale = width / base.width;
       if (!(scale > 0)) return;
-      const viewport = page.getViewport({ scale: scale * ratio }), drawn = document.createElement('canvas');
+      const sharp = Math.min(scale * ratio, Math.sqrt(MAX_PAGE_PIXELS / (base.width * base.height)));
+      const viewport = page.getViewport({ scale: sharp }), drawn = document.createElement('canvas');
       drawn.width = Math.floor(viewport.width); drawn.height = Math.floor(viewport.height);
       task = page.render({ canvas: drawn, viewport });
       return task.promise.then(() => {
         const element = canvas.current;
-        if (!live || !element) return;
-        element.width = drawn.width; element.height = drawn.height;
-        element.getContext('2d')?.drawImage(drawn, 0, 0);
-        if (fluid) { element.style.width = '100%'; element.style.height = 'auto'; }
-        else { element.style.width = `${Math.floor(viewport.width / ratio)}px`; element.style.height = `${Math.floor(viewport.height / ratio)}px`; }
-        rendered.current?.();
+        if (live && element) {
+          element.width = drawn.width; element.height = drawn.height;
+          element.getContext('2d')?.drawImage(drawn, 0, 0);
+          if (fluid) { element.style.width = '100%'; element.style.height = 'auto'; }
+          else { element.style.width = `${Math.floor(width)}px`; element.style.height = `${Math.floor(base.height * scale)}px`; }
+          rendered.current?.();
+        }
+        // The browser frees a canvas's pixels sooner once it has none.
+        drawn.width = 0; drawn.height = 0;
       });
     }).catch((error: unknown) => { if (live && !(error instanceof Error && error.name === 'RenderingCancelledException')) console.error(`Page ${number} could not be drawn`, error); });
     return () => { live = false; task?.cancel(); };
   }, [doc, number, width, fluid]);
+  // A page that leaves the view gives back its pixels and what pdf.js kept to draw it.
+  useEffect(() => {
+    const element = canvas.current;
+    return () => {
+      if (element) { element.width = 0; element.height = 0; }
+      void doc.getPage(number).then(page => page.cleanup()).catch(() => undefined);
+    };
+  }, [doc, number]);
   useEffect(() => {
     const element = words.current;
     if (!text || !element) return;
@@ -166,7 +202,7 @@ function PicturePreview({ file, title, missing, onSize }: { file: ShownFile; tit
     onLoad={event => onSize?.({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setFailed(file.src)}/>;
 }
 /** The card's PDF: every page under the one before, scrolled with the wheel like a Notion page card (nowheel keeps the
- * wheel off the canvas). Page 1 is drawn at once and the rest as they come near the view. */
+ * wheel off the canvas). Page 1 is drawn at once, the rest as they come near the view, and pages far from it are not. */
 function PdfPreview({ file }: { file: ShownFile }) {
   // While the card is resized the drawn pages scale with it; they are drawn again once the width settles.
   const box = useRef<HTMLDivElement>(null), width = useSettled(useWidth(box)), { doc, error } = usePdf(file.src), sizes = usePageSizes(doc);
@@ -188,8 +224,9 @@ function usePageSizes(doc: PdfDocument | null): { width: number; height: number 
   }, [doc]);
   return sizes && sizes.doc === doc ? sizes.all : [];
 }
-/** The pages (counted from 1) that have come within a view's height or two of a scroll box; once near, a page stays drawn.
- * `onUpdate` hears the box after each check, for the page counter. */
+/** The pages (counted from 1) within a view's height above a scroll box's view or two below it. Only these are drawn: a
+ * page that moves further away is let go and drawn again when it comes back, so a long PDF holds a few pages, not every
+ * page scrolled past. `onUpdate` hears the box after each check, for the page counter. */
 function useNearPages(box: RefObject<HTMLElement | null>, total: number, layout: unknown, onUpdate?: (element: HTMLElement, pages: HTMLElement[]) => void): Set<number> {
   const [shown, setShown] = useState<Set<number>>(() => new Set([1, 2]));
   const heard = useRef(onUpdate); heard.current = onUpdate;
@@ -200,7 +237,8 @@ function useNearPages(box: RefObject<HTMLElement | null>, total: number, layout:
       const pages = Array.from(element.querySelectorAll<HTMLElement>('.pdf-page-box'));
       const top = element.scrollTop, near = new Set<number>();
       pages.forEach((page, index) => { if (page.offsetTop < top + element.clientHeight * 2 && page.offsetTop + page.offsetHeight > top - element.clientHeight) near.add(index + 1); });
-      setShown(previous => { const next = new Set([...previous, ...near]); return next.size === previous.size ? previous : next; });
+      // A box with no height yet says nothing about which pages are near, so the first pages stay until it has one.
+      if (element.clientHeight) setShown(previous => near.size === previous.size && [...near].every(page => previous.has(page)) ? previous : near);
       heard.current?.(element, pages);
     };
     update();

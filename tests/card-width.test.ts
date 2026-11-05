@@ -27,7 +27,7 @@ test('card width is optional on existing records and saved resizing stays outsid
     assert.deepEqual(store.getProject(project.id).canvas.nodes[0], { ...original, width: 575 });
     assert.equal(store.undo(project.id).canvas.nodes.length, 0);
     assert.deepEqual(store.redo(project.id).canvas.nodes[0], { ...original, width: 575 });
-    assert.equal(Object.hasOwn(store.listChanges(project.id)[1].canvas.nodes[0], 'width'), false, 'Old history is never backfilled');
+    assert.equal(Object.hasOwn(store.getChange(project.id, store.listChanges(project.id)[1].id).canvas.nodes[0], 'width'), false, 'Old history is never backfilled');
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

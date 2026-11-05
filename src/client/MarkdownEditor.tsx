@@ -80,6 +80,10 @@ function activeLines(view: EditorView) {
 function livePreview(view: EditorView): DecorationSet {
   const { state } = view, found: Range<Decoration>[] = [], active = activeLines(view);
   const isActive = (pos: number) => active.has(state.doc.lineAt(pos).number);
+  // A view plugin may not hide a line break: CodeMirror refuses and the editor stops. A mark that spans lines (a link whose
+  // address was wrapped onto the next line, say) stays visible as written.
+  const oneLine = (from: number, to: number) => !state.sliceDoc(from, to).includes('\n');
+  const replace = (decoration: Decoration, from: number, to: number) => { if (oneLine(from, to)) found.push(decoration.range(from, to)); };
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({ from, to, enter: node => {
       const name = node.name;
@@ -94,36 +98,36 @@ function livePreview(view: EditorView): DecorationSet {
         return false;
       }
       if (name === 'HorizontalRule') {
-        if (!isActive(node.from)) found.push(Decoration.replace({ widget: new Rule() }).range(node.from, node.to));
+        if (!isActive(node.from)) replace(Decoration.replace({ widget: new Rule() }), node.from, node.to);
         return;
       }
       if (isActive(node.from)) return;
       if (name === 'HeaderMark') {
         // Hide "## " including the space after it.
         const end = state.sliceDoc(node.to, node.to + 1) === ' ' ? node.to + 1 : node.to;
-        found.push(hide.range(node.from, end));
+        replace(hide, node.from, end);
       } else if (name === 'EmphasisMark' || name === 'StrikethroughMark' || name === 'QuoteMark') {
         const end = name === 'QuoteMark' && state.sliceDoc(node.to, node.to + 1) === ' ' ? node.to + 1 : node.to;
-        found.push(hide.range(node.from, end));
+        replace(hide, node.from, end);
       } else if (name === 'CodeMark' && node.node.parent?.name === 'InlineCode') {
-        found.push(hide.range(node.from, node.to));
+        replace(hide, node.from, node.to);
       } else if (name === 'Link') {
-        // [text](url): keep the text, hide the brackets and the address.
+        // [text](url): keep the text, hide the brackets and the address. A link wrapped over lines shows as written.
         const marks = node.node.getChildren('LinkMark'), url = node.node.getChild('URL');
-        if (marks.length >= 2) {
-          found.push(hide.range(marks[0].from, marks[0].to));
-          found.push(hide.range(marks[1].from, (marks.at(-1)!).to));
+        if (marks.length >= 2 && oneLine(marks[1].from, marks.at(-1)!.to)) {
+          replace(hide, marks[0].from, marks[0].to);
+          replace(hide, marks[1].from, marks.at(-1)!.to);
           found.push(Decoration.mark({ class: 'cm-md-link', attributes: url ? { title: state.sliceDoc(url.from, url.to) } : {} }).range(marks[0].to, marks[1].from));
         }
         return false;
       } else if (name === 'ListMark') {
         const item = node.node.parent, task = item?.getChild('Task');
         const end = state.sliceDoc(node.to, node.to + 1) === ' ' ? node.to + 1 : node.to;
-        if (task) found.push(hide.range(node.from, end));
-        else if (item?.parent?.name === 'BulletList') found.push(Decoration.replace({ widget: new Bullet() }).range(node.from, node.to));
+        if (task) replace(hide, node.from, end);
+        else if (item?.parent?.name === 'BulletList') replace(Decoration.replace({ widget: new Bullet() }), node.from, node.to);
       } else if (name === 'TaskMarker') {
         const checked = /x/i.test(state.sliceDoc(node.from, node.to));
-        found.push(Decoration.replace({ widget: new Checkbox(checked, node.from) }).range(node.from, node.to));
+        replace(Decoration.replace({ widget: new Checkbox(checked, node.from) }), node.from, node.to);
         if (checked) { const line = state.doc.lineAt(node.to), start = node.to + (/^\s*/.exec(state.sliceDoc(node.to, line.to))?.[0].length ?? 0); if (line.to > start) found.push(Decoration.mark({ class: 'cm-md-done' }).range(start, line.to)); }
       }
     } });

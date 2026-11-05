@@ -15,6 +15,7 @@ import { PLUGINS, type PluginId, type TokenPluginId } from '../shared/plugins.js
 import type { CredentialProvider } from '../shared/tool-connections.js';
 import type { SearchServiceStatus } from '../shared/search.js';
 import { NOT_NOW_DAYS, suggestionConnect, type PluginReadiness, type SuggestionStatus } from '../shared/plugin-hints.js';
+import { openToOthers } from './private-file.js';
 
 export const pluginIdSchema = z.enum(PLUGINS.map(plugin => plugin.id) as [PluginId, ...PluginId[]]);
 const silenceSchema = z.object({ pluginId: pluginIdSchema, projectId: z.string().min(1).max(200).nullable(), until: z.iso.datetime().nullable(), at: z.iso.datetime() }).strict();
@@ -33,7 +34,7 @@ export class PluginSuggestions {
     const fd = openSync(this.file, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const info = fstatSync(fd);
-      if (!info.isFile() || info.size > 400_000 || (info.mode & 0o077) !== 0) throw new Error('Invalid private suggestions file.');
+      if (!info.isFile() || info.size > 400_000 || openToOthers(info.mode)) throw new Error('Invalid private suggestions file.');
       this.saved = savedSchema.parse(JSON.parse(readFileSync(fd, 'utf8')));
     } catch { throw new Error('Could not read the plugin suggestion settings. Ensure suggestions.json is valid and readable only by its owner.'); }
     finally { closeSync(fd); }

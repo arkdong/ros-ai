@@ -14,9 +14,9 @@ type SandboxAdmission = { runId: string; reservedUsd: number; at: string };
 export function usageProject(store: Store, row: UsageRecord): string | undefined {
   const trace = object(row.reportedUsage);
   if (typeof trace.projectId === 'string' && trace.projectId) return trace.projectId;
-  if (row.runId) {
-    try { return store.getRun(row.runId).projectId; } catch { /* Unattributed records stay outside project totals. */ }
-  }
+  // Unattributed records stay outside project totals.
+  const runProject = row.runId ? store.runProjectId(row.runId) : undefined;
+  if (runProject) return runProject;
   if (typeof trace.assistantTurnId === 'string') {
     const turn = store.record<{ projectId: string }>('assistant-turn', trace.assistantTurnId);
     if (typeof turn?.projectId === 'string') return turn.projectId;
@@ -37,7 +37,7 @@ export function projectBudgetReport(store: Store, projectId: string, options: {
   const projectRuns = new Map(store.listRuns(projectId).map(run => [run.id, run]));
   const owner = (row: UsageRecord) => usageProject(store, row);
   const nodeTitle = (run: Run | undefined) => run ? project.canvas.nodes.find(node => node.id === run.nodeId)?.title ?? run.node.title : null;
-  const allUsage = store.listUsage();
+  const allUsage = store.usageLedger();
   const entries: BudgetUsage[] = allUsage.filter(row => owner(row) === projectId).map(row => {
     const trace = object(row.reportedUsage), response = object(trace.response), usage = object(response.usage);
     return {
@@ -93,7 +93,7 @@ const modelName = (id: string) => { const short = id.split('/').pop()!, nemotron
 export function usageAnalytics(store: Store, connectionNames: Record<string, string> = {}, now = new Date()): UsageAnalytics {
   const projects = new Map([...store.listProjects(), ...store.listTrashedProjects()].map(project => [project.id, project]));
   const runs = new Map<string, Run>();
-  const events: UsageEvent[] = store.listUsage().map(row => {
+  const events: UsageEvent[] = store.usageLedger().map(row => {
     const trace = object(row.reportedUsage), response = object(trace.response), usage = object(response.usage);
     const projectId = usageProject(store, row) ?? null, project = projectId ? projects.get(projectId) : undefined;
     let run: Run | undefined;

@@ -4,7 +4,7 @@ import { ArrowUpRight, LoaderCircle, Route, Search, X } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { MapPin, MapView } from '../shared/types';
-import { MAX_MAP_PINS, MAX_ROUTE_STOPS, googleMapsLink, googleRouteLink, pointInLink } from '../shared/maps';
+import { MAX_MAP_PINS, MAX_ROUTE_STOPS, googleEmbedLink, googleMapsLink, googleRouteLink, pinLink, pointInLink } from '../shared/maps';
 import { api } from './api';
 import { stop } from './live-block';
 import './live-block.css';
@@ -36,7 +36,7 @@ export function MapBlock({ view, full = false, onPins }: { view: MapView; full?:
     {full && pins.length > 0 && <ol className="map-block-pins">{pins.map((pin, index) => <li key={pin.id} className={pin.id === active ? 'active' : undefined}>
       <button type="button" className="map-block-pin" onClick={() => setActive(pin.id)}><span className="map-block-number">{index + 1}</span><span className="map-block-name"><b>{pin.name}</b>{pin.place && pin.place !== pin.name && <small>{pin.place}</small>}{pin.note && <span>{pin.note}</span>}</span></button>
       <span className="map-block-links">
-        {pin.url && <a href={pin.url} target="_blank" rel="noreferrer">Website</a>}
+        {pinLink(pin.url) && <a href={pinLink(pin.url)} target="_blank" rel="noreferrer">Website</a>}
         <a href={googleMapsLink(pin)} target="_blank" rel="noreferrer">Google Maps <ArrowUpRight size={11}/></a>
         {onPins && <button type="button" className="icon-button" aria-label={`Take ${pin.name} off the map`} title="Take off the map" onClick={() => { if (active === pin.id) setActive(null); void onPins(pins.filter(item => item.id !== pin.id)); }}><X size={13}/></button>}
       </span>
@@ -168,12 +168,26 @@ function useGoogleMaps(wanted: boolean): { maps?: Maps; embed?: boolean; problem
 
 /** Google's keyless embed, the one Google's own Share › Embed a map gives: the chosen place, else the first. It cannot
  * draw the other pins; on a card it is still, so the card drags. */
+/** Google's keyless embed for a place, from a page on ros.ai's App server: ros.ai's own page frames nothing from the
+ * web, so an App block cannot send its frame there either. Without that server (the demo), Google's own address. */
+function useMapEmbed(place: { lat: number; lng: number; name: string } | null): string | null {
+  const query = place ? new URLSearchParams({ lat: place.lat.toFixed(6), lng: place.lng.toFixed(6), name: place.name }).toString() : '';
+  const [shown, setShown] = useState<{ query: string; url: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<{ url: string }>(`/api/map-embed${query ? `?${query}` : ''}`).then(({ url }) => url, () => googleEmbedLink(place)).then(url => { if (live) setShown({ query, url }); });
+    return () => { live = false; };
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps -- the query names the place, which is a new object on every render
+  return shown?.query === query ? shown.url : null;
+}
+
 function GoogleEmbed({ pins, active, full }: Surface) {
   const pin = pins.find(item => item.id === active) ?? pins[0];
-  if (!pin) return <div className={`map-block-map google${full ? ' nodrag nowheel' : ''}`} aria-label={mapLabel(pins)}><iframe title="Google Maps" src="https://www.google.com/maps?q=&z=2&output=embed" loading="lazy" referrerPolicy="no-referrer-when-downgrade"/></div>;
+  const src = useMapEmbed(pin ? { lat: pin.lat, lng: pin.lng, name: pin.name } : null);
+  const frame = (title: string) => src ? <iframe key={src} title={title} src={src} loading="lazy"/> : null;
+  if (!pin) return <div className={`map-block-map google${full ? ' nodrag nowheel' : ''}`} aria-label={mapLabel(pins)}>{frame('Google Maps')}</div>;
   const query = `${pin.place?.trim() || pin.name} @${pin.lat.toFixed(6)},${pin.lng.toFixed(6)}`;
-  const src = `https://www.google.com/maps?${new URLSearchParams({ q: `${pin.lat.toFixed(6)},${pin.lng.toFixed(6)} (${pin.name})`, z: '16', output: 'embed' })}`;
-  return <div className={`map-block-map google${full ? ' nodrag nowheel' : ' still'}`} aria-label={`Google Maps at ${query}`}><iframe key={src} title={`${pin.name} on Google Maps`} src={src} loading="lazy" referrerPolicy="no-referrer-when-downgrade"/></div>;
+  return <div className={`map-block-map google${full ? ' nodrag nowheel' : ' still'}`} aria-label={`Google Maps at ${query}`}>{frame(`${pin.name} on Google Maps`)}</div>;
 }
 
 /** Google's own map, with the same numbered pins. */

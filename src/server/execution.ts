@@ -82,9 +82,9 @@ type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;li
 type Active = {controller:AbortController;done:Promise<void>};
 export class BudgetLedger {
   constructor(private readonly store:Store,readonly limits:{nebius:number;tavily:number;openai?:number},readonly authorizationId?:string,readonly maxRequests=Number.MAX_SAFE_INTEGER) {}
-  accounted(provider:'nebius'|'tavily'|'openai') { return this.store.listUsage().filter(r=>r.provider===provider && (provider==='tavily'||!this.authorizationId || (r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId)).reduce((total,r)=>total+Math.max(r.reservedUsd,r.estimatedUsd ?? 0),0); }
+  accounted(provider:'nebius'|'tavily'|'openai') { return this.store.usageLedger().filter(r=>r.provider===provider && (provider==='tavily'||!this.authorizationId || (r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId)).reduce((total,r)=>total+Math.max(r.reservedUsd,r.estimatedUsd ?? 0),0); }
   reserve(provider:'nebius'|'tavily'|'openai',amount:number,purpose:string,basis:string,runId?:string,trace:unknown=null):UsageRecord {
-    if (this.authorizationId && this.store.listUsage().filter(r=>(r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId).length>=this.maxRequests) throw new Error('Fresh authorization request limit reached; no automatic retry or extra provider call is permitted.');
+    if (this.authorizationId && this.store.usageLedger().filter(r=>(r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId).length>=this.maxRequests) throw new Error('Fresh authorization request limit reached; no automatic retry or extra provider call is permitted.');
     if (!Number.isFinite(amount) || amount <= 0 || this.accounted(provider)+amount > (this.limits[provider]??0)) throw new Error(`${provider} verification budget admission refused. Conservative reservations would exceed the $${(this.limits[provider]??0)} ceiling.`);
     const record:UsageRecord = {id:randomUUID(),provider,purpose,runId,reservedUsd:amount,estimatedUsd:null,reportedUsage:this.authorizationId?{...(trace as object ?? {}),authorizationId:this.authorizationId}:trace,status:'reserved',basis,createdAt:now()};
     this.store.addUsage(record);
@@ -142,7 +142,7 @@ export class ExecutionService {
     this.ledger = new BudgetLedger(store,{nebius,tavily},this.authorization?.id,this.authorization?.maxRequests);
     this.connectionBudgets = new ConnectionBudgets(store,provider=>this.environmentBudget(provider),()=>this.comparisonBudget?'Historical comparison mode cannot use an app connection allowance. Its exact environment grant remains restricted to the saved comparison projects and models. Remove comparison mode in server configuration and restart before ordinary app-authorized research.':null);
     this.comparisonBudget?.validateProviderSettings(this.authorization?.id,nebius,openaiId,openaiUsd);
-    if (options.includeSetupUsage === true && !store.listUsage().some(r=>r.id==='setup-tavily-2026-09-20')) {
+    if (options.includeSetupUsage === true && !store.getUsage('setup-tavily-2026-09-20')) {
       store.addUsage({id:'setup-tavily-2026-09-20',provider:'tavily',purpose:'Prior credential setup: one basic search, September 20',reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:TAVILY_CREDIT_USD,reportedUsage:null,status:'uncertain',basis:'Official basic search: 1 credit, $0.008/credit PAYG upper bound; original setup request did not return measured usage.',createdAt:now()});
     }
   }
@@ -173,7 +173,7 @@ export class ExecutionService {
   private environmentBudget(provider:ConnectionBudgetProvider):EnvironmentConnectionBudget {
     if(provider==='claude')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:'Save a Claude Code allowance before paid turns. A saved API key does not authorize spending.'};
     if(provider==='exa'||provider==='brave')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:`Save ${aSearchLabel(provider)} allowance before paid research. A saved API key does not authorize spending.`};
-    const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.listUsage();
+    const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.usageLedger();
     const enabled=this.legacyCloudAllowed(provider),limitUsd=ledger.limits[provider]??0,accountedUsd=ledger.accounted(provider);
     const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;
     let ready=enabled&&accountedUsd<limitUsd&&usedRequests<ledger.maxRequests;

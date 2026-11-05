@@ -224,6 +224,14 @@ export class SkillLibrary {
   private candidate(all: Files, origin: SkillOrigin, folder?: string): { candidate: SkillCandidate; files: Files } {
     // Hidden files (.git, .env, .DS_Store) are left out, as the library never reads them.
     const files = all.filter(file => !file.path.split('/').some(part => part.startsWith('.')));
+    // Two entries at one path would be written one over the other, so what was added could differ from what was shown.
+    // Names that differ only in capitals or in how an accent is written count as one, as they are one file on a Mac.
+    const paths = new Set<string>();
+    for (const file of files) {
+      const key = file.path.normalize('NFC').toLowerCase();
+      if (paths.has(key)) throw new StoreError(`This skill holds ${file.path.slice(0, 200)} more than once, so what it would add is not what you would review. Ask its author for a copy with each file once.`);
+      paths.add(key);
+    }
     const skill = files.find(file => file.path === 'SKILL.md');
     if (!skill) throw new StoreError('There is no SKILL.md here, so this is not a skill.');
     if (skill.data.length > SKILL_LIMITS.skillMd) throw new StoreError('This SKILL.md is larger than 256 KB.');

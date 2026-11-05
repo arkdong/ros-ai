@@ -46,7 +46,7 @@ export function resolveModelSetting(settings: ProjectModelSettings, nodes: reado
   let id = nodeId;
   while (id && !visited.has(id)) {
     visited.add(id);
-    if (settings.overrides[id]) return { selection: settings.overrides[id], inheritedFrom: id };
+    if (Object.hasOwn(settings.overrides, id) && settings.overrides[id]) return { selection: settings.overrides[id], inheritedFrom: id };
     id = byId.get(id)?.parentId;
   }
   return { selection: settings.default, inheritedFrom: null };

@@ -58,6 +58,18 @@ test('a session reports waiting while a site waits for the person, so wall-clock
   } finally { proxy.close(); }
 });
 
+test('every way of writing an address on this computer is refused, even with Full network', async () => {
+  const gate = new NetworkGate(memoryStore()); let asked = 0;
+  gate.subscribe(event => { if (event.type === 'request') asked++; });
+  gate.setMode('full');
+  const proxy = await gate.open('p1', 'A notebook');
+  try {
+    for (const host of ['[::ffff:7f00:1]', '[0:0:0:0:0:ffff:127.0.0.1]', '[::ffff:127.0.0.1]', '[::127.0.0.1]', '[0:0:0:0:0:0:0:1]', '[::1]', '[::]', '[64:ff9b::7f00:1]', '[2002:7f00:1::]', '[fe80::1]', '0.0.0.0', '169.254.169.254', '127.1'])
+      assert.match(await connectStatus(proxy.port, `${host}:4310`), /^403 .* is on this computer/u, host);
+    assert.equal(asked, 0);
+  } finally { proxy.close(); }
+});
+
 test('a question nobody answers refuses every connection that waits on it, and the session stops waiting', async () => {
   const gate = new NetworkGate(memoryStore(), 200); let asked = 0;
   gate.subscribe(event => { if (event.type === 'request') asked++; });

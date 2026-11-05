@@ -10,6 +10,7 @@ import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprot
 import { StoreError } from './store.js';
 import { followScript } from './sign-in-window.js';
 import type { AppAccountStatus, AppConnectionStatus, TokenPluginId } from '../shared/plugins.js';
+import { openToOthers } from './private-file.js';
 
 /** How ros.ai reaches an app's own tools:
  * sign-in: its hosted MCP server, after the person approves ros.ai in the browser. ros.ai registers itself
@@ -128,7 +129,7 @@ function readPrivate(file: string, valid: (value: { version?: number; apps?: unk
   const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = fstatSync(fd);
-    if (!info.isFile() || info.size > 200_000 || (info.mode & 0o077) !== 0) throw new Error('invalid');
+    if (!info.isFile() || info.size > 200_000 || openToOthers(info.mode)) throw new Error('invalid');
     const value = JSON.parse(readFileSync(fd, 'utf8')) as { version?: number; apps?: Record<string, unknown> };
     if (!valid(value) || typeof value.apps !== 'object' || !value.apps) throw new Error('invalid');
     return value.apps;

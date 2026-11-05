@@ -154,6 +154,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // Removing a project keeps its folder unless the person asks for the folder to go to the computer's Trash too.
   app.post('/api/projects/:id/trash',async(req,res)=>{
     const id=routeId(req.params.id),{files}=z.object({files:z.boolean().optional()}).strict().parse(req.body??{});
+    // ROS lets the project go first, so nothing of a stopped turn or of ROS arranging comes back to a project in Trash.
+    await assistant?.letGo(id);
     const project=store.trashProject(id);
     folders?.release(id);
     if(files&&folders)try{await folders.moveFolderToTrash(id);}catch(error){store.restoreProject(id);folders.resume(id);throw error;}
@@ -167,6 +169,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Notebook cards show Python still working after their notebook closes, and the page keeps reading until it stops.
     res.json(running?.size ? { ...detail, notebooks: detail.notebooks?.map(summary => running.has(summary.nodeId) ? { ...summary, running: true } : summary) } : detail);
   });
+  // One saved change with its canvas, for looking at the canvas as it was then. The project page lists changes without them.
+  app.get('/api/projects/:id/changes/:changeId', (req, res) => res.json(store.getChange(routeId(req.params.id), routeId(req.params.changeId))));
   app.post('/api/projects/:id/mutations', (req, res) => {
     const body = z.object({ operations: z.array(z.unknown()).min(1).max(500), label: z.string().min(1).max(240), expectedRevision: z.number().int().nonnegative().optional(), undoableLayout: z.boolean().optional() }).strict().parse(req.body);
     res.json(store.mutate(routeId(req.params.id), body.operations as never, body.label, body.expectedRevision, { undoableLayout: body.undoableLayout }));

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import { reviewCode, type CodeReview } from './review-code.js';
-import type { ApprovalMode, ResearchPolicy, ResearchUsage, ReviewDecision } from '../shared/research.js';
+import { approvalModeFor, type ApprovalMode, type ResearchPolicy, type ResearchUsage, type ReviewDecision } from '../shared/research.js';
 import { canvasChange, type CanvasChange } from '../shared/canvas-position.js';
 import { groupMembers } from '../shared/groups.js';
 import type { Canvas, Mutation } from '../shared/types.js';
@@ -32,13 +32,14 @@ export class Authority {
   override(projectId:string,nodeId:string,mode:ApprovalMode|null){
     if(!this.store.getProject(projectId).canvas.nodes.some(n=>n.id===nodeId))throw new StoreError('Node not found.');
     const policy=this.policy(projectId);
-    if(mode===null)delete policy.overrides[nodeId]; else policy.overrides[nodeId]=modeSchema.parse(mode);
+    // Defined, not assigned, so even a block saved with a reserved id gets its own entry.
+    if(mode===null)delete policy.overrides[nodeId]; else Object.defineProperty(policy.overrides,nodeId,{value:modeSchema.parse(mode),enumerable:true,writable:true,configurable:true});
     policy.revision++;return this.store.saveRecord('policy',projectId,projectId,policy);
   }
-  mode(projectId:string,nodeId:string):ApprovalMode {const p=this.policy(projectId);return p.overrides[nodeId]??p.mode;}
+  mode(projectId:string,nodeId:string):ApprovalMode {return approvalModeFor(this.policy(projectId),nodeId);}
   setStopped(projectId:string,stopped:boolean){const p=this.policy(projectId);return this.store.saveRecord('policy',projectId,projectId,{...p,stopped,revision:p.revision+1});}
   review(projectId:string,action:Action,p=this.policy(projectId)):ReviewDecision {
-    const mode=p.overrides[action.nodeId]??p.mode;
+    const mode=approvalModeFor(p,action.nodeId);
     let outcome:ReviewDecision['outcome']='allow',reason=mode==='full'?'Full access runs work without asking.':'Approved automatically.';
     if(p.stopped){outcome='deny';reason='Project research is stopped. Resume explicitly before new work.';}
     else if(mode==='ask'){outcome='escalate';reason='Ask every time requires approval of this exact action.';}
