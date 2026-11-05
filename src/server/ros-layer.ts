@@ -238,6 +238,8 @@ export class RosLayer {
     const waitMs = waited ? Date.now() - waitFrom : 0;
     // The person carried on before the answer went on the map, perhaps asking for just that: Put this on the map stays.
     if (waited && plan.rescue) { record('nothing', { engine, fallback, askMs, waitMs }); return { layer: { state: 'skipped', engine, note: 'You carried on first, so the answer stays in chat.' } }; }
+    // Stopped while the answer came back (the thread was deleted, or the project went to Trash): nothing is proposed.
+    signal.throwIfAborted();
     try {
       const made = this.propose(input, this.look(input, false), plan, engine, fallback);
       if (!made) { record('nothing', { engine, fallback }); return { layer: { state: 'skipped', engine, note: 'Everything already had its place.' } }; }
