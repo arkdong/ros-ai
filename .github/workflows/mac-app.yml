@@ -94,6 +94,9 @@ jobs:
           [ -n "$app" ] || { echo "::error::The installer put no ros-ai.exe under $LOCALAPPDATA/Programs."; ls "$LOCALAPPDATA/Programs" || true; find "$LOCALAPPDATA" "$PROGRAMFILES" -maxdepth 3 -iname 'ros-ai.exe' 2>/dev/null || true; exit 1; }
           echo "Installed at $app"; ls "$(dirname "$app")"
           mkdir -p smoke
+          # A saved key, as after a sign-in or an added API key: the app must still start with one, although Windows
+          # reports every file as readable by everyone.
+          data="$(cygpath -u "$RUNNER_TEMP")/ros-ai-data"; mkdir -p "$data"; printf '%s' '{"version":1,"keys":{}}' > "$data/tool-credentials.json"
           ROS_DESKTOP_SMOKE="$(cygpath -w "$PWD/smoke/windows-first-window.png")" ROS_DATA_DIR="$(cygpath -w "$RUNNER_TEMP/ros-ai-data")" ROS_UPDATE_URL=off \
             timeout 300 "$app" || true
           log="$APPDATA/ros.ai/desktop/logs/server.log"

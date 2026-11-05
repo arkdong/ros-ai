@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { StoreError } from './store.js';
 import { NEBIUS_BASE } from './providers.js';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections.js';
+import { openToOthers } from './private-file.js';
 
 const names = { nebius: 'NEBIUS_API_KEY', claude: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', tavily: 'TAVILY_API_KEY', exa: 'EXA_API_KEY', brave: 'BRAVE_API_KEY', 'google-maps': 'GOOGLE_MAPS_API_KEY' } as const;
 const providerSchema = z.enum(['nebius', 'claude', 'openai', 'tavily', 'exa', 'brave', 'google-maps']);
@@ -27,7 +28,7 @@ export class ToolCredentials {
       const fd = openSync(this.file, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
         const info = fstatSync(fd);
-        if (!info.isFile() || info.size > 20000 || (info.mode & 0o077) !== 0) throw new Error('Invalid private credential file.');
+        if (!info.isFile() || info.size > 20000 || openToOthers(info.mode)) throw new Error('Invalid private credential file.');
         this.keys = savedSchema.parse(JSON.parse(readFileSync(fd, 'utf8'))).keys;
       } catch { throw new Error('Could not read private tool credentials. Ensure the file is valid and readable only by its owner.'); }
       finally { closeSync(fd); }

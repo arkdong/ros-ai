@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { connectionBudgetProviders } from '../shared/connection-budgets.js';
 import type { ConnectionBudgets } from './connection-budgets.js';
+import { openToOthers } from './private-file.js';
 
 /** Only keys, tokens and starting allowances come from the keys file; it cannot move data folders or ports. */
 const ALLOWED = /^(?:[A-Z][A-Z0-9_]*_API_KEY|NOTION_TOKEN|ROS_START_ALLOWANCE_[A-Z]+_(?:USD|REQUESTS))$/u;
@@ -25,7 +26,7 @@ export function loadLocalKeys(): string | null {
   try {
     const info = fstatSync(fd);
     if (!info.isFile() || info.size > 20000) throw new Error(`The keys file ${file} is not a small plain file.`);
-    if ((info.mode & 0o077) !== 0) throw new Error(`The keys file ${file} can be read by other users. Run: chmod 600 "${file}"`);
+    if (openToOthers(info.mode)) throw new Error(`The keys file ${file} can be read by other users. Run: chmod 600 "${file}"`);
     values = parse(readFileSync(fd, 'utf8'));
   } finally { closeSync(fd); }
   const ignored = Object.keys(values).filter(name => !ALLOWED.test(name));

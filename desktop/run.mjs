@@ -21,8 +21,13 @@ const args = process.argv.slice(2);
 const building = args.includes('--build'), prod = args.includes('--prod');
 const rest = args.filter(arg => arg !== '--build' && arg !== '--prod' && arg !== '--');
 const windows = process.platform === 'win32', npm = windows ? 'npm.cmd' : 'npm';
+/** On Windows a .cmd starts only through cmd.exe, which splits a bare path at its spaces (C:\Program Files\nodejs,
+ * C:\Users\Jane Doe): a .cmd goes through it as one line with every part quoted, and everything else, Node itself
+ * included, starts directly. */
+const viaShell = command => windows && /\.cmd$/i.test(command);
+const line = (command, commandArgs) => [command, ...commandArgs].map(part => `"${part}"`).join(' ');
 const run = (command, commandArgs, options = {}) => {
-  const result = spawnSync(command, commandArgs, { stdio: 'inherit', shell: windows, ...options });
+  const result = viaShell(command) ? spawnSync(line(command, commandArgs), { stdio: 'inherit', shell: true, ...options }) : spawnSync(command, commandArgs, { stdio: 'inherit', ...options });
   if (result.error) { console.error(`${command} could not start: ${result.error.message}`); process.exit(1); }
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
@@ -91,5 +96,5 @@ function macDevApp() {
 // Keys and allowances come from the usual places (keys file, data folder), never from this shell.
 const env = { ...process.env, ...(prod ? {} : { ROS_DEV: '1' }) };
 const electron = process.platform === 'darwin' ? macDevApp() : bin('electron');
-const child = spawn(electron, [root, ...rest], { cwd: root, stdio: 'inherit', shell: windows, env });
+const child = viaShell(electron) ? spawn(line(electron, [root, ...rest]), { cwd: root, stdio: 'inherit', shell: true, env }) : spawn(electron, [root, ...rest], { cwd: root, stdio: 'inherit', env });
 child.on('exit', code => process.exit(code ?? 0));

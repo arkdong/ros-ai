@@ -11,6 +11,7 @@ import { Store, StoreError } from './store.js';
 import{spendingLimitsOn,UNLIMITED_REQUESTS}from'./spending-limits.js';
 import{SpendingBudget}from'./spending-budget.js';
 import { captureChatCompletion } from './response-normalization.js';
+import { openToOthers } from './private-file.js';
 
 const namespace='inference-connection';
 const indexNamespace='inference-registry';
@@ -62,7 +63,7 @@ export class InferenceConnections{
     mkdirSync(dataDir,{recursive:true,mode:0o700});this.file=join(dataDir,'inference-connections.json');
     if(existsSync(this.file)){
       const fd=openSync(this.file,constants.O_RDONLY|constants.O_NOFOLLOW);
-      try{const info=fstatSync(fd);if(!info.isFile()||info.size>1_000_000||(info.mode&0o077)!==0||(typeof process.getuid==='function'&&info.uid!==process.getuid()))throw Error();this.connections=fileSchema.parse(JSON.parse(readFileSync(fd,'utf8'))).connections.map(validateConnection);}
+      try{const info=fstatSync(fd);if(!info.isFile()||info.size>1_000_000||openToOthers(info.mode)||(typeof process.getuid==='function'&&info.uid!==process.getuid()))throw Error();this.connections=fileSchema.parse(JSON.parse(readFileSync(fd,'utf8'))).connections.map(validateConnection);}
       catch{throw new StoreError('Could not read private inference connections. The file must be valid and readable only by its owner.',500);}finally{closeSync(fd);}
     }
     this.syncIndex();
