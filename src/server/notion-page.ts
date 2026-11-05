@@ -58,12 +58,14 @@ export function notionUnits(content: string, names: UserNames = () => undefined)
     out.push(`${prefix}${line}`.trimEnd());
   };
   const owner = () => stack.find(frame => frame.unit);
-  /** Lines emitted since `from` as one unit; `source` is Notion's own text for it. */
-  const close = (from: number, source?: string) => {
+  /** Lines emitted since `from` as one unit; `source` is Notion's own text for it, its escaped "<" given back, so a
+   * save finds it in Notion. */
+  const close = (from: number, raw?: string) => {
+    const source = raw?.replace(/\u0000/gu, '\\<');
     const markdown = out.slice(from).join('\n').replace(/\n{3,}/gu, '\n\n').trim();
     if (!markdown) return;
     // One block of words: a block with children, a table row, an equation or an embedded page stays read only.
-    const editable = source !== undefined && source.trim().length > 0 && !/\n\s*\n/u.test(source.trim()) && !/^\s*(?:\||```|\$\$|(?:-{3,}|\*{3,})\s*$)/u.test(source) && !/<(?:table|columns|synced-block|database|page|image|pdf|file|audio|video|bookmark|embed|equation|callout|quote|toggle|ul|ol|li|todo|h[1-4]|p)\b/u.test(source);
+    const editable = raw !== undefined && raw.trim().length > 0 && !/\n\s*\n/u.test(raw.trim()) && !/^\s*(?:\||```|\$\$|(?:-{3,}|\*{3,})\s*$)/u.test(raw) && !/<(?:table|columns|synced-block|database|page|image|pdf|file|audio|video|bookmark|embed|equation|callout|quote|toggle|ul|ol|li|todo|h[1-4]|p)\b/u.test(raw);
     if (!editable) { units.push({ markdown }); return; }
     // What each mention, date or inline page reads as, for the editor to show in place of the tag.
     const atoms = parseLine(source!.trim()).runs.flatMap(run => 'atom' in run ? [run.atom] : []);
@@ -85,14 +87,17 @@ export function notionUnits(content: string, names: UserNames = () => undefined)
   };
   // A Markdown table written as pipe rows at the top level is one block, read only.
   const flush = () => { if (pipes !== null) { close(pipes); pipes = null; } };
-  for (const token of content.replace(/\\</gu, '&lt;').split(BLOCK_TAG)) {
+  // An escaped "<" (Vec\<String>) is no tag: it is held as a NUL while the blocks are split, shown as "<" and kept as
+  // Notion wrote it in a block's own text.
+  const shown = (token: string) => unescape(inline(token, names)).replace(/\u0000/gu, '<');
+  for (const token of content.replace(/\\</gu, '\u0000').split(BLOCK_TAG)) {
     const tag = token.match(/^<(\/?)([a-zA-Z][\w-]*)(?:\s[^<>]*?)?(\/?)>$/u);
     if (tag) flush();
     const unit = owner();
     if (unit && !tag) unit.unit!.raw.push(token);
     if (!tag) {
-      if (cell) { cell.push(unescape(inline(token, names)).replace(/\s+/gu, ' ').trim()); continue; }
-      const lines = unescape(inline(token, names)).split('\n'), raw = token.split('\n');
+      if (cell) { cell.push(shown(token).replace(/\s+/gu, ' ').trim()); continue; }
+      const lines = shown(token).split('\n'), raw = token.split('\n');
       // A blank line between top-level blocks is kept; inside a block its tags separate the children.
       lines.forEach((rawLine, index) => {
         const line = rawLine.trim();
@@ -150,7 +155,7 @@ export function notionSchema(schema: string): Map<string, Column> {
     const dated = name.match(/^date:(.+):(start|end|is_datetime)$/u);
     if (dated) { if (!columns.has(dated[1])) columns.set(dated[1], { type: 'date' }); continue; }
     const options = (): string[] | undefined => { try { const list = JSON.parse(comment.match(/\[.*\]/u)?.[0] ?? ''); return Array.isArray(list) ? list.map(String) : undefined; } catch { return undefined; } };
-    const type: NotionPropertyType = /zero or more of \[/u.test(comment) ? 'multi_select' : /one of \[/u.test(comment) ? 'select' : /__YES__/u.test(comment) ? 'checkbox'
+    const type: NotionPropertyType = /^\s*title\b/iu.test(comment) ? 'title' : /zero or more of \[/u.test(comment) ? 'multi_select' : /one of \[/u.test(comment) ? 'select' : /__YES__/u.test(comment) ? 'checkbox'
       : /user IDs/u.test(comment) ? 'people' : /page URLs relating/u.test(comment) ? 'relation' : /\bfiles?\b/iu.test(comment) ? 'files'
       : /formula|rollup|automatically|computed|last edited|created/iu.test(comment) ? 'computed' : kind === 'FLOAT' || kind === 'INTEGER' || kind === 'REAL' ? 'number' : 'text';
     columns.set(name, { type, ...(type === 'select' || type === 'multi_select' ? { options: options() } : {}) });
@@ -200,7 +205,8 @@ export function notionProperties(propertiesJson: string, schema: string, title: 
   const order = [...columns.keys()];
   const rank = (name: string) => { const index = order.indexOf(name); return index < 0 ? order.length : index; };
   const sorted = [...merged.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  const titleProperty = sorted.find(name => typeof merged.get(name) === 'string' && merged.get(name) === title && (columns.get(name)?.type ?? 'text') === 'text');
+  // The schema names the title column; without one, the text column that holds the page's title.
+  const titleProperty = [...columns.keys()].find(name => columns.get(name)?.type === 'title') ?? sorted.find(name => typeof merged.get(name) === 'string' && merged.get(name) === title && (columns.get(name)?.type ?? 'text') === 'text');
   const properties = [...(titleProperty ? [titleProperty] : []), ...sorted.filter(name => name !== titleProperty)].map(name => {
     const value = merged.get(name), column = columns.get(name);
     if (name === titleProperty) return { ...property(name, value, { type: 'title' }, names), type: 'title' as const, editable: true };

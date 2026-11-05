@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { confinedEnv, killGroup, proxyEnv, watchGroup, type Confine } from './local-python.js';
+import { confinedEnv, ProcessTree, proxyEnv, type Confine } from './local-python.js';
 import { SANDBOX_IMAGE } from './sandbox.js';
 
 const KERNEL = readFileSync(fileURLToPath(new URL('./sandbox/notebook_kernel.py', import.meta.url)), 'utf8');
@@ -84,7 +84,7 @@ export class NotebookKernelProcess {
   private overflow?: string;
 
   private temporary?: string;
-  private unwatch?: () => void;
+  private tree?: ProcessTree;
 
   constructor(private readonly options: { image: string; owner: string; folder?: KernelFolder; docker?: string; local?: LocalKernel;
     onMessage: (message: KernelMessage) => void; onExit: (exit: KernelExit) => void }) {}
@@ -111,7 +111,7 @@ export class NotebookKernelProcess {
     const child = spawn(wrapped.command, wrapped.args, { cwd, detached: true, stdio: ['pipe', 'pipe', 'pipe'],
       env: confinedEnv(work, tmp, { ...(folder ? { ROS_NOTEBOOK_OUTPUTS: relative(cwd, folder.outputsPath) || '.' } : {}),
         ...(local.packages ? { ROS_NOTEBOOK_PACKAGES: local.packages } : {}), ...(local.proxy ? proxyEnv(local.proxy.port, local.proxy.certFile) : {}) }) });
-    if (child.pid) this.unwatch = watchGroup(child.pid, kernelLimits, reason => void this.stop(`Python stopped because it ${reason} (a notebook can use 2 GB and ${kernelLimits.processes} processes). Its variables were cleared; run the cells again.`));
+    if (child.pid) this.tree = new ProcessTree(child, kernelLimits, reason => void this.stop(`Python stopped because it ${reason} (a notebook can use 2 GB and ${kernelLimits.processes} processes). Its variables were cleared; run the cells again.`));
     this.attach(child);
   }
   private attach(child: ChildProcessWithoutNullStreams): void {
@@ -144,7 +144,7 @@ export class NotebookKernelProcess {
       const child = this.child;
       return new Promise(resolve => {
         // An idle kernel ends when its input closes; a busy one is ended with everything it started.
-        const timer = setTimeout(() => killGroup(child?.pid), 2000);
+        const timer = setTimeout(() => this.tree?.end(), 2000);
         if (this.exited || !child) { clearTimeout(timer); return resolve(); }
         child.once('close', () => { clearTimeout(timer); resolve(); });
       });
@@ -180,13 +180,16 @@ export class NotebookKernelProcess {
     let value: unknown;
     try { value = JSON.parse(line); } catch { return; }
     const message = messageSchema.safeParse(value);
-    if (message.success) this.options.onMessage(message.data);
+    if (message.success) { this.options.onMessage(message.data); return; }
+    // A cell that ended with something ros.ai does not take (an error too large, say) still ends, as an error, so the
+    // notebook does not wait on it for ever.
+    const ended = value && typeof value === 'object' && (value as { type?: unknown }).type === 'done' ? id.safeParse((value as { id?: unknown }).id) : undefined;
+    if (ended?.success) this.options.onMessage({ type: 'done', id: ended.data, status: 'error', error: { ename: 'Error', evalue: 'The cell failed, and its error was too large for ros.ai to show.', traceback: [] } });
   }
   private finish(code: number | null, signal: NodeJS.Signals | null, failure?: string): void {
     if (this.exited) return;
     this.exited = true;
-    this.unwatch?.();
-    if (this.options.local) killGroup(this.child?.pid);
+    this.tree?.end();
     if (this.temporary) rmSync(this.temporary, { recursive: true, force: true });
     const detail = this.overflow ?? failure ?? this.stderr.replace(/\s+/gu, ' ').trim().slice(-600);
     this.options.onExit({ code, signal, detail, stopped: this.stopping && !this.overflow });

@@ -50,6 +50,18 @@ function tokens(value: unknown): Tokens | null {
   return { inputTokens: input, cachedInputTokens: Math.min(input, count('cachedInputTokens') ?? 0), outputTokens: output, totalTokens: count('totalTokens') ?? input + output };
 }
 /** What tokens cost at OpenAI's published rates. Reasoning is billed as output, whether or not Codex counts it in outputTokens. */
+/** Where a Codex turn's text is: each agentMessage item is its own message, a sentence before a tool call or the
+ * answer. A new message starts after a blank line, so messages do not run together, and the answer is the last one. */
+export type CodexText = { reply: string; messageId: string; answerFrom: number };
+/** The text to add for part of an agentMessage item; it starts a new message when the item is a new one. */
+export function codexPart(text: CodexText, itemId: string, part: string): string {
+  if (!itemId || itemId === text.messageId) return part;
+  const gap = text.reply ? '\n\n' : '';
+  text.messageId = itemId; text.answerFrom = text.reply.length + gap.length;
+  return gap + part;
+}
+/** The answer: the last message, written after the last tool call, or everything if Codex named no messages. */
+export const codexAnswer = (text: CodexText, lastTool: number) => text.reply.slice(Math.max(text.answerFrom, lastTool)).trim() || text.reply.trim();
 export function tokenUsd(model: CodexApiModel, value: Tokens) {
   const price = OPENAI_MODELS.find(item => item.id === model)!;
   const output = Math.max(value.outputTokens, value.totalTokens - value.inputTokens);
@@ -299,7 +311,7 @@ export class CodexAgentService implements AgentRuntime {
     const save = () => this.store.saveRecord('agent-attempt', requestId, request.projectId, attempt);
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
-    let thoughtMark = 0, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, toolsSpent = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
+    let thoughtMark = 0, messageId = '', answerFrom = 0, resumeFailed = false, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, toolsSpent = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
     // What Codex said went wrong upstream, such as a model the ChatGPT plan no longer serves; shown when the turn fails.
     let upstreamError = '';
     // Codex passes the provider's error body through as JSON text; its inner message is the readable part.
@@ -340,12 +352,17 @@ export class CodexAgentService implements AgentRuntime {
       if (params.threadId && params.threadId !== threadId) return;
       if (method === 'turn/started') { const turn = object(params.turn); turnId = String(turn.id ?? ''); attempt.turnId = turnId; save(); if (stopped) stop(); }
       else if (method === 'item/agentMessage/delta') {
-        const delta = typeof params.delta === 'string' ? params.delta : '';
+        const text = { reply: attempt.reply, messageId, answerFrom }, delta = codexPart(text, typeof params.itemId === 'string' ? params.itemId : '', typeof params.delta === 'string' ? params.delta : '');
+        ({ messageId, answerFrom } = text);
         if (attempt.reply.length + delta.length > 120000) { stop(); fail(new StoreError('Codex response exceeded the local capture limit.', 503)); return; }
         attempt.reply += delta; event({ at: now(), type: 'delta', message: delta });
       } else if (method === 'item/completed') {
         const item = object(params.item);
-        if (item.type === 'agentMessage' && typeof item.text === 'string' && !attempt.reply) attempt.reply = item.text.slice(0, 120000);
+        // A message that came whole, without parts: kept as its own message.
+        if (item.type === 'agentMessage' && typeof item.text === 'string' && (!attempt.reply || (messageId && typeof item.id === 'string' && item.id !== messageId))) {
+          const text = { reply: attempt.reply, messageId, answerFrom }, whole = codexPart(text, String(item.id ?? ''), item.text);
+          ({ messageId, answerFrom } = text); attempt.reply = (attempt.reply + whole).slice(0, 120000);
+        }
         if (item.type === 'webSearch') { searches++; event({ at: now(), type: 'progress', message: typeof item.query === 'string' && item.query ? `Codex searched the web for “${item.query.slice(0, 200)}”.` : 'Codex searched the web.', data: { itemId: item.id, type: item.type, query: item.query } }); checkCap(); return; }
         if (['commandExecution', 'fileChange', 'mcpToolCall', 'imageGeneration', 'collabAgentToolCall'].includes(String(item.type))) { stop(); fail(new StoreError('Codex attempted an unavailable host/external tool. The turn was stopped; application effects still require validated tools.', 503)); return; }
         if (item.type === 'dynamicToolCall') event({ at: now(), type: 'progress', message: 'Selected-context tool finished.', data: { itemId: item.id, type: item.type, status: item.status } });
@@ -394,7 +411,11 @@ export class CodexAgentService implements AgentRuntime {
       // Newer Codex keeps reads to the session folder with ros.ai's permission profile; older Codex with read roots on each turn.
       const profile = isolation === 'profile' ? { permissions: PERMISSION_PROFILE } : null;
       const settings = { cwd, approvalPolicy: 'never', approvalsReviewer: 'user', developerInstructions: `${instructions}${ownSearchInstructions} ${CANVAS_GRAMMAR_TEXT}`, config: { web_search: 'live' }, ...(onKey ? { model } : choice.model ? { model: choice.model } : {}), ...(profile ?? {}) };
-      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools: toolkit.definitions });
+      // A resume asks only for the thread, not its whole history, which on a long thread is more than ros.ai reads in
+      // one message. One that fails anyway (the thread archived in Codex, say) lets the thread go, so the next turn
+      // starts a new one instead of failing the same way every time.
+      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId, excludeTurns: true } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools: toolkit.definitions })
+        .catch((error: unknown) => { resumeFailed = Boolean(reuse); throw error; });
       threadId = String(result.thread?.id ?? '');
       const confined = result.sandbox?.type === 'readOnly' && (!profile || (result.activePermissionProfile?.id === PERMISSION_PROFILE && result.sandbox.networkAccess === false));
       if (!threadId || result.cwd !== cwd || !confined || result.approvalPolicy !== 'never') throw new StoreError('Codex did not confirm the requested process directory/sandbox/approval configuration. No turn was started.', 503);
@@ -416,12 +437,14 @@ export class CodexAgentService implements AgentRuntime {
       settle(settlement ?? 'unknown');
       // A turn that finished just as it reached its cap still answers.
       if (settlement !== 'completed') throw new StoreError(capped ? `Codex reached this turn’s US$${reservedUsd.toFixed(2)} limit before finishing. Ask a narrower question or raise ROS_CODEX_TURN_USD.` : toolsSpent ? `Codex used all ${reservation.toolCalls} tool calls this turn allows before finishing. Its work so far is saved; ask it to continue, or narrow the question.` : settlement === 'interrupted' ? 'Codex was interrupted. Captured work and full reservations remain saved; continue deliberately.' : `Codex turn failed${upstreamError ? `: ${upstreamError}` : '.'} Captured requests, tool activity and reservations remain saved; no automatic retry occurred.`, 503);
-      if (!attempt.reply.trim()) throw new StoreError('Codex completed without a readable reply. Inspect the captured tool/progress record; no automatic retry occurred.', 503);
+      // The answer is Codex's last message; the sentences before its tool calls already show as those steps' reasons.
+      const answer = codexAnswer({ reply: attempt.reply, messageId, answerFrom }, thoughtMark);
+      if (!answer) throw new StoreError('Codex completed without a readable reply. Inspect the captured tool/progress record; no automatic retry occurred.', 503);
       attempt.status = 'completed'; save();
-      return { reply: attempt.reply, sessionId: threadId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) };
+      return { reply: answer, sessionId: threadId, actions: toolkit.actions, requestId, model: modelEffortLabel(choice) };
     } catch (error) {
       attempt.status = settlement === 'interrupted' ? 'interrupted' : inferenceSubmitted && !settlement ? 'uncertain' : 'failed';
-      attempt.error = timedOut ? `Codex reached this turn’s ${Math.round(reservation.seconds / 60)}-minute limit and was stopped. Its work so far is saved; ask it to continue, or narrow the question.` : error instanceof StoreError ? error.message : 'Codex failed locally. No automatic retry occurred.'; save();
+      attempt.error = timedOut ? `Codex reached this turn’s ${Math.round(reservation.seconds / 60)}-minute limit and was stopped. Its work so far is saved; ask it to continue, or narrow the question.` : resumeFailed ? 'Codex could not reopen this thread’s earlier conversation, so nothing was sent. Send the message again to continue in a new Codex thread.' : error instanceof StoreError ? error.message : 'Codex failed locally. No automatic retry occurred.'; save();
       // Nothing was sent, or the turn ended and Codex reported its use: settle. Otherwise the whole cap stays counted.
       if (usage && !settled) {
         if (!inferenceSubmitted) { settled = true; attempt.costUsd = 0; save(); this.execution.connectionBudgets.settle('openai', usage.id, 0, { requestId, model, outcome: 'Codex did not start a turn; no model request was sent' }); }
@@ -429,7 +452,8 @@ export class CodexAgentService implements AgentRuntime {
         else this.store.updateUsage(usage.id, { status: 'uncertain' });
       }
       const session = this.store.record<Session>('codex-session', key);
-      if (session) this.store.saveRecord('codex-session', key, request.projectId, { ...session, state: attempt.status === 'uncertain' ? 'uncertain' : 'interrupted' });
+      if (resumeFailed) this.store.removeRecord('codex-session', key, request.projectId);
+      else if (session) this.store.saveRecord('codex-session', key, request.projectId, { ...session, state: attempt.status === 'uncertain' ? 'uncertain' : 'interrupted' });
       throw new StoreError(attempt.error, 503);
     } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); rpc.close(); finish(); this.active.delete(key); void toolkit.close(); }
   }

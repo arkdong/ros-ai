@@ -313,10 +313,11 @@ export function addPast(history: MetricPoint[], past: MetricPoint[] | undefined)
   return [...history, ...added].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-MAX_POINTS);
 }
 
-function addPoint(history: MetricPoint[], read: Read): MetricPoint[] {
+/** One point per clock hour: a read replaces the point of its own hour, and the first read of a new hour adds one. */
+export function addPoint(history: MetricPoint[], read: Read): MetricPoint[] {
   const values = Object.fromEntries(read.values.flatMap(item => item.value === null ? [] : [[item.key, item.value]]));
-  const last = history.at(-1), point = { at: read.fetchedAt, values };
-  const kept = last && Date.parse(read.fetchedAt) - Date.parse(last.at) < POINT_MS ? history.slice(0, -1) : history;
+  const last = history.at(-1), point = { at: read.fetchedAt, values }, hour = (at: string) => Math.floor(Date.parse(at) / POINT_MS);
+  const kept = last && hour(read.fetchedAt) === hour(last.at) ? history.slice(0, -1) : history;
   return [...kept, point].slice(-MAX_POINTS);
 }
 

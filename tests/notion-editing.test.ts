@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { lineMarkdown, parseLine } from '../src/shared/notion-inline.js';
 import { NotionViews } from '../src/server/notion-view.js';
 import type { RemoteApps } from '../src/server/remote-apps.js';
+import type { NotionPage } from '../src/shared/types.js';
 
 const roundTrip = (source: string) => lineMarkdown(parseLine(source));
 
@@ -45,4 +46,43 @@ test('one save sends the text, the added text and the fields to Notion, then rea
   assert.equal(page.properties.find(property => property.name === 'Initial score')?.value, '4');
   assert.deepEqual(page.units.map(unit => unit.source), ['## Evidence', '**Strong points and more**', '- first new bullet', 'Call her on *Friday*']);
   await assert.rejects(views.save({ url, kind: 'page' }, { text: [{ old: 'gone', new: 'x' }] }), /changed in Notion/u);
+});
+
+test('a saved line keeps the escapes Notion needs, so underscores, dollars and emoji names stay text', () => {
+  const runs = [{ text: 'Run __init__.py for $5 :tada: at 10:30', marks: [] }];
+  const markdown = lineMarkdown({ kind: 'p', checked: false, indent: '', tail: '', runs });
+  assert.equal(markdown, 'Run \\_\\_init\\_\\_.py for \\$5 \\:tada: at 10:30');
+  assert.deepEqual(parseLine(markdown).runs, runs);
+});
+
+test('a line with an escaped tag saves, a repeated line is refused before anything is sent, and a row’s title goes to its title column', async () => {
+  const url = 'https://www.notion.so/Megan-Li-3f0122069fec813999fbe0bd1235f178';
+  let content = 'Vec\\<String> holds the names\n- [ ] Call Megan\n- [ ] Call Megan';
+  // A text column listed before the title holds the same words as the title.
+  const properties: Record<string, string> = { Notes: 'Megan Li', Name: 'Megan Li' };
+  const calls: { name: string; args: Record<string, any> }[] = [];
+  const apps = {
+    connected: () => ['notion'],
+    accountsOf: () => [],
+    async call(_id: string, name: string, args: Record<string, any>) {
+      calls.push({ name, args });
+      if (name === 'notion-update-page' && args.command === 'update_content') for (const change of args.content_updates) content = content.replace(change.old_str, change.new_str);
+      if (name === 'notion-update-page' && args.command === 'update_properties') Object.assign(properties, args.properties);
+      const text = `<page url="${url}">\n<properties>\n${JSON.stringify(properties)}\n</properties>\n<sqlite-table>CREATE TABLE IF NOT EXISTS "collection://a" (\n"Notes" TEXT,\n"Name" TEXT, -- title\n)</sqlite-table>\n<content>\n${content}\n</content>\n</page>`;
+      return { text: JSON.stringify({ metadata: { type: 'page' }, title: properties.Name, url, text }), isError: false };
+    },
+  } as unknown as RemoteApps;
+  const views = new NotionViews(apps);
+  const page = await views.read({ url, kind: 'page' }) as NotionPage;
+  assert.equal(page.titleProperty, 'Name');
+  const escaped = page.units.find(unit => unit.markdown.startsWith('Vec'))!;
+  assert.deepEqual([escaped.markdown, escaped.source], ['Vec<String> holds the names', 'Vec\\<String> holds the names']);
+  const edited = lineMarkdown({ ...parseLine(escaped.source!), runs: [{ text: 'Vec<String> holds every name', marks: [] }] });
+  await views.save({ url, kind: 'page' }, { text: [{ old: escaped.source!, new: edited }], title: 'Megan Li-Smith' });
+  assert.match(content, /^Vec\\<String> holds every name$/mu);
+  assert.deepEqual(properties, { Notes: 'Megan Li', Name: 'Megan Li-Smith' });
+
+  const sent = calls.filter(call => call.name === 'notion-update-page').length;
+  await assert.rejects(views.save({ url, kind: 'page' }, { text: [{ old: '- [ ] Call Megan', new: '- [x] Call Megan' }] }), /“- \[ \] Call Megan” is on the page more than once/u);
+  assert.equal(calls.filter(call => call.name === 'notion-update-page').length, sent);
 });

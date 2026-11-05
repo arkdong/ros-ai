@@ -144,7 +144,8 @@ export class ToolLoopAgentService {
         if (attempt.requests >= MAX_MODEL_REQUESTS) throw new StoreError(`The agent reached the limit of ${MAX_MODEL_REQUESTS} model requests for one turn before finishing.`, 503);
         fit(messages, budget);
         attempt.requests++;
-        const { response, usage } = await this.execution.assistantComplete(request.projectId, { messages, maxOutputTokens: MAX_OUTPUT_TOKENS, tools }, controller.signal, request.selection);
+        // Each thread asks in its own lane, so two threads can run the agent at once.
+        const { response, usage } = await this.execution.assistantComplete(request.projectId, { messages, maxOutputTokens: MAX_OUTPUT_TOKENS, tools }, controller.signal, request.selection, request.threadId);
         attempt.usageIds.push(usage.id); attempt.estimatedUsd += usage.estimatedUsd ?? usage.reservedUsd; save();
         const written = response.toolCalls?.length ? undefined : textToolCalls(response.content);
         const text = (written?.text ?? response.content).trim(), calls: ToolCall[] = response.toolCalls?.length ? response.toolCalls : written?.calls ?? [];

@@ -188,6 +188,15 @@ export class NotionViews {
     const gone = text.find(change => !page.units.some(unit => unit.source === change.old));
     if (gone) throw new StoreError('Some of that text changed in Notion since it was read. Read the page again, then edit it.', 409);
     if (text.length) {
+      // Notion finds each line by its text, so text that is on the page more than once could change another line than
+      // the one edited: it is refused rather than sent.
+      const fetched = await this.call('notion-fetch', { id: view.url }, account);
+      const content = String(fetched.text ?? '').match(/<content>([\s\S]*?)<\/content>/u)?.[1] ?? '';
+      for (const change of text) {
+        const times = occurrences(content, change.old);
+        if (!times) throw new StoreError('Some of that text changed in Notion since it was read. Read the page again, then edit it.', 409);
+        if (times > 1) throw new StoreError(`“${change.old.length > 80 ? `${change.old.slice(0, 79)}…` : change.old}” is on the page more than once, so Notion cannot tell which one to change. Change it in Notion itself, or first make its words different there.`, 409);
+      }
       const result = await this.call('notion-update-page', { page_id: view.url, command: 'update_content', content_updates: text.map(change => ({ old_str: change.old, new_str: change.new })), allow_async: false }, account);
       const warnings = Array.isArray(result.warnings) ? result.warnings.map(String).join(' ') : typeof result.warnings === 'string' ? result.warnings : '';
       if (/no match|not found|did not match|0 match/iu.test(warnings)) throw new StoreError('Notion could not find some of that text any more. Read the page again, then edit it.', 409);
@@ -224,6 +233,13 @@ export class NotionViews {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
+}
+
+/** How often part is in text, counting overlaps, up to two: Notion's search for a line's text finds them all. */
+function occurrences(text: string, part: string): number {
+  let count = 0;
+  for (let at = text.indexOf(part); at >= 0 && count < 2; at = text.indexOf(part, at + 1)) count++;
+  return count;
 }
 
 /** A property name as Notion's update wants it: "id" and "url" need a prefix. */

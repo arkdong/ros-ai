@@ -431,3 +431,16 @@ test('threads keep their own history, two run at once, and the earlier conversat
     assert.ok(f.store.listMessages(f.project.id, null).every(message => message.threadId === legacy));
   } finally { await f.close(); }
 });
+
+test('two notes from one reply can both be accepted, one after the other, as Accept all does', async () => {
+  const one = (id: string) => ({ type: 'notes', summary: `Add ${id}`, notes: [{ id, title: `Note ${id}`, description: '', kind: 'topic', parentId: null, rationale: '' }], relationships: [] });
+  const f = fixture([reply({ tools: [one('first'), one('second')] })]);
+  try {
+    f.assistant.start(f.project.id, { message: 'Add two notes' }); const turn = await finished(f);
+    const ids = turn.actions.map(action => action.proposalId!);
+    assert.equal(ids.length, 2);
+    for (const id of ids) assert.equal(f.execution.acceptGovernedProposal(f.project.id, id), true);
+    const titles = f.store.getProject(f.project.id).canvas.nodes.map(node => node.title);
+    assert.ok(titles.includes('Note first') && titles.includes('Note second'));
+  } finally { await f.close(); }
+});

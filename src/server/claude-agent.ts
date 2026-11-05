@@ -39,6 +39,8 @@ const sdkVersion = (() => { try { return String(JSON.parse(readFileSync(join(dir
 
 
 type Session = { sessionId: string; scopeHash: string; cwd: string; costUsd: number; state: 'ready' | 'uncertain'; at: string };
+/** Claude Code could not resume the session a thread keeps (it deletes old sessions): nothing ran, so the turn starts a new one. */
+class StaleSession extends StoreError { constructor() { super('Claude Code no longer had this thread’s earlier session, so nothing ran; the turn starts a new one.', 409); } }
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; model: string; billing?: ClaudeBilling; usageId: string | null; reservedUsd: number; costUsd?: number; sessionId?: string; request: unknown; events: AgentEvent[]; reply: string; error?: string };
 
 /** The child gets only what it needs to run; ros.ai's other provider keys are not forwarded.
@@ -217,6 +219,13 @@ export class ClaudeAgentService {
     return { available: true, reason: null };
   }
   async execute(request: AgentExecuteRequest): Promise<AgentResult> {
+    try { return await this.turn(request, false); }
+    catch (error) { if (!(error instanceof StaleSession)) throw error; }
+    request.onEvent({ at: now(), type: 'progress', message: 'Claude Code no longer had this thread’s earlier session, so the turn starts a new one.' });
+    return this.turn(request, true);
+  }
+  /** fresh: start a new Claude Code session even if the thread has one. */
+  private async turn(request: AgentExecuteRequest, fresh: boolean): Promise<AgentResult> {
     if (this.closed) throw new StoreError('ros.ai is stopping.', 503);
     // Each ROS thread keeps its own Claude Code session, so two threads can run side by side.
     const key = request.threadId ?? request.projectId;
@@ -250,7 +259,7 @@ export class ClaudeAgentService {
     // The plan and the key keep their sessions in different places, so switching starts a new one.
     const scopeHash = createHash('sha256').update(JSON.stringify(onPlan ? { cwd, billing } : { cwd })).digest('hex');
     const prior = this.store.record<Session>('claude-session', key);
-    const resume = prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
+    const resume = !fresh && prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
     const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
     const allowedTools = [...builtIn, ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
@@ -276,7 +285,7 @@ export class ClaudeAgentService {
       try { const result = await toolkit.call(definition.name, args); event({ at: now(), type: 'tool', message: `${definition.name} returned a validated result.`, data: result, step: agentStep(call, definition.name, args, { value: result }) }); return reply(JSON.stringify(result)); }
       catch (error) { const text = error instanceof StoreError ? error.message : 'Tool arguments failed ros.ai validation. No effect was applied.'; event({ at: now(), type: 'tool', message: text, step: agentStep(call, definition.name, args, { failed: true }) }); return reply(text, true); }
     }));
-    let finished: { cost: number; subtype: string; text: string; sessionId: string } | null = null;
+    let finished: { cost: number; subtype: string; text: string; sessionId: string; error?: string } | null = null;
     const done = (async () => {
       const stream = query({ prompt: single(prompt), options: {
         abortController: controller, cwd, model, ...(effort ? { effort } : {}), env: onPlan ? planEnvironment() : childEnvironment(apiKey, this.configDir),
@@ -308,21 +317,27 @@ export class ClaudeAgentService {
         } else if (item.type === 'rate_limit_event' && onPlan) {
           this.plan.noteRateLimit(item.rate_limit_info);
         } else if (item.type === 'result') {
-          finished = { cost: item.total_cost_usd, subtype: item.subtype, text: item.subtype === 'success' ? item.result : '', sessionId: item.session_id };
+          // An API error (a low credit balance, a sign-in that stopped working) comes as a "success" marked is_error.
+          const failed = item.subtype !== 'success' || item.is_error, error = item.subtype === 'success' ? item.is_error ? item.result : undefined : item.errors.find(Boolean);
+          finished = { cost: item.total_cost_usd, subtype: item.subtype === 'success' && failed ? 'error' : item.subtype, text: failed ? '' : item.result, sessionId: item.session_id, ...(error ? { error: error.slice(0, 300) } : {}) };
         }
       }
     })();
     this.active.set(key, { controller, done: done.catch(() => {}) });
     try {
-      try { await done; } catch (error) { if (!stopped) throw error; }
-      const result = finished as { cost: number; subtype: string; text: string; sessionId: string } | null;
+      // After an error result the SDK throws as well; the result says what happened, and is handled below.
+      try { await done; } catch (error) { if (!stopped && !finished) throw error; }
+      const result = finished as { cost: number; subtype: string; text: string; sessionId: string; error?: string } | null;
+      // A session that ended before it started (no init) was not resumed: Claude Code no longer has it.
+      if (resume && !attempt.sessionId && result && result.subtype !== 'success' && !stopped) throw new StaleSession();
       if (result) {
         // Claude Code reports a running total for a resumed session; this turn is the difference.
         const turnCost = Math.round(Math.max(0, result.cost - (resume && result.sessionId === resume.sessionId && result.cost >= resume.costUsd ? resume.costUsd : 0)) * 1e9) / 1e9;
         attempt.costUsd = turnCost;
         if (usage) this.execution.connectionBudgets.settle('claude', usage.id, turnCost, { requestId, model, reportedTotalUsd: result.cost, subtype: result.subtype });
         event({ at: now(), type: 'usage', message: onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`, data: { costUsd: turnCost, subtype: result.subtype, billing } });
-        this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
+        // Kept also after an error (the step limit, the turn's budget), so "continue" picks up the work done so far.
+        if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
       }
       if (refused) throw new StoreError(refused, 503);
       if (timedOut) throw new StoreError(`Claude Code reached the ${MAX_SECONDS / 60}-minute limit for one turn and was stopped.`, 503);
@@ -333,7 +348,7 @@ export class ClaudeAgentService {
       if (!result) throw new StoreError('Claude Code ended without a result. The outcome is uncertain; nothing was repeated.', 503);
       if (result.subtype === 'error_max_budget_usd') throw new StoreError(`Claude Code reached this turn’s US$${reservedUsd.toFixed(2)} budget before finishing. Ask a narrower question or raise ROS_CLAUDE_TURN_USD.`, 503);
       if (result.subtype === 'error_max_turns') throw new StoreError('Claude Code reached the step limit for one turn before finishing.', 503);
-      if (result.subtype !== 'success') throw new StoreError('Claude Code stopped with an error. Its record and reservation are saved; nothing was repeated.', 503);
+      if (result.subtype !== 'success') throw new StoreError(`Claude Code stopped with an error${result.error ? `: ${result.error}` : ''}. Its record is saved; nothing was repeated.`, 503);
       const reply = (result.text || attempt.reply).trim();
       if (!reply) throw new StoreError('Claude Code finished without a readable answer.', 503);
       attempt = { ...attempt, status: 'completed', reply }; save();
@@ -345,6 +360,7 @@ export class ClaudeAgentService {
       if (!settled && usage) this.store.updateUsage(usage.id, { status: 'uncertain' });
       attempt = { ...attempt, status: stopped && !refused && !timedOut ? 'interrupted' : settled ? 'failed' : 'uncertain', error: error instanceof StoreError ? error.message : `Claude Code failed: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its full reservation stays counted; nothing was repeated.` }; save();
       if (!settled) { const session = this.store.record<Session>('claude-session', key); if (session) this.store.saveRecord('claude-session', key, request.projectId, { ...session, state: 'uncertain' }); }
+      if (error instanceof StaleSession) { this.store.removeRecord('claude-session', key, request.projectId); throw error; }
       throw new StoreError(attempt.error!, 503);
     } finally { clearTimeout(deadline); request.signal.removeEventListener('abort', stop); this.active.delete(key); void toolkit.close(); }
   }

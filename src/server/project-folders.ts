@@ -183,6 +183,10 @@ class FolderFiles {
     try { return lstatSync(this.resolve(rel)); } catch (error) { if (errorCode(error) === 'ENOENT') return null; throw error; }
   }
   exists(rel: string): boolean { return this.stat(rel) !== null; }
+  /** Makes the folder rel and says whether this call made it: a name two writers cannot both take. */
+  claim(rel: string): boolean {
+    try { mkdirSync(this.resolve(rel, true)); return true; } catch (error) { if (errorCode(error) === 'EEXIST') return false; throw error; }
+  }
   read(rel: string, limit: number): { bytes: Buffer; observed: Observed } {
     const descriptor = openSync(this.resolve(rel), constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
@@ -674,11 +678,13 @@ export class ProjectFolders implements NotebookFolders {
   /** A block of the project, for routes that check its saved paths. */
   storeNode(projectId: string, nodeId: string): CanvasNode | undefined { return this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId); }
   /** A free folder for one Post block's photos and subtitles, posts/<name>; Post files stay out of the loose files list. */
+  /** A new folder under posts/ named after the post, made at once, so two posts with the same title saved together
+   * each get their own. */
   postFolder(projectId: string, name: string): string {
     const { files } = this.require(projectId), base = safeFileBase(name) || 'Post';
     for (let index = 1; index < 1000; index++) {
       const candidate = posix.join(POST_FOLDER, index === 1 ? base : `${base} ${index}`);
-      if (!files.exists(candidate)) return candidate;
+      if (files.claim(candidate)) return candidate;
     }
     throw new StoreError(`Too many posts are named ${base}.`);
   }

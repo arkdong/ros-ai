@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
 import type { ExecutionService } from '../src/server/execution.js';
 import type { ExperimentService } from '../src/server/experiments.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
-import { Posts, htmlText, keepPost, pickSubtitles, postTitle, subtitleText } from '../src/server/posts.js';
+import { Posts, htmlText, keepPost, pickSubtitles, postTitle, subtitleText, youtubeVideo } from '../src/server/posts.js';
+import { ProjectFolders } from '../src/server/project-folders.js';
+import type { WebFileFetcher } from '../src/server/web-files.js';
 import { duration, postPlatform, shortCount } from '../src/shared/posts.js';
 import { kindName } from '../src/shared/vocabulary.js';
 
@@ -96,6 +98,10 @@ test('Posts are read from Hacker News, Reddit, GitHub and YouTube as each platfo
   assert.deepEqual((await posts.search('youtube', 'hotpot', 5, 'top')).map(hit => hit.title), ['Second', 'Amsterdam hotpot tour']);
   assert.equal((await posts.search('hackernews', 'canvas'))[0].url, 'https://news.ycombinator.com/item?id=41');
   await assert.rejects(posts.read('https://example.com/post'), /is not a link to one of them/u);
+  // A playlist, a channel or a search is not one video, so it is refused rather than read as one.
+  for (const link of ['https://www.youtube.com/playlist?list=PL123', 'https://www.youtube.com/@eats', 'https://www.youtube.com/results?search_query=hotpot'])
+    await assert.rejects(posts.read(link), /playlist, a channel or a search, not one video/u);
+  assert.deepEqual(['https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123', 'https://youtu.be/vid1?t=3', 'https://m.youtube.com/shorts/abc_DEF-123', 'https://www.youtube-nocookie.com/embed/xyz'].map(youtubeVideo), ['dQw4w9WgXcQ', 'vid1', 'abc_DEF-123', 'xyz']);
   // Without its own Python, ros.ai says YouTube cannot be read here.
   await assert.rejects(new Posts({ fetcher }).read('https://youtu.be/vid1'), /only in the local app/u);
 
@@ -144,4 +150,18 @@ test('Agents search posts and add the ones they pick as Post blocks in one group
     AgentWorkspaceTools.posts = before;
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('Two posts with the same title saved at the same time each keep their own photos', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ros-posts-')), store = new Store(join(dir, 'store'));
+  try {
+    const folders = new ProjectFolders(store, { reserved: [join(dir, 'store')] }), project = store.createProject('Hotpot');
+    folders.attach(project.id, join(dir, 'Hotpot'));
+    // Each photo arrives a moment later, so both saves have chosen their folder before either writes.
+    const files = { file: async (url: string) => { await new Promise(resolve => setTimeout(resolve, 20)); return { bytes: Buffer.from(url), extension: '.jpg' }; } } as unknown as WebFileFetcher;
+    const post = (photo: string) => ({ post: { platform: 'reddit' as const, shape: 'text' as const, url: 'https://www.reddit.com/r/a/comments/x/y', id: photo, title: 'Best hotpot', text: '', author: { name: 'lily' }, counts: {}, photos: [{ url: `https://i.redd.it/${photo}.jpg` }], readAt: '2026-11-05T10:00:00Z' } });
+    const [first, second] = await Promise.all([keepPost(post('one'), project.id, 'Best hotpot', { folders, files }), keepPost(post('two'), project.id, 'Best hotpot', { folders, files })]);
+    assert.deepEqual([first.post.photos[0].path, second.post.photos[0].path], ['posts/Best hotpot/1.jpg', 'posts/Best hotpot 2/1.jpg']);
+    assert.equal(readFileSync(join(dir, 'Hotpot', 'posts', 'Best hotpot', '1.jpg'), 'utf8'), 'https://i.redd.it/one.jpg');
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

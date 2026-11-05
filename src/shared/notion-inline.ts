@@ -79,7 +79,9 @@ const rank = (mark: Mark) => mark.startsWith('a:') ? 0 : mark.startsWith('t:') ?
 const ordered = (marks: Mark[]) => [...new Set(marks)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 const opener = (mark: Mark) => mark.startsWith('a:') ? '[' : mark.startsWith('t:') ? mark.slice(mark.indexOf(':', 2) + 1) : mark === 'b' ? '**' : mark === 'i' ? '*' : mark === 's' ? '~~' : '`';
 const closer = (mark: Mark) => mark.startsWith('a:') ? `](${mark.slice(2)})` : mark.startsWith('t:') ? `</${mark.split(':')[1]}>` : opener(mark);
-const escape = (text: string) => text.replace(/[\\*~`[\]<]/gu, '\\$&').replace(/\n/gu, '<br>');
+/** Text as Notion reads it literally: emphasis, code, links and tags escaped, and also "_" (which Notion reads as
+ * emphasis too, so __init__.py would turn bold), "$" (an equation) and the ":" that opens an emoji name like :tada:. */
+const escape = (text: string) => text.replace(/[\\*~`[\]<_$]|:(?=[\w+-]+:)/gu, '\\$&').replace(/\n/gu, '<br>');
 const same = (a: Mark[], b: Mark[]) => a.length === b.length && a.every((mark, index) => mark === b[index]);
 
 /** Neighbouring text with the same marks as one run; spaces at a run's edges moved outside its emphasis, where

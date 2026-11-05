@@ -176,7 +176,9 @@ export class Posts {
   }
 
   private async readYoutube(link: string): Promise<ReadPost> {
-    const out = await this.ytDlp(['--dump-single-json', '--skip-download', '--no-playlist', '--no-warnings', '--write-comments', '--extractor-args', `youtube:max_comments=${MAX_POST_COMMENTS},all,0;comment_sort=top`, link], 120_000);
+    const video = youtubeVideo(link);
+    if (!video) throw new StoreError('That YouTube link is a playlist, a channel or a search, not one video. Open the video and copy its link.');
+    const out = await this.ytDlp(['--dump-single-json', '--skip-download', '--no-playlist', '--no-warnings', '--write-comments', '--extractor-args', `youtube:max_comments=${MAX_POST_COMMENTS},all,0;comment_sort=top`, `https://www.youtube.com/watch?v=${video}`], 120_000);
     const info = JSON.parse(out) as Record<string, unknown>;
     if (typeof info.id !== 'string') throw new StoreError('YouTube sent no video for that link.', 404);
     const comments = (Array.isArray(info.comments) ? info.comments as Record<string, unknown>[] : []).filter(comment => comment.parent === 'root' || comment.parent === undefined).slice(0, MAX_POST_COMMENTS)
@@ -300,6 +302,7 @@ export async function keepPost(read: ReadPost, projectId: string, title: string,
     if (read.post.photos.length) problems.push('The project has no folder, so the post\'s photos were not saved.');
     return { post: { ...rest, ...(subtitleInfo && read.subtitles ? { subtitles: { ...subtitleInfo, text: read.subtitles.slice(0, POST_SUBTITLES_KEPT) } } : {}) }, problems };
   }
+  if (!read.post.photos.length && !(subtitleInfo && read.subtitles)) return { post: rest, problems };
   const place = tools.folders.postFolder(projectId, title);
   const photos = await Promise.all(read.post.photos.slice(0, MAX_POST_PHOTOS).map(async (photo, index) => {
     if (!tools.files) return photo;
@@ -318,6 +321,16 @@ export async function keepPost(read: ReadPost, projectId: string, title: string,
     catch { subtitles = { ...subtitleInfo, text: read.subtitles.slice(0, POST_SUBTITLES_KEPT) }; }
   }
   return { post: { ...rest, photos, ...(subtitles ? { subtitles } : {}) }, problems };
+}
+
+/** The video a YouTube link names (watch?v=, youtu.be/, shorts/, live/, embed/), or undefined for a playlist, a
+ * channel or a search, which are not one post. */
+export function youtubeVideo(link: string): string | undefined {
+  let url: URL;
+  try { url = new URL(link); } catch { return undefined; }
+  const host = url.hostname.toLowerCase().replace(/^(www|m|music)\./u, ''), [first, second] = url.pathname.split('/').filter(Boolean);
+  const id = host === 'youtu.be' ? first : first === 'watch' ? url.searchParams.get('v') ?? undefined : ['shorts', 'live', 'embed', 'v'].includes(first ?? '') ? second : undefined;
+  return id && /^[\w-]{1,64}$/u.test(id) ? id : undefined;
 }
 
 /** The title a Post block gets: the post's own title, or the start of its text. */

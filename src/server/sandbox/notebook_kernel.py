@@ -29,7 +29,8 @@ import time
 import traceback
 import types
 
-CHANNEL_OUT = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
+# A character UTF-8 cannot hold (an unpaired surrogate from a file name or a cut emoji) goes as an escape, not an error.
+CHANNEL_OUT = os.fdopen(os.dup(1), "w", encoding="utf-8", errors="backslashreplace", newline="\n")
 CHANNEL_IN = os.fdopen(os.dup(0), "rb")
 os.dup2(2, 1)
 _null = os.open(os.devnull, os.O_RDONLY)
@@ -109,10 +110,12 @@ class Streams:
         with self.lock:
             if self.cell is None:
                 return
-            for name, texts in self.parts:
-                send({"type": "stream", "id": self.cell, "name": name, "text": "".join(texts)})
+            # Taken out before sending, so text that cannot be sent is not tried again on every later flush.
+            parts, self.parts = self.parts, []
             self.sent += self.pending
-            self.parts, self.pending, self.since = [], 0, time.monotonic()
+            self.pending, self.since = 0, time.monotonic()
+            for name, texts in parts:
+                send({"type": "stream", "id": self.cell, "name": name, "text": "".join(texts)})
 
     def finish(self):
         with self.lock:
@@ -425,7 +428,9 @@ def failure_output(failure, filename):
     if isinstance(failure, OSError) and failure.errno in (errno.EROFS, errno.EPERM, errno.EACCES):
         lines.append(f"ros.ai: notebooks can read the project folder but not change it. Save files in {OUTPUTS or 'the outputs folder'} instead." if OUTPUTS
                      else "ros.ai: notebooks can only write to /tmp in this project, because it has no project folder.")
-    return {"ename": type(failure).__name__, "evalue": str(failure)[:4000], "traceback": lines[-400:], "line": line}
+    # One line of a traceback can hold a whole pasted data line; ros.ai takes lines of up to 20,000 characters.
+    lines = [text if len(text) <= 10_000 else f"{text[:10_000]} [ros.ai: {len(text) - 10_000} more characters left out]" for text in lines[-400:]]
+    return {"ename": type(failure).__name__[:200], "evalue": str(failure)[:4000], "traceback": lines, "line": line}
 
 
 user_main = types.ModuleType("__main__")

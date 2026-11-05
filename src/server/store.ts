@@ -17,6 +17,7 @@ import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps
 import { MAX_MAP_PINS, pinLink } from '../shared/maps.js';
 import { MAX_POST_COMMENTS, MAX_POST_PHOTOS, POST_COMMENT_TEXT, POST_PLATFORMS, POST_SUBTITLES_KEPT, POST_TEXT } from '../shared/posts.js';
 import type { Artifact, Canvas, CanvasNode, Change, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
+import { currentTurn } from './turn-context.js';
 
 /** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
 export type RosChoice = { backend?: string; model?: ModelSelection };
@@ -32,7 +33,9 @@ const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1)
 function narrowOnlyPictures(node: { width?: number; kind?: string; blockType?: string; file?: { path: string } | null }) {
   if (node.width !== undefined && node.width < CARD_MIN_WIDTH && !isPictureNode(node)) throw new StoreError(`A block is at least ${CARD_MIN_WIDTH} wide; only a picture can be narrower`);
 }
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(20_000), x: coordinate, y: coordinate, width: z.number().int().min(PICTURE_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), scale: z.number().min(CARD_MIN_SCALE).max(1).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
+/** The most text a block's description holds. */
+export const DESCRIPTION_LIMIT = 20_000;
+const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(DESCRIPTION_LIMIT), x: coordinate, y: coordinate, width: z.number().int().min(PICTURE_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), scale: z.number().min(CARD_MIN_SCALE).max(1).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
 const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
 const linkSide = z.enum(['top','right','bottom','left']);
 /** The person's edit of a link on the canvas: its word, or its direction. Not offered to agents, whose canvas tool
@@ -675,8 +678,26 @@ export class Store {
     this.db.prepare('UPDATE projects SET data = ?, history = ? WHERE id = ?').run(JSON.stringify(updated), JSON.stringify(history), project.id);
     for (const node of canvas.nodes) this.db.prepare('INSERT OR IGNORE INTO node_identities(project_id, node_id) VALUES (?, ?)').run(project.id, node.id);
     this.recordChange(updated, label);
+    // A turn's own writes (a search's sources, saved findings, a browser log) keep its waiting changes acceptable.
+    const turn = currentTurn();
+    if (turn) this.keepCurrent(updated, turn, project.revision);
     this.committed(project.id);
     return updated;
+  }
+
+  /** The waiting changes of one batch (one turn's) that were current at revision `from`, checked again on the canvas as
+   * it is now: each that still applies stays acceptable, and one that no longer does stays out of date. */
+  private keepCurrent(project: Project, batch: string, from: number): void {
+    const waiting = this.all<Proposal>("SELECT data FROM proposals WHERE project_id = ? AND json_extract(data, '$.status') = 'pending' AND json_extract(data, '$.batch') = ? ORDER BY rowid", project.id, batch);
+    for (const other of waiting) {
+      if (other.baseRevision !== from) continue;
+      try {
+        const after = (other.after ?? []).flatMap(id => { const before = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', id, 'Proposal'); return before.status === 'pending' ? [before] : []; });
+        this.applyOperations(this.withProposals(project, after), other.operations, true, true);
+        other.baseRevision = project.revision;
+        this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id);
+      } catch (error) { if (!(error instanceof StoreError) && !(error instanceof z.ZodError)) throw error; }
+    }
   }
 
   private mutateWithinTransaction(id: string, operations: Mutation[], label: string, expectedRevision?: number, options: MutateOptions = {}): Project {
@@ -811,7 +832,9 @@ export class Store {
       // A proposal that builds on others is checked against the canvas as it would be once they are accepted.
       const after = [...new Set(links.after ?? [])].map(id => this.getProposal(projectId, id));
       const { operations } = this.applyOperations(this.withProposals(project, after), supplied, true, arranged);
-      const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now(), ...(after.length ? { after: after.map(p => p.id) } : {}), ...(links.batch ? { batch: links.batch } : {}) };
+      // Changes proposed in one turn form one batch, so accepting one, or the turn's own writes, leave the rest acceptable.
+      const batch = links.batch ?? currentTurn();
+      const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now(), ...(after.length ? { after: after.map(p => p.id) } : {}), ...(batch ? { batch } : {}) };
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
       return proposal;
     });
@@ -837,19 +860,12 @@ export class Store {
         const before = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', id, 'Proposal');
         if (before.status !== 'accepted') throw new StoreError(`This change builds on “${before.summary.split('\n')[0]}”, which ${before.status === 'dismissed' ? 'was dismissed' : 'has to be accepted first'}.`, 409);
       }
-      const project = this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
+      // Marked first, so the rest of its batch is checked without it; a failed accept rolls this back with the canvas.
       proposal.status = 'accepted';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      const project = this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
       // The rest of its batch still applies to the new canvas, so it stays acceptable; one that no longer does stays stale.
-      if (proposal.batch) for (const other of this.all<Proposal>('SELECT data FROM proposals WHERE project_id = ? ORDER BY rowid', projectId)) {
-        if (other.status !== 'pending' || other.batch !== proposal.batch || other.baseRevision !== proposal.baseRevision) continue;
-        try {
-          const after = (other.after ?? []).flatMap(id => { const before = this.one<Proposal>('SELECT data FROM proposals WHERE id = ?', id, 'Proposal'); return before.status === 'pending' ? [before] : []; });
-          this.applyOperations(this.withProposals(project, after), other.operations, true, true);
-          other.baseRevision = project.revision;
-          this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id);
-        } catch (error) { if (!(error instanceof StoreError) && !(error instanceof z.ZodError)) throw error; }
-      }
+      if (proposal.batch && project.revision !== proposal.baseRevision) this.keepCurrent(project, proposal.batch, proposal.baseRevision);
       return project;
     });
   }

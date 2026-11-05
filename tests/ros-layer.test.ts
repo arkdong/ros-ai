@@ -279,3 +279,39 @@ test('after an agent turn the assistant runs the pass beside the conversation an
     assert(store.getProject(project.id).canvas.nodes.every(node => node.kind !== 'group' && !node.parentId));
   } finally { await assistant.shutdown(); await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('ROS waits while another thread is still working, even one that has proposed nothing yet', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ros-layer-wait-')), store = new Store(directory), execution = new ExecutionService(store, { includeSetupUsage: false });
+  const experiments = { authority: new Authority(store) } as unknown as ExperimentService;
+  const project = store.createProject('Two threads');
+  store.saveRecord('assistant-backend', project.id, project.id, { backend: 'codex' });
+  new Authority(store).configure(project.id, { mode: 'review' });
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const codex = {
+    status: async () => ({ available: true }),
+    shutdown: async () => {},
+    execute: async (request: { projectId: string; turnId: string; message: string }) => {
+      // The other thread reads the map and works a while before it proposes anything.
+      if (request.message === 'Look into the budget') { await gate; return { reply: 'Nothing to add.', sessionId: 's2', requestId: 'r2', actions: [] }; }
+      const proposal = store.createProposal(request.projectId, store.getProject(request.projectId).revision, 'Add notes', ['A', 'B', 'C'].map((title, index) => ({ type: 'addNode' as const, node: { id: randomUUID(), title: `Note ${title}`, description: `About ${title}.`, kind: 'topic' as const, blockType: 'note' as const, parentId: null, x: index * 480, y: 0 } })), false, { batch: request.turnId });
+      store.acceptProposal(request.projectId, proposal.id);
+      return { reply: 'Added three notes.', sessionId: 's1', requestId: 'r1', actions: [{ id: randomUUID(), type: 'proposal', title: 'Add notes', proposalId: proposal.id, status: 'completed' }] };
+    },
+  } as unknown as AgentRuntime;
+  const assistant = new AssistantService(store, execution, experiments, codex, undefined, undefined, undefined, undefined, undefined, new RosLayer(store, execution));
+  try {
+    assistant.start(project.id, { message: 'Look into the budget' });
+    assistant.start(project.id, { message: 'Note the three options' });
+    const turn = () => assistant.state(project.id).turns.find(item => item.userMessage === 'Note the three options')!;
+    for (let tries = 0; !turn().layer?.note && tries < 200; tries++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(turn().status, 'completed');
+    assert.deepEqual([turn().layer?.state, turn().layer?.note], ['running', 'ROS waits for the other thread to finish, so the changes it has waiting for you stay valid.']);
+    await new Promise(resolve => setTimeout(resolve, 1700));
+    assert.equal(turn().actions.some(action => action.by === 'ros'), false);
+    release();
+    for (let tries = 0; turn().layer?.state !== 'done' && tries < 400; tries++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(turn().layer?.state, 'done');
+    assert.match(turn().events.at(-1)!.message, /waited \d+ s for another thread\)\.$/u);
+  } finally { release(); await assistant.shutdown(); await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); }
+});

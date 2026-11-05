@@ -42,7 +42,8 @@ export function googleLink(value: string): { fileId: string; kind?: 'sheet' | 'd
   let url: URL;
   try { url = new URL(text); } catch { return null; }
   if (url.protocol !== 'https:' || !['docs.google.com', 'drive.google.com'].includes(url.hostname)) return null;
-  const path = /^\/(?:a\/[^/]+\/)?(spreadsheets|document|file)\/d\/([a-zA-Z0-9_-]{10,200})/u.exec(url.pathname);
+  // A browser signed in to several Google accounts puts /u/<n>/ before the file, and a Workspace domain /a/<domain>/.
+  const path = /^\/(?:a\/[^/]+\/)?(spreadsheets|document|file)\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]{10,200})/u.exec(url.pathname);
   const id = path?.[2] ?? (url.pathname === '/open' ? url.searchParams.get('id') : null);
   if (!id || !fileIdSchema.safeParse(id).success) return null;
   const gid = Number((/gid=(\d+)/u.exec(url.hash) ?? /gid=(\d+)/u.exec(url.search))?.[1] ?? Number.NaN);
@@ -178,7 +179,8 @@ export class GoogleWorkspace {
       const tabs = await this.tabs(meta.id), chosen = tabs.find(item => item.title === tab) ?? tabs[0];
       if (!chosen) throw new StoreError('This spreadsheet has no tab with cells.', 404);
       tab = chosen.title;
-      values = await this.values(meta.id, `${tabRange(tab)}!1:${COPY_ROWS + 1}`, undefined, true, 40_000_000);
+      // The first row names the columns; one row past the most a Data block holds shows the tab is too long.
+      values = await this.values(meta.id, `${tabRange(tab)}!1:${COPY_ROWS + 2}`, undefined, true, 40_000_000);
     } catch (error) {
       if (!googleApiDisabled(error)) throw error;
       tab = ''; values = await this.exported(meta.id);

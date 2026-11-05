@@ -96,6 +96,24 @@ type Connection = { client: Client; tools: AppTool[]; key?: string; ref: string 
 
 const signedIn = (saved: Saved | undefined) => Boolean(saved?.tokens?.access_token);
 const metadata = (redirectUri: string) => ({ client_name: 'ros.ai', client_uri: 'https://github.com/arkdong/ros-ai', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' });
+/** Sign-in refreshes in flight or just done, by the refresh token they use. An app such as Notion takes a refresh token
+ * once, so calls that find the access token expired together share one refresh: a second refresh would be refused, and
+ * the SDK would then forget the account's tokens and ask the person to sign in again. */
+const refreshes = new Map<string, Promise<globalThis.Response>>();
+const REFRESH_SHARED_MS = 60_000;
+const sharingRefreshes: typeof fetch = async (input, init) => {
+  const body = init?.body, token = init?.method === 'POST' && body instanceof URLSearchParams && body.get('grant_type') === 'refresh_token' ? body.get('refresh_token') : null;
+  if (!token) return fetch(input, init);
+  let pending = refreshes.get(token);
+  if (!pending) {
+    const started = fetch(input, init);
+    refreshes.set(token, pending = started);
+    // A refresh that got an answer is shared a while longer, for a call that read the old token just before it landed;
+    // one that never reached the app is not.
+    started.then(() => setTimeout(() => { if (refreshes.get(token) === started) refreshes.delete(token); }, REFRESH_SHARED_MS).unref(), () => { if (refreshes.get(token) === started) refreshes.delete(token); });
+  }
+  return (await pending).clone();
+};
 const textOf = (result: Record<string, unknown>) => (Array.isArray(result.content) ? result.content as { type: string; text?: string }[] : []).filter(item => item.type === 'text' && typeof item.text === 'string').map(item => item.text).join('\n');
 /** Who a Notion sign-in is, from notion-get-self: {"workspace":{"id","name"},"user":{"id","name","email"}}. */
 function identityOf(text: string): Identity | undefined {
@@ -422,7 +440,7 @@ export class RemoteApps {
     if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server.`);
     if (!probe && !(account ? signedIn(account.saved) : this.status(id).connected)) throw new StoreError(app.auth === 'token' ? `${app.name} is not connected. Connect it on the Plugins page.` : account && this.accounts(id).length > 1 ? `${this.named(id, account)} needs you to sign in again. Open Plugins › ${app.name} and sign in again.` : `${app.name} is not connected. Open Plugins and connect it.`, 409);
     const url = new URL(appUrl(id));
-    const transport = app.auth === 'sign-in' ? new StreamableHTTPClientTransport(url, { authProvider: this.provider(id, account!.key, account!.saved.redirectUri ?? appRedirectUri(undefined)) })
+    const transport = app.auth === 'sign-in' ? new StreamableHTTPClientTransport(url, { authProvider: this.provider(id, account!.key, account!.saved.redirectUri ?? appRedirectUri(undefined)), fetch: sharingRefreshes })
       : new StreamableHTTPClientTransport(url, token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : {});
     const client = new Client({ name: 'ros.ai', version: '1' });
     try { await client.connect(transport); }
@@ -463,12 +481,17 @@ export class RemoteApps {
       return provided.call(name, args, signal);
     }
     let opened = await this.open(id, false, account);
-    if (!opened.tools.some(tool => tool.name === name)) throw new StoreError(`${appCatalogue[id].name} has no tool called ${label(name)}.`);
+    const tool = opened.tools.find(item => item.name === name);
+    if (!tool) throw new StoreError(`${appCatalogue[id].name} has no tool called ${label(name)}.`);
     const run = () => opened.client.callTool({ name, arguments: args }, undefined, { signal, timeout: 120_000 });
     let result: Awaited<ReturnType<typeof run>>;
     try { result = await run(); }
     catch (error) {
       if (signal?.aborted || error instanceof StoreError) throw error;
+      // A change is sent once: when the call broke after it reached the app (a timeout, a dropped answer, an answer that
+      // failed its check), the app may have made it already. An app that no longer knew the session, or the sign-in,
+      // never ran it.
+      if (!tool.reads && ![401, 404].includes(Number((error as { code?: unknown }).code))) throw new StoreError(`${appCatalogue[id].name}: the call broke before ${appCatalogue[id].name} answered, so ros.ai cannot tell whether the change was made, and did not send it again. Check in ${appCatalogue[id].name} first. (${label(error instanceof Error ? error.message : String(error))})`, 502);
       // A dropped session: connect once more, then give up.
       if (this.clients.get(opened.ref) === opened) { this.clients.delete(opened.ref); void opened.client.close().catch(() => undefined); }
       opened = await this.open(id, false, account);
