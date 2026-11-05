@@ -11,6 +11,7 @@ import { slackApi } from './slack.js';
 import { zoteroApp } from './papers.js';
 import { ghBinary, githubCliFound } from './setup-detect.js';
 import { zoteroAppProblem, type LocalPlugins, type PluginStatus, type PluginWay, type TokenPluginId } from '../shared/plugins.js';
+import { openToOthers } from './private-file.js';
 
 const ids = ['zotero', 'slack', 'notion', 'github', 'openalex', 'umami', 'railway'] as const satisfies readonly TokenPluginId[];
 const idSchema = z.enum(ids);
@@ -49,7 +50,7 @@ function readPrivate(file: string, size: number) {
   const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = fstatSync(fd);
-    if (!info.isFile() || info.size > size || (info.mode & 0o077) !== 0) throw new Error('invalid');
+    if (!info.isFile() || info.size > size || openToOthers(info.mode)) throw new Error('invalid');
     return JSON.parse(readFileSync(fd, 'utf8')) as unknown;
   } finally { closeSync(fd); }
 }

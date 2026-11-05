@@ -7,6 +7,7 @@ import type { GoogleDriveCapture, GoogleDriveFile, GoogleDriveFiles, GoogleDrive
 import type { ProjectResource } from '../shared/research.js';
 import { LocalConnections } from './connections.js';
 import { Store, StoreError } from './store.js';
+import { openToOthers } from './private-file.js';
 
 export const GOOGLE_DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 const TOKEN_URL='https://oauth2.googleapis.com/token', AUTH_URL='https://accounts.google.com/o/oauth2/v2/auth';
@@ -83,7 +84,7 @@ export class GoogleDriveConnection {
   }
   private readPrivate(path:string):unknown{
     const directory=resolve(path,'..');if(lstatSync(directory).isSymbolicLink())throw new Error('Private credential directory cannot be redirected.');
-    const info=lstatSync(path);if(!info.isFile()||info.isSymbolicLink()||(info.mode&0o077)!==0||info.size>40000)throw new Error('Private credential file permissions are invalid.');
+    const info=lstatSync(path);if(!info.isFile()||info.isSymbolicLink()||openToOthers(info.mode)||info.size>40000)throw new Error('Private credential file permissions are invalid.');
     const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{if(fstatSync(fd).size>40000)throw new Error('Private credential file is too large.');return JSON.parse(readFileSync(fd,'utf8'));}finally{closeSync(fd);}
   }
   private origin(value?:string):string{

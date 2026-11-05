@@ -4,7 +4,7 @@ import { closeSync, constants, copyFileSync, createReadStream, createWriteStream
 import { homedir } from 'node:os';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { basename, delimiter, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import express, { type Express } from 'express';
 import { z } from 'zod';
 import { isOutputArtifact, nodeBlockType } from '../shared/blocks.js';
@@ -662,7 +662,8 @@ export class ProjectFolders implements NotebookFolders {
     const source = this.require(fromProjectId).files, { files } = this.require(toProjectId);
     for (const src of new Set(sources)) {
       try {
-        const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(posix.relative(source.root, found.absolute).split(sep).join('/'));
+        // The folder's own path rules (posix.relative cannot read C:\ paths), then the / that project paths use.
+        const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(relative(source.root, found.absolute).split(sep).join('/'));
         if (!files.exists(rel)) files.write(rel, source.read(rel, FILE_BYTES).bytes);
       } catch { /* an image ros.ai cannot find stays as written */ }
     }
@@ -833,10 +834,12 @@ export class ProjectFolders implements NotebookFolders {
     if (how !== 'default' && !reveal && !app) throw new StoreError('That app is not available on this computer.', 404);
     // Terminals open in the file's folder.
     const place = app?.kind === 'terminal' && entry ? dirname(target) : target;
-    // Code opens in a text editor: the default app for .py or .sh files can run them instead. The project folder itself opens rather than being selected in its parent.
+    // Code opens in a text editor (TextEdit on a Mac, Notepad on Windows): the default app for .py, .js or .sh files can
+    // run them instead, outside the sandbox. The project folder itself opens rather than being selected in its parent.
     const [command, args] = app ? (process.platform === 'darwin' ? ['/usr/bin/open', ['-a', app.path, place]] : [app.path, [place]])
       : process.platform === 'darwin' ? ['/usr/bin/open', reveal && entry ? ['-R', target] : entry?.kind === 'code' || entry?.kind === 'app' ? ['-t', target] : [target]]
-      : process.platform === 'win32' ? ['explorer.exe', [(reveal || entry?.kind === 'app') && entry ? `/select,${target}` : target]] : ['xdg-open', [(reveal || entry?.kind === 'app') && entry ? dirname(target) : target]];
+      : process.platform === 'win32' ? (entry?.kind === 'code' && !reveal ? ['notepad.exe', [target]] : ['explorer.exe', [(reveal || entry?.kind === 'app') && entry ? `/select,${target}` : target]])
+      : ['xdg-open', [(reveal || entry?.kind === 'app') && entry ? dirname(target) : target]];
     await launch(command, args);
     return { path: entry?.path ?? '.' };
   }

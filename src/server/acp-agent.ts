@@ -12,6 +12,7 @@ import { AgentWorkspaceTools } from './agent-tools.js';
 import { CLAUDE_CODE_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import { projectFolderRoot } from './project-folders.js';
 import { findBinary, pretty } from './setup-detect.js';
+import { runnable } from './command-line.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { ACP_AGENTS, ACP_AGENT_IDS, isAcpAgent, type AcpAgentId, type AcpAgentStatus } from '../shared/acp-agents.js';
 import { CANVAS_GRAMMAR } from './canvas-grammar.js';
@@ -178,8 +179,10 @@ class AcpConnection {
   onRequest: (method: string, params: Record<string, unknown>) => Promise<unknown> = async method => { throw new RpcError(-32601, `ros.ai does not offer ${method}.`); };
   onExit: (error: Error) => void = () => {};
   constructor(private readonly label: string, command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) {
-    // Its own process group, so stopping it also stops the servers and helpers it started.
-    this.child = spawn(command, args, { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
+    // Its own process group, so stopping it also stops the servers and helpers it started. An npm-installed agent on
+    // Windows is a .cmd file, which runnable() starts the way Node can (command-line.ts).
+    const run = runnable(command, args);
+    this.child = spawn(run.command, run.args, { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsVerbatimArguments: run.windowsVerbatimArguments });
     this.child.stdout.setEncoding('utf8'); this.child.stderr.setEncoding('utf8');
     this.child.stdout.on('data', (chunk: string) => this.receive(chunk));
     this.child.stderr.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-6000); });
@@ -285,7 +288,11 @@ export class AcpAgentService {
     if (running) return running;
     const look = (async () => {
       const binary = this.binary(id), key = this.key(binary);
-      const value: Found = binary ? { binary, version: await this.version(id, binary), blocker: await this.preflight(id, binary) } : { binary: null, version: null, blocker: `${ACP_AGENTS[id].label} is not installed on this computer.` };
+      let value: Found;
+      if (!binary) value = { binary: null, version: null, blocker: `${ACP_AGENTS[id].label} is not installed on this computer.` };
+      else try { value = { binary, version: await this.version(id, binary), blocker: await this.preflight(id, binary) }; }
+      // An agent ros.ai cannot run says so on its own row; the other agents still list.
+      catch (error) { value = { binary, version: null, blocker: `ros.ai could not run ${ACP_AGENTS[id].label} to check it: ${error instanceof Error ? error.message : String(error)}` }; }
       this.found.set(id, { ...value, at: Date.now(), key });
       return value;
     })().finally(() => this.probing.delete(id));
@@ -644,9 +651,15 @@ function rosTool(id: AcpAgentId, name: string, title: string, tools: string[]) {
   const value = name || title;
   return tools.some(tool => value === tool || value === `${SERVER}_${tool}` || value.startsWith(`${tool} (`) || value.includes(`mcp_${SERVER}_${tool}`));
 }
-/** Runs an agent's binary for a moment (--version, --help) without blocking ros.ai. */
+/** Runs an agent's binary for a moment (--version, --help) without blocking ros.ai. A binary Node will not start at all
+ * answers like one that failed. */
 function briefly(binary: string, args: string[], env: NodeJS.ProcessEnv, timeout: number) {
-  return new Promise<{ ok: boolean; stdout: string; output: string }>(done => execFile(binary, args, { encoding: 'utf8', timeout, maxBuffer: 2_000_000, env }, (error, stdout, stderr) => done({ ok: !error, stdout: `${stdout ?? ''}`, output: `${stdout ?? ''}${stderr ?? ''}` })));
+  return new Promise<{ ok: boolean; stdout: string; output: string }>(done => {
+    try {
+      const run = runnable(binary, args);
+      execFile(run.command, run.args, { encoding: 'utf8', timeout, maxBuffer: 2_000_000, env, windowsVerbatimArguments: run.windowsVerbatimArguments }, (error, stdout, stderr) => done({ ok: !error, stdout: `${stdout ?? ''}`, output: `${stdout ?? ''}${stderr ?? ''}` }));
+    } catch (error) { done({ ok: false, stdout: '', output: error instanceof Error ? error.message : String(error) }); }
+  });
 }
 /** A session config option by its category ("mode", "model"), as session/new and set_config_option name them. */
 function configOption(result: Record<string, unknown>, category: string) {
