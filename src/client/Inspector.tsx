@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronDown, Clock3, Database, FileText, Globe2, History, LoaderCircle, MessageSquare, RotateCcw, Square, X } from 'lucide-react';
 import type { Artifact, CanvasNode, Mutation, ProjectDetail, Run } from '../shared/types';
 import { kindName, textLabel } from '../shared/vocabulary';
-import { useDraft, readSaved, saveLocal } from './persistence';
+import { useEditDraft, readSaved, saveLocal } from './persistence';
 import { ArtifactContent } from './Experiment';
 import { date, Evidence, RichText, time } from './Content';
 import { MarkdownEditor } from './MarkdownEditor';
+import { PartBoundary } from './ErrorBoundary';
 import { isImageType, isVideoType, noteImageUrl } from '../shared/files';
 import './detail-polish.css';
 import { NotionBlock } from './NotionView';
@@ -50,26 +51,30 @@ type Props = {
 export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, onOpenArtifact, onOpenNote, readOnly = false, readOnlyNote = 'Historical canvas · return to the current canvas to make changes.', file, onCheckSources, sql, onGoogleCopy, conversation, onConversation }: Props) {
   const [side, setSide] = useState<'conversation' | 'history'>(() => ['runs', 'experiment'].includes(readSaved<string>(`node-tab:${node.id}`, 'work')) ? 'history' : 'conversation');
   useEffect(() => saveLocal(`node-tab:${node.id}`, side === 'history' ? 'runs' : 'work'), [node.id, side]);
-  const [title, setTitle] = useDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription] = useDraft(`node-description:${node.id}`, node.description, !readOnly);
+  // Typed text is kept in the browser until it is saved, and comes back only while the block still holds the text it was
+  // typed on; while nothing unsaved was typed, the editor follows the block's text (persistence.ts).
+  const [title, setTitle, titleSaved] = useEditDraft(`node-title:${node.id}`, node.title, !readOnly); const [description, setDescription, descriptionSaved] = useEditDraft(`node-description:${node.id}`, node.description, !readOnly);
   // The conversation stays out of the way until asked for.
   const [chatState, setChatState] = useState(false);
   const chatOpen = conversation ?? chatState, setChatOpen = (open: boolean) => { setChatState(open); onConversation?.(open); };
-  const priorNode = useRef(node);
-  useEffect(() => { if (title === priorNode.current.title) setTitle(node.title); if (description === priorNode.current.description) setDescription(node.description); priorNode.current = node; }, [node]);
-  // Text saves itself shortly after typing stops, and the title when you leave it, like a file in Obsidian.
-  const sent = useRef({ title: node.title, description: node.description });
+  // Text saves itself shortly after typing stops, and the title when you leave it, like a file in Obsidian. Text counts as
+  // saved only once the service took it: a save that fails goes again a moment later, and again when the block closes.
   const latest = useRef({ title, description }); latest.current = { title, description };
-  const saveDescription = useRef(() => {}); saveDescription.current = () => {
-    const text = latest.current.description;
-    if (readOnly || text === sent.current.description) return;
-    sent.current.description = text; void mutate([{ type: 'updateNode', id: node.id, patch: { description: text } }], `Edit ${node.title}`);
+  const held = useRef({ title: node.title, description: node.description }); held.current = { title: node.title, description: node.description };
+  const sending = useRef<{ title?: string; description?: string }>({});
+  const save = useRef((_field: 'title' | 'description', _retry?: boolean) => {}); save.current = (field, retry = true) => {
+    const text = field === 'title' ? latest.current.title.trim() || 'Untitled node' : latest.current.description;
+    if (readOnly || text === held.current[field] || text === sending.current[field]) return;
+    sending.current[field] = text;
+    void mutate([{ type: 'updateNode', id: node.id, patch: field === 'title' ? { title: text } : { description: text } }], field === 'title' ? 'Rename block' : `Edit ${node.title}`).then(ok => {
+      if (sending.current[field] === text) delete sending.current[field];
+      if (ok) { held.current[field] = text; (field === 'title' ? titleSaved : descriptionSaved)(text); }
+      // Refused because the project moved on meanwhile (another window, an agent): the newest copy is in now, so once more.
+      else if (retry) setTimeout(() => save.current(field, false), 1000);
+    });
   };
-  const saveTitle = useRef(() => {}); saveTitle.current = () => {
-    const next = latest.current.title.trim() || 'Untitled node';
-    if (readOnly || next === sent.current.title) return;
-    sent.current.title = next; void mutate([{ type: 'updateNode', id: node.id, patch: { title: next } }], 'Rename block');
-  };
-  useEffect(() => { sent.current = { title: node.title, description: node.description }; }, [node.title, node.description]);
+  const saveDescription = useRef(() => {}); saveDescription.current = () => save.current('description');
+  const saveTitle = useRef(() => {}); saveTitle.current = () => save.current('title');
   useEffect(() => { const timer = setTimeout(() => saveDescription.current(), 700); return () => clearTimeout(timer); }, [description]);
   useEffect(() => () => { saveDescription.current(); saveTitle.current(); }, []);
   const runs = detail.runs.filter(r => r.nodeId === node.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -96,7 +101,7 @@ export function Inspector({ node, detail, mutate, onCancel, onRetry, onAttach, o
       {node.blockType==='dashboard'&&<section className="note-content"><DashboardBlock projectId={detail.project.id} view={node.dashboard??{tiles:[]}} sources={dashboardSources(detail.project.canvas.nodes)} full onTiles={readOnly?undefined:tiles=>void mutate([{type:'updateNode',id:node.id,patch:{dashboard:{tiles}}}],`Change the tiles on ${node.title}`.slice(0,80))}/></section>}
       {node.post&&<section className="note-content"><PostSheet projectId={detail.project.id} nodeId={node.id} post={node.post} title={node.title}/></section>}
       {node.google&&<section className="note-content"><GoogleBlock projectId={detail.project.id} nodeId={node.id} view={node.google} full onSheet={readOnly?undefined:sheet=>void mutate([{type:'updateNode',id:node.id,patch:{google:{...node.google!,sheet}}}],`Show ${sheet} of ${node.title}`.slice(0,80))} onCopy={readOnly||node.google.kind!=='sheet'?undefined:onGoogleCopy}/></section>}
-      {!file&&(!readOnly||description)&&<MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/>}
+      {!file&&(!readOnly||description)&&<PartBoundary fallback={()=><><p className="note-plain-note">This text could not be shown with formatting, so it shows as written.</p><textarea className="note-plain-editor" aria-label="Block text" value={description} readOnly={readOnly} onChange={event=>setDescription(event.target.value)} onBlur={()=>saveDescription.current()}/></>}><MarkdownEditor key={node.id} value={description} onChange={setDescription} onBlur={()=>saveDescription.current()} imageUrl={src=>noteImageUrl(detail.project.id,node.id,src)} readOnly={readOnly} ariaLabel="Block text" placeholder="Start writing…"/></PartBoundary>}
       {!file&&!isGroup(node)&&!node.notion&&!node.google&&!node.training&&!node.metric&&!node.post&&!node.app&&!node.web&&node.blockType!=='agent'&&node.blockType!=='map'&&node.blockType!=='dashboard'&&<SourceCheckView check={node.check} text={description} onCheck={readOnly?undefined:onCheckSources}/>}
       {node.web&&<WebSources node={node} detail={detail} onOpenArtifact={onOpenArtifact}/>}
       {file&&!picture&&description&&<div className="note-description"><RichText text={description}/></div>}

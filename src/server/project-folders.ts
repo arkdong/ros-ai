@@ -1254,9 +1254,29 @@ export class ProjectFolders implements NotebookFolders {
         return [{ id: connection.id, fromNode: connection.source, toNode: connection.target, fromSide: sides.source, toSide: sides.target, ...(connection.label ? { label: connection.label } : {}) }];
       }),
     };
-    const name = `${safeFileBase(project.title)}.canvas`;
-    this.writeIfChanged(files, name, Buffer.from(`${JSON.stringify(board, null, 1)}\n`, 'utf8'));
+    const bytes = Buffer.from(`${JSON.stringify(board, null, 1)}\n`, 'utf8'), name = this.boardName(record, files, project, bytes);
+    this.writeIfChanged(files, name, bytes);
     record.board = name;
+  }
+  /** The board is named after the project, unless a file of that name is the person's own (an Obsidian canvas in a vault
+   * of the same name), which ros.ai never writes over: then it is "<title> (ros.ai).canvas". */
+  private boardName(record: FolderRecord, files: FolderFiles, project: Project, bytes: Buffer): string {
+    const base = safeFileBase(project.title);
+    for (let index = 1; index < 50; index++) {
+      const name = index === 1 ? `${base}.canvas` : `${base} (ros.ai${index > 2 ? ` ${index - 1}` : ''}).canvas`;
+      if (record.board?.toLowerCase() === name.toLowerCase() || !files.exists(name) || this.ownBoard(files, name, project, bytes)) return name;
+    }
+    throw new StoreError(`ros.ai found no free name for the board of ${project.title}.`);
+  }
+  /** A board ros.ai wrote, perhaps from another computer before this one kept its name: it shows blocks of this project. */
+  private ownBoard(files: FolderFiles, rel: string, project: Project, bytes: Buffer): boolean {
+    try {
+      const held = files.read(rel, 20_000_000).bytes;
+      if (held.equals(bytes)) return true;
+      const board = JSON.parse(held.toString('utf8')) as { nodes?: unknown };
+      const ids = new Set(project.canvas.nodes.map(node => node.id));
+      return Array.isArray(board.nodes) && board.nodes.some(node => typeof (node as { id?: unknown } | null)?.id === 'string' && ids.has((node as { id: string }).id));
+    } catch { return false; }
   }
 
   /** Moves a file out of the way. Changed files and block files go to .ros-ai/trash; unchanged outputs ros.ai can write again are deleted. */
