@@ -154,6 +154,8 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // Removing a project keeps its folder unless the person asks for the folder to go to the computer's Trash too.
   app.post('/api/projects/:id/trash',async(req,res)=>{
     const id=routeId(req.params.id),{files}=z.object({files:z.boolean().optional()}).strict().parse(req.body??{});
+    // ROS lets the project go first, so nothing of a stopped turn or of ROS arranging comes back to a project in Trash.
+    await assistant?.letGo(id);
     const project=store.trashProject(id);
     folders?.release(id);
     if(files&&folders)try{await folders.moveFolderToTrash(id);}catch(error){store.restoreProject(id);folders.resume(id);throw error;}

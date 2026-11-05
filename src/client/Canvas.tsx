@@ -41,6 +41,7 @@ import './source-check.css';
 import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
+import { PartBoundary } from './ErrorBoundary';
 import { AddBlockMenu } from './AddBlockMenu';
 import type { KindId } from './block-kinds';
 import { AppFrame } from './AppFrame';
@@ -285,8 +286,13 @@ function ResearchCard(props: NodeProps<ResearchNode>) {
   const { data } = props, scale = data.scale ?? 1;
   const onResize = data.onResize;
   const scaledData = useMemo(() => scale < 1 ? { ...data, onResize: (size: CardResize | null, commit?: boolean) => onResize(size && { ...size, dx: Math.round(size.dx * scale), dy: Math.round(size.dy * scale) }, commit) } : data, [data, scale, onResize]);
-  if (scale >= 1) return <ResearchCardFace {...props}/>;
-  return <div className="scaled-card" style={{ width: data.width, height: data.height, transform: `scale(${scale})` }}><ResearchCardFace {...props} data={scaledData}/></div>;
+  // A block that cannot be drawn shows a note in its place, and the rest of the map goes on working.
+  return <PartBoundary retry={`${data.primary?.id ?? ''}:${data.primary?.hash ?? ''}:${data.title}:${data.description}`} fallback={message => <CardTrouble title={data.title} message={message}/>}>
+    {scale >= 1 ? <ResearchCardFace {...props}/> : <div className="scaled-card" style={{ width: data.width, height: data.height, transform: `scale(${scale})` }}><ResearchCardFace {...props} data={scaledData}/></div>}
+  </PartBoundary>;
+}
+function CardTrouble({ title, message }: { title: string; message: string }) {
+  return <article className="research-card research-block card-trouble" role="alert"><strong>{title}</strong><p>This block could not be shown here. Open it, or Undo the last change.</p><small>{message}</small></article>;
 }
 function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   const flow = useReactFlow();
@@ -376,7 +382,11 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
 }
 type ArtifactData = { artifact: Artifact; destinationId: string; highlighted: boolean; reused: boolean; originLabel?: string; producer?: string; onOpen: () => void; onPin: () => void; onReuse: () => void; readonly: boolean };
 type ArtifactNode = Node<ArtifactData, 'artifact'>;
-function ArtifactCard({ data }: NodeProps<ArtifactNode>) {
+function ArtifactCard(props: NodeProps<ArtifactNode>) {
+  const { artifact } = props.data;
+  return <PartBoundary retry={`${artifact.id}:${artifact.hash}`} fallback={message => <CardTrouble title={artifact.title} message={message}/>}><ArtifactCardFace {...props}/></PartBoundary>;
+}
+function ArtifactCardFace({ data }: NodeProps<ArtifactNode>) {
   const { artifact } = data;
   return <article className={`canvas-artifact ${data.highlighted ? 'highlighted' : ''}`}><div className="card-top"><span className="card-type">{data.highlighted ? <Pin size={13}/> : null}{data.reused ? 'Selected input' : artifact.kind}</span><div className="row nodrag"><button className="icon-button" aria-label={`${data.highlighted ? 'Unpin' : 'Pin'} ${artifact.title}`} disabled={data.readonly} title={data.highlighted ? 'Unpin highlight' : 'Pin as highlight'} onClick={data.onPin}><Pin size={15} fill={data.highlighted ? 'currentColor' : 'none'}/></button><button className="icon-button" aria-label={`Inspect ${artifact.title}`} title="Inspect result" onClick={data.onOpen}><ArrowUpRight size={15}/></button></div></div><h3>{artifact.title}</h3>{data.originLabel&&<span className="artifact-origin">{data.originLabel}</span>}<div className="artifact-preview nodrag nowheel" onDoubleClick={data.onOpen}><BlockPreview artifact={artifact}/></div><div className="artifact-footer"><span title={`Immutable version ${artifact.hash}`}>{data.reused ? 'Exact selected version' : 'Saved result'} · {artifact.hash.slice(0, 8)}{data.producer&&<small className="artifact-producer"> · Produced by {data.producer}</small>}</span><button className="text-button small nodrag" disabled={data.readonly} onClick={data.onReuse}>Reuse <ArrowUpRight size={13}/></button></div></article>;
 }
@@ -814,13 +824,20 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   };
   const removeRef = useRef(removeSelected); removeRef.current = removeSelected;
   useEffect(() => {
+    // Delete and Backspace belong to the map only while the map has the keyboard: focus on it, or nowhere after a click on
+    // it. In an open block, a page over the map or a menu they delete nothing.
+    let pressed: EventTarget | null = null;
+    const down = (event: PointerEvent) => { pressed = event.target; };
+    const onMap = (target: EventTarget | null) => target instanceof globalThis.Node && Boolean(area.current?.contains(target));
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace' || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]')) return;
+      if (!onMap(target) && !(target === document.body && onMap(pressed))) return;
       event.preventDefault(); removeRef.current();
     };
-    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+    window.addEventListener('pointerdown', down, true); window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('pointerdown', down, true); window.removeEventListener('keydown', key); };
   }, []);
   useEffect(() => { if (readonly) setPendingConnection(null); }, [readonly]);
   // What the chip on a line can do. A line keeps its edge object while nothing about it changes, so it reaches these

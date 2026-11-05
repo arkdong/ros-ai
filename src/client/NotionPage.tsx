@@ -376,19 +376,21 @@ export function NotionPageEditor({ page, projectId, nodeId, readOnly, onSaved, o
     return { ...state, fields: next };
   });
   let number = 0;
+  // While a save runs the page holds still: it is read again from Notion once saved, so words typed meanwhile would go.
+  const locked = readOnly || status.busy;
   return <div className="notion-page" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save(); } }}>
     <div className="notion-page-title-row">
       {page.icon && <span className="notion-page-icon" aria-hidden="true">{page.icon}</span>}
-      <input className={`notion-page-title${edits.title !== undefined ? ' dirty' : ''}`} aria-label="Page title" value={edits.title ?? page.title} placeholder="Untitled" readOnly={readOnly} maxLength={2000}
+      <input className={`notion-page-title${edits.title !== undefined ? ' dirty' : ''}`} aria-label="Page title" value={edits.title ?? page.title} placeholder="Untitled" readOnly={locked} maxLength={2000}
         onChange={event => { const value = event.target.value; update(state => ({ ...state, title: value === page.title ? undefined : value })); }}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); const first = items.find(item => !isFixed(item)); const element = first && elements.current.get(first.id); if (element) placeCaret(element, 0); } }}/>
     </div>
-    {fields.length > 0 && <dl className="notion-page-fields">{fields.map(property => <PropertyRow key={property.name} property={withValue(property, edits.fields[property.name])} changed={property.name in edits.fields} readOnly={readOnly} onChange={change => setField(property, change)}/>)}</dl>}
+    {fields.length > 0 && <dl className="notion-page-fields">{fields.map(property => <PropertyRow key={property.name} property={withValue(property, edits.fields[property.name])} changed={property.name in edits.fields} readOnly={locked} onChange={change => setField(property, change)}/>)}</dl>}
     <div className="notion-page-text">
       {items.map(item => {
         if (isFixed(item)) { number = 0; return <div key={item.id} className="notion-line fixed" title="Edit this kind of block in Notion"><RichText text={item.unit.markdown}/></div>; }
         number = item.kind === 'number' ? number + 1 : 0;
-        return <Line key={item.id} draft={item} number={item.kind === 'number' ? number : undefined} readOnly={readOnly}
+        return <Line key={item.id} draft={item} number={item.kind === 'number' ? number : undefined} readOnly={locked}
           register={(element) => { if (element) elements.current.set(item.id, element); else elements.current.delete(item.id); }}
           onKeyDown={event => keys(item, event)} onInput={element => typed(item, element)} onPaste={event => pasted(item, event)}
           onCheck={() => replace(item.id, { checked: !item.checked })} onAdd={() => add(item)}/>;

@@ -204,6 +204,45 @@ test('an agent in a branch gets the earlier conversation written out once', asyn
   } finally { await f.close(); }
 });
 
+test('deleting a thread or moving the project to Trash waits for a stopped agent to wind down, and the server stays up', async () => {
+  const first = gate(), second = gate(), third = gate();
+  const f = fixture([], [() => first.promise as Promise<string>, () => second.promise as Promise<string>, () => third.promise as Promise<string>]);
+  // Before, the agent's late return reached a turn or project that was gone, and Node stopped the whole server.
+  const rejections: unknown[] = [], note = (error: unknown) => { rejections.push(error); };
+  process.on('unhandledRejection', note);
+  try {
+    f.assistant.setBackend(f.project.id, { backend: 'codex' });
+    const one = f.assistant.start(f.project.id, { message: 'Long job' });
+    await until(() => f.agentRequests.length === 1);
+    f.assistant.cancel(f.project.id, one.activeTurnId!);
+    // The agent is still exiting: the delete waits for it, then removes the thread.
+    const deleting = f.assistant.deleteThread(f.project.id, one.threadId!);
+    await delay(50);
+    assert.ok(f.assistant.state(f.project.id).threads.some(thread => thread.id === one.threadId));
+    first.open('TOO_LATE');
+    assert.ok(!(await deleting).threads.some(thread => thread.id === one.threadId));
+    // Trash lets the project go the same way.
+    const two = f.assistant.start(f.project.id, { message: 'Another long job' });
+    await until(() => f.agentRequests.length === 2);
+    f.assistant.cancel(f.project.id, two.activeTurnId!);
+    const letting = f.assistant.letGo(f.project.id);
+    await delay(50);
+    second.open('TOO_LATE');
+    await letting;
+    f.store.trashProject(f.project.id);
+    f.store.restoreProject(f.project.id);
+    // Even a project moved to Trash without waiting leaves the server up when its agent returns late.
+    const three = f.assistant.start(f.project.id, { message: 'A third long job' });
+    await until(() => f.agentRequests.length === 3);
+    f.assistant.cancel(f.project.id, three.activeTurnId!);
+    f.store.trashProject(f.project.id);
+    third.open('TOO_LATE');
+    await delay(100);
+    assert.deepEqual(rejections, []);
+    f.store.restoreProject(f.project.id);
+  } finally { process.off('unhandledRejection', note); await f.close(); }
+});
+
 test('a streamed answer is saved with its turn every 40 ms, not for every piece, and the page hears it as it comes', async () => {
   const words = Array.from({ length: 400 }, (_, index) => `w${index} `), whole = words.join('');
   const f: ReturnType<typeof fixture> = fixture([], [async () => {

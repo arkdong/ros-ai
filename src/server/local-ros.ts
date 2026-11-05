@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import type { Express } from 'express';
 import { z } from 'zod';
@@ -409,14 +410,10 @@ export async function fetchFile(item: Download, signal: AbortSignal, progress: (
     if (response.status === 416) rmSync(part, { force: true });
     if (!response.ok || !response.body) throw new DownloadError(`The download from ${new URL(item.url).host} failed (${response.status}).`, response.status >= 500 || response.status === 429 || response.status === 408 || response.status === 416);
     done = response.status === 206 ? have : 0;
-    const out = createWriteStream(part, { flags: response.status === 206 ? 'a' : 'w' });
-    try {
-      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-        alive();
-        if (!out.write(chunk)) await new Promise<void>(resolve => out.once('drain', () => resolve()));
-        done += chunk.byteLength; progress(done);
-      }
-    } finally { await new Promise<void>(resolve => out.end(() => resolve())); }
+    // A write that fails (a full disk) ends the download like any other failure, instead of stopping ros.ai.
+    await pipeline(response.body as unknown as AsyncIterable<Uint8Array>, async function* (chunks: AsyncIterable<Uint8Array>) {
+      for await (const chunk of chunks) { alive(); done += chunk.byteLength; progress(done); yield chunk; }
+    }, createWriteStream(part, { flags: response.status === 206 ? 'a' : 'w' }));
   } catch (error) {
     if (stalled.signal.aborted && !signal.aborted) throw new DownloadError(`The download from ${new URL(item.url).host} stalled.`, true);
     throw error;
