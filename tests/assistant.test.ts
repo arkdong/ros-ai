@@ -426,7 +426,7 @@ test('threads keep their own history, two run at once, and the earlier conversat
     assert.match(JSON.stringify(f.requests[2].messages), /SECOND_THREAD_REPLY/); assert.doesNotMatch(JSON.stringify(f.requests[2].messages), /FIRST_THREAD_REPLY/);
     const renamed = f.assistant.renameThread(f.project.id, two.threadId, { title: 'Second line of work' });
     assert.equal(renamed.threads[0].id, two.threadId); assert.equal(renamed.threads[0].title, 'Second line of work'); assert.equal(renamed.threads[0].last?.status, 'completed');
-    const deleted = f.assistant.deleteThread(f.project.id, two.threadId);
+    const deleted = await f.assistant.deleteThread(f.project.id, two.threadId);
     assert.equal(deleted.threads.length, 1); assert.ok(deleted.turns.length === 1 && deleted.turns.every(turn => turn.threadId === legacy));
     assert.ok(f.store.listMessages(f.project.id, null).every(message => message.threadId === legacy));
   } finally { await f.close(); }

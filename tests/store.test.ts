@@ -89,8 +89,8 @@ test('undo after undo discards the redo branch without deleting inspectable hist
     const detail = f.store.detail(project.id);
     assert.equal(detail.canRedo, false);
     assert.equal(detail.project.revision, 4);
-    assert.equal(detail.changes[2].canvas.nodes[0].title, 'Old branch');
-    assert.equal(detail.changes[4].canvas.nodes[0].title, 'New branch');
+    assert.equal(f.store.getChange(project.id, detail.changes[2].id).canvas.nodes[0].title, 'Old branch');
+    assert.equal(f.store.getChange(project.id, detail.changes[4].id).canvas.nodes[0].title, 'New branch');
     assert.throws(() => f.store.redo(project.id), /Nothing to redo/);
     assert.equal(f.store.getProject(project.id).canvas.nodes[0].title, 'New branch');
   } finally { f.dispose(); }

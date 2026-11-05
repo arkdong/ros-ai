@@ -58,7 +58,7 @@ export class ComparisonBudget {
     return (Object.keys(TERMS) as Key[]).find(key => this.projects[key] === projectId && this.grant.terms[key].provider === selection?.provider && this.grant.terms[key].model === selection.model);
   }
   private accounted(admissions: Admission[]): number {
-    const usage = new Map(this.store.listUsage().map(row => [row.id, row]));
+    const usage = new Map(this.store.usageLedger().map(row => [row.id, row]));
     return admissions.reduce((total, admission) => {
       const row = usage.get(admission.usageId);
       return total + Math.max(admission.reservedUnits, units(row?.reservedUsd ?? 0), units(row?.estimatedUsd ?? 0));

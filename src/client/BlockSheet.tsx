@@ -34,7 +34,9 @@ export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, 
   // Focus moves into the block when it opens, and back where it was when it closes, as the dialog did.
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    if (!box.current?.contains(document.activeElement)) box.current?.querySelector<HTMLElement>('[data-autofocus], .cm-content, textarea, input:not([type="file"]):not(.bv-title), button')?.focus();
+    // The block's own editor first, so typing (and Backspace) goes to the text, not to a button in the header.
+    const inside = box.current;
+    if (inside && !inside.contains(document.activeElement)) (inside.querySelector<HTMLElement>('[data-autofocus]') ?? inside.querySelector<HTMLElement>('.cm-content') ?? inside.querySelector<HTMLElement>('textarea, input:not([type="file"]):not(.bv-title), button'))?.focus();
     return () => previous?.focus();
   }, [node.id, mode]);
   const shape = picture ? { '--picture-ratio': String(picture.width / Math.max(1, picture.height)), '--picture-w': String(picture.width), '--picture-h': String(picture.height) } as CSSProperties : undefined;

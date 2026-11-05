@@ -57,6 +57,8 @@ type SavedTurn=AssistantTurn&{steps:Trace[];modelSelection?:ModelSelection;outsi
 type SavedQueued=QueuedMessage&{projectId:string;glance?:AssistantGlance;suggest?:PluginId[];first?:boolean};
 /** An agent working from outside ros.ai makes its changes call by call; ROS arranges them once it has been quiet this long. */
 const OUTSIDE_QUIET_MS=20_000;
+/** How long deleting a thread or moving a project to Trash waits for a stopped agent to wind down. */
+const LET_GO_MS=6000;
 /** Messages that can wait for one thread at a time. */
 const QUEUE_LIMIT=10;
 /** How much of the earlier conversation an agent gets when its own session does not hold it. */
@@ -274,7 +276,9 @@ export class AssistantService {
     for(const pass of this.layering.values())pass.hurry.abort();
     const controller=new AbortController(),active={controller,done:Promise.resolve()};this.active.set(turn.id,active);
     // The project folder is looked at before the turn starts and after it ends, so the turn can show what it changed.
-    active.done=Promise.resolve().then(()=>this.files.begin(projectId,turn.id)).then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.settle(projectId,turn.id));
+    active.done=Promise.resolve().then(()=>this.files.begin(projectId,turn.id)).then(()=>this.drive(projectId,turn.id,controller.signal)).finally(()=>this.settle(projectId,turn.id))
+      // Nothing of a turn's background work may reach Node as an unhandled rejection: that would stop the whole server.
+      .catch(error=>console.error(`ROS: a turn ended with an error: ${error instanceof Error?error.message:String(error)}`));
     return done();
   }
   /** A thread is busy while a turn of it runs, or while a stopped one is still winding down. */
@@ -287,7 +291,7 @@ export class AssistantService {
     try{await this.recordFiles(projectId,turnId);}catch{/* The turn stands without its file card. */}
     finally{this.active.delete(turnId);}
     const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
-    if(turn?.threadId)this.drain(projectId,turn.threadId);
+    if(turn?.threadId)try{this.drain(projectId,turn.threadId);}catch{/* The project went to Trash meanwhile. */}
   }
   /** Keeps with the turn the files that changed in the project folder while it ran. keep: an outside agent's turn, which
    * may change more files later; the start stays the baseline. */
@@ -511,7 +515,11 @@ export class AssistantService {
         const thread=turn.threadId?this.threads(projectId).find(item=>item.id===turn.threadId):undefined,carried=thread?.carry?this.carried(projectId,turn):undefined;
         if(carried)this.event(projectId,turnId,'Gave the agent the earlier conversation of this thread.');
         const preferences=[carried,this.preferences(turn.userMessage,loop)].filter((part):part is string=>Boolean(part)).join('\n\n')||undefined;
-        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences,...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;if(event.type==='delta'){current.reply+=event.message;this.save(current);}else {const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}});
+        // Streamed text is gathered here and saved with the turn at most every 40 ms, as the page hears it. Saving each
+        // piece read the project and rewrote the whole turn for every word.
+        const streamed:{text:string;timer?:ReturnType<typeof setTimeout>}={text:''};
+        const flush=()=>{clearTimeout(streamed.timer);streamed.timer=undefined;if(!streamed.text)return;const text=streamed.text;streamed.text='';try{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;current.reply+=text;this.save(current);}catch{/* The turn or its project is gone; how the turn ends reports that. */}};
+        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences,...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{if(event.type==='delta'){streamed.text+=event.message;streamed.timer??=setTimeout(flush,40);return;}flush();let current:SavedTurn;try{current=this.getTurn(projectId,turnId);}catch{return;}if(current.status!=='running')return;const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}).finally(flush);
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.say(turn,'assistant',result.reply);
         this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});
@@ -572,7 +580,7 @@ export class AssistantService {
         if(!searched||pending||step===1)break;
       }
       turn=this.getTurn(projectId,turnId);if(turn.status==='running')this.save({...turn,status:'completed'});
-    }catch(error){const turn=this.getTurn(projectId,turnId);if(turn.status==='running'){const message=error instanceof z.ZodError?`Model response did not match the expected contract (${error.issues.map(issue=>issue.path.join('.')).slice(0,3).join(', ')}). No actions from that response were applied; the captured request and response remain saved.`:error instanceof SyntaxError?'Model returned invalid JSON. No actions were applied; the captured response remains saved.':error instanceof Error?error.message:'Assistant could not complete this step.';this.save({...turn,status:signal.aborted?'cancelled':'failed',error:message,reply:turn.reply||message});this.say(turn,'system',message);}}
+    }catch(error){let turn:SavedTurn;try{turn=this.getTurn(projectId,turnId);}catch{return;/* Its thread was deleted or its project went to Trash. */}if(turn.status==='running'){const message=error instanceof z.ZodError?`Model response did not match the expected contract (${error.issues.map(issue=>issue.path.join('.')).slice(0,3).join(', ')}). No actions from that response were applied; the captured request and response remain saved.`:error instanceof SyntaxError?'Model returned invalid JSON. No actions were applied; the captured response remains saved.':error instanceof Error?error.message:'Assistant could not complete this step.';this.save({...turn,status:signal.aborted?'cancelled':'failed',error:message,reply:turn.reply||message});this.say(turn,'system',message);}}
   }
   private addAction(projectId:string,turnId:string,action:AssistantAction){const turn=this.getTurn(projectId,turnId);turn.actions.push(action);this.save(turn);return action;}
   private updateAction(projectId:string,turnId:string,action:AssistantAction){const turn=this.getTurn(projectId,turnId);turn.actions=turn.actions.map(a=>a.id===action.id?action:a);this.save(turn);return action;}
@@ -662,7 +670,8 @@ export class AssistantService {
       this.save({...turn,layer:result.layer,actions:result.action?[...turn.actions,result.action]:turn.actions,events:result.event?[...turn.events,{at:now(),message:result.event}]:turn.events});
     }catch(error){
       const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
-      if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});
+      try{if(turn?.layer?.state==='running')this.save({...turn,layer:{state:'failed',note:controller.signal.aborted?'Stopped before ROS finished; nothing was changed.':`ROS could not arrange this turn, so nothing was changed: ${error instanceof Error?error.message.slice(0,300):'unknown error'}`}});}
+      catch{/* The project went to Trash meanwhile. */}
     }finally{this.layering.delete(turnId);}
   }
   /** Another thread of the project is still working and has changes waiting for the person on the map as it is now.
@@ -709,7 +718,7 @@ export class AssistantService {
     // The turn before it is finished: its file changes are counted one last time.
     if(latest?.source==='outside-agent'&&this.files.has(latest.id)){clearTimeout(this.filesQuiet.get(latest.id));this.filesQuiet.delete(latest.id);void this.recordFiles(projectId,latest.id).catch(()=>undefined);}
     const turn:SavedTurn={id:randomUUID(),projectId,threadId:thread.id,createdAt:now(),updatedAt:now(),focus:{nodeId:null},userMessage:'',reply:'',status:'completed',source:'outside-agent',model:label,references:[],actions:[],events:[],steps:[],outsideSession:session};
-    this.save(turn);this.touchThread(thread);void this.files.begin(projectId,turn.id);return turn.id;
+    this.save(turn);this.touchThread(thread);void this.files.begin(projectId,turn.id).catch(()=>undefined);return turn.id;
   }
   renameThread(projectId:string,threadId:string,supplied:unknown){
     const {title}=z.object({title:z.string().trim().min(1).max(120)}).strict().parse(supplied);
@@ -719,8 +728,10 @@ export class AssistantService {
   }
   /** Removes a thread with its turns, messages and agent sessions; refused while it works. What it put on the map stays,
    * with the map's history. */
-  deleteThread(projectId:string,threadId:string){
-    const thread=this.getThread(projectId,threadId),turns=this.turns(projectId).filter(turn=>turn.threadId===thread.id);
+  async deleteThread(projectId:string,threadId:string){
+    const thread=this.getThread(projectId,threadId);
+    await this.letGo(projectId,thread.id);
+    const turns=this.turns(projectId).filter(turn=>turn.threadId===thread.id);
     if(turns.some(turn=>turn.status==='running'))throw new StoreError('ROS is still working in this thread. Stop it before deleting the thread.',409);
     this.store.atomic(()=>{
       for(const turn of turns)this.store.removeRecord('assistant-turn',turn.id,projectId);
@@ -766,7 +777,21 @@ export class AssistantService {
     if(why==='stop')for(const item of this.queuedRecords(projectId))if(item.threadId===turn.threadId&&!item.paused)this.store.saveRecord('assistant-queued',item.id,projectId,{...item,paused:true,note:'Waiting: you stopped the turn before it.'});
     this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:why==='next'?'Stopped to send your next message. Captured work and reservations are preserved.':'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
   devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);this.migrated.delete(projectId);return this.state(projectId);}
-  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.layering.get(turn.id)?.stop.abort();clearTimeout(this.quiet.get(turn.id));this.quiet.delete(turn.id);clearTimeout(this.filesQuiet.get(turn.id));this.filesQuiet.delete(turn.id);this.files.forget(turn.id);}}
+  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.drop(turn.id);}}
+  /** Ends what ROS still does beside a turn: arranging it (which changes nothing once stopped), the timers that wait for an
+   * outside agent to go quiet, and the look at the folder the turn started from. */
+  private drop(turnId:string){this.layering.get(turnId)?.stop.abort();clearTimeout(this.quiet.get(turnId));this.quiet.delete(turnId);clearTimeout(this.filesQuiet.get(turnId));this.filesQuiet.delete(turnId);this.files.forget(turnId);}
+  /** Before a thread is deleted or its project goes to Trash: ROS stops arranging its turns, and a turn that was stopped
+   * gets a few seconds to wind down, so nothing comes back later to a turn or project that is gone. Refused while one is
+   * still stopping. A turn still running is left alone: the caller refuses then. */
+  async letGo(projectId:string,threadId?:string){
+    const turns=this.turns(projectId).filter(turn=>!threadId||turn.threadId===threadId);
+    if(turns.some(turn=>turn.status==='running'))return;
+    for(const turn of turns)this.drop(turn.id);
+    const settling=()=>turns.some(turn=>this.active.has(turn.id)||this.layering.has(turn.id));
+    for(const until=Date.now()+LET_GO_MS;settling()&&Date.now()<until;)await delay(100);
+    if(settling())throw new StoreError(`ROS is still stopping in this ${threadId?'thread':'project'}. Try again in a few seconds.`,409);
+  }
   async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
 
@@ -785,7 +810,7 @@ export function attachAssistantRoutes(app:Express,service:AssistantService){
   app.post('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.renameThread(String(req.params.id),String(req.params.threadId),req.body)));
   app.post('/api/projects/:id/assistant/threads/:threadId/choice',(req,res)=>res.json(service.rememberChoice(String(req.params.id),String(req.params.threadId))));
   app.post('/api/projects/:id/assistant/threads/:threadId/restore',(req,res)=>res.json(service.restoreChoice(String(req.params.id),String(req.params.threadId))));
-  app.delete('/api/projects/:id/assistant/threads/:threadId',(req,res)=>res.json(service.deleteThread(String(req.params.id),String(req.params.threadId))));
+  app.delete('/api/projects/:id/assistant/threads/:threadId',async(req,res)=>{res.json(await service.deleteThread(String(req.params.id),String(req.params.threadId)));});
   if(process.env.ROS_DEV==='1')app.post('/api/projects/:id/assistant/dev-clear',(req,res)=>res.json(service.devClear(String(req.params.id))));
   app.post('/api/projects/:id/assistant/turns/:turnId/cancel',(req,res)=>res.json(service.cancel(String(req.params.id),String(req.params.turnId))));
   app.post('/api/projects/:id/assistant/turns/:turnId/branch',(req,res)=>res.json(service.branch(String(req.params.id),String(req.params.turnId))));

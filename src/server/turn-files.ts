@@ -25,6 +25,8 @@ const LISTED = 200;
 /** All saved diffs of one turn, at most. */
 const PATCH_TOTAL = 400_000;
 const CONTEXT = 3;
+/** Steps of comparing lines one diff may take (about a tenth of a second) before it gives up as too different. */
+const DIFF_WORK = 20_000_000;
 
 type Entry = { size: number; mtimeMs: number; hash: string; text?: string };
 type Snapshot = { files: Map<string, Entry>; partial: boolean };
@@ -69,7 +71,8 @@ async function look(root: string, before?: Snapshot): Promise<Snapshot> {
 const lines = (text: string) => { if (!text) return []; const split = text.split('\n'); if (split.at(-1) === '') split.pop(); return split; };
 
 /** The line edits from a to b (Myers): ' ' kept, '-' removed, '+' added. undefined when the files differ too much to
- * compare quickly. */
+ * compare quickly: more than `limit` edits, or more than DIFF_WORK steps. Each step keeps only the diagonals the step
+ * after it reads, so memory grows with the number of edits squared, never with the files' length. */
 export function lineEdits(a: string[], b: string[], limit = 4000): { op: ' ' | '-' | '+'; line: string }[] | undefined {
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start++;
@@ -80,24 +83,27 @@ export function lineEdits(a: string[], b: string[], limit = 4000): { op: ' ' | '
   if (n === 0 || m === 0) { for (const line of x0) middle.push({ op: '-', line }); for (const line of y0) middle.push({ op: '+', line }); }
   else {
     const offset = max + 1, v = new Int32Array(2 * max + 3), trace: Int32Array[] = [];
-    let found = -1;
+    let found = -1, work = 0;
     for (let d = 0; d <= Math.min(max, limit); d++) {
-      trace.push(v.slice());
+      // Diagonals -d..d, read back as trace[d][d + k].
+      trace.push(v.slice(offset - d, offset + d + 1));
       for (let k = -d; k <= d; k += 2) {
         let x = k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1]) ? v[offset + k + 1] : v[offset + k - 1] + 1;
         let y = x - k;
+        const from = x;
         while (x < n && y < m && x0[x] === y0[y]) { x++; y++; }
+        work += x - from + 1;
         v[offset + k] = x;
         if (x >= n && y >= m) { found = d; break; }
       }
-      if (found >= 0) break;
+      if (found >= 0 || work > DIFF_WORK) break;
     }
     if (found < 0) return undefined;
     let x = n, y = m;
     for (let d = found; d > 0; d--) {
       const previous = trace[d], k = x - y;
-      const down = k === -d || (k !== d && previous[offset + k - 1] < previous[offset + k + 1]);
-      const prevK = down ? k + 1 : k - 1, prevX = previous[offset + prevK], prevY = prevX - prevK;
+      const down = k === -d || (k !== d && previous[d + k - 1] < previous[d + k + 1]);
+      const prevK = down ? k + 1 : k - 1, prevX = previous[d + prevK], prevY = prevX - prevK;
       while (x > prevX && y > prevY) { middle.push({ op: ' ', line: x0[x - 1] }); x--; y--; }
       if (down) { middle.push({ op: '+', line: y0[y - 1] }); y--; } else { middle.push({ op: '-', line: x0[x - 1] }); x--; }
     }

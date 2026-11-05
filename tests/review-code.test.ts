@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { reviewCode } from '../src/server/review-code.js';
+import { forgetNotebookNames, reviewCode, reviewNotebookCell, reviewNotebookCells, type NotebookNames } from '../src/server/review-code.js';
 
 test('trusted AST review recognizes dataframe, numerical, statistics and matplotlib operations', () => {
   const samples = [
@@ -116,4 +116,36 @@ test('parsing never executes supplied code and missing/malformed/oversized parsi
     assert.equal(allowed.allowed, true);
     assert.match(allowed.reason, /not proof/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a run of notebook cells is reviewed in one process with the same results as one cell at a time', () => {
+  type Cell = { code: string; approved: boolean };
+  const oneByOne = (cells: Cell[], names: NotebookNames) => {
+    const out: { allowed: boolean; reason: string; names?: NotebookNames }[] = [];
+    let before = names;
+    for (const cell of cells) {
+      const review = reviewNotebookCell(cell.code, before);
+      if (review.allowed) { out.push(review); before = review.names; continue; }
+      if (!cell.approved) { out.push({ allowed: false, reason: review.reason }); break; }
+      before = forgetNotebookNames(cell.code, before);
+      out.push({ allowed: false, reason: review.reason, names: before });
+    }
+    return out;
+  };
+  const cells = (approved: boolean): Cell[] => [
+    { code: 'import pandas as pd\nimport numpy as np', approved: false },
+    { code: 'frame = pd.DataFrame({"a": np.arange(3)})', approved: false },
+    { code: 'import os\nfiles = os.listdir(".")\npd = None', approved },
+    { code: 'frame.describe()', approved: false },
+    { code: '', approved: false },
+  ];
+  for (const approved of [false, true]) {
+    const together = reviewNotebookCells(cells(approved), {});
+    assert.deepEqual(together, oneByOne(cells(approved), {}));
+    assert.equal(together.length, approved ? 5 : 3);
+  }
+  // After the approved cell rebinds pd, the reviewer no longer trusts it.
+  assert.equal(reviewNotebookCells(cells(true), {})[2].names?.pd, undefined);
+  assert.deepEqual(reviewNotebookCells([], {}), []);
+  assert.deepEqual(reviewNotebookCells(cells(false), {}, { python: '/missing/python3' }), []);
 });

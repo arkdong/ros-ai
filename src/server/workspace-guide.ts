@@ -87,7 +87,7 @@ export class WorkspaceGuideService{
     }catch(error){
       const current=this.get(review.projectId,review.id);
       const usageId=error instanceof Error&&'usageId' in error&&typeof error.usageId==='string'?error.usageId:undefined;
-      if(usageId)receipt=this.store.listUsage().find(row=>row.id===usageId);
+      if(usageId)receipt=this.store.getUsage(usageId);
       if(current.status==='cancelled'){this.save({...current,receipt,usageId});return;}
       this.save({...review,status:signal.aborted?'cancelled':'failed',updatedAt:now(),receipt,usageId,error:error instanceof Error?error.message.slice(0,500):'Guide review failed. No automatic retry.'});
     }

@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalRos } from '../src/server/local-ros.js';
+import { LocalRos, fetchFile } from '../src/server/local-ros.js';
 import type { LocalRosStatus } from '../src/shared/local-ros.js';
 
 /** A stand-in llama-server: answers /health on the port it is given, the way llama.cpp's does once the model is loaded. */
@@ -123,6 +124,21 @@ test('a download the person started picks up again when ros.ai starts, and stops
     assert.equal(later.status().state, 'not-downloaded');
   } finally {
     globalThis.fetch = real;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a disk that fills up during a download fails the download instead of stopping ros.ai', { skip: existsSync('/dev/full') ? false : 'needs /dev/full, a disk that is always full' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ros-local-full-')), bytes = Buffer.alloc(2_000_000, 1);
+  const server = createServer((_req, res) => { res.writeHead(200, { 'Content-Length': bytes.length }); res.end(bytes); }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  try {
+    // The part being written is the full disk.
+    symlinkSync('/dev/full', join(dir, 'model.gguf.part'));
+    const address = server.address() as { port: number };
+    await assert.rejects(fetchFile({ url: `http://127.0.0.1:${address.port}/model.gguf`, file: join(dir, 'model.gguf'), bytes: bytes.length }, new AbortController().signal, () => {}), /ENOSPC|no space/i);
+  } finally {
+    server.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

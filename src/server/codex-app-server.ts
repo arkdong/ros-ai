@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CodexRateLimit, CodexRateLimits } from '../shared/budget-report.js';
 import { EFFORT_LEVELS, isEffortLevel, type AgentModel } from '../shared/agent-models.js';
+import { runnable } from './command-line.js';
 
 const rateLimit = (value: unknown): CodexRateLimit | null => {
   const item = value && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -88,9 +89,14 @@ export function childEnvironment(api: CodexApiKey | null = null): NodeJS.Process
   if (api) { env.CODEX_HOME = api.home; if (api.key) env[API_KEY_ENV] = api.key; }
   return env;
 }
-/** One short Codex command. It runs beside the local server rather than holding it up, so every other request is answered meanwhile. */
-const codexRun = (args: string[], timeout: number) => new Promise<{ ok: boolean; stdout: string; stderr: string }>(done =>
-  execFile(codexBinary(), args, { encoding: 'utf8', timeout, maxBuffer: 20000, env: childEnvironment() }, (error, stdout, stderr) => done({ ok: !error, stdout, stderr })));
+/** One short Codex command. It runs beside the local server rather than holding it up, so every other request is answered meanwhile.
+ * A Codex that cannot start at all reads as not installed. */
+const codexRun = (args: string[], timeout: number) => new Promise<{ ok: boolean; stdout: string; stderr: string }>(done => {
+  try {
+    const run = runnable(codexBinary(), args);
+    execFile(run.command, run.args, { encoding: 'utf8', timeout, maxBuffer: 20000, env: childEnvironment(), windowsVerbatimArguments: run.windowsVerbatimArguments }, (error, stdout, stderr) => done({ ok: !error, stdout, stderr }));
+  } catch (error) { done({ ok: false, stdout: '', stderr: error instanceof Error ? error.message : String(error) }); }
+});
 export async function inspectCodexProtocol(): Promise<CodexProtocol> {
   const directory = mkdtempSync(join(tmpdir(), 'ros-ai-codex-schema-'));
   try {
@@ -126,7 +132,8 @@ export class CodexAppServer {
   onRequest: (id: string | number, method: string, params: Record<string, unknown>) => Promise<unknown> = async () => { throw new StoreError('This app-server request is not exposed by ros.ai.', 403); };
   onFailure: (error: Error) => void = () => {};
   constructor(private readonly cwd: string, private readonly options: CodexProcessOptions = {}) {
-    this.process = spawn(codexBinary(), codexProcessArgs(cwd, options), { cwd, env: childEnvironment(options.api), stdio: ['pipe', 'pipe', 'pipe'] });
+    const run = runnable(codexBinary(), codexProcessArgs(cwd, options));
+    this.process = spawn(run.command, run.args, { cwd, env: childEnvironment(options.api), stdio: ['pipe', 'pipe', 'pipe'], windowsVerbatimArguments: run.windowsVerbatimArguments });
     this.process.stdout.setEncoding('utf8');
     this.process.stdout.on('data', (chunk: string) => this.receive(chunk));
     // Upstream diagnostics can contain local paths/account details. Never forward them.
