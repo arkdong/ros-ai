@@ -98,22 +98,24 @@ jobs:
               [ -n "$id" ] && xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
               echo "::error::Apple did not accept $dmg for notarization (the log above says why)."; exit 1
             fi
-            xcrun stapler staple "$dmg"
+            for i in 1 2 3; do xcrun stapler staple "$dmg" && break; [ "$i" = 3 ] && exit 1; sleep 15; done
           done
       # Fails the run unless macOS itself would open the app and the disk image without a warning.
       - name: Check the signature the way macOS will
         if: matrix.os == 'mac' && env.MAC_SIGNED == '1'
         run: |
+          # stapler and spctl ask Apple over the network, which now and then drops the connection: try three times.
+          retry() { for i in 1 2 3; do "$@" && return 0; echo "::warning::$1 failed (attempt $i of 3)."; sleep 15; done; return 1; }
           app=$(find desktop/dist -maxdepth 2 -type d -name '*.app' | head -n 1)
           [ -n "$app" ] || { echo "::error::No .app in desktop/dist."; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv --verbose=2 "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime|Timestamp)'
-          xcrun stapler validate "$app"
-          spctl --assess --type execute --verbose=4 "$app" 2>&1 | tee spctl.txt
+          retry xcrun stapler validate "$app"
+          retry spctl --assess --type execute --verbose=4 "$app" 2>&1 | tee spctl.txt
           grep -q 'source=Notarized Developer ID' spctl.txt || { echo "::error::macOS would not accept ros.ai.app as notarized."; exit 1; }
           for dmg in desktop/dist/*.dmg; do
-            xcrun stapler validate "$dmg"
-            spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+            retry xcrun stapler validate "$dmg"
+            retry spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
           done
       - name: Build the Windows installer
         if: matrix.os == 'windows'
