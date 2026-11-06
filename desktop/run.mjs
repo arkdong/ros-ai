@@ -25,7 +25,10 @@ const windows = process.platform === 'win32', npm = windows ? 'npm.cmd' : 'npm';
  * C:\Users\Jane Doe): a .cmd goes through it as one line with every part quoted, and everything else, Node itself
  * included, starts directly. */
 const viaShell = command => windows && /\.cmd$/i.test(command);
-const line = (command, commandArgs) => [command, ...commandArgs].map(part => `"${part}"`).join(' ');
+// A bare command name (npm.cmd, found on PATH) stays unquoted: cmd.exe gives a quoted batch file found on PATH the
+// wrong %~dp0 (the current folder), so npm.cmd looked for npm-cli.js under desktop\node_modules and the build failed.
+const quote = part => `"${part}"`;
+const line = (command, commandArgs) => [/[\\/]/.test(command) ? quote(command) : command, ...commandArgs.map(quote)].join(' ');
 const run = (command, commandArgs, options = {}) => {
   const result = viaShell(command) ? spawnSync(line(command, commandArgs), { stdio: 'inherit', shell: true, ...options }) : spawnSync(command, commandArgs, { stdio: 'inherit', ...options });
   if (result.error) { console.error(`${command} could not start: ${result.error.message}`); process.exit(1); }
