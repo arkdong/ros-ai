@@ -71,8 +71,16 @@ jobs:
           if [ -n "$missing" ]; then echo "::error::CSC_LINK is set but these secrets are missing:$missing (see desktop/README.md › Signing and notarization)."; exit 1; fi
           # electron-builder signs every file in the app with the Developer ID, notarizes and staples the app (it reads
           # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID), then builds the zip and the disk image, which it signs too.
-          node desktop/run.mjs --build --${{ matrix.arch }} -c.mac.notarize=true -c.dmg.sign=true
-          echo "MAC_SIGNED=1" >> "$GITHUB_ENV"
+          # Every signature asks Apple's timestamp server, which now and then does not answer ("A timestamp was
+          # expected but was not found"): build again then, up to three times. Any other failure stops at once.
+          for attempt in 1 2 3; do
+            if node desktop/run.mjs --build --${{ matrix.arch }} -c.mac.notarize=true -c.dmg.sign=true 2>&1 | tee build.log; then
+              echo "MAC_SIGNED=1" >> "$GITHUB_ENV"; exit 0
+            fi
+            grep -q "A timestamp was expected but was not found" build.log || exit 1
+            echo "::warning::Apple's timestamp server did not answer (attempt $attempt of 3)."
+          done
+          exit 1
       # The disk image is what people download: notarize it as well and staple the ticket into it, so it opens
       # without a check over the network.
       - name: Notarize the disk image

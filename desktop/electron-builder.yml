@@ -44,6 +44,10 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Fonts, pictures, PDF.js maps and WebAssembly are not programs: the app's own signature already seals them, so
+  # signing each one separately only adds calls to Apple's timestamp server (which then sometimes fails a build).
+  signIgnore:
+    - '\.(bcmap|pfb|ttf|otf|woff2?|png|jpe?g|gif|svg|ico|icc|wasm|pdf)$'
   extendInfo:
     NSHumanReadableCopyright: MIT licence
     LSMinimumSystemVersion: "12.0"
