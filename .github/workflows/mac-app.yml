@@ -104,8 +104,8 @@ jobs:
       - name: Check the signature the way macOS will
         if: matrix.os == 'mac' && env.MAC_SIGNED == '1'
         run: |
-          app=$(find desktop/dist -maxdepth 2 -type d -name 'ros.ai.app' | head -n 1)
-          [ -n "$app" ] || { echo "::error::No ros.ai.app in desktop/dist."; exit 1; }
+          app=$(find desktop/dist -maxdepth 2 -type d -name '*.app' | head -n 1)
+          [ -n "$app" ] || { echo "::error::No .app in desktop/dist."; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv --verbose=2 "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime|Timestamp)'
           xcrun stapler validate "$app"
