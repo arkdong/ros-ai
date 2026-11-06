@@ -15,7 +15,7 @@ Your notes, code, data, files, papers and Notion pages sit on the canvas as bloc
 
 ## Install
 
-**Mac app:** download it for [Apple silicon](https://ros-ai.io/download/ros.ai-mac-arm64.dmg) or [Intel](https://ros-ai.io/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The app is signed with ros.ai's Developer ID and notarized by Apple, so it opens straight away with no warning.
+**Mac app:** download it for [Apple silicon](https://ros-ai.io/download/ros.ai-mac-arm64.dmg) or [Intel](https://ros-ai.io/download/ros.ai-mac-x64.dmg) and drag ros.ai to Applications. The app is signed with an Apple Developer ID and notarized by Apple, so it opens straight away with no warning.
 
 **Windows app:** download the [installer](https://ros-ai.io/download/ros.ai-windows-x64.exe) and run it. It installs for you only, needs no administrator, and opens ros.ai when done. The installer is not signed yet, so Windows SmartScreen may say it protected your PC: click More info, then Run anyway.
 
