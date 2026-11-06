@@ -3,8 +3,9 @@
 # Windows. Start it by hand (Actions → Desktop app → Run workflow) or push a v* tag. A tag publishes a GitHub
 # release once every build is attached: installed Mac apps update from the zips (src/server/updates.ts), so a
 # release never shows up half-built, and its tag must match the version in package.json.
-# With the five Apple secrets below the Mac app is signed and notarized; without them it is unsigned and macOS asks
-# for "Open Anyway" once. With WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD the Windows installer is signed; without them
+# With the five Apple secrets below (desktop/README.md › Signing and notarization) the Mac app and its disk image are
+# signed with the Developer ID, notarized by Apple and checked the way Gatekeeper will; without CSC_LINK the app is
+# unsigned and macOS asks for "Open Anyway" once. With WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD the Windows installer is signed; without them
 # Windows SmartScreen asks once (More info, then Run anyway).
 name: Desktop app
 on:
@@ -62,11 +63,50 @@ jobs:
             echo "No signing certificate: building an unsigned app."
             export CSC_IDENTITY_AUTO_DISCOVERY=false
             node desktop/run.mjs --build --${{ matrix.arch }}
-          elif [ -n "$APPLE_ID" ]; then
-            node desktop/run.mjs --build --${{ matrix.arch }} -c.mac.notarize=true
-          else
-            node desktop/run.mjs --build --${{ matrix.arch }}
+            exit 0
           fi
+          # A signed app that Apple has not notarized is blocked just like an unsigned one, so signing needs all five.
+          missing=""
+          for key in CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do [ -n "${!key}" ] || missing="$missing $key"; done
+          if [ -n "$missing" ]; then echo "::error::CSC_LINK is set but these secrets are missing:$missing (see desktop/README.md › Signing and notarization)."; exit 1; fi
+          # electron-builder signs every file in the app with the Developer ID, notarizes and staples the app (it reads
+          # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID), then builds the zip and the disk image, which it signs too.
+          node desktop/run.mjs --build --${{ matrix.arch }} -c.mac.notarize=true -c.dmg.sign=true
+          echo "MAC_SIGNED=1" >> "$GITHUB_ENV"
+      # The disk image is what people download: notarize it as well and staple the ticket into it, so it opens
+      # without a check over the network.
+      - name: Notarize the disk image
+        if: matrix.os == 'mac' && env.MAC_SIGNED == '1'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for dmg in desktop/dist/*.dmg; do
+            out=$(xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait 2>&1) || true
+            echo "$out"
+            if ! grep -q "status: Accepted" <<<"$out"; then
+              id=$(awk '/^ *id:/ {print $2; exit}' <<<"$out")
+              [ -n "$id" ] && xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
+              echo "::error::Apple did not accept $dmg for notarization (the log above says why)."; exit 1
+            fi
+            xcrun stapler staple "$dmg"
+          done
+      # Fails the run unless macOS itself would open the app and the disk image without a warning.
+      - name: Check the signature the way macOS will
+        if: matrix.os == 'mac' && env.MAC_SIGNED == '1'
+        run: |
+          app=$(find desktop/dist -maxdepth 2 -type d -name 'ros.ai.app' | head -n 1)
+          [ -n "$app" ] || { echo "::error::No ros.ai.app in desktop/dist."; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime|Timestamp)'
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app" 2>&1 | tee spctl.txt
+          grep -q 'source=Notarized Developer ID' spctl.txt || { echo "::error::macOS would not accept ros.ai.app as notarized."; exit 1; }
+          for dmg in desktop/dist/*.dmg; do
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+          done
       - name: Build the Windows installer
         if: matrix.os == 'windows'
         env:

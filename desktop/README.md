@@ -16,14 +16,19 @@ The installer is not code signed yet, so SmartScreen shows "Windows protected yo
 
 ## Signing and notarization
 
-The workflow signs and notarizes when five repository secrets exist (Settings › Secrets and variables › Actions). They come from an Apple Developer Program membership:
+The workflow signs the Mac app and its disk image with a *Developer ID* certificate (Apple's proof that the app comes from you), has Apple *notarize* them (Apple scans the app and issues a ticket that macOS checks) and staples that ticket in, when five repository secrets exist. Without `CSC_LINK` it builds the unsigned app described above; with `CSC_LINK` but a missing Apple secret it stops, because a signed but un-notarized app is blocked just like an unsigned one. Its last Mac step runs `spctl`, the check Gatekeeper itself makes, and fails the run unless it says `source=Notarized Developer ID`.
 
-1. **APPLE_TEAM_ID**: the ten-character Team ID shown at developer.apple.com › Membership details.
-2. **CSC_LINK** and **CSC_KEY_PASSWORD**: a *Developer ID Application* certificate. In Xcode › Settings › Accounts › Manage Certificates, press + and choose Developer ID Application (or create it at developer.apple.com › Certificates). Then in Keychain Access, find "Developer ID Application: <name> (<team>)", right-click › Export as `.p12` with a password. `CSC_KEY_PASSWORD` is that password; `CSC_LINK` is the file as base64: `base64 -i ~/Desktop/developer-id.p12 | pbcopy`. Delete the `.p12` afterwards.
-3. **APPLE_ID**: the Apple ID email of the account.
-4. **APPLE_APP_SPECIFIC_PASSWORD**: at account.apple.com › Sign-In and Security › App-Specific Passwords, create one named "ros.ai notarization".
+The account holder of the Apple Developer Program sets it up once:
 
-Then tag the next version. Notarization adds about five minutes per architecture; the log says "notarization successful". Signed releases open without any step, and the in-app updater starts checking that the same Team ID signed each update.
+1. **APPLE_TEAM_ID**: the ten-character Team ID at [developer.apple.com/account](https://developer.apple.com/account) › Membership details.
+2. **The certificate.** In Keychain Access: *Keychain Access › Certificate Assistant › Request a Certificate From a Certificate Authority*, your email, Common Name `ros.ai Developer ID`, *Saved to disk*. At [developer.apple.com › Certificates › +](https://developer.apple.com/account/resources/certificates/add) choose *Developer ID Application*, profile type *G2 Sub-CA*, upload that request and download the `.cer`. Double-click it, then in Keychain Access › login › My Certificates right-click "Developer ID Application: … (TEAMID)" › Export as `developer-id.p12` with a new password.
+3. **CSC_KEY_PASSWORD** is that password. **CSC_LINK** is the file as text: `base64 -i ~/Desktop/developer-id.p12 | pbcopy`.
+4. **APPLE_ID**: the Apple ID email of the developer account.
+5. **APPLE_APP_SPECIFIC_PASSWORD**: at [account.apple.com](https://account.apple.com) › Sign-In and Security › App-Specific Passwords, create one named `ros.ai notarization`.
+
+Add the five at [Settings › Secrets and variables › Actions](https://github.com/arkdong/ros-ai/settings/secrets/actions), then delete the `.p12` and the request file. To try it without a release, run the workflow by hand on a branch (*Actions › Desktop app › Run workflow*, or `gh workflow run mac-app.yml --ref <branch>`): a green run means Apple accepted both architectures, and the `ros.ai-mac-*` artifacts open with no warning. Notarization adds a few minutes per architecture. If Apple refuses with a message about agreements, accept the latest Program License Agreement at developer.apple.com/account first.
+
+Signed releases open without any extra step, and the in-app updater starts checking that the same Team ID signed each update. Apps installed before signing still update: they are unsigned, so there is no Team ID to compare yet.
 
 ## Releases and updates
 
