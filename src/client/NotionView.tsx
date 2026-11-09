@@ -31,7 +31,7 @@ export function NotionBlock({ projectId, nodeId, view, full = false, readOnly = 
   const chip = Boolean(read?.account && full && onAccount && !readOnly), who = chip ? undefined : read?.account?.name;
   return <div className={`live-block notion-block${full ? ' full' : ''}${page ? ' document' : ''}`}>
     {/* One box of fixed height in a card, whatever the state, so the card is measured once at its full size. */}
-    <div className="live-block-scroll nowheel">{error ? <p className="live-block-error">{error}</p>
+    <div className="live-block-scroll">{error ? <p className="live-block-error">{error}</p>
       : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading from Notion…</p>
       : page ? (full ? <NotionPageEditor page={page} projectId={projectId} nodeId={nodeId} readOnly={readOnly} onSaved={setRead} onTitle={onTitle}/> : <PageBody page={page}/>) : <TableBody table={table!}/>}</div>
     {read?.notice && <p className="live-block-notice">{read.notice}</p>}
