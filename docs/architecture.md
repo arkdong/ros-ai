@@ -54,13 +54,13 @@ The local service owns project mutations, grants, run coordination and evidence.
 | `client/DataViewer.tsx`, `client/DerivedDataset.tsx`, `client/ArtifactViewer.tsx`, `client/ReportEditor.tsx` | Full data exploration, before/after transforms, figure provenance/presentation and inline report editing |
 | `research.ts` | Durable model/experiment/inspection cursor, bounded revisions, related Action proposals, user-directed follow-up |
 | `execution.ts`, `providers.ts`, `openai-provider.ts` | Captured model selections, Nebius and direct OpenAI SDK inference, schema validation, provider accounting/cancellation |
-| `model-settings.ts`, `shared/model-settings.ts`, `client/ModelSettings.tsx` | Persisted project model default and nearest-ancestor/task overrides, catalog and visible selectors |
+| `model-settings.ts`, `shared/model-settings.ts`, `client/RosModelMenu.tsx` | Persisted project model default and nearest-ancestor/task overrides, catalog and visible selectors |
 | `experiments.ts` | Exact captured execution previews, authority routing, two-worker queue, immutable output/attempt capture |
 | `sandbox.ts`, `sandbox/` | `ExecutionBackend` contract and actual local Docker isolation/library runtime |
 | `nebius-sandbox.ts`, `sandbox-budget.ts`, `sandbox/nebius_worker.py` | Fixed-origin remote REST transport, conservative separate allowance, bounded stdlib captures and cancellation/recovery |
 | `project-folders.ts`, `shared/project-folders.ts`, `client/ProjectFolder.tsx` | Per-project folder record, two-way file sync, manifest and JSON Canvas board, folder routes and the folder UI |
 | `combined-budget.ts` | Retained build-wide US$10 ceiling shared by new Nebius inference and sandbox admissions |
-| `budget-report.ts`, `shared/budget-report.ts`, `client/BudgetPanel.tsx` | Read-only sanitized accounting projection, browser-local usage windows and project/provider budget display |
+| `budget-report.ts`, `shared/budget-report.ts`, `client/SettingsPage.tsx` | Read-only sanitized accounting projection, browser-local usage windows and project/provider budget display |
 | `experiment_worker.py` | Earlier closed numerical interpreter for explicitly selected compatibility runs |
 | `connections.ts` | Read-only source captures, separately permissioned source writes, output exports and artifact highlights |
 | `client/Resources.tsx`, `client/Resources.css` | Visible project resource list, CSV link/copy controls, source context, preview and explicit note selection |
@@ -69,7 +69,7 @@ The local service owns project mutations, grants, run coordination and evidence.
 | `demo.ts` | Attributed starter notes and bundled public data without model, search or experiment execution |
 | `app.ts`, `index.ts`, `lock.ts` | Loopback API/origin validation, service composition/shutdown and exclusive data-directory lock |
 | `client/AssistantPanel.tsx`, `client/NoteTree.tsx`, `client/App.tsx` | Persistent conversation/outline, navigation and the glance a message carries, nested Notes, onboarding and Trash |
-| `client/Canvas.tsx`, `shared/layout.ts`, `shared/canvas-reflow.ts`, `shared/routing.ts` | Recursive canvas, measured size-change reflow, geometry-aware routes, inline edits and explicit arrangement |
+| `client/Canvas.tsx`, `shared/layout.ts`, `shared/canvas-reflow.ts`, `shared/links.ts` | Recursive canvas, measured size-change reflow, geometry-aware routes, inline edits and explicit arrangement |
 | `shared/content-timeline.ts`, `client/CanvasHistory.tsx` | Content snapshots and a read-only index of immutable saved-evidence milestones |
 | `client/Brand.tsx`, `client/brand.css`, `public/brand/` | Supplied local wordmark/ring assets, proportional display and favicon |
 | `shared/presentation.ts` | Display-only Unicode-safe word-boundary previews; saved text and model-visible context stay intact |
