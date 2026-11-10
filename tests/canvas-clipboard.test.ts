@@ -66,3 +66,16 @@ test('pasting the same block again finds the next free spot', () => {
   const next = pasteOperations(copy, { ...lone, nodes: [...lone.nodes, ...first] }, 'p1', ids).operations.flatMap(op => op.type === 'addNode' ? [op.node] : []);
   assert.deepEqual([next[0].x, next[0].y], [0, 504]);
 });
+
+test('a block copied out of a Group that was ungrouped since pastes onto the map, and ungrouping keeps blocks in place', async () => {
+  const { ungroupOperations } = await import('../src/shared/groups.js');
+  const copy = copyBlocks(canvas, ['inner'], 'p1')!;
+  const inset = { x: 32, y: 144 }, ungroup = ungroupOperations(canvas, canvas.nodes[0], inset);
+  // Inside the frame a block is drawn at the frame's corner plus the inset plus its own place.
+  assert.deepEqual(ungroup.find(op => op.type === 'updateNode' && op.id === 'inner'), { type: 'updateNode', id: 'inner', patch: { parentId: null, x: 100 + 32 + 24, y: 100 + 144 + 48 } });
+  const after: Canvas = { ...canvas, nodes: canvas.nodes.map(item => item.id === 'group' ? { ...item, kind: 'topic' } : item.parentId === 'group' ? { ...item, parentId: null } : item) };
+  const { operations } = pasteOperations(copy, after, 'p1', ids);
+  const added = operations.find(op => op.type === 'addNode');
+  assert(added && added.type === 'addNode');
+  assert.equal(added.node.parentId ?? null, null);
+});

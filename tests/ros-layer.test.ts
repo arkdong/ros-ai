@@ -315,3 +315,11 @@ test('ROS waits while another thread is still working, even one that has propose
     assert.match(turn().events.at(-1)!.message, /waited \d+ s for another thread\)\.$/u);
   } finally { release(); await assistant.shutdown(); await execution.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('a heading followed by a very long run of spaces is read at once, and closing # marks are dropped', () => {
+  const started = performance.now();
+  const split = splitReply(`# Plan ##\n\nFirst part.\n\n## Costs${' '.repeat(20_000)}x\n\nSecond part.\n\n## Risks #\n\nThird part.`);
+  assert(performance.now() - started < 1000, 'the split stays quick');
+  assert.equal(split.title, 'Plan');
+  assert.equal(split.blocks.at(-1)?.title, 'Risks');
+});

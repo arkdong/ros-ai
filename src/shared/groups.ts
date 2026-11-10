@@ -59,11 +59,12 @@ export function createGroupOperations(canvas: Canvas, ids: readonly string[], id
 }
 
 /** Dissolving a new frame retains its overview as a normal note when populated.
- * Legacy containers always retain their research identity and saved outputs. */
-export function ungroupOperations(canvas: Canvas, group: CanvasNode): Mutation[] {
+ * Legacy containers always retain their research identity and saved outputs.
+ * The blocks move right and down by the frame's content inset, so they stay where they were on the map. */
+export function ungroupOperations(canvas: Canvas, group: CanvasNode, inset = { x: 0, y: 0 }): Mutation[] {
   const members = canvas.nodes.filter(node => node.parentId === group.id);
   return [...members.map(node => ({ type: 'updateNode' as const, id: node.id,
-    patch: { parentId: group.parentId ?? null, x: group.x + node.x, y: group.y + node.y } })),
+    patch: { parentId: group.parentId ?? null, x: group.x + inset.x + node.x, y: group.y + inset.y + node.y } })),
     { type: 'updateNode', id: group.id, patch: { kind: group.legacyKind ?? 'topic', ...(group.legacyKind ? {} : {blockType: 'note' as const}), groupHighlights: [] } }];
 }
 

@@ -26,7 +26,15 @@ export type SplitBlock = { title: string; text: string };
 export type SplitReply = { title: string | null; blocks: SplitBlock[] };
 
 export const SPLIT_LIMITS = { blocks: 12, title: 120, text: 19_000 } as const;
-const HEADING = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/u;
+const HEADING = /^(#{1,6})[ \t]+(\S.*)$/u;
+/** A heading's words without the spaces and closing hashes Markdown allows after them. Read from the end by hand:
+ * one pattern for the whole line took seconds on a heading with a long run of spaces in it. */
+function headingTitle(rest: string): string {
+  let end = rest.length;
+  const drop = (characters: string) => { while (end > 1 && characters.includes(rest[end - 1])) end--; };
+  drop(' \t'); drop('#'); drop(' \t');
+  return rest.slice(0, end);
+}
 const FENCE = /^[ \t]*(`{3,}|~{3,})/u;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/u;
 const BOLD_LEAD = /^\s*(?:(?:[-*+]|\d+[.)])\s+)?\*\*([^*\n]{2,120}?)\*\*\s*[:：.—–-]?\s*(.*)$/u;
@@ -49,7 +57,7 @@ function readLines(markdown: string): Line[] {
     const opened = text.match(FENCE);
     if (opened) { if (!fence) fence = opened[1][0]; else if (opened[1][0] === fence) fence = null; return { text }; }
     const heading = fence ? null : text.match(HEADING);
-    return heading ? { text, heading: { level: heading[1].length, title: heading[2] } } : { text };
+    return heading ? { text, heading: { level: heading[1].length, title: headingTitle(heading[2]) } } : { text };
   });
 }
 const joined = (lines: Line[]) => lines.map(line => line.text).join('\n').trim();

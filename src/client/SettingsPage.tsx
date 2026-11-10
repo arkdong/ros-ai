@@ -71,7 +71,7 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   const forgetSite = async (host: string) => { if (!projectId) return; const { sites } = await api<{ sites: string[] }>(`/api/python-network/sites/${encodeURIComponent(projectId)}/${encodeURIComponent(host)}`, { method: 'DELETE' }); setNetwork(current => current && { ...current, sites }); };
   const budgetUrl = `/api/settings/budget${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`;
   useEffect(() => { if (!publicDemo) void api<BudgetStatus>(budgetUrl).then(setBudget).catch(() => {}); }, [publicDemo, budgetUrl]);
-  const saveBudget = async (scope: 'all' | 'project', monthlyUsd: number | null) => setBudget(await api<BudgetStatus>('/api/settings/budget', { method: 'PUT', body: JSON.stringify({ scope, ...(scope === 'project' ? { projectId } : {}), monthlyUsd }) }));
+  const saveBudget = async (scope: 'all' | 'project', monthlyUsd: number | null) => setBudget(await api<BudgetStatus>('/api/settings/budget', { method: 'PUT', body: JSON.stringify({ scope, ...(projectId ? { projectId } : {}), monthlyUsd }) }));
   useEffect(() => { setMode(policy?.mode ?? 'ask'); }, [policy?.mode, projectId]);
   useEffect(() => { if (!publicDemo) void api<{ dataDir: string | null; keysFile: string | null }>('/api/settings/general').then(setPaths).catch(() => {}); }, [publicDemo]);
   const choose = async (next: ApprovalMode) => {
@@ -280,7 +280,8 @@ const DAY = 24 * 60 * 60 * 1000;
 type Range = 7 | 30;
 type Group = 'model' | 'task';
 const money = (value: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < .01 ? 4 : 2 }).format(value);
-const startOfDay = (time: number) => { const day = new Date(time); day.setHours(0, 0, 0, 0); return day.getTime(); };
+/** Local midnight of the day `time` falls on, moved by whole calendar days: a day is 23 or 25 hours when the clocks change. */
+const startOfDay = (time: number, days = 0) => { const day = new Date(time); day.setHours(0, 0, 0, 0); if (days) day.setDate(day.getDate() + days); return day.getTime(); };
 const dayLabel = (time: number) => new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 const groupOf = (event: UsageEvent, group: Group) => group === 'model' ? event.model ?? event.providerName : event.task;
 const share = (part: number, total: number) => { if (!total) return '0%'; const value = part / total * 100; return value > 0 && value < .1 ? '<0.1%' : `${value < 10 ? value.toFixed(1) : Math.round(value)}%`; };
@@ -298,8 +299,8 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     return () => { current = false; window.clearInterval(timer); };
   }, []);
   const view = useMemo(() => {
-    const end = startOfDay(Date.now()) - offset * range * DAY, start = end - (range - 1) * DAY;
-    const events = (data?.events ?? []).filter(event => { const at = Date.parse(event.at); return at >= start && at < end + DAY; });
+    const end = startOfDay(Date.now(), -offset * range), start = startOfDay(end, -(range - 1)), after = startOfDay(end, 1);
+    const events = (data?.events ?? []).filter(event => { const at = Date.parse(event.at); return at >= start && at < after; });
     const totals = new Map<string, number>();
     for (const event of events) totals.set(groupOf(event, group), (totals.get(groupOf(event, group)) ?? 0) + (event.costUsd ?? 0));
     // Colour follows the name: ranked across all recorded usage, not this window, so paging never repaints a series.
@@ -309,7 +310,7 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     const named = ranked.slice(0, palette.length), color = (name: string) => named.includes(name) ? palette[named.indexOf(name)] : OTHER;
     const series = [...totals.entries()].filter(([, usd]) => usd > 0).sort((a, b) => b[1] - a[1]).map(([name, usd]) => ({ name, usd, color: color(name) }));
     const days = Array.from({ length: range }, (_, index) => {
-      const at = start + index * DAY, dayEvents = events.filter(event => startOfDay(Date.parse(event.at)) === at);
+      const at = startOfDay(start, index), dayEvents = events.filter(event => startOfDay(Date.parse(event.at)) === at);
       const parts = series.map(item => ({ ...item, usd: dayEvents.filter(event => groupOf(event, group) === item.name).reduce((sum, event) => sum + (event.costUsd ?? 0), 0) })).filter(item => item.usd > 0);
       return { at, parts, usd: parts.reduce((sum, item) => sum + item.usd, 0), requests: dayEvents.length };
     });

@@ -170,3 +170,18 @@ test('two threads run ROS\'s step-by-step agent at the same time, each asking th
     assert.deepEqual(replies.map(result => result.reply), ['The map has two blocks.', 'The map has two blocks.']);
   } finally { held.splice(0).forEach(release => release()); await loop.shutdown(); await execution.shutdown(); await model.close(); f.close(); }
 });
+
+test('an endpoint that refuses for sign-in, allowance or rate says why in its own words; other failures name the status', async () => {
+  let status = 402;
+  const endpoint = await listen((_req, res) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: status === 402 ? 'Today\'s free allowance is used up. It resets at midnight UTC.' : 'Sign in to ros.ai cloud again.', type: 'x' } })); });
+  const f = workspace(), id = connect(f.inference, endpoint.port, [{ id: 'm', contextTokens: 32768 }]);
+  const execution = new ExecutionService(f.store, { inference: f.inference, includeSetupUsage: false });
+  const ask = () => execution.assistantComplete(f.project.id, { messages: [{ role: 'user' as const, content: 'Hello' }], maxOutputTokens: 100 }, new AbortController().signal, { provider: id, model: 'm' });
+  try {
+    await assert.rejects(ask(), /Today's free allowance is used up\. It resets at midnight UTC\. \(HTTP 402; no automatic retry occurred\.\)/u);
+    status = 401;
+    await assert.rejects(ask(), /Sign in to ros\.ai cloud again\. \(HTTP 401/u);
+    status = 500;
+    await assert.rejects(ask(), /Configured inference endpoint returned HTTP 500\./u);
+  } finally { await execution.shutdown(); await endpoint.close(); f.close(); }
+});

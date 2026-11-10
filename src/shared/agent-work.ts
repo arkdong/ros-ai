@@ -15,7 +15,8 @@ export function formatSources(sources: Source[]): string {
 export function splitSources(text: string): { body: string; sources: number; hosts: string[]; urls: string[] } {
   const match = /\n[ \t]*\n[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*)?Sources(?:\*\*)?:?[ \t]*\n((?:[ \t]*(?:[-*][ \t]+)?\[\d+\][^\n]*(?:\n|$))+)\s*$/u.exec(text);
   if (!match) return { body: text, sources: 0, hosts: [], urls: [] };
-  const urls = [...match[1].matchAll(/\]\((https?:\/\/[^)\s]+)\)/gu)].map(([, url]) => url);
+  // An address may hold one level of brackets, as Wikipedia's do: …/wiki/Mercury_(planet).
+  const urls = [...match[1].matchAll(/\]\((https?:\/\/(?:[^()\s]|\([^()\s]*\))+|https?:\/\/[^)\s]+)\)/gu)].map(([, url]) => url);
   const hosts = urls.flatMap(url => { try { return [new URL(url).hostname.replace(/^www\./u, '')]; } catch { return []; } });
   return { body: text.slice(0, match.index).trimEnd(), sources: match[1].split('\n').filter(line => line.trim()).length, hosts: [...new Set(hosts)], urls };
 }

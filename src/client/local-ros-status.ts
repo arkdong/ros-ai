@@ -18,7 +18,7 @@ function publish(next: LocalRosStatus) {
 }
 
 export function reloadLocalRos() {
-  loading ??= api<LocalRosStatus>('/api/local-ros').then(next => { publish(next); return next; }, () => status).finally(() => { loading = undefined; });
+  loading ??= api<LocalRosStatus>('/api/local-ros').then(next => { publish(next); return next; }, () => { /* One failed read must not end the checks on a download. */ if (status) publish(status); return status; }).finally(() => { loading = undefined; });
   return loading;
 }
 const onFocus = () => void reloadLocalRos();

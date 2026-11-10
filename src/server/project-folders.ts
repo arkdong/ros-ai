@@ -1408,7 +1408,8 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
       res.status(206).setHeader('Content-Range', `bytes ${start}-${end}/${file.size}`);
     }
     res.setHeader('Content-Length', String(end - start + 1));
-    if (req.method === 'HEAD') { res.end(); return; }
+    // An empty file has nothing to stream, and a read from 0 to -1 would throw.
+    if (req.method === 'HEAD' || !file.size) { res.end(); return; }
     const stream = createReadStream(file.absolute, { start, end });
     stream.on('error', () => { if (!res.headersSent) res.status(404); res.end(); });
     stream.pipe(res);

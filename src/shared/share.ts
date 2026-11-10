@@ -82,14 +82,33 @@ export const FIND_NAMES: Record<FindKind, [one: string, many: string]> = {
 };
 const PLACEHOLDER: Record<FindKind, string> = { email: '[email]', phone: '[phone]', key: '[key]', path: '~', address: '[address]' };
 
-type Pattern = { kind: FindKind; pattern: RegExp; group?: string };
+type Hit = { index: number; 0: string; groups?: Record<string, string> };
+type Pattern = { kind: FindKind; pattern: RegExp | ((text: string) => Hit[]); group?: string };
+const EMAIL_NAME = /[A-Za-z0-9._%+-]/u, EMAIL_DOMAIN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/u, WORD = /\w/u;
+/** Email addresses, found from each "@" outwards. One pattern for the whole address reads a long run such as
+ * "a.a.a." again from every dot, which froze the Share preview on long text. */
+function emails(text: string): Hit[] {
+  const found: Hit[] = [];
+  let floor = 0;
+  for (let at = text.indexOf('@'); at >= 0; at = text.indexOf('@', at + 1)) {
+    let start = at;
+    while (start > floor && EMAIL_NAME.test(text[start - 1])) start--;
+    // Starts where a word starts or ends, as \b would.
+    while (start < at && WORD.test(text[start - 1] ?? ' ') === WORD.test(text[start])) start++;
+    const domain = start < at ? EMAIL_DOMAIN.exec(text.slice(at + 1, at + 256)) : null;
+    if (!domain) continue;
+    found.push({ index: start, 0: text.slice(start, at + 1 + domain[0].length) });
+    floor = at + 1 + domain[0].length;
+  }
+  return found;
+}
 // Keys first: a key can look like other things, and the first pattern to claim text wins.
 const PATTERNS: Pattern[] = [
   { kind: 'key', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gu },
   { kind: 'key', pattern: /\b(?:sk-(?:ant-|proj-|or-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|ntn_[A-Za-z0-9]{20,}|secret_[A-Za-z0-9]{20,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|hf_[A-Za-z0-9]{20,}|tvly-[A-Za-z0-9-]{16,}|re_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/gu },
   // A value given to something named like a key: api_key = "…", TOKEN: …, password=…
   { kind: 'key', pattern: /(?:api[_-]?key|access[_-]?key|secret|token|password|passwd)["']?\s*[:=]\s*["']?(?<value>[^\s"',;()[\]{}]{8,})/giu, group: 'value' },
-  { kind: 'email', pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/gu },
+  { kind: 'email', pattern: emails },
   { kind: 'path', pattern: /(?:\/Users\/|\/home\/)[^/\s'"`)\]]+|[A-Za-z]:\\Users\\[^\\\s'"`)\]]+/gu },
   { kind: 'address', pattern: /\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b/gu },
   // Needs a + or separators between groups, so plain numbers in a table, dates and versions are left alone.
@@ -105,7 +124,7 @@ export function scanText(text: string): Match[] {
   const found: Match[] = [];
   const taken = (start: number, end: number) => found.some(match => start < match.end && end > match.start);
   for (const { kind, pattern, group } of PATTERNS) {
-    for (const hit of text.matchAll(pattern)) {
+    for (const hit of typeof pattern === 'function' ? pattern(text) : text.matchAll(pattern)) {
       const value = group ? hit.groups?.[group] : hit[0];
       if (!value || hit.index === undefined) continue;
       const start = group ? hit.index + hit[0].lastIndexOf(value) : hit.index, end = start + value.length;

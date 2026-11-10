@@ -24,7 +24,8 @@ const addSchema = z.object({ kind: kinds, text: z.string().trim().min(1).max(MEM
 
 /** A kept line in a file: "- the line _(where it came from, 19 Oct 2026)_". */
 const LINE = /^- (.+?)(?:\s+_\((.*)\)_)?\s*$/;
-const DATE = /,\s*(\d{1,2} [A-Za-z]{3} \d{4})$/;
+// Node writes September as "Sept" in en-GB, so a month is three or four letters.
+const DATE = /,\s*(\d{1,2} [A-Za-z]{3,4} \d{4})$/;
 const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 /** Stable across proposal and file: the same words in the same subject are the same line. */
 const lineId = (kind: MemoryKind, text: string) => createHash('sha256').update(`${kind}\n${normalize(text)}`).digest('hex').slice(0, 16);

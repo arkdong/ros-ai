@@ -20,7 +20,7 @@ import { CLOUD_SHOWS, METRIC_TOOLS, metricSummary } from '../shared/metrics.js';
 import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS, tilesFor } from '../shared/dashboards.js';
 import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AgentApp, type AppId, type AppTool, type RemoteApps } from './remote-apps.js';
-import { projectFolderRoot, type ProjectFolders } from './project-folders.js';
+import { projectFolderRoot, safeFileBase, type ProjectFolders } from './project-folders.js';
 import { addPaperSchema, paperBlock, type Papers } from './papers.js';
 import { NOTION_SAVE_TOOL, notionSaveSchema, notionSaveTool, type NotionFileSaver } from './notion-files.js';
 import { MAX_WEB_FILES, isWebAddress, type WebFile, type WebFileFetcher } from './web-files.js';
@@ -830,7 +830,7 @@ export class AgentWorkspaceTools {
       }
       const file = result.value;
       let path = saved.get(address);
-      if (!path) { path = folders.saveFile(this.scope.projectId, `${title}${file.extension}`, file.bytes).path; saved.set(address, path); }
+      if (!path) { path = folders.saveFile(this.scope.projectId, `${safeFileBase(title)}${file.extension}`, file.bytes).path; saved.set(address, path); }
       const from = file.page ? `${file.page} (its main picture, ${file.image})` : file.image;
       const source = `Source: ${from}`;
       if (op.type === 'addNode') {
