@@ -36,6 +36,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
     "@duckdb/node-api": "1.5.6-r.1",
+    "@lezer/common": "^1.5.3",
     "@lezer/highlight": "^1.2.5",
     "@lezer/python": "^1.1.19",
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -65,6 +66,7 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
+    "esbuild": "^0.28.2",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.4"
