@@ -133,5 +133,3 @@ export function lineMarkdown(line: Line): string {
   return `${line.indent}${prefix}${words}${line.tail}`;
 }
 
-/** The words of a line without any formatting. */
-export const plainText = (runs: Run[]) => runs.map(run => 'text' in run ? run.text : '').join('');

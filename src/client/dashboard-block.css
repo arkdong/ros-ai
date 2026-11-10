@@ -1,6 +1,5 @@
 /* Dashboard block: pinned numbers in the app's three greys; green and red only for a service's real state. */
 .dash-block.full { gap: 16px; }
-.dash-rows { display: grid; gap: 6px; margin: 0; }
 .dash-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12px; line-height: 1.4; }
 .dash-row dt { flex: 1; min-width: 0; color: #6b6b6b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-row dd { flex: none; margin: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4a4a4a; }

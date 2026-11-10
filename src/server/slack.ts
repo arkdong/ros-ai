@@ -13,8 +13,8 @@ export function slackApi() {
   return url.href.replace(/\/+$/u, '');
 }
 
-/** The bot scopes the tools below need; the Plugins card lists them for the person's Slack app. */
-export const SLACK_SCOPES = ['channels:read', 'channels:history', 'groups:read', 'groups:history', 'users:read', 'chat:write'];
+// The bot scopes these tools need (channels:read, channels:history, groups:read, groups:history, users:read,
+// chat:write) are listed for the person on the Slack card, in shared/plugins.ts.
 
 const channel = z.string().trim().min(1).max(100).describe('The channel’s ID (C… or G…) or its name, like #research');
 const ts = z.string().regex(/^\d{1,12}\.\d{1,8}$/u, 'A Slack message ts, like 1730000000.123456');

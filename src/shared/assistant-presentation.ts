@@ -1,5 +1,4 @@
 import {readAssistantClarifications,type AssistantClarificationQuestion} from './assistant-clarifications.js';
-export type {AssistantClarificationQuestion} from './assistant-clarifications.js';
 /** Display drafts are never approved actions or a substitute for server validation. */
 export type AssistantStructurePreview={
   summary:string;

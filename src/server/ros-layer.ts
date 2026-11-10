@@ -405,7 +405,7 @@ function grid(nodes: CanvasNode[]): { node: CanvasNode; at: { x: number; y: numb
   const columns = nodes.length <= 2 ? nodes.length : nodes.length <= 4 ? 2 : 3, step = snapUp(Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP);
   const rows: number[] = [];
   nodes.forEach((node, index) => { const row = Math.floor(index / columns); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
-  const tops = rows.reduce<number[]>((list, height, index) => [...list, index ? list[index - 1] + snapUp(rows[index - 1] + LAYOUT_GAP) : 0], []);
+  const tops = rows.reduce<number[]>((list, _height, index) => [...list, index ? list[index - 1] + snapUp(rows[index - 1] + LAYOUT_GAP) : 0], []);
   return nodes.map((node, index) => ({ node, at: { x: (index % columns) * step, y: tops[Math.floor(index / columns)] } }));
 }
 /** A top-level block's footprint: an open group's frame around its blocks, or a card at its tallest. */

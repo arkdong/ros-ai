@@ -5,7 +5,7 @@ import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
 import type { ResearchPolicy } from '../shared/research';
-import { readSaved, saveLocal, useDraft } from './persistence';
+import { saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
 import { StopButton, useEscToStop } from './EscToStop';

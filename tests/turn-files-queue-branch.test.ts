@@ -100,7 +100,7 @@ test('a turn records the files that changed in the project folder, with diffs', 
     ]);
     assert.match(files.diff(f.project.id, 'turn-1', 'notes.md').patch, /-two\n\+TWO\n three\n\+four/);
     assert.throws(() => files.diff(f.project.id, 'turn-1', 'picture.bin'), /No saved diff/);
-    assert.throws(() => files.reveal(f.project.id, 'turn-1', '../outside.txt', result.changed), /did not change that file/);
+    assert.throws(() => files.reveal(f.project.id, '../outside.txt', result.changed), /did not change that file/);
     assert.equal(files.has('turn-1'), false);
     rmSync(root, { recursive: true, force: true });
   } finally { await f.close(); }

@@ -1,16 +1,5 @@
 import type { Artifact, BlockType, CanvasNode, ProjectDetail } from './types.js';
 
-/** Actual consumers only. Notebook, spreadsheet and database engines can add a
- * definition plus a viewer without turning organizational frames into engines. */
-export const blockRegistry: Record<BlockType, { label: string; preview: 'text'|'table'|'figure'|'code' }> = {
-  note: { label: 'Note', preview: 'text' }, action: { label: 'Action', preview: 'text' },
-  dataset: { label: 'Dataset', preview: 'table' }, figure: { label: 'Figure', preview: 'figure' },
-  code: { label: 'Code', preview: 'code' }, notebook: { label: 'Notebook', preview: 'code' }, report: { label: 'Report', preview: 'text' },
-  agent: { label: 'Agent', preview: 'text' }, search: { label: 'Search', preview: 'text' }, finding: { label: 'Finding', preview: 'text' }, notion: { label: 'Notion', preview: 'table' }, file: { label: 'File', preview: 'figure' }, google: { label: 'Google', preview: 'table' }, app: { label: 'App', preview: 'figure' }, training: { label: 'Training', preview: 'table' }, metric: { label: 'Metrics', preview: 'table' }, dashboard: { label: 'Dashboard', preview: 'table' }, post: { label: 'Post', preview: 'figure' }, web: { label: 'Web', preview: 'text' }, map: { label: 'Map', preview: 'figure' },
-};
-export function artifactBlockType(artifact: Artifact): BlockType {
-  return artifact.kind === 'plot' ? 'figure' : ['table','dataset'].includes(artifact.kind) ? 'dataset' : artifact.kind === 'code' ? 'code' : artifact.kind === 'notebook' ? 'notebook' : artifact.mediaType === 'text/markdown' ? 'report' : 'note';
-}
 export function nodeBlockType(node: CanvasNode): BlockType {
   return node.blockType ?? (node.kind === 'activity' || node.legacyKind === 'activity' ? 'action' : 'note');
 }

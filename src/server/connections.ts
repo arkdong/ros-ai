@@ -11,7 +11,6 @@ const now=()=>new Date().toISOString();
 type StoredConnection=LocalConnection & {device:number;inode:number};
 type CopiedResource=ProjectResource & {storage:'copied';content:string};
 const MAX_CSV_BYTES=500000;
-export interface DataConnector {readonly kind:string; read(connection:LocalConnection):{content:string;hash:string;metadata:Record<string,unknown>};}
 /** Source access is a server operation on a separately selected file. Models get
  * immutable CSV copies, never paths, file descriptors, credentials or this API. */
 export class LocalConnections {

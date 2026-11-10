@@ -23,18 +23,7 @@
 .note-view .note-message-actions { display: flex; gap: 14px; margin-top: 8px; }
 .note-view .note-message-actions .text-button { padding: 0; color: #6b6b6b; font-size: 12px; }
 .note-view .activity-card p, .note-view .run-notice, .note-view .run-notice p { font-size: 13px; }
-.note-view .note-composer { flex-shrink: 0; margin: 0; padding: 12px 14px 14px; border-top: 1px solid #ebebeb; background: #fff; }
-.note-view .note-composer textarea { width: 100%; box-sizing: border-box; resize: none; font-size: 14px; }
-.note-view .note-composer-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.note-view .note-composer-row .search-toggle { margin-left: auto; }
-.note-view .note-composer .provider-note { margin-top: 6px; }
 /* A small model chip; its list opens upwards from the composer. */
-.note-view .model-picker { position: relative; min-width: 0; flex: 0 1 auto; margin: 0; }
-.note-view .model-picker-trigger { width: auto; max-width: 220px; height: 30px; padding: 3px 8px; gap: 6px; border-radius: 999px; }
-.note-view .model-picker-trigger .model-picker-current small { display: none; }
-.note-view .model-picker-trigger .model-picker-current strong { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.note-view .model-picker-trigger img, .note-view .model-picker-trigger .model-maker-symbol { width: 18px; height: 18px; }
-.note-view .model-picker-popover { top: auto; bottom: calc(100% + 6px); right: auto; width: 320px; }
 @media (max-width: 850px) {
   .block-view .inspector.note-view { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr); overflow-y: auto; }
   .note-view .note-main { overflow: visible; }

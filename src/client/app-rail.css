@@ -12,16 +12,13 @@
 .workspace { position:relative; }
 .rail-page { position:absolute; inset:0; z-index:40; overflow:auto; scrollbar-gutter:stable; background:#fcfcfc; }
 .rail-page-inner { max-width:760px; margin:0 auto; padding:36px 28px 64px; }
-.rail-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:#7a807c; margin:22px 0 10px; }
 .rail-page-note { font-size:13px; color:#6b6b6b; line-height:1.55; }
 
 /* The former side panels read as full pages here. */
-.rail-page .connections-intro { padding:0 0 14px; }
 .rail-page .tool-connection p { font-size:13px; }
 .rail-page .tool-connection-name strong { font-size:14px; }
 .rail-page .tool-connection-name small { font-size:13px; }
 .rail-page .connection-state { font-size:12px; }
-.rail-page .connections-footnote { margin-top:16px; }
 .rail-page .resources-panel { background:#fff; border:1px solid rgba(0,0,0,.08); border-radius:16px; padding-top:16px; }
 .inference-presets { display:flex; gap:8px; margin-bottom:10px; }
 .brand-logo { display:block; object-fit:contain; flex-shrink:0; }

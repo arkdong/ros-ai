@@ -1,6 +1,3 @@
-.connections-intro { display:flex; gap:12px; align-items:flex-start; padding:0 0 18px; color:var(--muted); font-size:13px; line-height:1.55; }
-.connections-intro p { flex:1; }
-.connections-intro .icon-button { flex-shrink:0; }
 /* One card per connection, always open: 16 px, a hairline, a soft float shadow. Heading, one line of body, a footer line. */
 .tool-connection { border:1px solid rgba(0,0,0,.08); border-radius:16px; margin-bottom:12px; background:#fff; box-shadow:0 10px 32px rgba(0,0,0,.06); }
 .tool-connection-heading { display:flex; align-items:center; gap:14px; padding:14px 18px 0; }
@@ -57,18 +54,14 @@
 .connection-setup .connection-callback { display:block; white-space:normal; overflow-wrap:anywhere; font-size:11px; padding:9px; background:#f5f5f5; border-radius:8px; margin:0 0 12px; }
 .connection-setup .connection-consent { display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.5; color:var(--body); margin-bottom:12px; }
 .connection-consent input { width:auto; margin-top:3px; }
-.connection-auth-link { display:block; margin:12px 0; font-size:13px; }
 .connection-login { margin-bottom:12px; }
 .connection-login a.primary { display:inline-flex; color:white; }
 .connection-facts { display:grid; grid-template-columns:1fr 1.2fr; gap:7px 12px; font-size:12px; margin:13px 0; }
 .connection-facts dt { color:var(--muted); }
 .connection-facts dd { color:var(--body); margin:0; }
-.connections-page .inline-error { font-size:12px; margin-top:10px; overflow-wrap:anywhere; color:var(--fail); }
 /* A notice is one line of text with its check; a failure is red text. No tinted bands. */
 .connection-notice { display:flex; gap:7px; align-items:flex-start; font-size:13px; line-height:1.5; color:var(--ink); margin:0 0 12px; }
 .connection-notice svg { flex-shrink:0; margin-top:2px; color:var(--ok); }
-.connections-footnote { font-size:11px; line-height:1.65; color:var(--muted); margin-top:18px; }
-.other-connections > summary { display:flex; align-items:center; justify-content:space-between; font-size:12px; cursor:pointer; color:var(--muted); padding:10px 2px 15px; }
 .drive-search > div { display:flex; gap:8px; }
 .drive-search button { flex-shrink:0; }
 .drive-files article { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid #eee; }
@@ -78,26 +71,12 @@
 .drive-files button { flex-shrink:0; }
 .drive-files { margin-bottom:16px; }
 .connection-allowance { margin-top:18px; padding-top:14px; border-top:1px solid #eee; }
-.allowance-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
-.allowance-heading h4 { font-size:12px; color:var(--ink); margin:0; font-weight:600; }
-.allowance-heading > span { font-size:11px; color:var(--muted); }
-.allowance-meter { display:grid; grid-template-columns:1fr 1fr 1.1fr; gap:9px; margin-bottom:12px; padding:10px; border-radius:8px; background:#fafafa; }
-.allowance-meter span { display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
-.allowance-meter strong { font-size:12px; font-weight:600; color:var(--ink); }
 .connection-allowance form { display:flex; flex-direction:column; gap:12px; margin:12px 0; }
-.allowance-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.allowance-fields label { font-size:11px; line-height:1.5; color:var(--muted); }
-.allowance-fields input { display:block; width:100%; min-width:0; margin-top:5px; font-size:13px; }
 .connection-allowance .connection-consent { display:flex; align-items:flex-start; gap:8px; font-size:11px; line-height:1.6; color:var(--body); }
 .connection-allowance .connection-consent input { margin-top:3px; flex-shrink:0; }
-.connection-allowance .allowance-note { font-size:11px; color:var(--muted); line-height:1.6; }
-.allowance-advanced { font-size:11px; color:var(--muted); }
-.allowance-advanced summary { cursor:pointer; margin-bottom:9px; }
-@media(max-width:1400px) { .single-canvas-shell .workspace-actions .assistant-toggle span { display:none; } .single-canvas-shell .workspace-heading h1 { min-width:110px; } }
+@media(max-width:1400px) { .single-canvas-shell .workspace-heading h1 { min-width:110px; } }
 .claude-model-choice { display:grid; gap:6px; margin:4px 0 10px; }
 .claude-model-choice .subtle { margin:0; font-size:12px; }
-.outside-command { display:flex; align-items:center; gap:6px; margin:10px 0; padding:7px 7px 7px 10px; border:1px solid #eee; border-radius:8px; background:#fafafa; }
-.outside-command code { flex:1; min-width:0; font-size:11px; line-height:1.5; overflow-wrap:anywhere; user-select:all; }
 .cloud-waiting{display:grid;gap:10px;justify-items:start}.cloud-waiting p{margin:0}
 
 /* ROS on this computer: download progress */

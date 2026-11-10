@@ -53,5 +53,4 @@
 .workspace-guide .guide-manifest { border-top:1px solid #eceee7; margin-top:12px; padding-top:10px; }
 .workspace-guide .guide-manifest p { font-size:11px; }
 .workspace-guide .guide-manifest > div { margin-top:8px; }
-.assistant-model-row .review-workspace-trigger { border:0; background:transparent; color:#668352; display:flex; align-items:center; gap:5px; margin-top:5px; padding:4px 2px; font-size:11px; cursor:pointer; }
 @media (max-width:600px) { .workspace-guide .guide-review-heading { flex-direction:column; } .workspace-guide .guide-intents button { font-size:11px; } }

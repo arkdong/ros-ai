@@ -11,7 +11,7 @@ import {z} from 'zod';
 import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
-import type {ModelMessage,Mutation,ProjectDetail,Run} from '../shared/types.js';
+import type {ModelMessage,Mutation,ProjectDetail} from '../shared/types.js';
 import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type QueuedMessage,type InAppAgent,type ThreadChoice,IN_APP_AGENTS,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
 import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
@@ -752,7 +752,7 @@ export class AssistantService {
   /** The saved diff of one file a turn changed. */
   fileDiff(projectId:string,turnId:string,path:unknown){return this.files.diff(projectId,this.getTurn(projectId,turnId).id,z.string().min(1).max(4096).parse(path));}
   /** Shows a file a turn changed in the file manager. */
-  revealFile(projectId:string,turnId:string,path:unknown){const turn=this.getTurn(projectId,turnId);return this.files.reveal(projectId,turn.id,z.string().min(1).max(4096).parse(path),turn.files?.changed??[]);}
+  revealFile(projectId:string,turnId:string,path:unknown){const turn=this.getTurn(projectId,turnId);return this.files.reveal(projectId,z.string().min(1).max(4096).parse(path),turn.files?.changed??[]);}
   suggestion(projectId:string,turnId:string){return this.getTurn(projectId,turnId).suggested;}
   /** Closes the plugin card under a reply: the person put it off, declined it, or carried on after connecting. */
   closeSuggestion(projectId:string,turnId:string,status:Exclude<TurnSuggestion['status'],'open'|'moved'>){

@@ -1,6 +1,5 @@
 /** What a File block can show: a PDF, a PNG, JPEG, WebP or GIF image, or an MP4 or MOV video, read from the project folder. */
 export const FILE_TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.mov': 'video/quicktime' };
-export const FILE_EXTENSIONS = Object.keys(FILE_TYPES);
 /** The largest PDF or image a File block shows or a drop saves into the folder. */
 export const FILE_BYTES = 50_000_000;
 /** The largest video a File block shows. A video is streamed in parts and never read whole, so it may be far larger. */

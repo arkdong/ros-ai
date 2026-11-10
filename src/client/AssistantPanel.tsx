@@ -1,6 +1,6 @@
 import { ResearchRing } from './Brand';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, ShieldCheck, Split, X } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, Split, X } from 'lucide-react';
 import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
 import { isAcpAgent } from '../shared/acp-agents';
 import type { ProjectDetail, Proposal } from '../shared/types';

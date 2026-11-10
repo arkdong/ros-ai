@@ -186,7 +186,7 @@ export class TurnFileService {
 
   /** Shows a file the turn changed in Finder (Explorer, the file manager), or its folder when the file is gone. Only a
    * path the turn recorded, inside the project folder. */
-  reveal(projectId: string, turnId: string, path: string, changed: TurnFileChange[]) {
+  reveal(projectId: string, path: string, changed: TurnFileChange[]) {
     const root = projectFolderRoot(this.store, projectId);
     if (!root) throw new StoreError('This project has no folder on disk.', 404);
     const entry = changed.find(item => item.path === path);

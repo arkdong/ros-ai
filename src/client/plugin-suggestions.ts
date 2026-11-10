@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { PLUGINS, type PluginId } from '../shared/plugins';
-import type { PluginReadiness, SuggestionStatus } from '../shared/plugin-hints';
+import type { SuggestionStatus } from '../shared/plugin-hints';
 import { api, post } from './api';
 
 /** One copy of what plugin suggestions need for the chip, the card and Settings: the switch, what is silenced, and which
@@ -28,7 +28,6 @@ export async function changeSuggestions(path: string, init: RequestInit) { publi
 export const decideSuggestion = (body: { decision: 'later' | 'never' | 'done'; projectId: string; turnId?: string; pluginId?: PluginId }) => changeSuggestions('/api/suggestions/decide', { method: 'POST', body: JSON.stringify(body) });
 
 export const pluginName = (id: PluginId) => PLUGINS.find(plugin => plugin.id === id)?.name ?? id;
-export const readiness = (value: SuggestionStatus | undefined, id: PluginId): PluginReadiness | undefined => value?.plugins[id];
 /** Whether the person asked not to see this plugin here: Not now in this project, or Don't suggest again. */
 export const silenced = (value: SuggestionStatus | undefined, id: PluginId, projectId: string) => Boolean(value?.silenced.some(item => item.pluginId === id && (item.projectId === null || item.projectId === projectId)));
 

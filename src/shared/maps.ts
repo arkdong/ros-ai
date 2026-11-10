@@ -32,8 +32,6 @@ export function googleRouteLink(pins: Pick<MapPin, 'lat' | 'lng'>[]): string | u
   return `https://www.google.com/maps/dir/?api=1&origin=${at(pins[0])}&destination=${at(pins[pins.length - 1])}${middle ? `&waypoints=${encodeURIComponent(middle)}` : ''}`;
 }
 
-/** The pin on openstreetmap.org. */
-export const osmLink = (pin: Pick<MapPin, 'lat' | 'lng'>) => `https://www.openstreetmap.org/?mlat=${pin.lat.toFixed(6)}&mlon=${pin.lng.toFixed(6)}#map=17/${pin.lat.toFixed(6)}/${pin.lng.toFixed(6)}`;
 
 /** A Google Maps link's point, when it carries one (…/@52.37,4.89,15z or ?q=52.37,4.89), so a pasted link becomes a pin. */
 export function pointInLink(text: string): { lat: number; lng: number } | undefined {
