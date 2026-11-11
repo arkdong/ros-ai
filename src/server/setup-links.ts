@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { childEnvironment } from './codex-app-server.js';
@@ -73,7 +73,10 @@ function readSettings(target: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('it is not a JSON object');
   return value as Record<string, unknown>;
 }
-function writeSettings(target: string, value: Record<string, unknown>) {
+function writeSettings(supplied: string, value: Record<string, unknown>) {
+  // A settings file kept as a link (into a dotfiles folder, say) stays a link: the file it points to is the one replaced.
+  let target = supplied;
+  try { target = realpathSync(supplied); } catch { /* not there yet */ }
   const mode = existsSync(target) ? statSync(target).mode & 0o777 : 0o600, temporary = `${target}.ros-ai-tmp`;
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode });

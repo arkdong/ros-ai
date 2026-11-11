@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Check, ChevronDown, Folder, FolderOpen, FolderSearch, LoaderCircle } from 'lucide-react';
 import type { CloudAccountStatus } from '../shared/cloud-account';
-import type { FolderChoice } from '../shared/project-folders';
+import type { FolderChoice, FolderSuggestion } from '../shared/project-folders';
 import { api } from './api';
 import { RosMark } from './RosDock';
 import { cloudAccountChanged } from './ProfileButton';
@@ -58,7 +58,10 @@ export function ProjectCard({ caption, verb, from, onFrom, onCancel, focusKey, o
     if (busy || !ready) return;
     setBusy(true); setError('');
     try {
-      const target = folder.trim() || undefined;
+      let target = folder.trim() || undefined;
+      // The suggested folder follows the name a moment after it is typed. A name entered quickly gets its own folder,
+      // not the one suggested for the name before it.
+      if (from.kind !== 'folder' && suggestion && !folderEdited) target = (await api<FolderSuggestion>(`/api/folders/suggest?name=${encodeURIComponent(name.trim() || 'Untitled')}`).catch(() => null))?.path ?? target;
       if (from.kind === 'folder') await onOpenFolder(path.trim());
       else await onCreate(name.trim(), target);
     } finally { setBusy(false); }

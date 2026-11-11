@@ -14,6 +14,7 @@ import { BrandLogo, hasBrandLogo } from './brand-logos';
 import { api, post } from './api';
 import { readSavedList, saveLocal } from './persistence';
 import './plugins.css';
+import { googleMapsScriptLoaded } from './google-maps-script';
 
 export function PluginMark({id,size}:{id:string;size?:number}) {
   return hasBrandLogo(id)?<BrandLogo id={id} size={size}/>:id==='browser'?<Globe size={size||18}/>:<Plug size={size||18}/>;
@@ -153,7 +154,7 @@ export function PluginsPage({projectId,selected,onSelect,onInstalled,onChanged,o
         {credential?.configured&&search?.active===id&&<p>ROS and your agents search the web with {label}.</p>}
       </KeyConnection>;
     }
-    if(plugin.id==='google-maps')return <KeyConnection key={plugin.id} provider="google-maps" budgetless label={plugin.name} icon={<PluginMark id={plugin.id}/>} credential={credentials.find(item=>item.provider==='google-maps')} description={GOOGLE_MAPS_KEY.description} keyLink={GOOGLE_MAPS_KEY.link} loadError={errors.keys} onSave={async(_provider,key)=>{await api('/api/connections/credentials/google-maps',{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Google Maps key saved on this computer. Google Maps blocks now show Google’s map.');await changed();}} onDisconnect={async()=>{await api('/api/connections/credentials/google-maps',{method:'DELETE'});setNotice('Google Maps key removed. Google Maps blocks show OpenStreetMap until a key is saved again.');await changed();}}>
+    if(plugin.id==='google-maps')return <KeyConnection key={plugin.id} provider="google-maps" budgetless label={plugin.name} icon={<PluginMark id={plugin.id}/>} credential={credentials.find(item=>item.provider==='google-maps')} description={GOOGLE_MAPS_KEY.description} keyLink={GOOGLE_MAPS_KEY.link} loadError={errors.keys} onSave={async(_provider,key)=>{await api('/api/connections/credentials/google-maps',{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice(googleMapsScriptLoaded()?'Google Maps key saved on this computer. Google’s map keeps the key it started with, so reload ros.ai (⌘R) for Google Maps blocks to use the new one.':'Google Maps key saved on this computer. Google Maps blocks now show Google’s map.');await changed();}} onDisconnect={async()=>{await api('/api/connections/credentials/google-maps',{method:'DELETE'});setNotice('Google Maps key removed. Google Maps blocks show one place at a time until a key is saved again.');await changed();}}>
       {!credentials.find(item=>item.provider==='google-maps')?.configured&&<ol className="key-steps">{GOOGLE_MAPS_KEY.steps.map(step=><li key={step}>{step}</li>)}</ol>}
     </KeyConnection>;
     if(plugin.connect==='public')return <PaperSource key={plugin.id} plugin={plugin} source={papers?.find(item=>item.id===plugin.id)} token={plugins.find(item=>item.id===plugin.id)} onChanged={changed}/>;

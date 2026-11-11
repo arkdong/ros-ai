@@ -25,7 +25,8 @@ export function Resources({ detail, onChanged, onOpenArtifact }: { detail: Proje
   const [adding, setAdding] = useState(false), [mode, setMode] = useState<'copy' | 'link'>('copy'), [name, setName] = useState(''), [path, setPath] = useState('');
   const [upload, setUpload] = useState<{ fileName: string; content: string; bytes: number } | null>(null), [reading, setReading] = useState(false), [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<ProjectResource | null>(null), [preview, setPreview] = useState<ResourcePreview | null>(null), [previewBusy, setPreviewBusy] = useState(false);
-  const [nodeId, setNodeId] = useState(detail.project.canvas.nodes[0]?.id ?? '');
+  // The first block the picker lists: a Group is not offered there, so it is not the default either.
+  const [nodeId, setNodeId] = useState(detail.project.canvas.nodes.find(node => node.kind !== 'group')?.id ?? '');
   const [derived, setDerived] = useState<DataTransform|null>(null);
   const readSequence = useRef(0), listSequence = useRef(0), previewSequence = useRef(0);
   const load = useCallback(async () => { const sequence = ++listSequence.current; const values = await api<ProjectResource[]>(base); if (sequence === listSequence.current) setResources(values); }, [base]);

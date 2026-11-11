@@ -166,7 +166,8 @@ function VideoPreview({ file, title, missing, onSize }: { file: ShownFile; title
   const video = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState<string | null>(null), [playing, setPlaying] = useState(false), [played, setPlayed] = useState(0);
   const [length, setLength] = useState<number | undefined>(file.seconds);
-  useEffect(() => () => { if (playingCard?.video === video.current) playingCard = null; }, []);
+  // By the time this runs React has cleared the ref, so the card asks the video itself whether it is still on the page.
+  useEffect(() => () => { if (playingCard && !playingCard.video.isConnected) playingCard = null; }, []);
   if (missing || failed === file.src) return <div className="picture-missing"><VideoOff size={18} strokeWidth={1.5}/><span>{title || 'Untitled'}</span><small>{missing ? 'File missing from the project folder' : 'This video does not play here. Open it to use another app.'}</small></div>;
   const toggle = () => {
     const element = video.current;

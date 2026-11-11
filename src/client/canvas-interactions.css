@@ -374,6 +374,8 @@
 }
 
 /* A shrunk block: its card keeps its own size and is drawn smaller from the top left, so nothing in it is cut off. */
+/* At full size the wrapper takes no part in the layout. */
+.direct-canvas .card-scale:not(.scaled-card) { display: contents; }
 .direct-canvas .scaled-card {
   transform-origin: 0 0;
 }

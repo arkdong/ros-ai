@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
@@ -81,8 +81,14 @@ test('Linking Pi adds one ros-ai entry that lists ros.ai\'s tools as Pi\'s own, 
   const links = new SetupLinks(mkdtempSync(join(home, 'data-'))), bridge = '/data/bin/ros-ai-mcp.mjs';
   assert.equal(linkCommand('pi', bridge), '"ros-ai": { "command": "node", "args": ["/data/bin/ros-ai-mcp.mjs"], "exposure": "direct" }');
   assert.equal(linkCommand('hermes', bridge), 'hermes mcp add ros-ai --command node --args "/data/bin/ros-ai-mcp.mjs" --client=hermes');
+  // The settings file is a link into a dotfiles folder, as some people keep it: it stays a link through linking and Undo.
+  const dotfiles = mkdtempSync(join(home, 'dotfiles-'));
+  renameSync(join(piDir, 'mcp.json'), join(dotfiles, 'pi-mcp.json'));
+  symlinkSync(join(dotfiles, 'pi-mcp.json'), join(piDir, 'mcp.json'));
   const linked = await links.link(found('pi'), bridge);
   assert.equal(linked.ok, true, linked.message);
+  assert.ok(lstatSync(join(piDir, 'mcp.json')).isSymbolicLink());
+  assert.ok(JSON.parse(readFileSync(join(dotfiles, 'pi-mcp.json'), 'utf8')).mcpServers['ros-ai']);
   const written = JSON.parse(readFileSync(join(piDir, 'mcp.json'), 'utf8'));
   assert.deepEqual(written.mcpServers['ros-ai'], { command: 'node', args: [bridge], exposure: 'direct' });
   assert.equal(written.mcpServers.context7.env.CONTEXT7_KEY, 'not-read');
@@ -91,6 +97,7 @@ test('Linking Pi adds one ros-ai entry that lists ros.ai\'s tools as Pi\'s own, 
   const undone = await links.unlink(found('pi'));
   assert.equal(undone.ok, true, undone.message);
   assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(piDir, 'mcp.json'), 'utf8')).mcpServers), ['context7']);
+  assert.ok(lstatSync(join(piDir, 'mcp.json')).isSymbolicLink());
 });
 
 test('Sessions are named after the agent: Pi from its client\'s name, Hermes Agent from the name its link gives the bridge', () => {

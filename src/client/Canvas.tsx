@@ -286,7 +286,8 @@ function ResearchCard(props: NodeProps<ResearchNode>) {
   const scaledData = useMemo(() => scale < 1 ? { ...data, onResize: (size: CardResize | null, commit?: boolean) => onResize(size && { ...size, dx: Math.round(size.dx * scale), dy: Math.round(size.dy * scale) }, commit) } : data, [data, scale, onResize]);
   // A block that cannot be drawn shows a note in its place, and the rest of the map goes on working.
   return <PartBoundary retry={`${data.primary?.id ?? ''}:${data.primary?.hash ?? ''}:${data.title}:${data.description}`} fallback={message => <CardTrouble title={data.title} message={message}/>}>
-    {scale >= 1 ? <ResearchCardFace {...props}/> : <div className="scaled-card" style={{ width: data.width, height: data.height, transform: `scale(${scale})` }}><ResearchCardFace {...props} data={scaledData}/></div>}
+    {/* One wrapper at every size, so going between Full and a smaller size keeps the card mounted: an App does not reload, a live block does not fetch again. */}
+    <div className={scale < 1 ? 'card-scale scaled-card' : 'card-scale'} style={scale < 1 ? { width: data.width, height: data.height, transform: `scale(${scale})` } : undefined}><ResearchCardFace {...props} data={scaledData}/></div>
   </PartBoundary>;
 }
 function CardTrouble({ title, message }: { title: string; message: string }) {
