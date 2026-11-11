@@ -1,12 +1,12 @@
 /* Direct manipulation styles are scoped so dialogs and assistant panels keep their own layout. */
 .direct-canvas.unified-canvas {
-  background: var(--canvas,#f7f7f7);
+  background: var(--canvas);
 }
 .direct-canvas .research-card {
-  color: #171717;
-  border-color: #dedede;
-  background: #ffffff;
-  box-shadow: 0 2px 6px #00000006;
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow-block);
 }
 .direct-canvas.unified-canvas .research-card .group-heading {
   min-height: 0;
@@ -22,16 +22,16 @@
 }
 .direct-canvas .research-card .card-type {
   letter-spacing: 0;
-  font-size: 12px;
-  color: #6b6b6b;
+  font-size: var(--text-xs);
+  color: var(--muted);
 }
 .direct-canvas .research-card .card-label {
   margin-left: 2px;
   padding: 1px 8px;
-  border-radius: 999px;
-  background: #f1f1f1;
-  color: #4a4a4a;
-  font-size: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--rail);
+  color: var(--body);
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -40,7 +40,7 @@
   margin: 0;
   padding: 0 4px 0 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: none;
   font: inherit;
   color: inherit;
@@ -50,17 +50,17 @@
 }
 .direct-canvas .research-card .card-type-button:hover .card-label,
 .direct-canvas .research-card .card-type-button:focus-visible .card-label {
-  background: #e4e4e4;
+  background: var(--line-soft);
 }
 .direct-canvas .research-card .card-label-add {
   margin-left: 2px;
-  color: #8a8a8a;
-  font-size: 12px;
+  color: var(--muted);
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
   opacity: 0;
-  transition: opacity .12s;
+  transition: opacity var(--dur-out) var(--ease);
 }
 .direct-canvas .research-card:hover .card-label-add,
 .direct-canvas .research-card .card-type-button:focus-visible .card-label-add {
@@ -74,10 +74,10 @@
   gap: 2px;
   min-width: 156px;
   padding: 6px;
-  border: 1px solid #e3e3e3;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  box-shadow: var(--shadow-float);
 }
 .direct-canvas .card-label-menu:focus {
   outline: none;
@@ -90,17 +90,17 @@
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: none;
   font: inherit;
-  font-size: 13px;
-  color: #222;
+  font-size: var(--text-sm);
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
 }
 .direct-canvas .card-label-menu button:hover,
 .direct-canvas .card-label-menu button:focus-visible {
-  background: #f1f1f1;
+  background: var(--rail);
 }
 .direct-canvas .card-label-menu button[aria-checked="true"] {
   font-weight: 600;
@@ -108,26 +108,26 @@
 .direct-canvas .card-label-menu form {
   margin-top: 2px;
   padding: 6px 2px 2px;
-  border-top: 1px solid #ececec;
+  border-top: 1px solid var(--line-soft);
 }
 .direct-canvas .card-label-menu input {
   width: 100%;
   box-sizing: border-box;
   padding: 5px 7px;
-  border: 1px solid #e3e3e3;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .direct-canvas .card-label-menu .card-label-clear {
-  color: #6b6b6b;
+  color: var(--muted);
 }
 .direct-canvas .drop-target-outline {
   position: absolute;
   z-index: 5;
   pointer-events: none;
-  border: 2px dashed #9a9a9a;
-  border-radius: 14px;
+  border: 2px dashed var(--muted);
+  border-radius: var(--radius-block);
 }
 .direct-canvas .research-card .card-title {
   font-weight: 600;
@@ -139,14 +139,14 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 18px;
-  color: #171717;
+  font-size: var(--text-lg);
+  color: var(--ink);
   line-height: 1.35;
 }
 .direct-canvas .research-card .card-controls .icon-button {
   width: 32px;
   height: 32px;
-  color: #6b6b6b;
+  color: var(--muted);
 }
 .direct-canvas .research-card .card-controls {
   gap: 3px;
@@ -158,15 +158,15 @@
 }
 .direct-canvas .card-outcome {
   flex: 0 0 auto;
-  border-radius: 9px;
+  border-radius: var(--radius-block);
   padding: 11px 13px 12px;
   margin-top: 3px;
-  background: #f3f4f5;
-  color: #41464b;
+  background: var(--rail);
+  color: var(--body);
 }
 .direct-canvas .card-outcome p {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-md);
   line-height: 1.5;
   overflow-wrap: anywhere;
   max-height: 202.5px;
@@ -184,8 +184,8 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
-  color: #6b6b6b;
+  font-size: var(--text-xs);
+  color: var(--muted);
   padding: 0;
 }
 .direct-canvas .card-resize {
@@ -205,7 +205,7 @@
 .direct-canvas .card-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 .direct-canvas .card-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
 /* The bottom right corner keeps its quiet mark, so the card shows it can be resized. */
-.direct-canvas .card-resize-se { right: 0; bottom: 0; width: 22px; height: 22px; cursor: nwse-resize; color: #929292; opacity: .45; border-radius: 4px; }
+.direct-canvas .card-resize-se { right: 0; bottom: 0; width: 22px; height: 22px; cursor: nwse-resize; color: var(--muted); opacity: .45; border-radius: var(--radius-mark); }
 .direct-canvas .card-resize-se::after {
   content: '';
   position: absolute;
@@ -219,7 +219,7 @@
 .direct-canvas .research-card:hover .card-resize-se,
 .direct-canvas .selected .card-resize-se,
 .direct-canvas .card-resize-se:focus-visible { opacity: 1; }
-.direct-canvas .card-resize-se:focus-visible,.direct-canvas .card-resize-e:focus-visible { outline: 2px solid #587864; outline-offset: -2px; }
+.direct-canvas .card-resize-se:focus-visible,.direct-canvas .card-resize-e:focus-visible { outline: 2px solid var(--muted); outline-offset: -2px; }
 /* A card given a height fills it: the preview takes the room left between the title and the footer. */
 .direct-canvas.unified-canvas .research-card.height-set:not(.expanded-group) > .group-heading { height: 100%; min-height: 0; max-height: none; box-sizing: border-box; overflow: hidden; }
 .direct-canvas .research-card.height-set:not(.expanded-group) .block-primary-preview { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; max-height: none; }
@@ -234,15 +234,15 @@
 .direct-canvas .research-card.height-set:not(.expanded-group) .live-block { grid-template-rows: minmax(0, 1fr); grid-auto-rows: auto; }
 .direct-canvas .research-card.height-set:not(.expanded-group) .block-primary-preview .live-block-scroll { height: auto; max-height: none; min-height: 0; }
 .direct-canvas.unified-canvas .research-card.expanded-group {
-  background: #ffffff;
-  border-color: #dedede;
-  box-shadow: 0 3px 10px #00000006;
+  background: var(--paper);
+  border-color: var(--line);
+  box-shadow: var(--shadow-block);
 }
 .direct-canvas.unified-canvas .expanded-group>.group-heading {
   padding: 15px 24px 13px;
   display: flex;
   height: 242px;
-  border-bottom: 1px solid #dedede;
+  border-bottom: 1px solid var(--line);
 }
 .direct-canvas .expanded-group .card-top {
   margin-bottom: 5px;
@@ -251,8 +251,8 @@
   line-height: 1.3;
   margin-bottom: 6px;
   text-overflow: ellipsis;
-  font-size: 18px;
-  color: #171717;
+  font-size: var(--text-lg);
+  color: var(--ink);
   white-space: normal;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -260,22 +260,22 @@
 }
 .direct-canvas .group-actions {
   bottom: 14px;
-  font-size: 14px;
-  color: #6b6b6b;
+  font-size: var(--text-md);
+  color: var(--muted);
   left: 32px;
   right: 32px;
 }
 .direct-canvas .group-actions .secondary {
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 8px 11px;
-  border-color: #dedede;
-  background: #ffffff;
+  border-color: var(--line);
+  background: var(--paper);
 }
 /* The selected block carries one lime hairline; its connection handles appear on hover, as on any block. */
 .direct-canvas.unified-canvas .research-card.selected {
-  border-color: #a3d52b;
+  border-color: var(--accent-line);
   outline: 0;
-  box-shadow: 0 0 0 1px #a3d52b, 0 2px 6px #00000006;
+  box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-block);
 }
 .direct-canvas .inline-note-editor {
   display: flex;
@@ -288,18 +288,18 @@
   font-weight: 600;
   padding: 6px 9px;
   line-height: 1.3;
-  background: #ffffff;
-  border-color: #dedede;
-  font-size: 18px;
-  color: #171717;
+  background: var(--paper);
+  border-color: var(--line);
+  font-size: var(--text-lg);
+  color: var(--ink);
 }
 .direct-canvas .inline-note-editor textarea {
   padding: 6px 9px;
   line-height: 1.4;
   resize: none;
-  background: #ffffff;
-  border-color: #dedede;
-  font-size: 15px;
+  background: var(--paper);
+  border-color: var(--line);
+  font-size: var(--text-md);
   height: 78px;
   min-height: 78px;
 }
@@ -314,14 +314,14 @@
   align-items: center;
   gap: 9px;
   padding: 10px 13px;
-  border-radius: 8px;
-  box-shadow: 0 3px 12px #00000010;
+  border-radius: var(--radius-block);
+  box-shadow: var(--shadow-block);
   z-index: 10;
   max-width: calc(100% - 40px);
-  background: #ffffff;
-  border: 1px solid #dedede;
-  color: #171717;
-  font-size: 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: var(--text-md);
 }
 .direct-canvas .connection-instruction {
   bottom: 132px;
@@ -334,7 +334,7 @@
 @media (max-width:600px) {
   .direct-canvas .connection-instruction {
     bottom: 152px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     gap: 6px;
   }
   .direct-canvas .canvas-tools .icon-button {
@@ -357,17 +357,17 @@
 }
 .direct-canvas.previewing-proposal .research-card.preview-added,
 .direct-canvas.previewing-proposal .research-card.preview-changed {
-  border: 1px solid #cfcfcf;
-  background: #ffffff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .07);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow-block);
 }
 .direct-canvas .research-card .card-preview-tag {
   margin-left: 6px;
   padding: 1px 8px;
-  border-radius: 999px;
-  background: #e6e6e6;
-  color: #262626;
-  font-size: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--line-soft);
+  color: var(--ink);
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -389,6 +389,6 @@
   gap: 8px;
 }
 .direct-canvas .card-size-menu small {
-  color: #6b6b6b;
-  font-size: 12px;
+  color: var(--muted);
+  font-size: var(--text-xs);
 }

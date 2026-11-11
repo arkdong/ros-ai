@@ -24,11 +24,11 @@ function difference(current: string, next: string) {
 }
 
 const style = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '650' },
-  { tag: tags.heading2, fontSize: '1.35em', fontWeight: '650' },
-  { tag: tags.heading3, fontSize: '1.15em', fontWeight: '650' },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '650' },
-  { tag: tags.strong, fontWeight: '650' },
+  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '600' },
+  { tag: tags.heading2, fontSize: '1.35em', fontWeight: '600' },
+  { tag: tags.heading3, fontSize: '1.15em', fontWeight: '600' },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '600' },
+  { tag: tags.strong, fontWeight: '600' },
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: '#2f5f8a' },

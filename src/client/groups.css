@@ -1,21 +1,21 @@
-.direct-canvas .research-block .card-controls{opacity:0;transition:opacity .12s}
+.direct-canvas .research-block .card-controls{opacity:0;transition:opacity var(--dur-out) var(--ease)}
 .direct-canvas .research-block:hover .card-controls,.direct-canvas .research-block.selected .card-controls,.direct-canvas .research-block:focus-within .card-controls{opacity:1}
-.direct-canvas .organizational-group{border-radius:8px;border:1px solid #bec6c4;background:#f9fbfaf5}
-.direct-canvas.unified-canvas .organizational-group.expanded-group{background:#eef2f140;border:1px solid #bdc8c4;box-shadow:none;border-radius:8px}
-.direct-canvas.unified-canvas .organizational-group.expanded-group>.group-heading{height:124px;max-width:none;border:0;padding:16px 22px;background:#ffffffb0;border-radius:8px 8px 0 0}
-.direct-canvas .organizational-group .card-type{color:#4b5c54;font-weight:600}
-.direct-canvas .organizational-group .group-overview-excerpt{font-size:13px;line-height:1.5;color:#68716c;margin:0;max-height:40px;overflow:hidden}
+.direct-canvas .organizational-group{border-radius:var(--radius-block);border:1px solid var(--line);background:#f9fbfaf5}
+.direct-canvas.unified-canvas .organizational-group.expanded-group{background:#eef2f140;border:1px solid var(--line);box-shadow:none;border-radius:var(--radius-block)}
+.direct-canvas.unified-canvas .organizational-group.expanded-group>.group-heading{height:124px;max-width:none;border:0;padding:16px 22px;background:#ffffffb0;border-radius:var(--radius-block) var(--radius-block) 0 0}
+.direct-canvas .organizational-group .card-type{color:var(--body);font-weight:600}
+.direct-canvas .organizational-group .group-overview-excerpt{font-size:var(--text-sm);line-height:1.5;color:var(--muted);margin:0;max-height:40px;overflow:hidden}
 .direct-canvas .group-item-count{font-weight:400}
-.direct-canvas .group-expand-control{border:1px solid #d4dcd7;background:#f2f5f3;color:#27372f}
+.direct-canvas .group-expand-control{border:1px solid var(--line);background:var(--rail);color:var(--body)}
 .direct-canvas .group-chosen-highlights{display:flex;flex-direction:column;gap:7px;margin:10px 0}
-.direct-canvas .group-highlight-preview{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid #e1e6e3;background:#fff;border-radius:5px;padding:7px;width:100%;min-height:59px;color:#252c27}
+.direct-canvas .group-highlight-preview{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-control);padding:7px;width:100%;min-height:59px;color:var(--ink)}
 .direct-canvas .group-highlight-preview>img{width:104px;height:62px;object-fit:contain}
-.direct-canvas .group-highlight-preview>.block-text-preview{width:43%;font-size:12px;line-height:1.4;margin:0;max-height:50px;overflow:hidden}
-.direct-canvas .group-highlight-preview>.block-metric-preview{max-width:43%;font-size:24px}
-.direct-canvas .group-highlight-preview>.block-table-preview{max-width:43%;font-size:10px;max-height:64px;overflow:hidden}
+.direct-canvas .group-highlight-preview>.block-text-preview{width:43%;font-size:var(--text-xs);line-height:1.4;margin:0;max-height:50px;overflow:hidden}
+.direct-canvas .group-highlight-preview>.block-metric-preview{max-width:43%;font-size:var(--text-2xl)}
+.direct-canvas .group-highlight-preview>.block-table-preview{max-width:43%;font-size:var(--text-xs);max-height:64px;overflow:hidden}
 .direct-canvas .group-highlight-preview>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.direct-canvas .group-highlight-preview strong{font-size:12px;font-weight:500;line-height:1.4}
-.direct-canvas .group-highlight-preview small,.direct-canvas .block-version{font-size:10px;color:#778079}
+.direct-canvas .group-highlight-preview strong{font-size:var(--text-xs);font-weight:500;line-height:1.4}
+.direct-canvas .group-highlight-preview small,.direct-canvas .block-version{font-size:var(--text-xs);color:var(--muted)}
 .direct-canvas .organizational-group:not(.expanded-group) .card-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-height:49px}
 .direct-canvas .organizational-group:not(.expanded-group) .group-overview-excerpt{max-height:20px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .direct-canvas .group-chosen-highlights{gap:5px;margin:8px 0}
@@ -25,32 +25,32 @@
 .direct-canvas .group-highlight-preview>span>small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A collapsed group lists what it holds, each block on up to two lines. */
 .direct-canvas .group-member-list{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
-.direct-canvas .group-member-list li{display:flex;align-items:flex-start;gap:7px;min-width:0;font-size:13px;line-height:18px;color:#36413b}
-.direct-canvas .group-member-list li>svg{flex:0 0 auto;margin-top:3px;color:#7b867f}
+.direct-canvas .group-member-list li{display:flex;align-items:flex-start;gap:7px;min-width:0;font-size:var(--text-sm);line-height:18px;color:var(--body)}
+.direct-canvas .group-member-list li>svg{flex:0 0 auto;margin-top:3px;color:var(--muted)}
 .direct-canvas .group-member-list li>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.direct-canvas .group-member-list li.more{padding-left:19px;font-size:12px;color:#7b857d}
-.direct-canvas .group-contained-work{display:block;font-size:11px;line-height:16px;color:#86693d;margin:0 0 5px}
+.direct-canvas .group-member-list li.more{padding-left:19px;font-size:var(--text-xs);color:var(--muted)}
+.direct-canvas .group-contained-work{display:block;font-size:var(--text-xs);line-height:16px;color:var(--wait);margin:0 0 5px}
 .direct-canvas .organizational-group.expanded-group .card-title{display:block;max-height:25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .direct-canvas .organizational-group.expanded-group .group-overview-excerpt{display:none}
 .direct-canvas .group-highlight-preview>span>strong{-webkit-line-clamp:1;max-height:17px}
 .direct-canvas .group-highlight-preview>.block-text-preview,.direct-canvas .group-highlight-preview>.block-table-preview{max-height:42px}
-.direct-canvas .block-work-state{display:flex;align-items:center;gap:5px;font-size:11px;color:#758079;margin:0 0 11px}
-.direct-canvas .block-work-state.failed,.direct-canvas .block-work-state.interrupted{color:#996b42}
-.direct-canvas .block-work-state.running,.direct-canvas .block-work-state.queued{color:#3d6990}
+.direct-canvas .block-work-state{display:flex;align-items:center;gap:5px;font-size:var(--text-xs);color:var(--muted);margin:0 0 11px}
+.direct-canvas .block-work-state.failed,.direct-canvas .block-work-state.interrupted{color:var(--wait)}
+.direct-canvas .block-work-state.running,.direct-canvas .block-work-state.queued{color:var(--wait)}
 .direct-canvas .block-primary-preview{display:block;flex:1;min-height:64px;max-height:195px;overflow:hidden;margin:0 0 8px}
-.direct-canvas .block-figure-preview{display:block;width:100%;height:172px;object-fit:contain;background:#fafafa}
+.direct-canvas .block-figure-preview{display:block;width:100%;height:172px;object-fit:contain;background:var(--canvas)}
 /* A figure or Code card grows to show its figure or code, up to the card's height limit, instead of keeping its first estimated height. */
 .direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-figure-preview),.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-code-source){flex-shrink:0}
-.direct-canvas .block-metric-preview{font-size:42px;line-height:1.3;overflow-wrap:anywhere}
-.direct-canvas .block-text-preview{font-size:14px;line-height:1.6;margin:0;color:#555f59}
+.direct-canvas .block-metric-preview{font-size:var(--text-2xl);line-height:1.3;overflow-wrap:anywhere}
+.direct-canvas .block-text-preview{font-size:var(--text-md);line-height:1.6;margin:0;color:var(--body)}
 /* Card faces show the same Markdown as the opened block, set small and clipped by the card. */
-.direct-canvas .rich-text.markdown-preview{font-size:14px;line-height:1.55;color:#555f59}
+.direct-canvas .rich-text.markdown-preview{font-size:var(--text-md);line-height:1.55;color:var(--body)}
 .direct-canvas .rich-text.markdown-preview p{margin:0 0 6px}
-.direct-canvas .rich-text.markdown-preview h4{font-size:14px;margin:6px 0 2px;color:#26302a}
+.direct-canvas .rich-text.markdown-preview h4{font-size:var(--text-md);margin:6px 0 2px;color:var(--body)}
 .direct-canvas .rich-text.markdown-preview ul,.direct-canvas .rich-text.markdown-preview ol{margin:2px 0 6px;padding-left:18px}
 .direct-canvas .rich-text.markdown-preview li{margin:1px 0}
-.direct-canvas .rich-text.markdown-preview strong{color:#26302a}
-.direct-canvas .rich-text.markdown-preview blockquote{margin:0 0 8px;padding:0 0 0 10px;border-left:2px solid #d3dbd6;color:#36413b}
+.direct-canvas .rich-text.markdown-preview strong{color:var(--body)}
+.direct-canvas .rich-text.markdown-preview blockquote{margin:0 0 8px;padding:0 0 0 10px;border-left:2px solid var(--line);color:var(--body)}
 /* The card cuts a long preview at its own height, so the last lines fade out instead of ending mid-line. */
 .direct-canvas .block-primary-preview:has(>.markdown-preview:not(.scrolling)){mask-image:linear-gradient(to bottom,#000 calc(100% - 30px),transparent)}
 /* A Text card's face scrolls inside the card, and its empty lines show as space, one line each, as in the source. */
@@ -59,9 +59,9 @@
 .direct-canvas .rich-text.markdown-preview.scrolling::-webkit-scrollbar{display:none}
 .direct-canvas .markdown-preview-scrollbar{display:none;position:absolute;right:-2px;width:10px;z-index:1;cursor:default}
 .direct-canvas .markdown-preview-scrollbar.shown{display:block}
-.direct-canvas .markdown-preview-thumb{position:absolute;left:3px;right:3px;border-radius:999px;background:#e2e2e2;transition:left .12s,right .12s,background .12s}
-.direct-canvas .research-card:hover .markdown-preview-thumb{background:#d0d0d0}
-.direct-canvas .markdown-preview-scrollbar:hover .markdown-preview-thumb,.direct-canvas .markdown-preview-scrollbar.dragging .markdown-preview-thumb{left:2px;right:2px;background:#b3b3b3}
+.direct-canvas .markdown-preview-thumb{position:absolute;left:3px;right:3px;border-radius:var(--radius-pill);background:var(--line);transition:left var(--dur-out) var(--ease), right var(--dur-out) var(--ease), background var(--dur-out) var(--ease)}
+.direct-canvas .research-card:hover .markdown-preview-thumb{background:var(--muted)}
+.direct-canvas .markdown-preview-scrollbar:hover .markdown-preview-thumb,.direct-canvas .markdown-preview-scrollbar.dragging .markdown-preview-thumb{left:2px;right:2px;background:var(--muted)}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-below{mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent)}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-above{mask-image:linear-gradient(to bottom,transparent,#000 18px)}
 .direct-canvas .rich-text.markdown-preview.scrolling.more-above.more-below{mask-image:linear-gradient(to bottom,transparent,#000 18px,#000 calc(100% - 24px),transparent)}
@@ -70,28 +70,28 @@
 /* A Finding card grows to show its whole quote and why it matters, so nothing fades out. */
 .direct-canvas.unified-canvas .research-card.finding-card:not(.expanded-group)>.group-heading{flex-shrink:0}
 .direct-canvas .research-card.finding-card .block-primary-preview{mask-image:none}
-.direct-canvas .block-code-preview{font-family:monospace;font-size:11px;line-height:1.6;margin:0;white-space:pre-wrap;max-height:170px;overflow:hidden;background:#f5f5f5;padding:10px}
+.direct-canvas .block-code-preview{font-family:monospace;font-size:var(--text-xs);line-height:1.6;margin:0;white-space:pre-wrap;max-height:170px;overflow:hidden;background:var(--sidebar);padding:10px}
 .direct-canvas .block-table-preview{overflow:hidden}
-.direct-canvas .block-table-preview table{width:100%;border-collapse:collapse;font-size:11px;text-align:left}
-.direct-canvas .block-table-preview td,.direct-canvas .block-table-preview th{max-width:96px;padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #e8ece9}
-.direct-canvas .block-table-preview small{display:block;font-size:10px;color:#7b857d;margin-top:8px}
+.direct-canvas .block-table-preview table{width:100%;border-collapse:collapse;font-size:var(--text-xs);text-align:left}
+.direct-canvas .block-table-preview td,.direct-canvas .block-table-preview th{max-width:96px;padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--line-soft)}
+.direct-canvas .block-table-preview small{display:block;font-size:var(--text-xs);color:var(--muted);margin-top:8px}
 .direct-canvas .block-version{margin-left:auto;margin-right:10px}
 /* Picking blocks for a group: the card sits beside the tools, clear of the ROS bar at the bottom. */
-.canvas-group-toolbar{position:absolute;left:70px;top:16px;z-index:13;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border:1px solid #e3e3e3;background:#fff;border-radius:12px;box-shadow:var(--float-shadow,0 6px 20px #00000014);font-size:13px;color:#6b6b6b;max-width:calc(100% - 96px);flex-wrap:wrap}
-.canvas-group-toolbar input{width:170px;font-size:13px}
+.canvas-group-toolbar{position:absolute;left:70px;top:16px;z-index:13;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-block);box-shadow:var(--shadow-float);font-size:var(--text-sm);color:var(--muted);max-width:calc(100% - 96px);flex-wrap:wrap}
+.canvas-group-toolbar input{width:170px;font-size:var(--text-sm)}
 .group-highlight-picker{display:flex;flex-direction:column;gap:7px}
-.group-highlight-picker label{display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.5;padding:8px;border:1px solid #e2e6e3;border-radius:6px}
+.group-highlight-picker label{display:flex;align-items:center;gap:9px;font-size:var(--text-xs);line-height:1.5;padding:8px;border:1px solid var(--line);border-radius:var(--radius-control)}
 .group-highlight-picker label>span{flex:1;min-width:0}
-.group-highlight-picker small{display:block;color:#6e7971}
+.group-highlight-picker small{display:block;color:var(--muted)}
 .group-highlight-picker input{width:15px;flex:0 0 auto}
 .group-highlight-picker button{flex:0 0 auto}
 /* A Code block shows its source; long code scrolls inside the card instead of zooming the canvas. */
-.direct-canvas .block-code-source{max-height:187px;box-sizing:border-box;font-size:11.5px;line-height:1.55;padding:8px 10px;cursor:text;overscroll-behavior:contain}
-.direct-canvas .block-empty-hint{margin:0;font-size:13px;color:#9aa29d}
-.direct-canvas .outcome-footer{gap:10px;font-size:11px;color:#758079}
+.direct-canvas .block-code-source{max-height:187px;box-sizing:border-box;font-size:var(--text-xs);line-height:1.55;padding:8px 10px;cursor:text;overscroll-behavior:contain}
+.direct-canvas .block-empty-hint{margin:0;font-size:var(--text-sm);color:var(--muted)}
+.direct-canvas .outcome-footer{gap:10px;font-size:var(--text-xs);color:var(--muted)}
 /* The open button explains itself on hover or keyboard focus. */
 .direct-canvas .research-card .card-controls .card-open{position:relative}
-.direct-canvas .research-card .card-controls .card-open:hover,.direct-canvas .research-card .card-controls .card-open:focus-visible{background:#eef3ea;color:#25332c}
-.direct-canvas .card-open::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:6px 9px;border-radius:7px;background:#25332c;color:#fff;font-size:12px;font-weight:500;line-height:1.35;letter-spacing:0;text-transform:none;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s,transform .12s}
-.direct-canvas .card-open[data-hint]::after{content:attr(data-tip) '\A' attr(data-hint);white-space:pre;color:#fff}
+.direct-canvas .research-card .card-controls .card-open:hover,.direct-canvas .research-card .card-controls .card-open:focus-visible{background:var(--rail);color:var(--body)}
+.direct-canvas .card-open::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:6px 9px;border-radius:var(--radius-control);background:var(--body);color:var(--paper);font-size:var(--text-xs);font-weight:500;line-height:1.35;letter-spacing:0;text-transform:none;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity var(--dur-out) var(--ease), transform var(--dur-out) var(--ease)}
+.direct-canvas .card-open[data-hint]::after{content:attr(data-tip) '\A' attr(data-hint);white-space:pre;color:var(--paper)}
 .direct-canvas .card-open:hover::after,.direct-canvas .card-open:focus-visible::after{opacity:1;transform:none;transition-delay:.15s}

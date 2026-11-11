@@ -8,43 +8,43 @@
 /* The corner: the ROS download while it runs, then the button. */
 .feedback .feedback-corner { position: absolute; top: 16px; right: 24px; display: flex; align-items: flex-start; gap: 8px; }
 .feedback .feedback-anchor { position: relative; display: flex; }
-.feedback .feedback-button { height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--card-line); border-radius: 8px; background: #fff; color: var(--ink); font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
-.feedback .feedback-button:hover { background: #f7f7f7; }
-.feedback.open .feedback-button { background: #f2f2f2; }
+.feedback .feedback-button { height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper); color: var(--ink); font-size: var(--text-sm); box-shadow: var(--shadow-block); }
+.feedback .feedback-button:hover { background: var(--sidebar); }
+.feedback.open .feedback-button { background: var(--rail); }
 /* The map's header leaves the button its room, and the download's beside it. */
 .workspace:has(> .feedback) > .workspace-header { padding-right: 148px; }
 .workspace:has(> .feedback .ros-dl) > .workspace-header { padding-right: 268px; }
 
 /* The first-visit hint hangs under the button, its tip on the button's middle, and fades in once the page settles
    (hidden until then, so it catches no presses before it shows). */
-.feedback .feedback-hint { position: absolute; top: calc(100% + 10px); right: 0; width: 236px; padding: 12px 34px 12px 14px; border-radius: 10px; background: #1d1f1e; color: #fff; font-size: var(--text-sm); line-height: 1.45; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.feedback .feedback-hint { position: absolute; top: calc(100% + 10px); right: 0; width: 236px; padding: 12px 34px 12px 14px; border-radius: var(--radius-block); background: var(--ink); color: var(--paper); font-size: var(--text-sm); line-height: 1.45; box-shadow: var(--shadow-float); }
 .feedback-hint p { margin: 0; }
 .feedback-hint strong { display: block; margin-bottom: 2px; font-weight: 600; }
-.feedback-anchor.hinting::after { content: ''; position: absolute; top: calc(100% + 5px); left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 2px; background: #1d1f1e; transform: rotate(45deg); }
-.feedback .feedback-hint-close { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; padding: 0; border-radius: 6px; color: #bdbdbd; }
-.feedback .feedback-hint-close:hover { background: rgba(255, 255, 255, .12); color: #fff; }
-.feedback-hint, .feedback-anchor.hinting::after { animation: feedback-hint-in .24s ease .6s both; }
+.feedback-anchor.hinting::after { content: ''; position: absolute; top: calc(100% + 5px); left: calc(50% - 5px); width: 10px; height: 10px; border-radius: var(--radius-mark); background: var(--ink); transform: rotate(45deg); }
+.feedback .feedback-hint-close { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; padding: 0; border-radius: var(--radius-control); color: var(--muted); }
+.feedback .feedback-hint-close:hover { background: rgba(255, 255, 255, .12); color: var(--paper); }
+.feedback-hint, .feedback-anchor.hinting::after { animation: feedback-hint-in var(--dur-menu) var(--ease) .6s both; }
 @keyframes feedback-hint-in { from { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .feedback-hint, .feedback-anchor.hinting::after { animation: none; } }
 
 /* The card opens under the button; a long card scrolls in the room down to the bottom edge. */
 .feedback .feedback-card-space { position: absolute; top: 56px; right: 24px; bottom: 16px; width: 340px; max-width: calc(100% - 32px); display: flex; flex-direction: column; }
-.feedback .feedback-card { max-height: 100%; overflow-y: auto; padding: 16px 16px 14px; display: flex; flex-direction: column; border: 1px solid var(--card-line); border-radius: 14px; background: #fff; box-shadow: var(--shadow-view); color: var(--ink); font-size: var(--text-md); }
+.feedback .feedback-card { max-height: 100%; overflow-y: auto; padding: 16px 16px 14px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--paper); box-shadow: var(--shadow-view); color: var(--ink); font-size: var(--text-md); }
 .feedback-card form { display: flex; flex-direction: column; }
 .feedback-card header { height: 28px; display: flex; align-items: center; justify-content: space-between; }
-.feedback-card header strong { font-size: 15px; font-weight: 600; }
-.feedback .feedback-close { width: 28px; height: 28px; padding: 0; border-radius: 6px; color: var(--muted); }
-.feedback .feedback-close:hover { background: #f2f2f2; color: var(--ink); }
+.feedback-card header strong { font-size: var(--text-lg); font-weight: 600; }
+.feedback .feedback-close { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-control); color: var(--muted); }
+.feedback .feedback-close:hover { background: var(--rail); color: var(--ink); }
 
-.feedback-kinds { margin-top: 12px; padding: 3px; height: 34px; display: flex; gap: 2px; border-radius: 9px; background: #f2f2f2; }
-.feedback-kinds label { position: relative; flex: 1; display: grid; place-items: center; border-radius: 7px; color: var(--body); font-size: var(--text-sm); cursor: pointer; }
-.feedback-kinds label.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 0 0 1px #e1e1df; }
-.feedback-kinds label:has(:focus-visible) { outline: 2px solid #a7d72c; outline-offset: 1px; }
+.feedback-kinds { margin-top: 12px; padding: 3px; height: 34px; display: flex; gap: 2px; border-radius: var(--radius-control); background: var(--rail); }
+.feedback-kinds label { position: relative; flex: 1; display: grid; place-items: center; border-radius: var(--radius-control); color: var(--body); font-size: var(--text-sm); cursor: pointer; }
+.feedback-kinds label.on { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-block), 0 0 0 1px var(--line); }
+.feedback-kinds label:has(:focus-visible) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 .feedback-kinds input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 
-.feedback .feedback-text { margin-top: 12px; height: 104px; padding: 10px 12px; border-radius: 10px; font-size: var(--text-md); line-height: 1.5; resize: none; }
-.feedback .feedback-email { margin-top: 8px; height: 36px; padding: 0 12px; border-radius: 10px; font-size: var(--text-md); }
-.feedback .feedback-text::placeholder, .feedback .feedback-email::placeholder { color: #8a8a8a; }
+.feedback .feedback-text { margin-top: 12px; height: 104px; padding: 10px 12px; border-radius: var(--radius-block); font-size: var(--text-md); line-height: 1.5; resize: none; }
+.feedback .feedback-email { margin-top: 8px; height: 36px; padding: 0 12px; border-radius: var(--radius-control); font-size: var(--text-md); }
+.feedback .feedback-text::placeholder, .feedback .feedback-email::placeholder { color: var(--muted); }
 /* The lime border marks the field; the extra ring other fields get would double it. */
 .feedback .feedback-text:focus-visible, .feedback .feedback-email:focus-visible { outline: none; }
 .feedback-reply { margin: 10px 0 0; display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--body); overflow-wrap: anywhere; }
@@ -55,20 +55,20 @@
 .feedback-details span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .feedback-details small { font-size: var(--text-xs); line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 
-.feedback-error { margin: 12px 0 0; padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start; border-radius: 10px; background: #f7f7f7; font-size: var(--text-sm); line-height: 1.45; }
+.feedback-error { margin: 12px 0 0; padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start; border-radius: var(--radius-block); background: var(--sidebar); font-size: var(--text-sm); line-height: 1.45; }
 .feedback-error-dot { flex: none; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--wait); }
 
 .feedback-card footer { margin-top: 14px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line-soft); }
 .feedback-public { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
 .feedback .feedback-public { color: var(--body); }
 .feedback .feedback-public:hover { color: var(--ink); }
-.feedback-card footer .primary, .feedback-card footer .secondary { height: 32px; padding: 0 16px; border-radius: 8px; font-size: var(--text-sm); font-weight: 600; }
+.feedback-card footer .primary, .feedback-card footer .secondary { height: 32px; padding: 0 16px; border-radius: var(--radius-control); font-size: var(--text-sm); font-weight: 600; }
 /* Only GitHub with ros.ai cloud off: one dark button with the white mark. */
 .feedback-card footer .feedback-github { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
 .feedback-github .brand-logo { filter: invert(1); }
 
 .feedback-sent { margin-top: 18px; display: flex; gap: 12px; align-items: flex-start; }
-.feedback-sent-mark { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #f2f2f2; color: var(--ok); }
+.feedback-sent-mark { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--rail); color: var(--ok); }
 .feedback-sent div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .feedback-sent strong { font-size: var(--text-md); font-weight: 600; }
 .feedback-sent small { font-size: var(--text-sm); line-height: 1.5; color: var(--body); overflow-wrap: anywhere; }

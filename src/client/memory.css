@@ -1,8 +1,8 @@
 /* ROS remembers: the Memory section in Settings and the card under a reply. */
 /* The one switch, 26×16, as in the ROS menu. */
-.switch { position: relative; flex-shrink: 0; width: 26px; height: 16px; margin-top: 0; border: 0; border-radius: 8px; background: #d6d6d6; padding: 0; cursor: pointer; }
+.switch { position: relative; flex-shrink: 0; width: 26px; height: 16px; margin-top: 0; border: 0; border-radius: var(--radius-pill); background: var(--line); padding: 0; cursor: pointer; }
 .switch.on { background: var(--ink); }
-.switch span { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .15); transition: left .12s ease; }
+.switch span { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow-block); transition: left var(--dur-out) var(--ease); }
 .switch.on span { left: 12px; }
 .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .memory-page .settings-head .switch { margin-top: 8px; }
@@ -11,7 +11,7 @@
 .memory-line.gone strong { color: var(--muted); font-weight: 400; }
 .memory-line .settings-row-control .text-button, .memory-line .settings-row-control .primary { font-size: var(--text-sm); }
 .memory-add { display: flex; flex-direction: column; }
-.memory-add input, .single-canvas-shell .memory-add input { width: 100%; height: 46px; border: 0; border-radius: 16px 16px 0 0; padding: 0 18px; font: inherit; font-size: 14px; color: var(--ink); background: transparent; box-sizing: border-box; box-shadow: none; }
+.memory-add input, .single-canvas-shell .memory-add input { width: 100%; height: 46px; border: 0; border-radius: var(--radius-card) var(--radius-card) 0 0; padding: 0 18px; font: inherit; font-size: var(--text-md); color: var(--ink); background: transparent; box-sizing: border-box; box-shadow: none; }
 .memory-add input:focus, .single-canvas-shell .memory-add input:focus { border: 0; box-shadow: none; outline: 0; }
 .memory-add-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 10px 14px; }
 .memory-page .settings-row-control code { white-space: normal; word-break: break-all; }

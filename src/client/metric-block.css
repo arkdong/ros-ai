@@ -1,26 +1,26 @@
 /* Launch numbers: one row per number on the card, a grid of them in the block view. Changes stay neutral grey. */
-.livestat-values { display: grid; gap: 6px; margin: 0; font-size: 12px; line-height: 1.4; }
-.livestat-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12px; line-height: 1.4; }
-.livestat-value dt { flex: 1; min-width: 0; font-size: 12px; color: #6b6b6b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.livestat-values { display: grid; gap: 6px; margin: 0; font-size: var(--text-xs); line-height: 1.4; }
+.livestat-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: var(--text-xs); line-height: 1.4; }
+.livestat-value dt { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .livestat-value dd { flex: none; display: flex; align-items: center; gap: 6px; margin: 0; }
-.livestat-value strong { font-size: 13px; font-weight: 600; color: #171717; font-variant-numeric: tabular-nums; }
-.livestat-change { font-size: 11px; color: #8a8a8a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.livestat-value strong { font-size: var(--text-sm); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.livestat-change { font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .livestat-spark { display: block; flex: none; }
-.livestat-spark path { fill: none; stroke: #171717; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-.livestat-missing { font-size: 11px; color: #8a8a8a; white-space: normal; text-align: right; max-width: 60%; }
-.livestat-note { margin: 0; font-size: 12px; line-height: 1.5; color: #6b6b6b; }
+.livestat-spark path { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.livestat-missing { font-size: var(--text-xs); color: var(--muted); white-space: normal; text-align: right; max-width: 60%; }
+.livestat-note { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
 .livestat-block.full { gap: 12px; }
 .livestat-block.full .livestat-values { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.livestat-block.full .livestat-value { display: grid; align-content: start; gap: 4px; padding: 10px 12px; border: 1px solid #ececec; border-radius: 8px; }
-.livestat-block.full .livestat-value dt { font-size: 12px; }
+.livestat-block.full .livestat-value { display: grid; align-content: start; gap: 4px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-block); }
+.livestat-block.full .livestat-value dt { font-size: var(--text-xs); }
 .livestat-block.full .livestat-value dd { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
-.livestat-block.full .livestat-value strong { font-size: 22px; grid-row: span 2; }
+.livestat-block.full .livestat-value strong { font-size: var(--text-xl); grid-row: span 2; }
 .livestat-block.full .livestat-spark { grid-column: 1 / -1; margin-top: 4px; }
 .livestat-block.full .livestat-missing { max-width: none; text-align: left; }
-.livestat-state { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4a4a4a; white-space: nowrap; }
-.livestat-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #c8c8c8; }
-.livestat-dot.good { background: #2f7d4f; }
-.livestat-dot.bad { background: #b42318; }
-.livestat-block.full .livestat-state { font-size: 14px; color: #171717; }
+.livestat-state { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
+.livestat-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.livestat-dot.good { background: var(--ok); }
+.livestat-dot.bad { background: var(--fail); }
+.livestat-block.full .livestat-state { font-size: var(--text-md); color: var(--ink); }
 .livestat-show { display: flex; margin-bottom: 4px; }
 .livestat-show .chip-menu.right { left: 0; right: auto; }

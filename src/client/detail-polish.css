@@ -1,7 +1,7 @@
 /* Permission and note dialogs: a short path to the next action, with full detail nearby. */
 .detail-polish {
-  color: #171717;
-  font-size: 15px;
+  color: var(--ink);
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 .detail-polish .field-label {
@@ -10,7 +10,7 @@
   align-items: stretch;
   gap: 7px;
   margin: 0 0 16px;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
   line-height: 1.5;
 }
@@ -18,20 +18,20 @@
 .detail-polish .field-label textarea,
 .detail-polish .field-label select {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 400;
 }
 .detail-polish .field-label small {
   display: block;
-  color: #6b6b6b;
-  font-size: 13px;
+  color: var(--muted);
+  font-size: var(--text-sm);
   font-weight: 400;
 }
 .detail-polish .detail-disclosure {
   margin: 14px 0 0;
-  border: 1px solid #dedede;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-block);
+  background: var(--paper);
 }
 .detail-polish .detail-disclosure > summary {
   display: flex;
@@ -41,10 +41,10 @@
   padding: 11px 13px;
   list-style: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
   line-height: 1.5;
-  color: #171717;
+  color: var(--ink);
 }
 .detail-polish .detail-disclosure > summary::-webkit-details-marker {
   display: none;
@@ -53,8 +53,8 @@
   content: '›';
   flex-shrink: 0;
   width: 9px;
-  color: #6b6b6b;
-  font-size: 20px;
+  color: var(--muted);
+  font-size: var(--text-xl);
   line-height: 1;
   text-align: center;
 }
@@ -63,32 +63,32 @@
 }
 .detail-polish .detail-disclosure > summary small {
   margin-left: auto;
-  color: #6b6b6b;
-  font-size: 13px;
+  color: var(--muted);
+  font-size: var(--text-sm);
   font-weight: 400;
   text-align: right;
 }
 .detail-polish .detail-disclosure > summary:focus-visible {
-  outline: 2px solid #a7d72c;
+  outline: 2px solid var(--accent-line);
   outline-offset: 3px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
 }
 .detail-polish .disclosure-body {
   padding: 4px 15px 16px;
 }
 .detail-polish .disclosure-body > h4 {
   margin: 18px 0 8px;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 .detail-polish .disclosure-body > .subtle {
   margin: 2px 0 13px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.7;
 }
 .detail-polish .detail-footnote {
   margin: 12px 0 0;
-  color: #6b6b6b;
-  font-size: 13px;
+  color: var(--muted);
+  font-size: var(--text-sm);
   line-height: 1.7;
 }
 .research-settings.detail-polish .approval-choices {
@@ -103,13 +103,13 @@
   gap: 11px;
   min-height: 62px;
   padding: 11px 13px;
-  border: 1px solid #dedede;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
 }
 .research-settings.detail-polish .approval-choices > label.selected {
-  border-color: #a7d72c;
-  box-shadow: 0 0 0 1px #a7d72c;
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 1px var(--accent-line);
 }
 .research-settings.detail-polish .approval-choices > label > input {
   margin: 0;
@@ -122,14 +122,14 @@
   align-items: center;
 }
 .research-settings.detail-polish .approval-choices strong {
-  color: #171717;
-  font-size: 14px;
+  color: var(--ink);
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 .research-settings.detail-polish .approval-choices small {
   margin: 0;
-  color: #6b6b6b;
-  font-size: 13px;
+  color: var(--muted);
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 @media (max-width:600px) {
@@ -138,7 +138,7 @@
     gap: 7px;
   }
   .detail-polish .detail-disclosure > summary small {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .research-settings.detail-polish .approval-choices > label > span {
     display: flex;
@@ -147,4 +147,4 @@
     gap: 3px;
   }
 }
-.permission-status { display: flex; align-items: center; gap: 6px; min-height: 20px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+.permission-status { display: flex; align-items: center; gap: 6px; min-height: 20px; margin: 12px 0 0; font-size: var(--text-sm); color: var(--muted); }

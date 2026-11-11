@@ -8,9 +8,9 @@
 .single-canvas-shell .assistant-welcome-signal > .research-ring { width: 58px; height: 58px; transform: none; opacity: 1; object-fit: contain; }
 @keyframes ring-working { 50% { opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { .single-canvas-shell .assistant-signal.working > .research-ring { animation: none; } }
-.history-evidence { border-bottom: 1px solid #e7e7e7; }
-.history-evidence > summary { padding: 13px 10px; cursor: pointer; font-size: 13px; }
+.history-evidence { border-bottom: 1px solid var(--line-soft); }
+.history-evidence > summary { padding: 13px 10px; cursor: pointer; font-size: var(--text-sm); }
 .history-evidence > summary strong { font-weight: 500; }
-.history-evidence small { display: block; margin-top: 4px; color: #707070; font-size: 11px; }
-.history-evidence-link { display: block; text-align: left; width: 100%; padding: 9px 13px; border-radius: 0; font-size: 12px; color: #353535; }
-.history-evidence-link:hover { background: #f4f5f2; }
+.history-evidence small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--text-xs); }
+.history-evidence-link { display: block; text-align: left; width: 100%; padding: 9px 13px; border-radius: 0; font-size: var(--text-xs); color: var(--body); }
+.history-evidence-link:hover { background: var(--rail); }

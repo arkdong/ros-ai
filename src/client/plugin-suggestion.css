@@ -2,8 +2,8 @@
    Neutral throughout; green only as the dot of a plugin that is connected. */
 .plugin-chip {
   align-self: flex-start; display: flex; align-items: center; gap: 10px; max-width: 100%; min-height: 42px; box-sizing: border-box;
-  padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 6px 18px rgba(0, 0, 0, .08);
-  font-size: var(--text-sm); color: var(--ink); animation: ros-rise .24s cubic-bezier(.2, .8, .2, 1) both;
+  padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper); box-shadow: var(--shadow-float);
+  font-size: var(--text-sm); color: var(--ink); animation: ros-rise var(--dur-menu) var(--ease) both;
 }
 @media (prefers-reduced-motion: reduce) { .plugin-chip { animation: none; } }
 .plugin-chip > :first-child, .plugin-chip > .icon-button, .plugin-chip > .spin { flex-shrink: 0; }
@@ -40,7 +40,7 @@
 .plugin-suggestion { margin-top: 12px; }
 .plugin-suggestion + .plugin-suggestion { padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .plugin-suggestion-head { display: flex; align-items: flex-start; gap: 12px; }
-.plugin-suggestion-mark { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.plugin-suggestion-mark { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--paper); }
 .plugin-suggestion-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
 .plugin-suggestion-name { display: flex; align-items: center; gap: 10px; }
 .plugin-suggestion-name strong { font-size: var(--text-md); font-weight: 500; color: var(--ink); }
