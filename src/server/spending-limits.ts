@@ -1,10 +1,8 @@
 import type { Store } from './store.js';
 
-/** Spending limits are off in the local app: paid calls are recorded for Usage, not capped.
- * The public demo keeps them on, so visitors cannot spend without a ceiling. A saved
+/** Spending limits are off: paid calls are recorded for Usage, not capped. A saved
  * choice ({ on: boolean } in 'spending-limits'/'app') is where an optional limit comes back later. */
 export function spendingLimitsOn(store: Store): boolean {
-  if (process.env.ROS_PUBLIC_DEMO === '1') return true;
   const env = process.env.ROS_SPENDING_LIMITS?.trim().toLowerCase();
   if (env === 'on') return true;
   if (env === 'off') return false;

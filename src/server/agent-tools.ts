@@ -255,11 +255,11 @@ export class AgentWorkspaceTools {
   static apps?: RemoteApps;
   /** Live Google Sheet and Doc blocks, read for the agent as the canvas shows them. */
   static google?: GoogleWorkspace;
-  /** Training runs on this computer (Training blocks), read for the agent as the block shows them; unset in the public demo. */
+  /** Training runs on this computer (Training blocks), read for the agent as the block shows them. */
   static training?: (view: TrainingView) => Promise<unknown>;
-  /** Launch numbers (Metrics blocks), read for the agent and for Apps as the block shows them; unset in the public demo. */
+  /** Launch numbers (Metrics blocks), read for the agent and for Apps as the block shows them. */
   static metrics?: MetricViews;
-  /** YouTube, Reddit, Hacker News and GitHub posts for Post blocks; unset in the public demo. */
+  /** YouTube, Reddit, Hacker News and GitHub posts for Post blocks. */
   static posts?: Posts;
   /** The project folders, which say which PDFs and images a File block can show. */
   static folders?: ProjectFolders;
@@ -269,7 +269,7 @@ export class AgentWorkspaceTools {
   static notionFiles?: NotionFileSaver;
   /** Downloads pictures and PDFs from the web into the project folder when a File block is given a web address. */
   static webFiles?: WebFileFetcher;
-  /** Looks places up on OpenStreetMap for Map block pins; unset in the public demo, where pins need lat and lng. */
+  /** Looks places up on OpenStreetMap for Map block pins; without it pins need lat and lng. */
   static geocoder?: Geocoder;
   /** The person's skill library (Skills page); its tool is offered while at least one skill is on. */
   static skills?: SkillLibrary;

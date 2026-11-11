@@ -9,7 +9,7 @@ export type NewBlockType = 'dataset' | 'code' | 'notebook' | 'report' | 'notion'
 export type KindGroup = 'Write' | 'Bring in' | 'Build';
 /** One kind of block a person can add. `asks` kinds need something first (a file, a link, a paper), so they open the
  *  All blocks window; the others land on the map at once. `needs` names what must be in place, in the person's words. */
-export type BlockKind = { id: KindId; name: string; caption: string; line: string; needs: string; facts: string[]; group: KindGroup; kind: NodeKind; blockType?: NewBlockType; asks?: boolean; localOnly?: boolean; icon: (size: number) => ReactNode };
+export type BlockKind = { id: KindId; name: string; caption: string; line: string; needs: string; facts: string[]; group: KindGroup; kind: NodeKind; blockType?: NewBlockType; asks?: boolean; icon: (size: number) => ReactNode };
 
 export const BLOCK_KINDS: BlockKind[] = [
   { id: 'text', name: 'Text', caption: 'Write', group: 'Write', kind: 'topic', needs: 'Nothing', line: 'Notes, questions, drafts and decisions, written by you or filled by an agent. ROS can check its sources.', facts: ['Label it as a question, task or decision', 'Agents read it and fill it'], icon: size => <TextIcon size={size}/> },
@@ -20,35 +20,34 @@ export const BLOCK_KINDS: BlockKind[] = [
   { id: 'paper', name: 'Paper', caption: 'DOI, arXiv', group: 'Bring in', kind: 'topic', needs: 'Nothing', asks: true, line: 'A paper found on OpenAlex, arXiv or Zotero, with its reference and its open PDF when there is one.', facts: ['Searches OpenAlex, arXiv and Zotero', 'An open PDF becomes a File block'], icon: size => <GraduationCap size={size}/> },
   { id: 'notion', name: 'Notion', caption: 'Page, database', group: 'Bring in', kind: 'topic', blockType: 'notion', needs: 'Notion connected', asks: true, line: 'A Notion page or database shown live through your Notion connection. Rows can be filtered.', facts: ['Reads live, nothing is copied', 'Database rows can be filtered'], icon: size => <BrandLogo id="notion" size={size}/> },
   { id: 'google', name: 'Google Drive', caption: 'Sheet, Doc', group: 'Bring in', kind: 'topic', blockType: 'google', needs: 'Google signed in', asks: true, line: 'A Google Sheet or Doc read live through your Google sign-in, which only reads.', facts: ['Reads live, nothing is copied', 'The link picks the tab'], icon: size => <BrandLogo id="google-drive" size={size}/> },
-  { id: 'metric', name: 'Metrics', caption: 'Live numbers', group: 'Bring in', kind: 'topic', blockType: 'metric', needs: 'Nothing', asks: true, localOnly: true, line: 'Launch numbers read live: accounts and downloads from ros.ai cloud, GitHub stars, Umami visitors, Railway services. Each shows how it moved today.', facts: ['Reads again every 15 minutes', 'Keeps a trend in the project folder'], icon: size => <Activity size={size}/> },
+  { id: 'metric', name: 'Metrics', caption: 'Live numbers', group: 'Bring in', kind: 'topic', blockType: 'metric', needs: 'Nothing', asks: true, line: 'Launch numbers read live: accounts and downloads from ros.ai cloud, GitHub stars, Umami visitors, Railway services. Each shows how it moved today.', facts: ['Reads again every 15 minutes', 'Keeps a trend in the project folder'], icon: size => <Activity size={size}/> },
   { id: 'dashboard', name: 'Dashboard', caption: 'Pinned numbers', group: 'Build', kind: 'topic', blockType: 'dashboard', needs: 'Nothing', line: 'Numbers pinned from your Metrics blocks, side by side under your own headings: a number, a line, bars a day, or a funnel.', facts: ['Each tile reads from its block', 'Pin from any Metrics number'], icon: size => <LayoutDashboard size={size}/> },
-  { id: 'post', name: 'Post', caption: 'Video, thread, note', group: 'Bring in', kind: 'topic', blockType: 'post', needs: 'Nothing', asks: true, localOnly: true, line: 'One post from its link, as its platform shows it: a YouTube video with its subtitles, a Reddit or Hacker News thread with its top comments, a GitHub repository or issue, a Xiaohongshu note with its photos (after logging in once in Plugins).', facts: ['Photos and subtitles saved in posts/', 'Agents search and add posts too'], icon: size => <MessageSquareText size={size}/> },
+  { id: 'post', name: 'Post', caption: 'Video, thread, note', group: 'Bring in', kind: 'topic', blockType: 'post', needs: 'Nothing', asks: true, line: 'One post from its link, as its platform shows it: a YouTube video with its subtitles, a Reddit or Hacker News thread with its top comments, a GitHub repository or issue, a Xiaohongshu note with its photos (after logging in once in Plugins).', facts: ['Photos and subtitles saved in posts/', 'Agents search and add posts too'], icon: size => <MessageSquareText size={size}/> },
   { id: 'map', name: 'Map', caption: 'Places', group: 'Build', kind: 'topic', blockType: 'map', needs: 'Nothing', line: 'Places pinned on an OpenStreetMap map, by you or by an agent. Each place opens in Google Maps.', facts: ['Agents pin places by name or address', 'Opens in Google Maps, no key needed'], icon: size => <MapPinned size={size}/> },
   { id: 'google-maps', name: 'Google Maps', caption: 'Google’s map', group: 'Build', kind: 'topic', blockType: 'google-map', needs: 'Nothing', line: 'Places pinned on Google’s own map, by you or by an agent. Without a key it shows one place at a time; a Google Maps key in Plugins shows them all.', facts: ['Agents pin places by name or address', 'No key needed to start'], icon: size => <BrandLogo id="google-maps" size={size}/> },
   { id: 'app', name: 'App', caption: 'Interactive', group: 'Build', kind: 'topic', blockType: 'app', needs: 'Apps on in Settings', line: 'A small page an agent builds for you, sealed on its card. It reads only the blocks you name as inputs.', facts: ['Reads only the inputs you name', 'An agent writes the page'], icon: size => <AppWindow size={size}/> },
-  { id: 'training', name: 'Training run', caption: 'GPU', group: 'Build', kind: 'topic', blockType: 'training', needs: 'An ssh host', asks: true, localOnly: true, line: 'Follows a model training run: the data from a folder here, the loss curve from the GPU machine over your own ssh.', facts: ['Data from a folder on this computer', 'The loss curve over your own ssh'], icon: size => <BrandLogo id="nebius" size={size}/> },
+  { id: 'training', name: 'Training run', caption: 'GPU', group: 'Build', kind: 'topic', blockType: 'training', needs: 'An ssh host', asks: true, line: 'Follows a model training run: the data from a folder here, the loss curve from the GPU machine over your own ssh.', facts: ['Data from a folder on this computer', 'The loss curve over your own ssh'], icon: size => <BrandLogo id="nebius" size={size}/> },
   { id: 'group', name: 'Group', caption: 'Frame', group: 'Build', kind: 'group', needs: 'Nothing', line: 'A frame for blocks that belong together. Closes to one card; opens to show its blocks.', facts: ['Closes to one card', 'Agents can work inside it'], icon: size => <LayoutGrid size={size}/> },
 ];
 export const KIND_GROUPS: KindGroup[] = ['Write', 'Bring in', 'Build'];
 export const blockKind = (id: KindId) => BLOCK_KINDS.find(kind => kind.id === id)!;
 
 /** The kinds this computer can add: a Training run needs the local workspace. */
-export const availableKinds = (local: boolean) => BLOCK_KINDS.filter(kind => local || !kind.localOnly);
 
 /** Name, caption, what it does and what it needs all count, so "pdf" finds File and Paper. */
-export function searchKinds(query: string, local: boolean) {
+export function searchKinds(query: string) {
   const words = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
-  if (!words.length) return availableKinds(local);
-  return availableKinds(local).filter(kind => { const text = `${kind.name} ${kind.caption} ${kind.line} ${kind.needs} ${kind.facts.join(' ')}`.toLowerCase(); return words.every(word => text.includes(word)); });
+  if (!words.length) return BLOCK_KINDS;
+  return BLOCK_KINDS.filter(kind => { const text = `${kind.name} ${kind.caption} ${kind.line} ${kind.needs} ${kind.facts.join(' ')}`.toLowerCase(); return words.every(word => text.includes(word)); });
 }
 
 const USAGE_KEY = 'ros-ai:block-usage';
 const FIRST_SIX: KindId[] = ['text', 'code', 'notebook', 'data', 'file', 'paper'];
 /** The six kinds this person adds most, by their own counts in this browser; a new install starts with the first six. */
-export function mostUsedKinds(local: boolean): BlockKind[] {
+export function mostUsedKinds(): BlockKind[] {
   const counts = readSaved<Partial<Record<KindId, number>>>(USAGE_KEY, {});
   const rank = (kind: BlockKind) => { const first = FIRST_SIX.indexOf(kind.id); return first === -1 ? FIRST_SIX.length + BLOCK_KINDS.indexOf(kind) : first; };
-  return [...availableKinds(local)].sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || rank(a) - rank(b)).slice(0, 6);
+  return [...BLOCK_KINDS].sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || rank(a) - rank(b)).slice(0, 6);
 }
 export function noteKindUse(id: KindId) {
   const counts = readSaved<Partial<Record<KindId, number>>>(USAGE_KEY, {});

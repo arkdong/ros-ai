@@ -121,5 +121,3 @@ Notebook/Excel/database engines, other embedded agent runtimes, accounts, cloud 
 - [Product brief](product-brief.md)
 - [Architecture](architecture.md)
 - [Data provenance](amsterdam-data.md)
-
-## Optional public demonstration

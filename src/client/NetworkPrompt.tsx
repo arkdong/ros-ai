@@ -9,23 +9,22 @@ type NetworkEvent = { type: 'request'; request: NetworkRequest } | { type: 'sett
 type SetupEvent = { status: 'installing'; step: string } | { status: 'ready'; version: string } | { status: 'failed'; message: string };
 
 /** A server stream that exists only with sandboxed Python (macOS); elsewhere it is closed after the first error. */
-function useStream<T>(url: string, enabled: boolean, onEvent: (event: T) => void) {
+function useStream<T>(url: string, onEvent: (event: T) => void) {
   useEffect(() => {
-    if (!enabled) return;
     const events = new EventSource(url);
     events.onmessage = item => { try { onEvent(JSON.parse(item.data) as T); } catch { /* not ours */ } };
     events.onerror = () => { if (events.readyState === EventSource.CLOSED) events.close(); };
     return () => events.close();
-  }, [url, enabled]);
+  }, [url]);
 }
 
 /** Notices from sandboxed Python, shown over everything: the one-time setup, and sites waiting to be allowed. */
-export function NetworkPrompt({ publicDemo }: { publicDemo: boolean }) {
+export function NetworkPrompt() {
   const [requests, setRequests] = useState<NetworkRequest[]>([]), [busy, setBusy] = useState(false);
   const [setup, setSetup] = useState<SetupEvent | null>(null), [why, setWhy] = useState(false);
-  useStream<NetworkEvent>('/api/python-network/events', !publicDemo, event =>
+  useStream<NetworkEvent>('/api/python-network/events', event =>
     setRequests(current => event.type === 'request' ? [...current.filter(value => value.id !== event.request.id), event.request] : current.filter(value => value.id !== event.id)));
-  useStream<SetupEvent>('/api/python/setup/events', !publicDemo, setSetup);
+  useStream<SetupEvent>('/api/python/setup/events', setSetup);
   // "Ready" says so briefly, then goes.
   useEffect(() => { if (setup?.status !== 'ready') return; const timer = window.setTimeout(() => setSetup(null), 6000); return () => window.clearTimeout(timer); }, [setup]);
   const request = requests[0];

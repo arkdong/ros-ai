@@ -35,12 +35,12 @@ export class TutorialService {
   private highlights:Highlights;
   /** The guided workflow builds its canvas in a project folder, so it needs the local app. */
   private workflow?:WorkflowTutorial;
-  constructor(private store:Store, private experiments?:ExperimentService, private options:{publicDemo?:boolean;folders?:ProjectFolders}={}) {
+  constructor(private store:Store, private experiments?:ExperimentService, private options:{folders?:ProjectFolders}={}) {
     this.highlights = new Highlights(store);
-    if (options.folders && !options.publicDemo) this.workflow = new WorkflowTutorial(store,options.folders,(...args) => this.importArtifacts(...args));
+    if (options.folders) this.workflow = new WorkflowTutorial(store,options.folders,(...args) => this.importArtifacts(...args));
   }
 
-  private marketAvailable() { return !this.options.publicDemo && localMarketDataAvailable(); }
+  private marketAvailable() { return localMarketDataAvailable(); }
 
   private execution():TutorialExecution {
     const available = this.experiments?.capabilities().sandbox?.available ?? false;
@@ -64,20 +64,15 @@ export class TutorialService {
           question:'How well does a simple historical risk baseline describe losses as market conditions change?',
           publicDataReady:false,available:false,
           publicDataStatus:'The captured S&P/FRED series and derived figures require reproduction permission before public distribution.',
-          unavailableReason:this.options.publicDemo
-            ? 'The market scenario remains local until reproduction permission or an approved replacement dataset is available. Its data and figures are not included in this public website.'
-            : 'The market scenario needs its captured S&P/FRED data, which is kept outside the repository. Add the local research files under examples/demo-market-risk to enable it.',
+          unavailableReason:'The market scenario needs its captured S&P/FRED data, which is kept outside the repository. Add the local research files under examples/demo-market-risk to enable it.',
         };
         const content = loadTutorialContent(id);
         return { id, title:content.title, projectTitle:lessonTitle(id), steps:content.stages.length, summary:content.summary, question:content.question,
           publicDataReady:content.publicDataReady, publicDataStatus:content.publicDataStatus,
-          available:!this.options.publicDemo || content.publicDataReady,
-          ...this.options.publicDemo && !content.publicDataReady ? {unavailableReason:content.publicDataStatus} : {} };
+          available:true };
       })],
       execution:this.execution(),
-      hosting:this.options.publicDemo
-        ? {mode:'public-demo',publicReady:true,reason:'Your browser has a separate demo workspace. Saved results and manual editing are available; fresh execution and paid provider calls are disabled in this public demo.'}
-        : {mode:'local',publicReady:false,reason:'This service currently accepts local requests only. Public interactive hosting needs an approved server deployment, visitor isolation and a supported runner; static website hosting cannot run this backend.'},
+      hosting:{mode:'local',publicReady:false,reason:'This service currently accepts local requests only. Public interactive hosting needs an approved server deployment, visitor isolation and a supported runner; static website hosting cannot run this backend.'},
     };
   }
 
@@ -126,11 +121,8 @@ export class TutorialService {
       if (!this.workflow) throw new StoreError('The guided workflow demo needs the local app, where projects are folders.',403);
       return this.read(this.workflow.create(folder))!;
     }
-    if (scenario === 'market' && !this.marketAvailable()) throw new StoreError(this.options.publicDemo
-      ? 'The market scenario is unavailable publicly: its captured S&P/FRED data and derived figures need reproduction permission or an approved replacement dataset.'
-      : 'The market scenario needs its captured S&P/FRED data, which is not in this checkout.',this.options.publicDemo ? 403 : 409);
+    if (scenario === 'market' && !this.marketAvailable()) throw new StoreError('The market scenario needs its captured S&P/FRED data, which is not in this checkout.',409);
     const content = loadTutorialContent(scenario);
-    if (this.options.publicDemo && !content.publicDataReady) throw new StoreError(content.publicDataStatus,403);
     // Check the folder before the project exists, so a refused folder leaves nothing behind.
     if (folder) folders!.prepare(folder);
     const session = this.store.atomic(() => {

@@ -22,7 +22,6 @@ import { PythonRuntime, systemConfine } from './local-python.js';
 import { NetworkGate } from './network-gate.js';
 import { createApp, apiErrorHandler } from './app.js';
 import { acquireDataLock } from './lock.js';
-import { createPublicDemoApp } from './public-demo.js';
 import { ToolCredentials } from './tool-credentials.js';
 import { PluginTokens } from './plugins.js';
 import { PluginSuggestions } from './plugin-suggestions.js';
@@ -54,21 +53,20 @@ import { AppKit } from './app-kit.js';
 import { AppFrames } from './app-frames.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const publicMode = process.env.ROS_PUBLIC_DEMO === '1';
-if (!publicMode) loadEnv({ path: resolve(root, '.env.local'), quiet: true });
+loadEnv({ path: resolve(root, '.env.local'), quiet: true });
 // Before any request goes out: trust what this computer trusts, so a network that inspects HTTPS works here too.
-if (!publicMode) trustSystemCertificates();
+trustSystemCertificates();
 // Keys typed once into a file outside the code, before anything reads them.
 let keysFile: string | null = null;
-try { keysFile = publicMode ? null : loadLocalKeys(); }
+try { keysFile = loadLocalKeys(); }
 catch (error) { console.error(`ros.ai could not start: ${error instanceof Error ? error.message : error}`); process.exit(1); }
 // ros.ai's own records live in the usual app-data place, so reinstalling the code keeps them.
 // An install that already keeps them next to the code goes on using that folder.
 const appData = process.platform === 'darwin' ? join(homedir(), 'Library', 'Application Support', 'ros.ai')
   : process.platform === 'win32' ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'ros.ai')
   : join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'ros.ai');
-const dataDir = resolve(process.env.ROS_DATA_DIR || (existsSync(resolve(root, '.ros-ai')) || publicMode ? resolve(root, '.ros-ai') : appData));
-const port = Number(process.env.ROS_PORT || (publicMode ? process.env.PORT || 8080 : 4310));
+const dataDir = resolve(process.env.ROS_DATA_DIR || (existsSync(resolve(root, '.ros-ai')) ? resolve(root, '.ros-ai') : appData));
+const port = Number(process.env.ROS_PORT || 4310);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('ROS_PORT must be an integer between 1024 and 65535.');
 // Lock before opening Store so concurrent startup cannot recover another process's work.
 const releaseLock = acquireDataLock(dataDir);
@@ -92,7 +90,6 @@ let outside:OutsideAgents|undefined;
 let notebooks:NotebookService|undefined;
 let projectFolders:ProjectFolders|undefined;
 let updates:Updates|undefined;
-let publicDemo:ReturnType<typeof createPublicDemoApp>|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
 const server = createServer();
@@ -121,7 +118,6 @@ async function shutdown() {
     googleDrive?.shutdown();
     server.close();
     await vite?.close();
-    publicDemo?.close();
     store?.close();
   } finally {
     releaseLock();
@@ -129,13 +125,7 @@ async function shutdown() {
 }
 try {
   let app:express.Express;
-  if (publicMode) {
-    if (process.env.ROS_DEV === '1') throw new Error('Public demo mode serves a production frontend build. Build it first and leave ROS_DEV unset.');
-    const origin = process.env.ROS_PUBLIC_ORIGIN || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
-    if (!origin) throw new Error('Set ROS_PUBLIC_ORIGIN or RAILWAY_PUBLIC_DOMAIN before starting public demo mode.');
-    publicDemo = createPublicDemoApp({dataDir,origin,maxSessions:Number(process.env.ROS_PUBLIC_MAX_SESSIONS || 500),sessionDays:Number(process.env.ROS_PUBLIC_SESSION_DAYS || 7)});
-    app = publicDemo.app;
-  } else {
+  {
     store = new Store(dataDir);
     const credentials = new ToolCredentials(dataDir);
     googleDrive = new GoogleDriveConnection({dataDir,port});
@@ -225,13 +215,13 @@ try {
   app.use(apiErrorHandler);
   server.on('request', app);
   server.on('error', async (error) => { console.error(`ros.ai could not start: ${error.message}`); await shutdown(); process.exitCode = 1; });
-  server.listen(port, publicMode ? '0.0.0.0' : '127.0.0.1', () => {
+  server.listen(port, '127.0.0.1', () => {
     outside?.publish(port);
     acp?.listen(port);
     // App pages are framed only by this server's page, so their server starts once this port is known.
     appFrames?.start(port).catch(error => console.error(`  App blocks are off: ${error instanceof Error ? error.message : error}`));
     updates?.start();
-    console.log(`\n  ros.ai ${publicMode ? 'public demo' : 'local workspace'} is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
+    console.log(`\n  ros.ai local workspace is ready on port ${port}\n  Data: ${dataDir}\n  Press Ctrl+C to stop.\n`);
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void shutdown().catch(error => { console.error(`ros.ai stopped with an error: ${error instanceof Error ? error.message : error}`); process.exitCode = 1; }).finally(() => process.exit()); });
 } catch (error) {

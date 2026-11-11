@@ -70,7 +70,7 @@ const billingLine: Record<AgentId, string> = {
   gemini: 'Billed through its own Google sign-in or key', goose: 'Billed through the provider Goose is set up with', opencode: 'Billed through OpenCode’s own providers, or free models',
 };
 
-type Props = { projectId:string|null; connections:ConnectionStatus[]; publicDemo:boolean; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
+type Props = { projectId:string|null; connections:ConnectionStatus[]; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** What the page read last in this session: it opens with that at once while it reads again. */
 type AgentReads = { credentials?: CredentialStatus[]; codex?: LocalAgentSetup; codexKey?: LocalAgentSetup; claude?: ClaudeAgentSettings; budgets?: ConnectionBudgetStatus[]; cloud?: CloudAccountStatus; setup?: SetupStatus; local?: LocalRosStatus; acp?: AcpAgentStatus[] };
 let lastReads: AgentReads = {};
@@ -79,13 +79,12 @@ type Installed = { id: AgentId; label: string };
 const savedAgents = () => readSavedList<Installed>('agents-installed', item => agentItems.some(entry => entry.id === item?.id) && typeof item?.label === 'string');
 export const lastInstalledAgents = () => savedAgents().map(item => item.id);
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
-export function ModelPage({projectId,connections,publicDemo,selected,onSelect,onInstalled,onChanged}:Props) {
+export function ModelPage({projectId,connections,selected,onSelect,onInstalled,onChanged}:Props) {
   const [credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[codex,setCodex]=useState(lastReads.codex),[codexKey,setCodexKey]=useState(lastReads.codexKey),[claude,setClaude]=useState(lastReads.claude);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedAgents);
   const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[cloud,setCloud]=useState(lastReads.cloud),[setup,setSetup]=useState(lastReads.setup),[local,setLocal]=useState(lastReads.local),[acp,setAcp]=useState<AcpAgentStatus[]>(lastReads.acp??[]);
   useEffect(()=>{lastReads={credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp};},[credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp]);
   const refresh=useCallback(async(recheck=false)=>{
-    if(publicDemo)return;
     setLoading(true);
     // Each answer shows as it comes, so a slow check (Codex, Claude Code's sign-in, ros.ai cloud) holds up nothing else.
     const failures:Record<string,string>={};
@@ -95,7 +94,7 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
     await Promise.all([show('credentials',api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),value=>setCredentials(value.credentials)),show('codex',codexSetup('plan'),setCodex),show('claude',api<ClaudeAgentSettings>('/api/agents/claude'),setClaude),show('budgets',api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),value=>setBudgets(value.budgets)),
       show('cloud',api<CloudAccountStatus>('/api/cloud'),setCloud),show('setup',api<SetupStatus>('/api/setup'),setSetup),show('local',api<LocalRosStatus>('/api/local-ros'),setLocal),show('acp',api<{agents:AcpAgentStatus[]}>('/api/agents/acp'),value=>setAcp(value.agents)),show('codexKey',codexSetup('api-key'),setCodexKey)]);
     setErrors(failures);setLoading(false);setRead(true);
-  },[projectId,publicDemo]);
+  },[projectId]);
   useEffect(()=>{void refresh();},[refresh]);
   const changed=async()=>{await refresh();await onChanged();};
   const saved=async(provider:CredentialProvider,key:string)=>{await api(`/api/connections/credentials/${provider}`,{method:'PUT',body:JSON.stringify({apiKey:key})});setNotice('Key saved on this computer.');await changed();};
@@ -113,7 +112,6 @@ export function ModelPage({projectId,connections,publicDemo,selected,onSelect,on
   const installedKey=JSON.stringify(agentItems.filter(item=>shown(item.id).connected).map(item=>({id:item.id,label:shown(item.id).label})));
   // Once they are in, what is connected is saved on this computer for the next time.
   useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('agents-installed',installed);},[installedKey,read,onInstalled]);
-  if(publicDemo)return <p className="rail-page-note">This demo cannot connect models. Launch the local workspace to connect your own.</p>;
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
     nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,

@@ -30,9 +30,8 @@ function subscribe(listener: () => void) {
     if (!listeners.size) { window.removeEventListener('focus', onFocus); if (timer) { clearTimeout(timer); timer = undefined; } }
   };
 }
-const idle = () => () => undefined;
-/** off: the public demo, which has no ROS of its own to download, never asks. */
-export const useLocalRosStatus = (on = true) => useSyncExternalStore(on ? subscribe : idle, () => on ? status : undefined);
+/** What Local ROS is doing, kept up to date while any part of the page shows it. */
+export const useLocalRosStatus = () => useSyncExternalStore(subscribe, () => status);
 
 /** Starts, cancels or removes the download, or starts an update, and shows the answer everywhere at once. */
 export async function changeLocalRos(action: 'download' | 'cancel' | 'remove' | 'update') {

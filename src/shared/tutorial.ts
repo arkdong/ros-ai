@@ -7,7 +7,7 @@ export type TutorialScenario = { id:TutorialScenarioId; title:string; projectTit
 export type TutorialCatalog = {
   scenarios:TutorialScenario[];
   execution:TutorialExecution;
-  hosting:{ mode:'local'|'public-demo'; publicReady:boolean; reason:string };
+  hosting:{ mode:'local'; publicReady:boolean; reason:string };
 };
 export type TutorialStage = {
   index:number; title:string; nodeId:string|null; summary:string;

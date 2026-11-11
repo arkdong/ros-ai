@@ -38,12 +38,12 @@ type Handlers = {
 
 /** One card in the bar's shape: the name on top, the folder and the starting point as chips on the footer line, one black action.
  *  The folder follows the name until the person types or picks their own; Enter submits. */
-export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, onCancel, focusKey, onCreate, onOpenFolder, onDemo }: Handlers & { caption?: string; verb: 'Start' | 'Create'; folders: boolean; scenarios: TutorialScenario[] | null; from: StartFrom; onFrom: (from: StartFrom) => void; onCancel?: () => void; focusKey?: number }) {
+export function ProjectCard({ caption, verb, scenarios, from, onFrom, onCancel, focusKey, onCreate, onOpenFolder, onDemo }: Handlers & { caption?: string; verb: 'Start' | 'Create'; scenarios: TutorialScenario[] | null; from: StartFrom; onFrom: (from: StartFrom) => void; onCancel?: () => void; focusKey?: number }) {
   const [name, setName] = useState(''), [path, setPath] = useState(''), [busy, setBusy] = useState(false), [menu, setMenu] = useState<'folder' | 'from' | null>(null);
   const [folder, setFolder] = useState(''), [folderEdited, setFolderEdited] = useState(false), [choosing, setChoosing] = useState(false), [error, setError] = useState('');
   const foot = useRef<HTMLDivElement>(null), field = useRef<HTMLInputElement>(null);
   const demo = from.kind === 'demo' ? from.scenario : undefined;
-  const suggestion = useFolderSuggestion(demo ? demo.projectTitle : name.trim() || 'Untitled', folders && from.kind !== 'folder');
+  const suggestion = useFolderSuggestion(demo ? demo.projectTitle : name.trim() || 'Untitled', from.kind !== 'folder');
   useEffect(() => { if (suggestion && !folderEdited) setFolder(suggestion.path); }, [suggestion, folderEdited]);
   useEffect(() => { if (focusKey) field.current?.focus(); }, [focusKey]);
   // A click anywhere else closes an open menu.
@@ -71,7 +71,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
     if (busy || !ready) return;
     setBusy(true); setError('');
     try {
-      const target = folders && folder.trim() ? folder.trim() : undefined;
+      const target = folder.trim() || undefined;
       if (from.kind === 'folder') await onOpenFolder(path.trim());
       else if (demo) await onDemo(demo, target);
       else await onCreate(name.trim(), target);
@@ -88,7 +88,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
       ? <input ref={field} className="pc-name mono" data-testid="project-folder" value={path} onChange={event => setPath(event.target.value)} placeholder="~/Documents/My research" aria-label="Folder to open" spellCheck={false} autoComplete="off" autoFocus/>
       : <input ref={field} className="pc-name" data-testid="project-name" value={demo ? demo.projectTitle : name} onChange={event => setName(event.target.value)} readOnly={Boolean(demo)} placeholder="Untitled" aria-label="Project name" maxLength={160} autoFocus/>}
     <div className="pc-foot" ref={foot}>
-      {folders && from.kind !== 'folder' && <span className="chip-slot">
+      {from.kind !== 'folder' && <span className="chip-slot">
         <button type="button" className={`chip-button${folder ? ' set' : ''}`} aria-expanded={menu === 'folder'} aria-haspopup="dialog" title={folder || undefined} onClick={() => setMenu(menu === 'folder' ? null : 'folder')}><Folder size={12}/><span className="chip-label">{!folder ? 'Folder' : !demo && !name.trim() && !folderEdited ? shortPath(parentOf(folder)) : shortPath(folder)}</span><ChevronDown size={12}/></button>
         {menu === 'folder' && <div className="chip-menu down folder-menu" role="dialog" aria-label="Project folder">
           <p>{demo ? 'The demo is built here, as files.' : 'Blocks are saved here as files you can open in other apps.'}</p>
@@ -104,7 +104,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
         <button type="button" className="chip-button" aria-expanded={menu === 'from'} aria-haspopup="menu" onClick={() => setMenu(menu === 'from' ? null : 'from')}><span className="chip-label">Start from · {fromLabel}</span><ChevronDown size={12}/></button>
         {menu === 'from' && <div className="chip-menu down from-menu" role="menu" aria-label="Start from">
           <button type="button" role="menuitemradio" aria-checked={from.kind === 'blank'} onClick={() => { onFrom(blank); setMenu(null); }}><span className="chip-check">{from.kind === 'blank' && <Check size={13}/>}</span><span className="chip-menu-label">Blank</span><span className="chip-menu-cap">An empty map</span></button>
-          {folders && <button type="button" role="menuitemradio" aria-checked={from.kind === 'folder'} onClick={openFolderMode}><span className="chip-check">{from.kind === 'folder' && <Check size={13}/>}</span><span className="chip-menu-label">Open a folder…</span><span className="chip-menu-cap">One you already have</span></button>}
+          <button type="button" role="menuitemradio" aria-checked={from.kind === 'folder'} onClick={openFolderMode}><span className="chip-check">{from.kind === 'folder' && <Check size={13}/>}</span><span className="chip-menu-label">Open a folder…</span><span className="chip-menu-cap">One you already have</span></button>
           {scenarios && scenarios.length > 0 && <>
             <p className="chip-menu-heading">Demos</p>
             {scenarios.map(scenario => <button key={scenario.id} type="button" role="menuitemradio" aria-checked={demo?.id === scenario.id} disabled={scenario.available === false} title={scenario.available === false ? scenario.unavailableReason : undefined} onClick={() => { onFrom({ kind: 'demo', scenario }); setMenu(null); }}><span className="chip-check">{demo?.id === scenario.id && <Check size={13}/>}</span><span className="chip-menu-label">{demoName(scenario)}</span><span className="chip-menu-cap">{scenario.steps} steps</span></button>)}
@@ -121,7 +121,7 @@ export function ProjectCard({ caption, verb, folders, scenarios, from, onFrom, o
 
 /** The screen before any project: the card, the other doors as pills, and a gallery of the demos that exist. What the
  *  first run connected shows as a quiet pill too; ROS downloading to this computer shows in the corner, as on every page. */
-export function StartScreen({ folders, focusKey, tools = 0, onTools, ...handlers }: Handlers & { folders: boolean; focusKey?: number; tools?: number; onTools?: () => void }) {
+export function StartScreen({ focusKey, tools = 0, onTools, ...handlers }: Handlers & { focusKey?: number; tools?: number; onTools?: () => void }) {
   const scenarios = useScenarios(), [from, setFrom] = useState<StartFrom>(blank);
   const [cloud, setCloud] = useState<CloudAccountStatus>();
   useEffect(() => {
@@ -137,10 +137,10 @@ export function StartScreen({ folders, focusKey, tools = 0, onTools, ...handlers
     <div className="start-column">
       <span className="start-ring"><RosMark/></span>
       <h1>Start a project</h1>
-      <p className="start-lead">{folders ? `A project is a folder on ${thisComputer}. Everything on its map is saved there as files you can open elsewhere.` : 'A project is a map of blocks. On this demo server it is saved for this browser only.'}</p>
-      <ProjectCard verb="Start" folders={folders} scenarios={scenarios} from={from} onFrom={setFrom} focusKey={focusKey} {...handlers}/>
+      <p className="start-lead">{`A project is a folder on ${thisComputer}. Everything on its map is saved there as files you can open elsewhere.`}</p>
+      <ProjectCard verb="Start" scenarios={scenarios} from={from} onFrom={setFrom} focusKey={focusKey} {...handlers}/>
       <div className="start-pills">
-        {folders && from.kind !== 'folder' && <button type="button" className="chip-button" onClick={() => setFrom({ kind: 'folder' })}><FolderOpen size={12}/>Open a folder on {thisComputer}</button>}
+        {from.kind !== 'folder' && <button type="button" className="chip-button" onClick={() => setFrom({ kind: 'folder' })}><FolderOpen size={12}/>Open a folder on {thisComputer}</button>}
         {cloud?.available && cloud.state !== 'signed-in' && <button type="button" className="chip-button" onClick={signIn}>Sign in to ros.ai</button>}
         {tools > 0 && <button type="button" className="chip-button" onClick={onTools}><span className="chip-dot"/>{tools} tool{tools === 1 ? '' : 's'} connected</button>}
       </div>
@@ -158,7 +158,7 @@ export function StartScreen({ folders, focusKey, tools = 0, onTools, ...handlers
 }
 
 /** New project over the current map: the same card under a light scrim, so nothing jumps. Enter creates; Esc or a click outside cancels. */
-export function NewProjectCard({ folders, onClose, ...handlers }: Handlers & { folders: boolean; onClose: () => void }) {
+export function NewProjectCard({ onClose, ...handlers }: Handlers & { onClose: () => void }) {
   const scenarios = useScenarios(), [from, setFrom] = useState<StartFrom>(blank), card = useRef<HTMLDivElement>(null);
   // Focus goes back where it was when the card closes; the card's own input takes it before any effect runs.
   const [previous] = useState(() => document.activeElement as HTMLElement | null);
@@ -171,7 +171,7 @@ export function NewProjectCard({ folders, onClose, ...handlers }: Handlers & { f
   };
   return <div className="new-project-scrim" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="new-project-card" role="dialog" aria-modal="true" aria-label="New project" ref={card} onKeyDown={trap}>
-      <ProjectCard caption="New project" verb="Create" folders={folders} scenarios={scenarios} from={from} onFrom={setFrom} onCancel={onClose} {...handlers}/>
+      <ProjectCard caption="New project" verb="Create" scenarios={scenarios} from={from} onFrom={setFrom} onCancel={onClose} {...handlers}/>
     </div>
   </div>;
 }

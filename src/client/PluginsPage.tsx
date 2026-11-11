@@ -94,12 +94,11 @@ type Installed = { id: PluginId; label: string };
 const savedPlugins = () => readSavedList<Installed>('plugins-installed', item => PLUGINS.some(plugin => plugin.id === item?.id) && typeof item?.label === 'string');
 export const lastInstalledPlugins = () => savedPlugins().map(item => item.id);
 
-export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;publicDemo:boolean;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
+export function PluginsPage({projectId,selected,onSelect,onInstalled,onChanged,onResources}:{projectId:string|null;selected:PluginId|null;onSelect:(id:PluginId|null)=>void;onInstalled:(ids:PluginId[])=>void;onChanged:()=>Promise<unknown>;onResources:()=>void}) {
   const [plugins,setPlugins]=useState<PluginStatus[]>(lastReads.plugins??[]),[apps,setApps]=useState<AppConnectionStatus[]>(lastReads.apps??[]),[google,setGoogle]=useState<GoogleDriveStatus|null>(lastReads.google??null),[credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[search,setSearch]=useState<SearchServiceStatus|null>(lastReads.search??null),[papers,setPapers]=useState<PaperSourceStatus[]|null>(lastReads.papers??null),[browser,setBrowser]=useState<BrowserStatus|null>(lastReads.browser??null),[sites,setSites]=useState<SignedInSiteStatus[]|null>(lastReads.sites??null),[local,setLocal]=useState<LocalPlugins|null>(lastReads.local??null);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedPlugins);
   useEffect(()=>{lastReads={plugins,apps,google,credentials,budgets,search,papers,browser,local,sites};},[plugins,apps,google,credentials,budgets,search,papers,browser,local,sites]);
   const refresh=useCallback(async()=>{
-    if(publicDemo)return;
     setLoading(true);
     const [tokens,drive,keys,limits,signIns,searching,sources,browsing,found,signedIn]=await Promise.allSettled([api<{plugins:PluginStatus[]}>('/api/plugins'),api<GoogleDriveStatus>('/api/connections/google-drive'),api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),api<{apps:AppConnectionStatus[]}>('/api/apps'),api<SearchServiceStatus>('/api/connections/search'),api<PapersStatus>('/api/papers'),api<BrowserStatus>('/api/browser'),api<LocalPlugins>('/api/plugins/local'),api<{sites:SignedInSiteStatus[]}>('/api/signed-in')]);
     const failures:Record<string,string>={};
@@ -114,7 +113,7 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
     if(found.status==='fulfilled')setLocal(found.value);
     if(signedIn.status==='fulfilled')setSites(signedIn.value.sites);
     setErrors(failures);setLoading(false);setRead(true);
-  },[publicDemo]);
+  },[]);
   useEffect(()=>{void refresh();},[refresh]);
   const changed=async()=>{await refresh();await onChanged();};
   const stateOf=(plugin:PluginDefinition):PluginState=>{
@@ -141,7 +140,6 @@ export function PluginsPage({projectId,publicDemo,selected,onSelect,onInstalled,
   const installedKey=JSON.stringify(PLUGINS.filter(plugin=>shown(plugin).connected).map(plugin=>({id:plugin.id,label:shown(plugin).label})));
   // Once they are in, what is connected is saved on this computer for the next time.
   useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('plugins-installed',installed);},[installedKey,read,onInstalled]);
-  if(publicDemo)return <p className="rail-page-note">This demo cannot connect your tools. Launch the local workspace to connect them.</p>;
   const card=(plugin:PluginDefinition)=>{
     if(plugin.id==='google-drive')return <GoogleDriveConnectionCard key={plugin.id} projectId={projectId} status={google} loadError={errors.google} onChanged={changed} onImported={async()=>{setNotice('CSV copied into this project. Open Resources to inspect or use it.');await onChanged();}} onResources={onResources}/>;
     if(plugin.id==='google-sheets'||plugin.id==='google-docs'){const files=plugin.id==='google-sheets'?'Sheets':'Docs';return <ConnectionCard key={plugin.id} label={plugin.name} icon={<PluginMark id={plugin.id}/>} subtitle={plugin.summary} connected={google?.connected} status={!google?'Checking…':google.connected?'Connected':'Needs Google Drive'}><p>{plugin.name} live in your Drive, so they use the same read-only Google sign-in. {google?.connected?`Add one with Add block › Google Drive and its link; agents read your ${files} through it.`:`Connect Google Drive to reach your ${files}.`} ros.ai cannot edit or share them.</p></ConnectionCard>;}

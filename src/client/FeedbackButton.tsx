@@ -15,12 +15,12 @@ function browserName() {
 
 /** The Feedback button at the top right of every page, and its card for a problem, an idea or a
  * question. Opening it asks only the local server; nothing leaves this computer until the person
- * presses Send or Post publicly on GitHub. The public demo offers GitHub only.
+ * presses Send or Post publicly on GitHub.
  * On first visits a hint under the button says ros.ai is in early access. It goes for good once the
  * person closes it or opens the card, steps aside until the next visit at their first press elsewhere,
  * and waits while `quiet` (setup, the demo picker, a walkthrough, ROS or a full page is showing). `before` sits left of
  * the button in the same corner: the ROS download while it runs. */
-export function FeedbackButton({ publicDemo, quiet, before }: { publicDemo: boolean; quiet: boolean; before?: ReactNode }) {
+export function FeedbackButton({ quiet, before }: { quiet: boolean; before?: ReactNode }) {
   const [open, setOpen] = useState(false), [setup, setSetup] = useState<FeedbackSetup>();
   const [hintDone, setHintDone] = useState(() => readSaved('feedback-hint-done', false)), [hintAside, setHintAside] = useState(false);
   const endHint = () => { if (!hintDone) { saveLocal('feedback-hint-done', true); setHintDone(true); } };
@@ -35,15 +35,14 @@ export function FeedbackButton({ publicDemo, quiet, before }: { publicDemo: bool
   useEffect(() => {
     if (!open) return;
     // Asked on every open, so signing in or out shows straight away.
-    if (publicDemo) setSetup({ cloud: false, details: 'ros.ai public demo' });
-    else api<FeedbackSetup>('/api/feedback').then(setSetup, () => setSetup({ cloud: false, details: 'ros.ai' }));
+    api<FeedbackSetup>('/api/feedback').then(setSetup, () => setSetup({ cloud: false, details: 'ros.ai' }));
     // Captured, because the map stops presses from bubbling up to the page.
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) close(); };
     // Handled here first, so the app's own Escape (which closes open views) leaves them alone.
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close(); trigger.current?.focus(); } };
     document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key); };
-  }, [open, publicDemo]);
+  }, [open]);
   useEffect(() => { if (open && ready && !sent) text.current?.focus(); }, [open, ready, sent]);
   useEffect(() => {
     if (!hint) return;

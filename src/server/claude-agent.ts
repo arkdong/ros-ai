@@ -16,7 +16,7 @@ import { projectFolderRoot } from './project-folders.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type ClaudeModel, type ClaudeWebSearch } from '../shared/claude-agent.js';
 import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
-import { ClaudePlan, planAllowed, planEnvironment } from './claude-plan.js';
+import { ClaudePlan, planEnvironment } from './claude-plan.js';
 import { privateAddress } from './private-address.js';
 import { CANVAS_GRAMMAR } from './canvas-grammar.js';
 
@@ -149,7 +149,7 @@ export class ClaudeAgentService {
     // One setting used to put every project's Claude Code on the subscription; those projects move to 'claude-plan', which keeps them there.
     const legacy = store.globalRecord<{ billing?: ClaudeBilling }>('claude-agent-settings', 'settings');
     if (legacy?.billing) {
-      if (legacy.billing === 'plan' && planAllowed) for (const project of store.listProjects()) if (store.record<{ backend: string }>('assistant-backend', project.id)?.backend === 'claude') store.saveRecord('assistant-backend', project.id, project.id, { backend: 'claude-plan' });
+      if (legacy.billing === 'plan') for (const project of store.listProjects()) if (store.record<{ backend: string }>('assistant-backend', project.id)?.backend === 'claude') store.saveRecord('assistant-backend', project.id, project.id, { backend: 'claude-plan' });
       store.saveGlobalRecord('claude-agent-settings', 'settings', { ...legacy, billing: undefined });
     }
   }
@@ -190,7 +190,7 @@ export class ClaudeAgentService {
   settings(): ClaudeAgentSettings {
     const { model, planModel, webSearch } = this.saved();
     const budget = this.execution.connectionBudgets.status('claude');
-    return { model, planModel, webSearch, planAllowed, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
+    return { model, planModel, webSearch, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
   }
   /** Settings with a fresh look at the Claude plan sign-in; still no model request. */
   async checkedSettings() { await this.plan.check(); return this.settings(); }

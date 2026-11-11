@@ -11,14 +11,14 @@ export const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).
 const quiet = (status: ProjectFolderStatus) => JSON.stringify({ ...status, checkedAt: undefined });
 
 /** Follows the open project's folder. An edit saved in another app raises the project revision, which reloads the canvas. */
-export function useProjectFolder(projectId: string | null, revision: number | undefined, enabled: boolean, onOutsideChange: () => void) {
+export function useProjectFolder(projectId: string | null, revision: number | undefined, onOutsideChange: () => void) {
   const [status, setStatus] = useState<ProjectFolderStatus | null>(null), [epoch, setEpoch] = useState(0);
   const latest = useRef({ revision, onOutsideChange }); latest.current = { revision, onOutsideChange };
   const shown = useRef('');
   const show = (next: ProjectFolderStatus | null) => { const key = next ? quiet(next) : ''; if (key !== shown.current) { shown.current = key; setStatus(next); } };
   useEffect(() => show(null), [projectId]);
   useEffect(() => {
-    if (!projectId || !enabled) return;
+    if (!projectId) return;
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
     const check = async () => {
       try {
@@ -32,7 +32,7 @@ export function useProjectFolder(projectId: string | null, revision: number | un
     };
     void check();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [projectId, enabled, epoch]);
+  }, [projectId, epoch]);
   return { status, update: show, reload: () => setEpoch(value => value + 1) };
 }
 

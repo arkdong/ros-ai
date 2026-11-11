@@ -47,7 +47,6 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
   const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
-  const [planAllowed, setPlanAllowed] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const backend = state?.backend, inApp = inAppAgent(backend), inAppId = inApp ? backend as InAppAgent : null;
@@ -61,8 +60,6 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
     if (!menu) return;
     let active = true;
     void api<{ agents: AcpAgentStatus[] }>('/api/agents/acp').then(value => { if (active) setAcp(value.agents); }).catch(() => undefined);
-    // A Claude subscription can only be used in the local app.
-    void api<ClaudeAgentSettings>('/api/agents/claude').then(value => { if (active) setPlanAllowed(value.planAllowed); }).catch(() => undefined);
     return () => { active = false; };
   }, [menu]);
   const acpShown = acp.filter(item => item.installed || item.id === backend);
@@ -88,7 +85,7 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
   // Claude Code and Codex each run here two ways, as two agents with their own names. They always head the menu,
   // the subscription ones first, above the models and the other agents.
   const agents: { id: InAppAgent; caption: string }[] = [
-    ...(planAllowed ? [{ id: 'claude-plan' as const, caption: 'On your Claude subscription' }] : []),
+    { id: 'claude-plan', caption: 'On your Claude subscription' },
     { id: 'codex', caption: 'On your ChatGPT subscription' },
     { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex-key', caption: 'On your OpenAI API key' },
