@@ -33,7 +33,7 @@ function capturedResult(store: Store, projectId: string, nodeId: string) {
 
 test('direct cross-parent relationships preserve ownership and do not import evidence, conversations or start work', t => {
   const f = fixture(t), id = f.project.id;
-  f.store.mutate(id, add(node('left'), node('right'), node('nested', 'left'), node('source', 'nested'), node('destination', 'right')), 'Branches');
+  f.store.mutate(id, add({ ...node('left'), kind: 'group' }, { ...node('right'), kind: 'group' }, { ...node('nested', 'left'), kind: 'group' }, node('source', 'nested'), node('destination', 'right')), 'Branches');
   const artifact = capturedResult(f.store, id, 'source');
   f.store.addMessage(id, 'source', 'user', 'Private to the source conversation');
   f.store.addMessage(id, 'destination', 'user', 'Independent destination question');

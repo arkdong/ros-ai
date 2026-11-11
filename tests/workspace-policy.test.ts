@@ -25,6 +25,10 @@ function node(id: string, parentId?: string): CanvasNode {
   return { id, title: id, description: 'Rainfall research', kind: 'activity', x: 0, y: 0, ...(parentId ? { parentId } : {}) };
 }
 
+function group(id: string, parentId?: string): CanvasNode {
+  return { id, title: id, description: '', kind: 'group', x: 0, y: 0, ...(parentId ? { parentId } : {}) };
+}
+
 function artifact(store: Store, projectId: string, nodeId = 'analysis', content = 'rain_mm\n1\n2\n', kind: Artifact['kind'] = 'dataset'): Artifact {
   const project = store.getProject(projectId);
   const run: Run = {
@@ -53,11 +57,13 @@ test('Actions inherit the project default, while overrides remain local and remo
   grant(authority, f.project.id, 'review');
   authority.override(f.project.id, 'analysis', 'full');
   f.store.mutate(f.project.id, [
-    { type: 'addNode', node: node('child', 'analysis') },
-    { type: 'addNode', node: node('grandchild', 'child') },
+    { type: 'addNode', node: group('lab') },
+    { type: 'addNode', node: node('child', 'lab') },
+    { type: 'addNode', node: group('inner', 'lab') },
+    { type: 'addNode', node: node('grandchild', 'inner') },
   ], 'Add nested Actions');
   assert.equal(authority.mode(f.project.id, 'analysis'), 'full');
-  assert.equal(authority.mode(f.project.id, 'child'), 'review', 'New Action inherits the project, not its parent override');
+  assert.equal(authority.mode(f.project.id, 'child'), 'review', 'A new Action inherits the project, not another block’s override');
   assert.equal(authority.mode(f.project.id, 'grandchild'), 'review');
   grant(authority, f.project.id, 'ask');
   assert.equal(authority.mode(f.project.id, 'grandchild'), 'ask');
@@ -112,7 +118,7 @@ test('usage tallies persist once per admission and changing mode or undoing stru
   assert.throws(() => authority.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'negative', spendUsd: -1 }), /Invalid spendUsd/);
   assert.throws(() => authority.reserve(f.project.id, { kind: 'model', nodeId: 'analysis', fingerprint: 'infinite', runtimeSeconds: Infinity }), /Invalid runtimeSeconds/);
   grant(authority, f.project.id, 'ask');
-  f.store.mutate(f.project.id, [{ type: 'addNode', node: node('spawned', 'analysis') }], 'Related Action');
+  f.store.mutate(f.project.id, [{ type: 'addNode', node: node('spawned') }], 'Related Action');
   f.store.undo(f.project.id);
   assert.deepEqual(authority.policy(f.project.id).used, used, 'Undoing structure does not refund execution or spending');
   f.reopen();
@@ -247,8 +253,9 @@ test('highlight reuse across groups selects the exact artifact version, survives
 test('deeper nesting rejects cycles atomically; recursive deletion and undo preserve prior runs and evidence', t => {
   const f = fixture(t);
   f.store.mutate(f.project.id, [
-    { type: 'addNode', node: node('child', 'question') },
-    { type: 'addNode', node: node('grandchild', 'child') },
+    { type: 'addNode', node: group('study') },
+    { type: 'addNode', node: group('child', 'study') },
+    { type: 'addNode', node: group('grandchild', 'child') },
     { type: 'addNode', node: node('great-grandchild', 'grandchild') },
     { type: 'addNode', node: node('sibling', 'grandchild') },
     { type: 'addConnection', connection: { id: 'siblings', source: 'great-grandchild', target: 'sibling', label: 'Related' } },
@@ -259,13 +266,13 @@ test('deeper nesting rejects cycles atomically; recursive deletion and undo pres
   const before = f.store.getProject(f.project.id), runBefore = f.store.getRun(result.runId);
   assert.throws(() => f.store.mutate(f.project.id, [
     { type: 'updateNode', id: 'analysis', patch: { title: 'Must roll back' } },
-    { type: 'updateNode', id: 'question', patch: { parentId: 'great-grandchild' } },
+    { type: 'updateNode', id: 'study', patch: { parentId: 'grandchild' } },
   ], 'Parent cycle'), /parent cycle/);
   assert.deepEqual(f.store.getProject(f.project.id), before);
   assert.throws(() => f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'child', patch: { parentId: 'child' } }], 'Self cycle'), /itself|cycle/);
   assert.throws(() => f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'child', patch: { parentId: 'missing' } }], 'Missing parent'), /not active/);
-  f.store.mutate(f.project.id, [{ type: 'removeNode', id: 'question' }], 'Remove nested group');
-  assert.deepEqual(f.store.getProject(f.project.id).canvas.nodes.map(item => item.id), ['analysis', 'other']);
+  f.store.mutate(f.project.id, [{ type: 'removeNode', id: 'study' }], 'Remove nested group');
+  assert.deepEqual(f.store.getProject(f.project.id).canvas.nodes.map(item => item.id), ['question', 'analysis', 'other']);
   assert.equal(f.store.getProject(f.project.id).canvas.connections.length, 0);
   assert.deepEqual(f.store.getRun(result.runId), runBefore);
   assert.equal(f.store.getArtifact(result.id).content, 'Earlier conclusion');

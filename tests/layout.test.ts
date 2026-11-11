@@ -38,11 +38,11 @@ test('expanded nested groups and reserved artifact areas fit without sibling ove
   assert.ok(sizes.a.height >= childBottom + LAYOUT_GAP + 648 + GROUP_INSET.y + GROUP_FOOTER);
 });
 
-test('unknown relationships preserve meaning without overriding the existing spatial reading order', () => {
+test('a relationship puts its two blocks on one row, read left to right, and is itself left as it was', () => {
   const graph = { nodes: ['a', 'b', 'c', 'd'].map(id => node(id)), connections: [{ id: 'edge', source: 'a', target: 'd', label: '' }] };
   const { canvas } = arrangeCanvas(graph);
   const a = canvas.nodes.find(n => n.id === 'a')!, d = canvas.nodes.find(n => n.id === 'd')!;
-  assert.ok(d.y > a.y); assert.deepEqual(canvas.connections, graph.connections);
+  assert.ok(d.x > a.x && d.y === a.y); assert.deepEqual(canvas.connections, graph.connections);
   const nested = arrangeCanvas(sample(), { expandedIds: ['a', 'b', 'c'] });
   assert.deepEqual(nested.canvas.connections, sample().connections);
   assert.equal(nested.canvas.nodes.find(n => n.id === 'f')!.parentId, 'b');
@@ -65,14 +65,14 @@ test('collapsed cards wrap onto grid-aligned rows without server placement drift
   assert.deepEqual(arrangeCanvas(canvas).canvas, canvas);
 });
 
-test('Arrange preserves visible reading order and the root corner instead of sorting by IDs', () => {
+test('Arrange keeps the root corner, with linked blocks on the first row and the rest in reading order, not sorted by IDs', () => {
   const graph: Canvas = {nodes:[
     {...node('z-left'),x:960,y:720}, {...node('a-right'),x:1440,y:720},
     {...node('m-below'),x:960,y:1080}, {...node('b-last'),x:1440,y:1080},
   ],connections:[{id:'cross',source:'z-left',target:'b-last',label:'Related, not ordered'}]};
   const first=arrangeCanvas(graph).canvas;
   const reading=first.nodes.slice().sort((a,b)=>a.y-b.y||a.x-b.x).map(n=>n.id);
-  assert.deepEqual(reading,['z-left','a-right','m-below','b-last']);
+  assert.deepEqual(reading,['z-left','b-last','a-right','m-below']);
   assert.equal(Math.min(...first.nodes.map(n=>n.x)),960);
   assert.equal(Math.min(...first.nodes.map(n=>n.y)),720);
   assert.deepEqual(arrangeCanvas(first).canvas,first);
@@ -101,7 +101,7 @@ test('a saved result offset is reserved after child notes compact without modify
   assert.deepEqual(arrangeCanvas(first.canvas,{expandedIds:['a'],extraContent}),first);
 });
 
-test('known evidence relationships arrange sources above consumers without rewriting captured links', () => {
+test('known evidence relationships arrange sources left of their consumers without rewriting captured links', () => {
   const graph: Canvas = { nodes: [
     { ...node('monthly'), x: 0, y: 0 }, { ...node('sandbox'), x: 700, y: 0 },
     { ...node('robustness'), x: 0, y: 500 }, { ...node('knmi'), x: 700, y: 500 },
@@ -112,10 +112,10 @@ test('known evidence relationships arrange sources above consumers without rewri
   ] };
   const before = structuredClone(graph), first = arrangeCanvas(graph);
   const notes = Object.fromEntries(first.canvas.nodes.map(n => [n.id, n]));
-  assert.ok(notes.knmi.y + first.sizes.knmi.height + LAYOUT_GAP <= notes.monthly.y);
-  assert.equal(notes.monthly.y, notes.sandbox.y, 'Independent consumers share one level');
-  assert.ok(notes.monthly.y + first.sizes.monthly.height + LAYOUT_GAP <= notes.robustness.y);
-  assert.ok(notes.monthly.x < notes.sandbox.x, 'Sibling branches retain their existing reading order');
+  assert.ok(notes.knmi.x + first.sizes.knmi.width + LAYOUT_GAP <= notes.monthly.x);
+  assert.equal(notes.monthly.x, notes.sandbox.x, 'Independent consumers share one column');
+  assert.ok(notes.monthly.x + first.sizes.monthly.width + LAYOUT_GAP <= notes.robustness.x);
+  assert.ok(notes.monthly.y < notes.sandbox.y, 'Sibling branches retain their existing reading order');
   assert.deepEqual(first.canvas.connections, before.connections);
   assert.deepEqual(graph, before);
   assert.deepEqual(arrangeCanvas(first.canvas), first);
@@ -130,8 +130,8 @@ test('cyclic evidence relationships stay stable while downstream consumers still
   ] };
   const first = arrangeCanvas(graph), notes = Object.fromEntries(first.canvas.nodes.map(n => [n.id, n]));
   assert.equal(notes.a.y, notes.b.y);
-  assert.ok(notes.c.y > Math.max(notes.a.y, notes.b.y));
-  assert.ok(notes.unrelated.y < notes.c.y, 'Unknown relation does not invent a dependency');
+  assert.ok(notes.c.x > Math.max(notes.a.x, notes.b.x));
+  assert.ok(notes.unrelated.x > notes.c.x, 'A relationship with any other wording reads left to right too');
   assert.deepEqual(arrangeCanvas(first.canvas), first);
   assert.deepEqual(first.canvas.connections, graph.connections);
 });
@@ -156,7 +156,7 @@ test('dependency edges across nested branches order their containing groups and 
   ] };
   const options = { expandedIds: ['consumer-group', 'source-group'], extraContent: { 'source-group': { width: 600, height: 500 } } };
   const first = arrangeCanvas(graph, options), notes = Object.fromEntries(first.canvas.nodes.map(n => [n.id, n]));
-  assert.ok(notes['consumer-group'].y >= notes['source-group'].y + first.sizes['source-group'].height + LAYOUT_GAP);
+  assert.ok(notes['consumer-group'].x >= notes['source-group'].x + first.sizes['source-group'].width + LAYOUT_GAP);
   assert.equal(notes.source.parentId, 'source-group'); assert.equal(notes.consumer.parentId, 'consumer-group');
   assert.deepEqual(first.canvas.connections, graph.connections);
   assert.deepEqual(arrangeCanvas(first.canvas, options), first);

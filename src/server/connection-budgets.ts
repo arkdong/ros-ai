@@ -84,6 +84,8 @@ export class ConnectionBudgets {
     });
   }
   assertRevision(provider: ConnectionBudgetProvider, expected: number | null) {
+    // Without a limit there are no terms to go out of date. The first request ever opens the ledger; one started beside it still goes out.
+    if (!spendingLimitsOn(this.store)) return;
     if ((this.saved(provider)?.revision ?? null) !== expected) throw new StoreError('The connection allowance changed while preparing this request. No paid dispatch occurred; start a new request under its current terms.', 409);
   }
   reserve(input: Reservation, expectedRevision: number | null): UsageRecord {

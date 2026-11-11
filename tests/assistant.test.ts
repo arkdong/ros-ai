@@ -76,20 +76,20 @@ test('outline relationship references identify source and consumer without mutat
   } finally { await f.close(); }
 });
 
-test('invalid model contracts retain the captured response, apply no tools and remain readable', async () => {
+test('invalid model contracts show the reply with a warning, retain the captured response and apply no tools', async () => {
   const invalid = reply({ references: [{ kind: 'dataset', id: 'invalid', label: 'Invalid reference kind' }], tools: [{ type: 'search', nodeId: 'a', query: 'Must not dispatch' }] });
   const f = fixture([invalid]);
   try {
     f.assistant.start(f.project.id, { message: 'Exercise malformed model output' });
     const turn = await finished(f);
-    assert.equal(turn.status, 'failed'); assert.match(turn.error!, /expected contract.*references.0.kind/);
+    assert.equal(turn.status, 'completed'); assert.match(turn.warning!, /invalid action-contract fields \(references\.0\.kind\)\. No actions or memory updates/);
     assert.equal(turn.actions.length, 0); assert.equal(f.searches.length, 0);
     const saved = f.store.record<AssistantTurn & { steps: { response: string }[] }>('assistant-turn', turn.id)!;
     assert.deepEqual(JSON.parse(saved.steps[0].response), invalid);
     saved.steps[0].response = '{invalid JSON';
     f.store.saveRecord('assistant-turn', turn.id, f.project.id, saved);
     assert.equal(f.assistant.state(f.project.id).turns[0].question, null);
-    assert.equal(f.assistant.state(f.project.id).turns[0].status, 'failed');
+    assert.equal(f.assistant.state(f.project.id).turns[0].status, 'completed', 'A saved response that can no longer be read does not break the conversation');
   } finally { await f.close(); }
 });
 
@@ -134,7 +134,7 @@ test('Ask note proposals preserve structure until accepted and tools cannot use 
     assert.equal(turn.actions[0].status, 'pending'); assert.equal(turn.actions[1].status, 'failed');
     assert.match(turn.actions[1].error!, /does not exist|Accept/); assert.equal(f.searches.length, 0);
     assert.equal(f.execution.acceptGovernedProposal(f.project.id, turn.actions[0].proposalId!), true);
-    assert.ok(f.store.getProject(f.project.id).canvas.nodes.some(n => n.id === 'new-note' && n.description.includes('Why this note exists')));
+    assert.ok(f.store.getProject(f.project.id).canvas.nodes.some(n => n.title === 'New fixture note' && n.description.includes('Why this note exists')));
     assert.equal(f.assistant.state(f.project.id).turns[0].actions[0].status, 'completed');
     assert.equal(f.experiments.authority.policy(f.project.id).used.createdActions, 1); assert.equal(f.starts.length, 0);
   } finally { await f.close(); }

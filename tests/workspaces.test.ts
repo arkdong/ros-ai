@@ -10,19 +10,19 @@ import type { CanvasNode, Mutation } from '../src/shared/types.js';
 const node = (id: string, kind?: CanvasNode['kind'], parentId?: string): CanvasNode => ({ id, title: id, description: '', x: 0, y: 0, ...(kind ? { kind } : {}), ...(parentId ? { parentId } : {}) });
 const add = (...nodes: CanvasNode[]): Mutation[] => nodes.map(node => ({ type: 'addNode', node }));
 
-test('legacy kinds work at deeper scopes; cycles are rejected and edits are atomic', () => {
+test('blocks of any kind sit in nested groups; cycles are rejected and edits are atomic', () => {
   const directory = mkdtempSync(join(tmpdir(), 'ros-workspaces-'));
   const store = new Store(directory);
   try {
     const project = store.createProject('Scope and meaning');
-    store.mutate(project.id, add(node('outer-topic', 'topic'), node('outer-activity', 'activity'), node('inner-topic', 'topic', 'outer-activity'), node('inner-activity', 'activity', 'outer-topic')), 'Independent kinds');
+    store.mutate(project.id, add(node('outer-topic', 'group'), node('outer-activity', 'group'), node('inner-topic', 'group', 'outer-activity'), node('inner-activity', 'activity', 'outer-topic')), 'Independent kinds');
     let canvas = store.getProject(project.id).canvas;
     assert.equal(canvas.nodes.length, 4);
     assert.equal(canvas.nodes.find(n => n.id === 'inner-topic')!.x, 0, 'Separate scopes can use the same coordinates');
     assert.equal(store.listRuns(project.id).length, 0);
     assert.equal(store.detail(project.id).inputs.length, 0);
     store.mutate(project.id, add(node('grandchild', 'activity', 'inner-topic')), 'Deeper workspace');
-    assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'outer-activity', patch: { parentId: 'grandchild' } }], 'Would create a cycle'), /cycle/);
+    assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'outer-activity', patch: { parentId: 'inner-topic' } }], 'Would create a cycle'), /cycle/);
     canvas=store.getProject(project.id).canvas;
     assert.throws(() => store.mutate(project.id, add(node('orphan', 'topic', 'missing')), 'Missing parent'), /not active/);
     store.mutate(project.id, [{ type: 'addConnection', connection: { id: 'cross', source: 'outer-topic', target: 'inner-topic', label: 'Related' } }], 'Across branches');
@@ -41,7 +41,7 @@ test('scoped proposals retain atomic acceptance, stale rejection and no executio
   const store = new Store(directory);
   try {
     const project = store.createProject('Proposal');
-    const proposal = store.createProposal(project.id, 0, 'One workspace and one direction', add(node('parent', 'activity'), node('child', 'topic', 'parent')));
+    const proposal = store.createProposal(project.id, 0, 'One workspace and one direction', add(node('parent', 'group'), node('child', 'topic', 'parent')));
     assert.equal(store.getProject(project.id).canvas.nodes.length, 0);
     const accepted = store.acceptProposal(project.id, proposal.id);
     assert.equal(accepted.revision, 1);

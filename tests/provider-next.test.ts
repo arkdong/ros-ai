@@ -9,6 +9,8 @@ import { ExperimentService } from '../src/server/experiments.js';
 import { createApp, apiErrorHandler } from '../src/server/app.js';
 import { BudgetLedger, ExecutionService } from '../src/server/execution.js';
 import { DEFAULT_MODEL, NebiusAdapter, type ModelAdapter, type ModelInfo, type ModelRequest } from '../src/server/providers.js';
+import { assertModelResponseUsable, parseWholeJsonObject } from '../src/server/response-normalization.js';
+import { spendingLimitsOn } from './spending-limits.js';
 
 function fixture() {
   const path=mkdtempSync(join(tmpdir(),'ros-next-provider-')),store=new Store(path),project=store.createProject('Isolated provider fixture');
@@ -45,9 +47,9 @@ test('offline Ultra text-JSON contract sends a schema prompt without native tool
       await model.prepare(signal);
       const response = await model.complete(request, signal);
       const wire = sent.at(-1)!;
-      assert.deepEqual(Object.keys(wire).sort(), ['max_tokens', 'messages', 'model', 'temperature']);
+      assert.deepEqual(Object.keys(wire).sort(), ['max_completion_tokens', 'messages', 'model', 'n', 'temperature']);
       assert.equal(wire.tools, undefined); assert.equal(wire.tool_choice, undefined); assert.equal(wire.response_format, undefined);
-      assert.equal(wire.model, DEFAULT_MODEL); assert.equal(wire.max_tokens, 321);
+      assert.equal(wire.model, DEFAULT_MODEL); assert.equal(wire.max_completion_tokens, 321); assert.equal(wire.n, 1);
       const wireMessages = wire.messages as { role: string; content: string }[];
       assert.equal(wireMessages[0].role, 'system');
       assert.match(wireMessages[0].content, /Return one JSON object/);
@@ -65,7 +67,7 @@ test('offline Ultra text-JSON contract sends a schema prompt without native tool
   } finally { globalThis.fetch = previousFetch; }
 });
 
-test('offline text-JSON responses reject invalid JSON, arrays, scalars and unsolicited tools without retry', async () => {
+test('offline text-JSON responses are captured once; invalid JSON, arrays, scalars and unsolicited tools are then refused', async () => {
   const previousFetch = globalThis.fetch;
   let content = '{}', toolCalls: unknown[] | undefined;
   let completions = 0;
@@ -83,18 +85,22 @@ test('offline text-JSON responses reject invalid JSON, arrays, scalars and unsol
     const request: ModelRequest = { messages: [{ role: 'user', content: 'Return a proposed research step.' }], schema: { type: 'object' }, responseMode: 'text-json', responseName: 'research_step', maxOutputTokens: 300 };
     for (content of ['not JSON', '{"type": invalid}', '{"type":"conclusion"} trailing prose', '[]', '[{"type":"conclusion"}]', 'null', 'true', '42', '"a string"']) {
       const before = completions;
-      await assert.rejects(model.complete(request, signal), /did not return a JSON object.*No action was executed/);
+      // The response is captured first, so its usage is recorded; the consumer then refuses anything but one whole object.
+      const response = await model.complete(request, signal);
+      assert.throws(() => parseWholeJsonObject(response.content), SyntaxError, content);
       assert.equal(completions, before + 1, 'Malformed responses must not cause an automatic retry.');
     }
     content = '{"type":"conclusion","summary":"A fixture only."}';
     toolCalls = [{ id: 'unsolicited-fixture', type: 'function', function: { name: 'research_step', arguments: content } }];
-    await assert.rejects(model.complete(request, signal), /unsolicited tool requests; nothing was executed/);
+    const unsolicited = await model.complete(request, signal);
+    assert.throws(() => assertModelResponseUsable(unsolicited), /unsolicited tool requests\. Nothing was executed/);
     toolCalls = [{ id: 'unsafe-fixture', type: 'function', function: { name: 'shell', arguments: '{"command":"do not execute"}' } }];
-    await assert.rejects(model.complete(request, signal), /unsolicited tool requests; nothing was executed/);
+    const unsafe = await model.complete(request, signal);
+    assert.throws(() => assertModelResponseUsable(unsafe), /unsolicited tool requests\. Nothing was executed/);
     toolCalls = [];
-    assert.deepEqual(JSON.parse((await model.complete(request, signal)).content), { type: 'conclusion', summary: 'A fixture only.' });
+    assert.deepEqual(parseWholeJsonObject((await model.complete(request, signal)).content), { type: 'conclusion', summary: 'A fixture only.' });
     content = '```json\n{"type":"conclusion","summary":"A fenced fixture."}\n```';
-    assert.deepEqual(JSON.parse((await model.complete(request, signal)).content), { type: 'conclusion', summary: 'A fenced fixture.' });
+    assert.deepEqual(parseWholeJsonObject((await model.complete(request, signal)).content), { type: 'conclusion', summary: 'A fenced fixture.' });
   } finally { globalThis.fetch = previousFetch; }
 });
 
@@ -112,18 +118,19 @@ test('Ultra native function contract avoids unsupported structured output and re
     assert.equal(sent[0].response_format,undefined);assert.equal(sent[0].tool_choice.function.name,'propose_local_experiment');
     assert.equal(sent[0].reasoning_effort,undefined);assert.equal(response.metadata.responseContract,'function-call');
     assert.doesNotMatch(JSON.stringify({info,response,sent}),/fixture-secret|Qwen/);
-    toolCalls=[{id:'unsafe',type:'function',function:{name:'shell',arguments:'{}'}}];await assert.rejects(model.complete(request,signal),/unexpected tool request/);
-    toolCalls=[{id:'1',type:'function',function:{name:'propose_local_experiment',arguments:'{}'}},{id:'2',type:'function',function:{name:'propose_local_experiment',arguments:'{}'}}];await assert.rejects(model.complete(request,signal),/unexpected tool request/);
-    toolCalls=[{id:'1',type:'function',function:{name:'propose_local_experiment',arguments:'invalid'}}];await assert.rejects(model.complete(request,signal),/invalid tool arguments/);
+    toolCalls=[{id:'unsafe',type:'function',function:{name:'shell',arguments:'{}'}}];const refused=async()=>assertModelResponseUsable(await model.complete(request,signal));await assert.rejects(refused(),/unexpected tool request/);
+    toolCalls=[{id:'1',type:'function',function:{name:'propose_local_experiment',arguments:'{}'}},{id:'2',type:'function',function:{name:'propose_local_experiment',arguments:'{}'}}];await assert.rejects(refused(),/unexpected tool request/);
+    toolCalls=[{id:'1',type:'function',function:{name:'propose_local_experiment',arguments:'invalid'}}];assert.throws(()=>parseWholeJsonObject('invalid'),SyntaxError);assert.equal((await model.complete(request,signal)).content,'invalid','Arguments that are not JSON are captured as sent and refused by the consumer');
   } finally {globalThis.fetch=previousFetch;if(oldModel===undefined)delete process.env.NEBIUS_MODEL;else process.env.NEBIUS_MODEL=oldModel;}
 });
 
-test('new cloud work fails closed without fresh authorization and local chat proposes only one independent accepted step',async()=>{
+test('with spending limits on, new cloud work fails closed without an allowance, and local chat proposes only one independent accepted step',async t=>{
+  spendingLimitsOn(t);
   const f=fixture(),previousFetch=globalThis.fetch;let calls=0;
   globalThis.fetch=async()=>{calls++;throw Error('Must not fetch');};
   const service=new ExecutionService(f.store,{model:new NebiusAdapter('fixture-key'),includeSetupUsage:false});
   try {
-    assert.throws(()=>service.startRun(f.project.id,'a',{request:'Cloud research',useSearch:false}),/fresh explicit Nebius/);
+    assert.throws(()=>service.startRun(f.project.id,'a',{request:'Cloud research',useSearch:false}),/Paid inference is blocked\. Save an explicit connection allowance/);
     const first=await service.chat(f.project.id,'Finance');assert.equal(first.proposal,undefined);assert.match(first.message.content,/What would you like/);
     await service.chat(f.project.id,'I want to compare approaches using a small dataset and produce a tested result.');
     const second=await service.chat(f.project.id,'Add an Activity for comparing the measurements');
@@ -238,7 +245,7 @@ test('Nebius sandbox planning captures the standard-library contract and preserv
     assert.equal(response.status,201);
     const started=await response.json(),failed=await terminal(f.store,started.id);
     assert.equal(failed.status,'failed');assert.equal(failed.configuration.backend,'nebius-sandbox');assert.equal(requests.length,1);
-    const retry=await fetch(`${base}/api/runs/${failed.id}/retry`,{method:'POST'});
+    const retry=await fetch(`${base}/api/runs/${failed.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     assert.equal(retry.status,201);
     const retried=await retry.json(),run=await terminal(f.store,retried.id);
     assert.equal(run.status,'completed');assert.equal(run.configuration.backend,'nebius-sandbox');assert.equal(requests.length,2);

@@ -109,15 +109,15 @@ ros.ai checks GitHub for a newer release at start and every six hours, sending n
 ```sh
 npm run dev            # live reload
 npm run lint           # TypeScript
-npm run build          # production build, which CI runs on every pull request
+npm run build          # production build
 npm run try -- 42      # start pull request #42 on localhost, your checkout untouched
 npm run app            # the Mac app on this checkout; npm run app:build makes the DMG
-npm test               # unit suite
+npm test               # unit suite; CI runs the build and this on every pull request
 ```
 
 The Mac and Windows apps are an Electron shell around the same server, in [desktop/](desktop/README.md), built and released by [a GitHub workflow](.github/workflows/mac-app.yml) on every `v*` tag. [AGENTS.md](AGENTS.md) holds the rules for coding agents working on this repository.
 
-Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [Python sandbox](docs/python-sandbox.md), [tool connections](docs/tool-connections.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site). The live demo is built from the root Dockerfile on `main`, with saved results only.
+Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [Python sandbox](docs/python-sandbox.md), [tool connections](docs/tool-connections.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site).
 
 ## Licence
 

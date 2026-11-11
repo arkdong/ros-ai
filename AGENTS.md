@@ -18,7 +18,7 @@ Read `README.md`, `docs/guide.md`, `docs/product-brief.md` and `docs/architectur
 
 - Inspect actual state and preserve unrelated or concurrent edits.
 - Keep modules and interfaces focused on real consumers. Choose and document the concrete stack; add working setup, test, lint, build, and run commands when a runtime exists.
-- Iterate fast without new unit tests, unit-suite runs or broad defensive suites (direction since September 23). Use the build/type check, a compact browser smoke and direct checks of affected calculations; preserve data and authorization safeguards. `npm test` is the historical suite and is not a gate.
+- Iterate fast without broad defensive suites (direction since September 23). Use the build/type check, a compact browser smoke and direct checks of affected calculations; preserve data and authorization safeguards. `npm test` passes and CI runs it on every pull request (since November 11): keep it passing, update a test whose behaviour you change on purpose, and add one focused test with a bug fix.
 - Verify the actual UI in a browser. Mocks support tests but do not establish live integration success.
 - Adam prefers lean, focused verification: reuse passing checks and avoid repeating broad suites, full database comparisons, or build/restart cycles unless a concrete new change, failure, or risk justifies them. Preserve data and cost safeguards while verifying the affected behavior.
 - Preserve model-visible request inputs and artifact versions, not claims of hidden reasoning or deterministic model replay.
