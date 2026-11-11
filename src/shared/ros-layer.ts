@@ -25,7 +25,7 @@ export type SplitBlock = { title: string; text: string };
 /** title: the answer's own top heading, when it has one above all its sections. */
 export type SplitReply = { title: string | null; blocks: SplitBlock[] };
 
-export const SPLIT_LIMITS = { blocks: 12, title: 120, text: 19_000 } as const;
+const SPLIT_LIMITS = { blocks: 12, title: 120, text: 19_000 } as const;
 const HEADING = /^(#{1,6})[ \t]+(\S.*)$/u;
 /** A heading's words without the spaces and closing hashes Markdown allows after them. Read from the end by hand:
  * one pattern for the whole line took seconds on a heading with a long run of spaces in it. */

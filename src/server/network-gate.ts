@@ -21,7 +21,7 @@ export type NetworkEvent = { type: 'request'; request: NetworkRequest } | { type
 const SETTINGS = 'python-network';
 const SITES = 'python-network-sites';
 /** pip needs these to install packages. */
-export const PRESET_SITES = ['pypi.org', 'files.pythonhosted.org'];
+const PRESET_SITES = ['pypi.org', 'files.pythonhosted.org'];
 const WAIT_MS = 120_000;
 
 const hostSchema = z.string().min(1).max(253).regex(/^[a-z0-9.-]+$|^\[?[0-9a-f:.]+\]?$/iu);

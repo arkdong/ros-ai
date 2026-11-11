@@ -17,7 +17,7 @@ import type { SearchServiceStatus } from '../shared/search.js';
 import { NOT_NOW_DAYS, suggestionConnect, type PluginReadiness, type SuggestionStatus } from '../shared/plugin-hints.js';
 import { openToOthers } from './private-file.js';
 
-export const pluginIdSchema = z.enum(PLUGINS.map(plugin => plugin.id) as [PluginId, ...PluginId[]]);
+const pluginIdSchema = z.enum(PLUGINS.map(plugin => plugin.id) as [PluginId, ...PluginId[]]);
 const silenceSchema = z.object({ pluginId: pluginIdSchema, projectId: z.string().min(1).max(200).nullable(), until: z.iso.datetime().nullable(), at: z.iso.datetime() }).strict();
 const savedSchema = z.object({ version: z.literal(1), enabled: z.boolean(), silenced: z.array(silenceSchema).max(1000) }).strict();
 type Saved = z.infer<typeof savedSchema>;

@@ -40,7 +40,7 @@ export type ShareNode = {
   /** For an Agent block, with Agent details switched on. */
   agent?: { runtime: string; model?: string };
 };
-export type ShareLink = { id: string; source: string; target: string; label: string };
+type ShareLink = { id: string; source: string; target: string; label: string };
 export type ShareFile = { name: string; mediaType: string; size: number; width?: number; height?: number };
 export type ShareMessage = { role: 'user' | 'assistant'; text: string; at: string };
 
@@ -138,13 +138,13 @@ export function scanText(text: string): Match[] {
 }
 
 /** A find's id: the same text found in several blocks is one find. */
-export function findId(kind: FindKind, text: string) {
+function findId(kind: FindKind, text: string) {
   let hash = 2166136261;
   for (const char of `${kind}\n${text}`) { hash ^= char.codePointAt(0)!; hash = Math.imul(hash, 16777619) >>> 0; }
   return `${kind}-${hash.toString(36)}`;
 }
 /** How the sheet names a find without showing a key. */
-export function shownFind(kind: FindKind, text: string) {
+function shownFind(kind: FindKind, text: string) {
   if (kind === 'key') return `${text.slice(0, 4)}…${text.length > 12 ? text.slice(-2) : ''}`;
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 }

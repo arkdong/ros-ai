@@ -26,7 +26,7 @@ const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 /** Names every plain object already has (`__proto__`, `constructor`, `toString`…). A block with one of them as its id is
  * read as that built-in wherever blocks are looked up by id, such as its approval mode, so new blocks may not use them. */
 export const RESERVED_IDS: ReadonlySet<string> = new Set(Object.getOwnPropertyNames(Object.prototype));
-export const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
+const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
 /** Only a picture card may be narrower than CARD_MIN_WIDTH: it keeps its picture's shape, so a small one is useful. */
@@ -96,12 +96,12 @@ const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string()
 /** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). Any other
  * link is left out rather than refused, so a map saved with one earlier can still be edited; the agent tool that places
  * pins refuses such a link with a reason. */
-export const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
+const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
 export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: pinUrlSchema.optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
 /** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
  * tool agents see reads as the training snapshot has it; agents pin numbers with ros_pin_to_dashboard. */
-export const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
+const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
 export const dashboardViewSchema = z.object({ tiles: z.array(dashboardTileSchema).max(MAX_DASHBOARD_TILES) }).strict();
 const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post','dashboard']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), dashboard: dashboardViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);

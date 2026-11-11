@@ -140,7 +140,7 @@ type CardData = {
   /** A Web block's directions and the pages its searches found. */
   web?: WebFaceData;
 };
-export type AgentTurnSummary = { status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; runtime: string; thought?: string; pending: number };
+type AgentTurnSummary = { status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; runtime: string; thought?: string; pending: number };
 const agentState = { running: 'Working', completed: 'Finished', failed: 'Stopped with an error', cancelled: 'Stopped', interrupted: 'Interrupted' } as const;
 /** The quiet last line of a card: which agent made the block and what it rests on (sources, results, the saved version). */
 function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
@@ -161,7 +161,7 @@ function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
 }
 type ResearchNode = Node<CardData, 'research'>;
 /** A card being resized: its new size, and how far its top left corner moved when it was pulled from the left or top. */
-export type CardResize = { width: number; height?: number; dx: number; dy: number };
+type CardResize = { width: number; height?: number; dx: number; dy: number };
 /** The edges and corners a card is resized from. A closed Group fits what it lists and is not resized. */
 const RESIZE_EDGES = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 type ResizeEdge = typeof RESIZE_EDGES[number];
@@ -484,7 +484,7 @@ export function previewCanvas(canvas: Canvas, proposal?: Proposal) {
   }
   return { canvas: convertLegacyGroups(result), marks };
 }
-export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
+type CanvasHighlight = { id: string; nodeId: string; artifactId: string; x: number; y: number };
 /** The map as it is right now, read when a message goes to ROS: the blocks picked together (a ⌘-click or a box) and the blocks inside
  * the visible part of the map, nearest its middle first, or 'all' when every block shown is in view. */
 export type CanvasView = () => { picked: string[]; onScreen: string[] | 'all' };

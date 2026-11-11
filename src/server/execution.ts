@@ -31,8 +31,8 @@ const requestText = z.string().trim().min(1).max(12000);
 /** A Web block's sweep runs a few searches at a time, and at most so many start in any minute, shared by every sweep,
  * within each service's limits: a Tavily development key allows 100 a minute, Exa 10 a second, and Brave Search
  * as little as 1 a second on older plans. */
-export const SWEEP_MAX_SEARCHES = 40;
-export const SWEEP_LIMITS:Record<SearchProviderId,{workers:number;perMinute:number}> = {tavily:{workers:6,perMinute:90},exa:{workers:4,perMinute:120},brave:{workers:1,perMinute:60}};
+const SWEEP_MAX_SEARCHES = 40;
+const SWEEP_LIMITS:Record<SearchProviderId,{workers:number;perMinute:number}> = {tavily:{workers:6,perMinute:90},exa:{workers:4,perMinute:120},brave:{workers:1,perMinute:60}};
 const sweepStarts:Record<SearchProviderId,number[]> = {tavily:[],exa:[],brave:[]};
 async function sweepSlot(provider:SearchProviderId,signal:AbortSignal) {
   const starts = sweepStarts[provider], {perMinute} = SWEEP_LIMITS[provider];
@@ -62,10 +62,10 @@ const providerOperation = z.discriminatedUnion('type',[
   z.object({type:z.literal('addConnection'),connection:z.object({id,source:id,target:id,label:z.string().max(160)}).strict()}).strict(),
   z.object({type:z.literal('removeConnection'),id}).strict(),
 ]);
-export const PROJECT_REPLY_SCHEMA = z.toJSONSchema(projectReply.extend({operations:z.array(providerOperation).max(20)}));
+const PROJECT_REPLY_SCHEMA = z.toJSONSchema(projectReply.extend({operations:z.array(providerOperation).max(20)}));
 
 const experimentPlan = z.object({explanation:z.string().min(1).max(8000),code:z.string().min(1).max(20000),parameters:z.record(z.string().min(1).max(80),z.union([z.string().max(1000),z.number().finite(),z.boolean()]))}).strict();
-export const EXPERIMENT_PLAN_SCHEMA = z.toJSONSchema(experimentPlan);
+const EXPERIMENT_PLAN_SCHEMA = z.toJSONSchema(experimentPlan);
 export type LiveAuthorization = {id:string;nebiusUsd:number;tavilyUsd:number;maxRequests:number};
 function configuredAuthorization():LiveAuthorization|undefined {
   const id = process.env.ROS_PAID_AUTHORIZATION_ID?.trim();

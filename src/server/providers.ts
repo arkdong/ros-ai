@@ -6,7 +6,7 @@ import { DEFAULT_NEBIUS_MODEL, ULTRA_MODEL } from '../shared/model-settings.js';
 import type { SearchProviderId } from '../shared/search.js';
 import {captureChatCompletion} from './response-normalization.js';
 
-export type ModelCapabilities = { structuredOutput:boolean; cancellation:'abort-request'; toolCalling:boolean; modelVersion:boolean };
+type ModelCapabilities = { structuredOutput:boolean; cancellation:'abort-request'; toolCalling:boolean; modelVersion:boolean };
 export type ModelInfo = { id:string; contextTokens:number; inputUsdPerToken:number; outputUsdPerToken:number; capabilities:ModelCapabilities; metadata:Record<string,unknown> };
 /** One function call a model asked for. ros.ai validates and runs it; the model never does. */
 export type ToolCall = { id:string; name:string; arguments:string };
@@ -32,7 +32,7 @@ export type ExtractResponse = { pages:{url:string;content:string;locator:string}
 /** Basic search costs 1 credit and returns each page's summary; advanced costs 2 and returns the passages that best match the query. */
 export type SearchDepth = 'basic'|'advanced';
 /** A source of a Web block's sweep: its relevance to the query (0 to 1) and its site's icon, when the service gives them. */
-export type SweepResult = SearchResult & { score:number|null; favicon:string|null };
+type SweepResult = SearchResult & { score:number|null; favicon:string|null };
 export type SweepResponse = { results:SweepResult[]; credits:number|null; requestId:string|null; costUsd?:number|null };
 export interface SearchAdapter {
   /** It can search: with a key, or on the service's free allowance. */
@@ -54,7 +54,7 @@ export type RuntimeEvent =
  | {type:'output';content:string;provenance:Record<string,unknown>|null}
  | {type:'error';message:string}
  | {type:'cancelled'};
-export interface AgentRuntime {
+interface AgentRuntime {
   readonly id:string;
   readonly capabilities:RuntimeCapabilities;
   run(input:{request:string;materials:{content:string;reference:string}[]}, signal:AbortSignal):AsyncIterable<RuntimeEvent>;
@@ -94,7 +94,7 @@ const TAVILY_SESSION = randomUUID();
  * markers and generation prefix. Native schema/tool and unknown shapes fall
  * back to full model context. Source audit: 2026-10-01, evidence/token-reservation-2026-10-01.json.
  */
-export function byteLevelTextInputBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
+function byteLevelTextInputBound(wireRequest:Record<string,unknown>):ModelInputTokenBound|null {
   const messages=wireRequest.messages;
   const allowedKeys=['model','messages','max_completion_tokens','n','temperature'];
   if (wireRequest.model!==ULTRA_MODEL || Object.keys(wireRequest).some(key=>!allowedKeys.includes(key)) || wireRequest.n!==1 || !Number.isInteger(wireRequest.max_completion_tokens) || Number(wireRequest.max_completion_tokens)<1 || !Array.isArray(messages) || !messages.length || !messages.every(message=>message&&typeof message==='object'&&['system','user','assistant'].includes(message.role)&&typeof message.content==='string'&&Object.keys(message).every(key=>key==='role'||key==='content'))) return null;
@@ -197,15 +197,16 @@ const pageKey = (url:string) => url.replace(/^https?:\/\/(?:www\.)?/u,'').replac
 const samePage = (asked:string,returned:string) => pageKey(asked)===pageKey(returned);
 
 export const TAVILY_CREDIT_USD = 0.008;
-export const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
+const SEARCH_SCHEMA = {name:'tavily_search',description:'One user-enabled basic web search. Captured search snippets, not full documents.',parameters:{type:'object',properties:{query:{type:'string',maxLength:400}},required:['query'],additionalProperties:false},configuration:{search_depth:'basic',max_results:3,auto_parameters:false,include_answer:false,include_raw_content:false,include_usage:true}};
 // Checking a claim needs the page's own words: advanced search returns up to three verbatim passages per page.
 export const CHECK_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One user-approved advanced web search for checking a claim. Captured passages of each page, not full documents.',configuration:{...SEARCH_SCHEMA.configuration,search_depth:'advanced',chunks_per_source:3}};
 export const SEARCH_CREDITS:Record<SearchDepth,number> = {basic:1,advanced:2};
 // A Web block's sweep keeps five sources of each basic search, still 1 credit, with each site's icon.
 export const SWEEP_SEARCH_SCHEMA = {...SEARCH_SCHEMA,description:'One basic web search of a Web block\'s sweep. Captured search snippets, not full documents.',configuration:{...SEARCH_SCHEMA.configuration,max_results:5,include_favicon:true}};
 // Basic extract costs 1 credit for every 5 pages read. A page keeps at most PAGE_CHARACTERS.
-export const EXTRACT_PAGES_PER_CREDIT = 5, PAGE_CHARACTERS = 50_000;
-export const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
+export const EXTRACT_PAGES_PER_CREDIT = 5;
+const PAGE_CHARACTERS = 50_000;
+const EXTRACT_SCHEMA = {name:'tavily_extract',description:'Read the full text of up to five pages an agent\'s searches found.',configuration:{extract_depth:'basic',format:'text',include_images:false,include_usage:true}};
 export class TavilyAdapter implements SearchAdapter {
   get configured():boolean { return Boolean(this.key ?? process.env.TAVILY_API_KEY) || this.free; }
   /** With no key, the local app searches on Tavily's keyless allowance (options.free); it charges nothing. */
@@ -417,7 +418,7 @@ export class BraveAdapter implements SearchAdapter {
 
 /** What each search service is called and charges at most, for its reservations, the search plan a researcher
  * approves and the agent's tool descriptions. Tavily's wording is what the agent was trained on and stays as it was. */
-export type SearchTool = {name:string;description:string;configuration:Record<string,unknown>};
+type SearchTool = {name:string;description:string;configuration:Record<string,unknown>};
 export type SearchPricing = {
   label:string; searchUsd:number; searchBasis:string; model:string; schema:SearchTool & {parameters:Record<string,unknown>};
   /** Reading whole pages, for a service that can: the upper bound and basis of one batch, and how plans and tools state the price. */

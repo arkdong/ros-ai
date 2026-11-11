@@ -166,7 +166,7 @@ export class InferenceConnections{
 /** Chat-completions transport; no shell, catalog probes or automatic fallback.
  * An agent loop may send ros.ai's tool definitions: the model only names calls,
  * which ros.ai validates and runs. prepare() reads declarations and performs no network. */
-export class CompatibleHttpAdapter implements ModelAdapter{
+class CompatibleHttpAdapter implements ModelAdapter{
   private prepared?:{config:PrivateConnection;revision:number};
   constructor(readonly provider:string,readonly model:string,private readonly snapshot:()=>{config:PrivateConnection;revision:number},private readonly active:Map<string,number>){}
   get configured(){try{this.snapshot();return true;}catch{return false;}}

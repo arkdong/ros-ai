@@ -22,7 +22,7 @@ import { readXiaohongshu, searchXiaohongshu } from './xiaohongshu.js';
 
 const TIMEOUT = 25_000, JSON_BYTES = 8_000_000;
 /** yt-dlp, pinned: the version Agent-Reach 1.6.1 tests against. */
-export const YT_DLP = 'yt-dlp==2026.8.19';
+const YT_DLP = 'yt-dlp==2026.8.19';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36 ros.ai';
 export type PostSort = 'relevance' | 'new' | 'top';
 /** A post as read, before its photos and subtitles are saved: the subtitles' full text rides along. */

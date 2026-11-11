@@ -15,7 +15,7 @@ const home = homedir();
 const appData = win ? process.env.APPDATA || join(home, 'AppData', 'Roaming') : '';
 const localAppData = win ? process.env.LOCALAPPDATA || join(home, 'AppData', 'Local') : '';
 
-export const exists = (path: string) => { try { return existsSync(path); } catch { return false; } };
+const exists = (path: string) => { try { return existsSync(path); } catch { return false; } };
 const isDir = (path: string) => { try { return statSync(path).isDirectory(); } catch { return false; } };
 const modifiedAt = (path: string) => { try { return statSync(path).mtimeMs; } catch { return null; } };
 const recent = (path: string, days = 7) => { const at = modifiedAt(path); return at !== null && Date.now() - at < days * DAY; };
@@ -44,7 +44,7 @@ export function findBinary(name: string): string | null {
 }
 
 /** The GitHub CLI's settings folder: GH_CONFIG_DIR, else its usual place on each system. */
-export function ghConfigDir() {
+function ghConfigDir() {
   const set = process.env.GH_CONFIG_DIR?.trim();
   if (set) return set;
   return win ? join(appData, 'GitHub CLI') : join(process.env.XDG_CONFIG_HOME?.trim() || join(home, '.config'), 'gh');

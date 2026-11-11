@@ -98,7 +98,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 const extensionOf = (path: string) => { const name = posix.basename(path), dot = name.lastIndexOf('.'); return dot > 0 ? name.slice(dot) : ''; };
 const stemOf = (path: string) => { const name = posix.basename(path), extension = extensionOf(name); return extension ? name.slice(0, -extension.length) : name; };
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-export const codeExtension = (language: string) => { const name = language.trim().toLowerCase(); return CODE_TYPES.find(([value]) => value === name)?.[1] ?? (['sh', 'shell'].includes(name) ? '.sh' : '.txt'); };
+const codeExtension = (language: string) => { const name = language.trim().toLowerCase(); return CODE_TYPES.find(([value]) => value === name)?.[1] ?? (['sh', 'shell'].includes(name) ? '.sh' : '.txt'); };
 const codeLanguage = (extension: string) => CODE_TYPES.find(([, value]) => value.toLowerCase() === extension.toLowerCase())?.[0];
 
 /** A file name other apps accept, made from a block title. Obsidian links also break on # ^ [ ] |. */
@@ -116,7 +116,7 @@ const launch = (command: string, args: string[]) => new Promise<void>((done, fai
   child.once('spawn', () => { child.unref(); done(); });
 });
 /** The folder that holds Post blocks' photos and subtitles. */
-export const POST_FOLDER = 'posts';
+const POST_FOLDER = 'posts';
 const postPath = (rel: string) => { const clean = posix.normalize(rel); return clean === rel && clean.startsWith(`${POST_FOLDER}/`) && !clean.split('/').some(part => part === '..' || part.startsWith('.')); };
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
 function unplacedKind(path: string): UnplacedFile['kind'] | null {

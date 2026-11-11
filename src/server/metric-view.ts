@@ -21,7 +21,7 @@ type Options = { githubToken?: () => string | undefined; umamiKey?: () => string
 type Answer<T> = { ok: true; data: T } | { ok: false; status: number };
 
 /** "arkdong/ros-ai", a github.com link to it, or a git remote, as owner/name. */
-export function githubRepo(text: string) {
+function githubRepo(text: string) {
   const trimmed = text.trim().replace(/\.git$/u, '').replace(/\/+$/u, '');
   const match = /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/|git@github\.com:)?([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})(?:\/.*)?$/u.exec(trimmed);
   if (!match) throw new StoreError('Give a GitHub repository as owner/name, for example arkdong/ros-ai, or its link.', 400);
@@ -74,7 +74,7 @@ export function costDays(raw: unknown, now = new Date()): MetricPoint[] {
 
 /** The sign-up answers ros.ai cloud gives with its numbers: one value per answer ("Heard from a friend or colleague"),
  * then how many skipped the question. Nothing when this cloud does not ask it yet. */
-export function signupSources(raw: unknown): MetricValue[] {
+function signupSources(raw: unknown): MetricValue[] {
   if (!raw || typeof raw !== 'object') return [];
   const { sources, skipped } = raw as { sources?: unknown; skipped?: unknown };
   // "A search engine" reads "Heard from a search engine"; names such as GitHub keep their capitals.

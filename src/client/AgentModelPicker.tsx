@@ -63,7 +63,7 @@ function shownModels(choice: AgentModelChoice, more: boolean) {
 }
 
 /** How long the agent thinks, on a slider over the levels its model takes, as in Claude Code's /effort. */
-export function EffortSlider({ model, effort, disabled, labels, onChange }: { model: AgentModel; effort: EffortLevel; disabled?: boolean; labels?: boolean; onChange: (effort: EffortLevel) => void }) {
+function EffortSlider({ model, effort, disabled, labels, onChange }: { model: AgentModel; effort: EffortLevel; disabled?: boolean; labels?: boolean; onChange: (effort: EffortLevel) => void }) {
   const levels = model.efforts, at = Math.max(0, levels.indexOf(effort)), last = Math.max(1, levels.length - 1);
   // A stop's place along the input, where the thumb's centre is when that level is chosen.
   const place = (index: number) => `calc(8px + (100% - 16px) * ${index / last})`;

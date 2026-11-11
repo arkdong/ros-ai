@@ -15,7 +15,7 @@ const LOGIN_SECONDS = 600, STATUS_SECONDS = 15, STATUS_CACHE_MS = 30_000, USAGE_
  * Claude Code sign-in), and ros.ai never reads, stores or passes it on. */
 
 /** The Claude Code program the Agent SDK ships for this computer, found the way the SDK finds it. */
-export function claudeBinary(): string | null {
+function claudeBinary(): string | null {
   let require: NodeJS.Require;
   try { require = createRequire(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')); } catch { return null; }
   const ext = process.platform === 'win32' ? '.exe' : '';

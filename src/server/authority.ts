@@ -8,7 +8,7 @@ import { groupMembers } from '../shared/groups.js';
 import type { Canvas, Mutation } from '../shared/types.js';
 
 export const modeSchema=z.enum(['ask','review','full']);
-export const policySchema=z.object({mode:modeSchema}).strict();
+const policySchema=z.object({mode:modeSchema}).strict();
 const zero=():ResearchUsage=>({experiments:0,modelCalls:0,createdActions:0,runtimeSeconds:0,spendUsd:0});
 // A notebook cell arrives already reviewed, because names carry over from earlier cells in its Python session.
 type Action={kind:ReviewDecision['kind'];nodeId:string;fingerprint:string;change?:CanvasChange;code?:string;reviewed?:CodeReview;runtimeSeconds?:number;spendUsd?:number};

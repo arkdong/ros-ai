@@ -21,7 +21,7 @@ const METRIC_SOURCES: { id: MetricSource; label: string; detail: string; needs: 
   { id: 'umami', label: 'Umami', detail: 'Website visitors, clicks and downloads', needs: 'Needs Umami connected on the Plugins page with an API key. Leave the website empty when the key reaches only one.' },
   { id: 'railway', label: 'Railway', detail: 'Whether each service is up', needs: 'Needs Railway connected on the Plugins page with an account token. Leave the project empty when the token reaches only one.' },
 ];
-export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput; postLink?: string };
+type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput; postLink?: string };
 type Props = { initial?: KindId; scope: string | null; groups: { id: string; title: string }[]; folder: boolean; onClose: () => void; onCreate: (kind: BlockKind, options: AddOptions) => Promise<void>; onPaper: (scope: string | null, paperId: string) => Promise<void> };
 
 /** All blocks: every kind in three groups, a search over them, and the chosen kind shown as it looks on the map with

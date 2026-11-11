@@ -67,7 +67,7 @@ export function describeWeb(web: WebSearch): string {
 
 /** The same page found twice can differ in its scheme, a www. or a trailing slash. */
 export const pageKey = (url: string) => url.replace(/^https?:\/\/(?:www\.)?/u, '').replace(/[/?#]+$/u, '');
-export function siteOf(url: string): string {
+function siteOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./u, ''); } catch { return url; }
 }
 
@@ -76,7 +76,7 @@ export function siteOf(url: string): string {
  * was first found, so pages keep their places on the block as more arrive. */
 export type WebSource = { key: string; url: string; title: string; site: string; favicon?: string; score: number; order: number; directions: string[]; artifacts: Artifact[]; read: boolean; quoted: boolean };
 /** Where a Web block's searches are: not started (the plan may wait for approval), running, stopped, failed or done. */
-export type WebPhase = 'waiting' | 'searching' | 'stopped' | 'failed' | 'done';
+type WebPhase = 'waiting' | 'searching' | 'stopped' | 'failed' | 'done';
 /** What a Web block shows: its pages, how far its searches got, and how many searches each direction still runs.
  * `credits` counts Tavily credits; it is null when another search service ran the searches. */
 export type WebState = { sources: WebSource[]; searches: number; done: number; failed: number; phase: WebPhase; sweepId?: string; error?: string; pending: Record<string, number>; pagesRead: number; credits: number | null };

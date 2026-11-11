@@ -49,7 +49,7 @@ export function fit(messages: ChatMessage[], budget: number) {
 /** Tool calls a model wrote into its answer text because the provider's parser missed them
  * (Nemotron once did). Reads both the XML form (<function=name><parameter=key>) and the JSON form
  * ({"name", "arguments"}) inside <tool_call> tags; anything else stays ordinary text. */
-export function textToolCalls(content: string): { text: string; calls: ToolCall[] } | undefined {
+function textToolCalls(content: string): { text: string; calls: ToolCall[] } | undefined {
   if (!content.includes('<tool_call>')) return undefined;
   const calls: ToolCall[] = [];
   const text = content.replace(/<tool_call>([\s\S]*?)<\/tool_call>/gu, (whole, inner: string) => {

@@ -66,7 +66,7 @@ function legacyQuestion(text:string,index:number):AssistantClarificationQuestion
 /** Historical scalar questions remain readable. Numbering supplies boundaries,
  * while parentheses, letter labels or explicit bullets may supply choices.
  */
-export function parseLegacyClarifications(question:string):AssistantClarificationQuestion[]{
+function parseLegacyClarifications(question:string):AssistantClarificationQuestion[]{
   const text=question.slice(0,limits.questionCharacters).trim();if(!text)return [];
   const numbered=[...text.matchAll(/(?:^|\n)\s*(?:\*\*)?\d{1,2}[.)](?:\*\*)?\s+/g)];
   const markers=numbered.length>=2?numbered:[...text.matchAll(/(?:^|\s)\d{1,2}[.)]\s+(?=[A-Z*])/g)];

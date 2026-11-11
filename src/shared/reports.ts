@@ -30,7 +30,7 @@ export type ReportRecord = {
   generatedAt: string; attempts: ReportAttempt[]; notRun: number; producedBy: Record<string, string>; savedLabels: Record<string, ClaimType>; decisions: ReportDecision[];
   aiUse: { calls: AiUseCall[]; unattributed: number; plannedCode: string[]; modelEvidence: number; statement: string | null; requestsIncluded: boolean };
 };
-export const recordTime = (value: string | null) => value ? `${value.slice(0, 10)} ${value.slice(11, 16)} UTC` : 'not recorded';
+const recordTime = (value: string | null) => value ? `${value.slice(0, 10)} ${value.slice(11, 16)} UTC` : 'not recorded';
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 const kilobytes = (bytes: number | null) => bytes === null ? 'not recorded' : bytes < 1024 ? `${bytes} bytes` : `${Math.round(bytes / 1024)} KB`;
 const attemptStatus: Record<RunStatus, string> = { completed: 'completed', failed: 'failed', cancelled: 'stopped', interrupted: 'interrupted', queued: 'not finished', running: 'not finished' };
@@ -96,7 +96,7 @@ export function canonicalReport(text: string, selected: Artifact[]): string {
     const artifact = resolveReportArtifact(reference, selected); return artifact ? `${label}(artifact:${artifact.id})` : match;
   });
 }
-export const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 // Historical name retained for all figure consumers; PNG captures are base64, SVG is text.
 export const svgImageUrl = (artifact: Artifact) => artifact.mediaType==='image/png' ? `data:image/png;base64,${artifact.content}` : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artifact.content)}`;
 function tableHtml(artifact: Artifact): string {

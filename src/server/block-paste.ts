@@ -20,7 +20,7 @@ const bodySchema = z.object({
 }).strict();
 
 /** Folder images a Text block's Markdown embeds: `![alt](photos/a.png)` and `![[a.png|300]]`. Web images need no copy. */
-export function embeddedImages(text: string): string[] {
+function embeddedImages(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(/!\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|!\[\[([^\]|\n]+?)(?:\|\s*\d{1,4}\s*)?\]\]/gu)) {
     const src = (match[1] ?? match[2] ?? '').trim();

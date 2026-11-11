@@ -2,7 +2,7 @@ import type { AcpAgentId } from './acp-agents.js';
 export type NodeKind = 'topic'|'activity'|'unspecified'|'group';
 export type BlockType = 'note'|'action'|'dataset'|'figure'|'code'|'notebook'|'report'|'agent'|'search'|'finding'|'notion'|'file'|'google'|'app'|'training'|'web'|'map'|'metric'|'dashboard'|'post';
 /** A PDF or image shown from the project folder: only its path is saved; the file stays where it is. */
-export type FileView = { path:string };
+type FileView = { path:string };
 /** One place on a Map block: where it is and what it is. `place` is the address or name it was looked up by, when it was. */
 export type MapPin = { id:string; name:string; lat:number; lng:number; note?:string; url?:string; place?:string };
 /** A Map block: pins on a map. Only the pins are saved; the map itself comes from OpenStreetMap as it is shown, or,
@@ -69,9 +69,9 @@ export type MetricRead = { source:MetricSource; title:string; link:string; value
 /** Where a Post block's post comes from. Slice 1 reads platforms that need no login; the rest come with ros.ai's signed-in browser. */
 export type PostPlatform = 'youtube'|'reddit'|'hackernews'|'github'|'xiaohongshu';
 /** How the card shows it: a photo post as its cover, a video as its thumbnail, a text post or thread as text. */
-export type PostShape = 'photo'|'video'|'text';
+type PostShape = 'photo'|'video'|'text';
 /** One photo of a post: where it was on the web, and where ros.ai saved it in the project folder (unset when the project has no folder or the download failed). */
-export type PostPhoto = { url:string; path?:string; width?:number; height?:number };
+type PostPhoto = { url:string; path?:string; width?:number; height?:number };
 export type PostComment = { author:string; text:string; likes?:number; at?:string; depth?:number };
 /** A post read once from its platform and kept as it was then (posts get edited and deleted): the text, who wrote it,
  * its counts, photos saved into the project folder, the top comments, and a video's subtitles as a saved version. */
@@ -91,7 +91,7 @@ export type PostView = {
 /** A post found by a search, before it is added: enough to choose which to put on the canvas. */
 /** A site ros.ai reads in its signed-in browser (Plugins › Xiaohongshu): whether it is logged in and as whom, whether
  * the site asked for a check that a person is there, and whether its login window is open now. */
-export type SignedInSite = 'xiaohongshu';
+type SignedInSite = 'xiaohongshu';
 export type SignedInSiteStatus = { id:SignedInSite; name:string; signedIn:boolean; account?:string; checkedAt?:string; needsCheck:boolean; window:boolean; canWindow:boolean };
 export type PostHit = { platform:PostPlatform; url:string; title:string; author?:string; community?:string; postedAt?:string; counts:PostView['counts']; snippet?:string; thumbnail?:string; duration?:number };
 export type TrainingStage = 'data'|'data-ready'|'training'|'trained'|'model';
@@ -107,7 +107,7 @@ export type TrainingRead = {
 export type PaperSource = 'openalex'|'arxiv'|'zotero';
 export type PaperRef = { source:PaperSource; id:string; doi?:string; link:string };
 /** An Agent block stands for one assistant turn run by Claude Code, Codex, a model or an ACP agent; its timeline lives with that turn. */
-export type AgentLink = {runtime:'claude'|'codex'|'model'|AcpAgentId; turnId:string};
+type AgentLink = {runtime:'claude'|'codex'|'model'|AcpAgentId; turnId:string};
 /** What an agent found when it checked a block's claims on the web: backed or contradicted by a quoted page,
  * no source found, or not judged yet. `textHash` is the block text it checked, so a later edit shows. */
 export type ClaimVerdict = 'backed'|'contradicted'|'unsupported'|'open';
@@ -122,9 +122,9 @@ export type WebSearch = { question:string; directions:WebDirection[] };
 export type CodeDocument = {language:string; source:string; parameters:Record<string,string|number|boolean>; inputArtifactId?:string|null};
 /** An App block's page (one HTML document) and the blocks it reads, in order. A file edit or an agent's page never widens
  * `inputs`: adding one is the person's edit, or a proposal they accept. */
-export type AppDocument = {source:string; inputs:string[]};
-export type NotebookDocument = {sessionId?:string; path:string};
-export type GroupHighlight = { nodeId:string; artifactId:string; hash:string };
+type AppDocument = {source:string; inputs:string[]};
+type NotebookDocument = {sessionId?:string; path:string};
+type GroupHighlight = { nodeId:string; artifactId:string; hash:string };
 /** Recorded by the researcher through canvas edits, so Undo removes it. Withdrawing keeps the entry. */
 export type Decision = { id:string; text:string; reason:string; at:string; basedOn:{artifactId:string; hash:string}[]; withdrawnAt?:string };
 // Missing fields on foundation records mean unspecified kind and project scope.
@@ -154,7 +154,7 @@ export type Artifact = {id:string; projectId:string; nodeId:string; runId:string
 export type SelectedInput = {id:string; projectId:string; nodeId:string; artifactId:string; excerpt:string; createdAt:string};
 export type RunStatus = 'queued'|'running'|'completed'|'failed'|'cancelled'|'interrupted';
 export type ModelMessage = {role:'system'|'user'|'assistant'; content:string};
-export type RunEvent = {at:string; type:string; message:string; data?:unknown};
+type RunEvent = {at:string; type:string; message:string; data?:unknown};
 export type Run = {id:string; projectId:string; nodeId:string; request:string; useSearch:boolean; status:RunStatus; retryOf?:string; createdAt:string; startedAt?:string; endedAt?:string; projectRevision:number; node:CanvasNode; inputs:(SelectedInput & {artifact:Artifact})[]; messages:ModelMessage[]; provider:string; model:string; modelVersion:string|null; configuration:Record<string,unknown>; tools:unknown[]; events:RunEvent[]; artifactIds:string[]; error?:string; usage?:unknown; cost?:unknown};
 export type UsageRecord = {id:string; provider:string; purpose:string; runId?:string; reservedUsd:number; estimatedUsd:number|null; reportedUsage:unknown; status:'reserved'|'settled'|'uncertain'; basis:string; createdAt:string};
 export type ProjectDetail = {project:Project; messages:Message[]; proposals:Proposal[]; changes:ChangeSummary[]; runs:Run[]; artifacts:Artifact[]; inputs:SelectedInput[]; canUndo:boolean; canRedo:boolean; highlights?:import('./research.js').Highlight[]; notebooks?:import('./notebooks.js').NotebookSummary[]};

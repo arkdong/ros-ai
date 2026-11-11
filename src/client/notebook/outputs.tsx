@@ -7,7 +7,7 @@ const ROWS = 200;
 const text = (value: unknown) => typeof value === 'string' ? value : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join('') : undefined;
 
 /** Output text as a terminal shows it: no colour codes, and a progress bar redrawn with \r keeps its last state. */
-export function plainOutput(value: string): string {
+function plainOutput(value: string): string {
   return value.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/gu, '').replace(/\r\n/gu, '\n')
     .split('\n').map(line => line.split('\r').findLast(part => part) ?? '').join('\n');
 }

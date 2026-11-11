@@ -56,7 +56,7 @@ type UpdateJob = Job & { switching?: boolean };
 
 /** A download that failed in a way trying again can fix: a dropped or stalled connection, a server error, a short file.
  * `mismatch`: a whole file that is not the one listed (too long, or another checksum), which one more try may fix. */
-export class DownloadError extends Error {
+class DownloadError extends Error {
   constructor(message: string, readonly retry: boolean, readonly mismatch = false) { super(message); this.name = 'DownloadError'; }
 }
 const gigabytes = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;

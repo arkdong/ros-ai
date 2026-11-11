@@ -26,7 +26,7 @@ type Handlers = {
 
 /** One card in the bar's shape: the name on top, the folder and the starting point as chips on the footer line, one black action.
  *  The folder follows the name until the person types or picks their own; Enter submits. */
-export function ProjectCard({ caption, verb, from, onFrom, onCancel, focusKey, onCreate, onOpenFolder }: Handlers & { caption?: string; verb: 'Start' | 'Create'; from: StartFrom; onFrom: (from: StartFrom) => void; onCancel?: () => void; focusKey?: number }) {
+function ProjectCard({ caption, verb, from, onFrom, onCancel, focusKey, onCreate, onOpenFolder }: Handlers & { caption?: string; verb: 'Start' | 'Create'; from: StartFrom; onFrom: (from: StartFrom) => void; onCancel?: () => void; focusKey?: number }) {
   const [name, setName] = useState(''), [path, setPath] = useState(''), [busy, setBusy] = useState(false), [menu, setMenu] = useState<'folder' | 'from' | null>(null);
   const [folder, setFolder] = useState(''), [folderEdited, setFolderEdited] = useState(false), [choosing, setChoosing] = useState(false), [error, setError] = useState('');
   const foot = useRef<HTMLDivElement>(null), field = useRef<HTMLInputElement>(null);

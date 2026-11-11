@@ -31,7 +31,7 @@ const TEXT_LIMIT = 60_000, CONTENT_LIMIT = 200_000, TABLE_ROWS = 5_000, TABLE_CE
 const CHECK_START_MS = 8_000, CHECK_SETTLE_MS = 1_500, OUTLINE_LIMIT = 6_000;
 /** The kit runs before any of the page's own code; on the page's first line, so the browser's line numbers stay the page's own. */
 const KIT_HEAD = '<!doctype html><meta charset="utf-8"><script src="/kit/ros.js"></script><link rel="stylesheet" href="/kit/ros.css">';
-export const framedPage = (source: string) => KIT_HEAD + source.replace(/^﻿?[ \t]*<!doctype[^>]*>/iu, '');
+const framedPage = (source: string) => KIT_HEAD + source.replace(/^﻿?[ \t]*<!doctype[^>]*>/iu, '');
 
 type Grant = {
   token: string; page: string; projectId: string; mode: AppMode; expires: number;

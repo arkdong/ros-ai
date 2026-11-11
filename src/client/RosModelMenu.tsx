@@ -5,7 +5,6 @@ import { IN_APP_AGENTS, inAppAgent, type AssistantBackend, type AssistantState, 
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
 import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
-import type { ClaudeAgentSettings } from '../shared/claude-agent';
 import { acpLogo } from './AcpAgents';
 import { AgentModelChip, useAgentModel } from './AgentModelPicker';
 import { BrandLogo } from './brand-logos';
@@ -20,7 +19,7 @@ export const reloadProjectModels = () => window.dispatchEvent(new Event(settings
 export type ModelChoice = { provider: string; providerLabel: string; model: string; label: string; maker: ModelMaker };
 
 /** The project's chosen model and the models it could switch to, kept fresh when settings change elsewhere. */
-export function useProjectModels(projectId: string, revision: number) {
+function useProjectModels(projectId: string, revision: number) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
   useEffect(() => {
     let active = true;

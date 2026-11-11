@@ -59,7 +59,7 @@ function nameOf(href: string, reference?: string): string {
 const stem = (name: string) => name.replace(/\.[a-z0-9]{1,5}$/iu, '');
 const clean = (text: string, max = 300) => text.replace(/[\x00-\x1f\x7f]/gu, ' ').trim().slice(0, max);
 
-export type NotionFile = { name: string; fileName: string; bytes: Buffer; label: string };
+type NotionFile = { name: string; fileName: string; bytes: Buffer; label: string };
 export type NotionFiles = { title: string; link: string; property: string | null; files: NotionFile[]; problems: string[] };
 type Json = Record<string, unknown>;
 type Options = { fetcher?: typeof fetch; lookup?: (host: string) => Promise<{ address: string }[]>; isAllowed?: (url: URL) => boolean };

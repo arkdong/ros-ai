@@ -17,7 +17,7 @@ const word = (value: string) => /\s/u.test(value) ? quoted(value) : value;
 const nodeCommand = (id?: AgentId) => process.env.ROS_NODE_COMMAND || (id === 'cursor' || id === 'claude-app' ? process.execPath : 'node');
 /** The process an agent starts for ros.ai. Pi lists ros.ai's tools with its own rather than behind code it writes;
  * Hermes Agent's MCP client calls itself only "mcp", so its link names it to the bridge. */
-export function entryFor(id: AgentId, bridge: string): { command: string; args: string[]; exposure?: 'direct' } {
+function entryFor(id: AgentId, bridge: string): { command: string; args: string[]; exposure?: 'direct' } {
   return { command: nodeCommand(id), args: id === 'hermes' ? [bridge, '--client=hermes'] : [bridge], ...(id === 'pi' ? { exposure: 'direct' as const } : {}) };
 }
 /** The command a person would paste, or the settings entry they would add. */

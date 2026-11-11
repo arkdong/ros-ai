@@ -54,7 +54,7 @@ const slug = (value: string) => value.normalize('NFKD').replace(/\p{M}/gu, '').t
 const unused = (base: string, taken: ReadonlySet<string>) => { let name = base; for (let n = 2; taken.has(name); n++) name = `${base}-${n}`; return name; };
 
 /** `ROS_APP_<ID>_URL` points an app at another server, but only https or this computer (for stand-ins). */
-export function appUrl(id: AppId) {
+function appUrl(id: AppId) {
   const app = entry(id);
   if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server address.`);
   const override = process.env[`ROS_APP_${id.toUpperCase()}_URL`]?.trim();
@@ -514,7 +514,7 @@ export class RemoteApps {
 }
 
 /** The address an app sends the browser back to: this ros.ai's own (loopback) address, registered by ros.ai itself. */
-export const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
+const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
 const cookie = (res: Response, value: string, maxAge: number) => res.cookie(COOKIE, value, { httpOnly: true, sameSite: 'lax', path: CALLBACK, maxAge, secure: false });
 const nonceOf = (req: Request) => { const item = (req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${COOKIE}=`)); const value = item?.slice(COOKIE.length + 1) ?? ''; return /^[\w-]{43}$/u.test(value) ? value : ''; };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/gu, character => `&#${character.charCodeAt(0)};`);

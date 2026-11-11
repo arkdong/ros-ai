@@ -37,7 +37,7 @@ export function useProjectFolder(projectId: string | null, revision: number | un
 }
 
 /** A folder path the person can type, or pick in the computer's own folder window. */
-export function FolderField({ id, value, onChange, picker, placeholder }: { id: string; value: string; onChange: (path: string, picked: boolean) => void; picker: boolean; placeholder?: string }) {
+function FolderField({ id, value, onChange, picker, placeholder }: { id: string; value: string; onChange: (path: string, picked: boolean) => void; picker: boolean; placeholder?: string }) {
   const [choosing, setChoosing] = useState(false), [error, setError] = useState('');
   const choose = async () => {
     setChoosing(true); setError('');

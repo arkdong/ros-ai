@@ -19,7 +19,7 @@ export type NotebookCellEdit = Pick<NotebookCell,'id'|'cell_type'|'source'> & { 
 
 export type NotebookKernel = { status:'off'|'starting'|'idle'|'busy'; session:string|null; executionCount:number;
   message?:string; python?:string; libraries?:Record<string,string>; cwd?:string };
-export type NotebookQueued = { cellId:string; state:'queued'|'running' };
+type NotebookQueued = { cellId:string; state:'queued'|'running' };
 export type NotebookState = {
   notebook:NotebookContent; kernel:NotebookKernel; queue:NotebookQueued[]; mode:ApprovalMode;
   /** The .ipynb file and the folder cells may write to, relative to the project folder. */

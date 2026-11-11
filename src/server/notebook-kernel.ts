@@ -12,7 +12,7 @@ const KERNEL = readFileSync(fileURLToPath(new URL('./sandbox/notebook_kernel.py'
 const MAX_LINE = 32_000_000;
 /** The same container boundary as Code blocks, sized for interactive work: no network, read-only system and project
  * files, no added privileges. Only the notebook's outputs folder, /tmp and /work can be written. */
-export const KERNEL_RESTRICTIONS = [
+const KERNEL_RESTRICTIONS = [
   '--network=none', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
   '--memory=2g', '--memory-swap=2g', '--cpus=2', '--pids-limit=128',
   '--ulimit=core=0:0', '--ulimit=nofile=256:256', '--ipc=none', '--init',
@@ -42,7 +42,7 @@ export type KernelFolder = { root: string; notebookDir: string; outputs: string;
 const field = (value: string) => /[",\r\n]/u.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 const bind = (source: string, target: string, readonly: boolean) => ['type=bind', field(`src=${source}`), field(`dst=${target}`), ...(readonly ? ['readonly'] : [])].join(',');
 /** Files the kernel writes belong to the person running ros.ai. A server running as root still runs Python as nobody. */
-export function kernelUser(): string {
+function kernelUser(): string {
   const uid = process.getuid?.(), gid = process.getgid?.();
   return uid === undefined || gid === undefined || uid === 0 ? '65534:65534' : `${uid}:${gid}`;
 }

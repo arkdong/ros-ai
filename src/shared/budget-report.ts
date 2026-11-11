@@ -15,7 +15,7 @@ export type BudgetUsage = {
   rawCost: number | null;
   nodeTitle: string | null;
 };
-export type ProviderAllowance = {
+type ProviderAllowance = {
   name: string;
   ceilingUsd: number;
   accountedUsd: number;

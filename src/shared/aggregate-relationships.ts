@@ -1,7 +1,7 @@
 import type { Canvas, CanvasNode, Connection } from './types';
 import { isTrail } from './links';
 
-export type RelationshipContribution = {
+type RelationshipContribution = {
   connection: Connection;
   sourceTitle: string;
   targetTitle: string;

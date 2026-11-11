@@ -100,7 +100,6 @@ export function App(){
   const [startFocus,setStartFocus]=useState(0);
   const setRos=(mode:RosMode)=>{updateRosMode(mode);saveLocal('ros-mode',mode);};
   // Older callers open or close "the assistant"; opening keeps a full panel full and otherwise shows the half sheet.
-  const updateRightPanel=(panel:'assistant'|null)=>updateRosMode(current=>panel?(current==='full'?'full':'half'):'bar');
   const setRightPanel=(panel:'assistant'|null)=>setRos(panel?(rosMode==='full'?'full':'half'):'bar');
   const rightPanel=rosMode==='full'?'assistant':null;
   const assistantOpen=rosMode!=='bar';

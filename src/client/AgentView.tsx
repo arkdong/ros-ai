@@ -15,7 +15,7 @@ const host = (url: string) => { try { return new URL(url).hostname.replace(/^www
 type Step = { at: string; tool: string; outcome: AgentStep['outcome']; target?: string; size?: number; items?: string[]; proposalId?: string; skipped?: number; detail?: string; thought?: string; error?: string };
 
 /** Pairs each tool call with the sentence the agent wrote before it and with what came of it. */
-export function agentSteps(turn: AssistantTurn): Step[] {
+function agentSteps(turn: AssistantTurn): Step[] {
   const steps: Step[] = [], byCall = new Map<number, Step>();
   let thought: string | undefined;
   for (const event of turn.events) {

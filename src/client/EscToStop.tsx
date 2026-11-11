@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Square } from 'lucide-react';
 
 /** How long the first Esc keeps Stop armed. A second Esc inside it stops ROS. */
-export const ESC_STOP_WINDOW_MS = 3000;
+const ESC_STOP_WINDOW_MS = 3000;
 
 // One arm shared by the bar and the panel, so the first Esc can close the panel and the second still stops from the bar.
 let armedUntil = 0, timer: number | undefined;

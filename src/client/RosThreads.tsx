@@ -8,7 +8,7 @@ import { openOnPress } from './press';
 /** Which thread the bar and the panel show: a thread's id, or null for a new thread that has not started yet. */
 export type ShownThread = string | null;
 
-export const threadsOf = (state: AssistantState | null): AssistantThreadSummary[] => state?.threads ?? [];
+const threadsOf = (state: AssistantState | null): AssistantThreadSummary[] => state?.threads ?? [];
 
 /** The thread for a saved choice: the chosen one while it exists, else the one with the newest activity; null is a new thread. */
 export function shownThread(state: AssistantState | null, choice: string | null | undefined): ShownThread {

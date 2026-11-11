@@ -1,9 +1,9 @@
 /** What a File block can show: a PDF, a PNG, JPEG, WebP or GIF image, or an MP4 or MOV video, read from the project folder. */
-export const FILE_TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.mov': 'video/quicktime' };
+const FILE_TYPES: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4', '.mov': 'video/quicktime' };
 /** The largest PDF or image a File block shows or a drop saves into the folder. */
 export const FILE_BYTES = 50_000_000;
 /** The largest video a File block shows. A video is streamed in parts and never read whole, so it may be far larger. */
-export const VIDEO_BYTES = 4_000_000_000;
+const VIDEO_BYTES = 4_000_000_000;
 /** The kinds of file a File block shows, for messages. */
 export const FILE_KINDS_TEXT = 'PDF, PNG, JPEG, WebP, GIF, MP4 and MOV files';
 /** The media type of a file a File block can show, by its extension; undefined for any other file. */
@@ -30,7 +30,7 @@ export const fileUrl = (projectId: string, nodeId: string) => `/api/projects/${e
 /** 1.2 MB, 340 KB: the size line on a card. */
 export const fileSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : bytes < 1024 ** 3 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 /** Images a Text block shows inline when its Markdown embeds them: `![alt](photos/a.png)` or `![[a.png]]`. */
-export const NOTE_IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif' };
+const NOTE_IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif' };
 export function noteImageType(path: string): string | undefined {
   const name = path.split('/').at(-1) ?? path, dot = name.lastIndexOf('.');
   return dot > 0 ? NOTE_IMAGE_TYPES[name.slice(dot).toLowerCase()] : undefined;

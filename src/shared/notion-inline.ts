@@ -31,7 +31,7 @@ export function parseLine(source: string): Line {
 }
 
 /** Notion's inline Markdown as runs. A mark left open runs to the end of the line, as Notion would show it. */
-export function parseInline(text: string, outer: Mark[] = []): Run[] {
+function parseInline(text: string, outer: Mark[] = []): Run[] {
   const runs: Run[] = [];
   let marks = [...outer], buffer = '';
   const flush = () => { if (buffer) runs.push({ text: buffer, marks: [...marks] }); buffer = ''; };
@@ -86,7 +86,7 @@ const same = (a: Mark[], b: Mark[]) => a.length === b.length && a.every((mark, i
 
 /** Neighbouring text with the same marks as one run; spaces at a run's edges moved outside its emphasis, where
  * Markdown needs them. */
-export function tidy(runs: Run[]): Run[] {
+function tidy(runs: Run[]): Run[] {
   const merged: Run[] = [];
   for (const run of runs) {
     const marks = ordered(run.marks), last = merged[merged.length - 1];
@@ -106,7 +106,7 @@ export function tidy(runs: Run[]): Run[] {
 }
 
 /** Runs as Notion's inline Markdown. */
-export function inlineMarkdown(runs: Run[]): string {
+function inlineMarkdown(runs: Run[]): string {
   const open: Mark[] = [];
   let out = '';
   for (const run of tidy(runs)) {

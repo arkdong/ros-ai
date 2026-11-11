@@ -83,7 +83,7 @@ function scalar(rest: string, block: string[]): Value {
 
 /** The flat YAML that skill frontmatter uses: top-level keys with plain, quoted, block or folded values,
  * lists and one-level maps. Anything stranger is kept as text rather than refused. */
-export function parseYaml(yaml: string): { values: Record<string, Value>; problems: string[] } {
+function parseYaml(yaml: string): { values: Record<string, Value>; problems: string[] } {
   const lines = yaml.split('\n'), values: Record<string, Value> = {}, problems: string[] = [];
   for (let at = 0; at < lines.length;) {
     const line = lines[at]!;
