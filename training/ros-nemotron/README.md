@@ -17,7 +17,7 @@ A simulated researcher accepts the search plan (or declines it, for the `researc
 
 Families and shares: overview 7%, read and answer 13%, dataset 8%, add notes 14%, edit existing 7%, analysis 10%, research 22%, research declined 3%, report 5%, cannot do or prompt injection 11%. About 15% of turns carry the person's saved preferences, 25% have the Notion tools in the list, and about one request in ten is in Dutch.
 
-Held out for evaluation: ten projects in domains the training data never sees, plus the ten KNMI weather tasks from the 19 October comparison, so the score compares directly with Nano's 6/10 and Super's 7.5/10.
+Held out for evaluation: ten projects in domains the training data never sees, plus the ten KNMI weather tasks from the 19 October comparison, so the score compares directly with Nano's 6/10 and Super's 7.5/10. Those tasks run on `schiphol-weather-2024.csv`: 366 daily rows derived from KNMI's hourly observations at station 240 (Schiphol) for 2024, captured 21 September 2026 and published by KNMI under CC BY 4.0.
 
 ## The frozen contract
 

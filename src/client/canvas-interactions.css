@@ -143,31 +143,6 @@
   color: #171717;
   line-height: 1.35;
 }
-.direct-canvas .research-card .card-description {
-  font-weight: 400;
-  margin: 0 0 12px;
-  max-width: none;
-  white-space: normal;
-  flex: 1;
-  -webkit-line-clamp: 2;
-  display: -webkit-box;
-  font-size: 15px;
-  color: #6b6b6b;
-  line-height: 1.5;
-  max-height: 45px;
-}
-.direct-canvas .research-card .card-bottom {
-  line-height: 1.4;
-  border-color: #dedede;
-  padding-top: 10px;
-  margin-top: auto;
-  gap: 12px;
-  font-size: 13px;
-  color: #6b6b6b;
-}
-.direct-canvas .research-card .card-bottom>span:last-child {
-  text-align: right;
-}
 .direct-canvas .research-card .card-controls .icon-button {
   width: 32px;
   height: 32px;
@@ -188,17 +163,6 @@
   margin-top: 3px;
   background: #f3f4f5;
   color: #41464b;
-}
-.direct-canvas .card-outcome.outcome-success { background: #edf5f0; color: #2f5140; }
-.direct-canvas .card-outcome.outcome-progress { background: #edf3fa; color: #34526c; }
-.direct-canvas .card-outcome.outcome-warning { background: #fbf4e6; color: #70562a; }
-.direct-canvas .card-outcome.outcome-danger { background: #faefec; color: #79443a; }
-.direct-canvas .outcome-label {
-  display: block;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 600;
-  margin-bottom: 5px;
 }
 .direct-canvas .card-outcome p {
   margin: 0;
@@ -294,41 +258,6 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.direct-canvas .expanded-group .card-description {
-  max-width: none;
-  display: -webkit-box;
-  white-space: normal;
-  line-height: 1.5;
-  margin: 0 0 9px;
-  font-size: 15px;
-  max-height: 67.5px;
-  -webkit-line-clamp: 3;
-  color: #6b6b6b;
-}
-.direct-canvas .expanded-group .card-bottom {
-  max-width: none;
-  padding-top: 4px;
-  margin-top: auto;
-  border: 0;
-}
-.direct-canvas .card-copy-button {
-  display: block;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  border-radius: 4px;
-  color: inherit;
-  width: 100%;
-  white-space: normal;
-}
-.direct-canvas .card-copy-button:hover {
-  background: #f7f7f7;
-}
-.direct-canvas .card-copy-button.description-copy {
-  flex: 1;
-  min-height: 0;
-}
 .direct-canvas .group-actions {
   bottom: 14px;
   font-size: 14px;
@@ -374,73 +303,8 @@
   height: 78px;
   min-height: 78px;
 }
-.direct-canvas .inline-note-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-}
-.direct-canvas .inline-note-actions>span {
-  font-size: 13px;
-  color: #6b6b6b;
-  margin-right: auto;
-}
-.direct-canvas .inline-note-actions .small {
-  font-size: 14px;
-  padding: 5px 10px;
-  min-height: 30px;
-}
-.direct-canvas .inline-note-actions .primary {
-  background: #171717;
-  color: #ffffff;
-  border-color: #171717;
-}
 .direct-canvas .editing .card-top {
   margin-bottom: 5px;
-}
-.direct-canvas.unified-canvas .canvas-artifact {
-  width: 100%;
-  height: 100%;
-  padding: 14px 16px;
-  border-color: #dedede;
-}
-.direct-canvas .canvas-artifact .card-top {
-  height: 32px;
-  margin-bottom: 7px;
-}
-.direct-canvas .canvas-artifact .card-type {
-  font-size: 13px;
-  color: #6b6b6b;
-}
-.direct-canvas .canvas-artifact .icon-button {
-  width: 32px;
-  height: 32px;
-}
-.direct-canvas .canvas-artifact h3 {
-  line-height: 1.35;
-  margin-bottom: 9px;
-  font-size: 17px;
-  color: #171717;
-}
-.direct-canvas .canvas-artifact .artifact-preview pre,.direct-canvas .canvas-artifact .data-table {
-  font-size: 14px;
-}
-.direct-canvas .canvas-artifact .artifact-preview img {
-  height: 176px;
-  max-height: 176px;
-}
-.direct-canvas .artifact-footer {
-  padding-top: 9px;
-  font-size: 13px;
-  color: #6b6b6b;
-}
-.direct-canvas .artifact-footer .text-button {
-  font-size: 13px;
-  color: #171717;
-}
-.direct-canvas .canvas-artifact.highlighted {
-  border-color: #a3d52b;
-  box-shadow: 0 0 0 1px #b7ef32,0 2px 6px #00000006;
 }
 .direct-canvas .connection-instruction {
   position: absolute;
@@ -483,25 +347,12 @@
 }
 
 /* Compact result browsing does not change captured evidence or approval. */
-.direct-canvas .expanded-result-bar { gap: 14px; min-height: 34px; flex-wrap: wrap; }
-.direct-canvas .result-density { display: flex; align-items: center; gap: 3px; }
-.direct-canvas .result-density>span { margin-right: 6px; }
-.direct-canvas .result-density button { padding: 5px 9px; min-width: 29px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #6b6b6b; font-size: 13px; }
-.direct-canvas .result-density button[aria-pressed=true] { background: #f0f0f0; color: #171717; border-color: #dedede; }
-.direct-canvas .result-pagination { display: flex; align-items: center; gap: 5px; margin-left: auto; }
-.direct-canvas .result-pagination .icon-button { width: 28px; height: 28px; }
-.direct-canvas .result-page-dots { display: flex; align-items: center; gap: 1px; max-width: 156px; overflow-x: auto; scrollbar-width: thin; }
-.direct-canvas .result-page-dots button { padding: 7px; border: 0; background: none; flex: 0 0 auto; }
-.direct-canvas .result-page-dots button::after { content: ''; display: block; width: 6px; height: 6px; border-radius: 50%; background: #d0d0d0; }
-.direct-canvas .result-page-dots button.current::after { background: #454545; }
-.direct-canvas .result-range { color: #6b6b6b; font-size: 12px; white-space: nowrap; }
 /* Dragging across the canvas pans it; the empty-state hint and the header labels are not text to select. */
 .direct-canvas .canvas-empty, .direct-canvas .canvas-empty > * { pointer-events: none; user-select: none; -webkit-user-select: none; }
 .direct-canvas .canvas-empty .canvas-empty-add { pointer-events: auto; }
 .direct-canvas .canvas-context { user-select: none; -webkit-user-select: none; }
 /* While a proposal is previewed, the rest of the canvas steps back and the proposed blocks carry a tag. */
-.direct-canvas.previewing-proposal .research-card:not(.preview-added):not(.preview-changed):not(.preview-removed),
-.direct-canvas.previewing-proposal .canvas-artifact {
+.direct-canvas.previewing-proposal .research-card:not(.preview-added):not(.preview-changed):not(.preview-removed) {
   opacity: .35;
 }
 .direct-canvas.previewing-proposal .research-card.preview-added,
@@ -523,6 +374,8 @@
 }
 
 /* A shrunk block: its card keeps its own size and is drawn smaller from the top left, so nothing in it is cut off. */
+/* At full size the wrapper takes no part in the layout. */
+.direct-canvas .card-scale:not(.scaled-card) { display: contents; }
 .direct-canvas .scaled-card {
   transform-origin: 0 0;
 }

@@ -38,8 +38,7 @@
 /* Cards centred with translateX(-50%) rise in: the block sheet and the New project card. */
 @keyframes rise-centered { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .single-canvas-shell .sidebar, .single-canvas-shell.sidebar-hidden .sidebar { transition: none; } .single-canvas-shell .sidebar-backdrop { animation: none; } }
-.single-canvas-shell .sidebar .new-project-button,
-.single-canvas-shell .sidebar .demo-entry-button { border-radius: var(--radius-button); }
+.single-canvas-shell .sidebar .new-project-button { border-radius: var(--radius-button); }
 .single-canvas-shell .project-item.active,
 .single-canvas-shell .note-tree-row.selected { border-radius: var(--radius-button); }
 .single-canvas-shell .workspace-header { height: 64px; min-height: 64px; padding: 0 24px; background: #fff; border-bottom: 1px solid #ebebeb; }
@@ -69,11 +68,6 @@
 .note-view .note-side { border-left: 1px solid var(--card-divider); background: #fcfcfc; }
 .note-view .note-side-heading { padding: 16px 20px; }
 .note-view .note-side-scroll { padding: 18px 20px; }
-.note-view .note-composer { margin: 0 16px 16px; padding: 14px 16px 12px; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: #fff; box-shadow: var(--card-shadow); }
-.note-view .note-composer:focus-within { border-color: #d4d4d0; }
-.note-view .note-composer textarea { min-height: 52px; padding: 0 2px; line-height: 1.55; }
-.note-view .note-composer-row { gap: 10px; margin-top: 10px; }
-.note-view .note-composer .provider-note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
 
 /* A block's file sits under its title as one quiet line, never a grey band. */
 .file-bar { margin: -6px 0 18px; padding: 0 0 16px; gap: 8px; border-radius: 0; background: none; border-bottom: 1px solid var(--card-divider); color: var(--muted); font-size: 13px; }
@@ -89,7 +83,7 @@
 /* The output's kind is a small label above its title, so the title leads. */
 .code-output-head { flex-direction: column-reverse; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
 .code-output-head strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; line-height: 1.4; }
-.code-output-head small, .result-kind { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #eef1f5; color: #46536a; font-size: 11px; font-weight: 500; letter-spacing: .02em; text-transform: capitalize; }
+.code-output-head small { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #eef1f5; color: #46536a; font-size: 11px; font-weight: 500; letter-spacing: .02em; text-transform: capitalize; }
 .code-results .metric-value { margin: 4px 0 2px; }
 .code-results .result-actions { margin-top: 14px; }
 
@@ -116,7 +110,6 @@
 
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
-.rail-section-title { font-size: 12px; letter-spacing: .07em; margin: 32px 4px 12px; color: var(--muted); }
 .rail-page .tool-connection { border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; margin-bottom: 12px; background: #fff; box-shadow: 0 10px 32px rgba(0, 0, 0, .06); }
 .rail-page .tool-connection-name strong { font-size: 14px; font-weight: 500; }
 .rail-page .tool-connection-name small { font-size: 13px; color: var(--muted); margin-top: 1px; }

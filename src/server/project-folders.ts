@@ -58,9 +58,24 @@ function installedApps(): (OpenApp & { path: string })[] {
   });
 }
 const HOME_FOLDERS = ['Documents', 'Desktop', 'Downloads', 'Library', 'Pictures', 'Movies', 'Music', 'Public', 'Applications'];
+/** Mac and Windows disks ignore letter case in names, so ~/documents is ~/Documents there. */
+const FOLDS_CASE = process.platform === 'darwin' || process.platform === 'win32';
+/** A folder is another folder, or lies inside it. */
+export function folderWithin(folder: string, other: string, fold = FOLDS_CASE): boolean {
+  const a = fold ? folder.toLowerCase() : folder, b = fold ? other.toLowerCase() : other;
+  return a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+/** A whole home folder, a system folder, or one of the home's own folders (Documents, Desktop…): never a project folder. */
+export function wholeFolder(real: string, home: string, fold = FOLDS_CASE): boolean {
+  const same = (a: string, b: string) => fold ? a.toLowerCase() === b.toLowerCase() : a === b;
+  return real.split(sep).filter(Boolean).length < 2 || folderWithin(home, real, fold) || SYSTEM_FOLDERS.some(folder => folderWithin(real, folder, fold))
+    || (same(dirname(real), home) && HOME_FOLDERS.some(name => same(name, basename(real))));
+}
 
 type Observed = { hash: string; mtimeMs: number; size: number };
-type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string };
+type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string;
+  /** Why a PDF's text could not be read. It stays until the file changes: a folder pass that finds the file as it was does not clear it. */
+  textProblem?: string };
 type OutputEntry = { path: string; hash: string; artifactId: string };
 /** ros.ai's side of the sync. `hash` is the content ros.ai and the file last agreed on. */
 type FolderRecord = { projectId: string; path: string; device: number; inode: number; attachedAt: string; files: Record<string, FileEntry>; outputs: Record<string, OutputEntry[]>; board?: string };
@@ -83,7 +98,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 const extensionOf = (path: string) => { const name = posix.basename(path), dot = name.lastIndexOf('.'); return dot > 0 ? name.slice(dot) : ''; };
 const stemOf = (path: string) => { const name = posix.basename(path), extension = extensionOf(name); return extension ? name.slice(0, -extension.length) : name; };
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-export const codeExtension = (language: string) => { const name = language.trim().toLowerCase(); return CODE_TYPES.find(([value]) => value === name)?.[1] ?? (['sh', 'shell'].includes(name) ? '.sh' : '.txt'); };
+const codeExtension = (language: string) => { const name = language.trim().toLowerCase(); return CODE_TYPES.find(([value]) => value === name)?.[1] ?? (['sh', 'shell'].includes(name) ? '.sh' : '.txt'); };
 const codeLanguage = (extension: string) => CODE_TYPES.find(([, value]) => value.toLowerCase() === extension.toLowerCase())?.[0];
 
 /** A file name other apps accept, made from a block title. Obsidian links also break on # ^ [ ] |. */
@@ -101,7 +116,7 @@ const launch = (command: string, args: string[]) => new Promise<void>((done, fai
   child.once('spawn', () => { child.unref(); done(); });
 });
 /** The folder that holds Post blocks' photos and subtitles. */
-export const POST_FOLDER = 'posts';
+const POST_FOLDER = 'posts';
 const postPath = (rel: string) => { const clean = posix.normalize(rel); return clean === rel && clean.startsWith(`${POST_FOLDER}/`) && !clean.split('/').some(part => part === '..' || part.startsWith('.')); };
 const titleFromPath = (path: string) => stemOf(path).trim().slice(0, 200) || 'Untitled';
 function unplacedKind(path: string): UnplacedFile['kind'] | null {
@@ -402,7 +417,7 @@ export class ProjectFolders implements NotebookFolders {
     return { attached: true, path: record.path, available: checked?.available ?? true, ...(checked?.reason ? { reason: checked.reason } : {}), revision: project.revision,
       files: entries.map(([nodeId, entry]) => { const shape = this.pictureSize(record, entry); return { nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}), ...(entry.kind === 'file' && entry.disk ? { bytes: entry.disk.size, version: entry.hash.slice(0, 12) } : {}), ...(shape ? { image: { width: shape.width, height: shape.height } } : {}), ...(shape?.seconds !== undefined ? { seconds: shape.seconds } : {}) }; }),
       unplaced: checked?.unplaced ?? [],
-      problems: [...entries.filter(([, entry]) => entry.problem).map(([, entry]) => ({ path: entry.path, message: entry.problem! })), ...(checked?.problems ?? [])],
+      problems: [...entries.flatMap(([, entry]) => entry.problem || entry.textProblem ? [{ path: entry.path, message: (entry.problem ?? entry.textProblem)! }] : []), ...(checked?.problems ?? [])],
       ...(checked ? { checkedAt: checked.checkedAt } : {}) };
   }
 
@@ -456,9 +471,10 @@ export class ProjectFolders implements NotebookFolders {
     const missing: string[] = [];
     let existing = path;
     while (!existsSync(existing)) { missing.unshift(basename(existing)); const parent = dirname(existing); if (parent === existing) break; existing = parent; }
-    const real = join(realpathSync(existing), ...missing), home = realpathSync(homedir());
-    const within = (folder: string, other: string) => folder === other || folder.startsWith(other.endsWith(sep) ? other : other + sep);
-    if (real.split(sep).filter(Boolean).length < 2 || within(home, real) || SYSTEM_FOLDERS.some(folder => within(real, folder)) || (dirname(real) === home && HOME_FOLDERS.includes(basename(real))))
+    // The disk's own spelling of the part that exists, so a path typed in another letter case is the folder it names.
+    const real = join(realpathSync.native(existing), ...missing), home = realpathSync.native(homedir());
+    const within = folderWithin;
+    if (wholeFolder(real, home))
       throw new StoreError('Choose a folder of its own for this project, such as one inside Documents, not a whole home or system folder.');
     if (this.reserved.some(folder => within(real, folder) || within(folder, real))) throw new StoreError('Choose a folder outside ros.ai\'s own files.');
     if (existsSync(real) && !statSync(real).isDirectory()) throw new StoreError('That path is a file. Choose a folder.');
@@ -491,11 +507,14 @@ export class ProjectFolders implements NotebookFolders {
     if (!isAbsolute(path) || !existsSync(path) || !statSync(path).isDirectory()) throw new StoreError('Choose an existing folder.');
     const manifest = this.manifest(realpathSync(path));
     const owner = manifest && [...this.store.listProjects(), ...this.store.listTrashedProjects()].find(project => project.id === manifest.projectId);
-    // A removed project whose folder was kept comes back when its folder is opened again.
-    if (owner && this.store.listTrashedProjects().some(project => project.id === owner.id)) this.store.restoreProject(owner.id);
     if (owner) {
+      // A removed project whose folder was kept comes back when its folder is opened again, once the folder
+      // is one ros.ai can use: a refused folder leaves the project removed.
+      const removed = this.store.listTrashedProjects().some(project => project.id === owner.id);
       const real = this.prepare(path, owner.id);
-      this.connect(owner.id, real, manifest);
+      if (removed) this.store.restoreProject(owner.id);
+      try { this.connect(owner.id, real, manifest); }
+      catch (error) { if (removed) this.store.trashProject(owner.id); throw error; }
       return this.store.getProject(owner.id);
     }
     const real = this.prepare(path, manifest?.projectId);
@@ -633,10 +652,16 @@ export class ProjectFolders implements NotebookFolders {
     const { record, files } = this.require(projectId);
     if (!isVideoType(fileMediaType(name))) throw new StoreError('Only MP4 and MOV videos are saved this way.');
     if (declared !== undefined && declared > fileLimit(name)) throw new StoreError(tooLarge(name), 413);
-    const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extensionOf(name).toLowerCase(), this.mapped(record));
-    await files.writeStream(path, body, fileLimit(name));
+    // A video still arriving holds its name, so a second one of the same name sent meanwhile gets its own file.
+    const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extensionOf(name).toLowerCase(), new Set([...this.mapped(record), ...(this.arriving.get(projectId) ?? [])]));
+    const arriving = this.arriving.get(projectId) ?? new Set<string>();
+    this.arriving.set(projectId, arriving.add(path.toLowerCase()));
+    try { await files.writeStream(path, body, fileLimit(name)); }
+    finally { arriving.delete(path.toLowerCase()); if (!arriving.size) this.arriving.delete(projectId); }
     return { path };
   }
+  /** Paths of videos being written now, by project. */
+  private readonly arriving = new Map<string, Set<string>>();
   /** Whether the project has a folder ros.ai can use now. */
   hasFolder(projectId: string): boolean { try { this.require(projectId); return true; } catch { return false; } }
   /** Copies a File block's PDF or image into files/ of this project, from another project's folder or this one, for a pasted block. Returns the new path. */
@@ -664,16 +689,23 @@ export class ProjectFolders implements NotebookFolders {
     }
     return moved;
   }
-  /** Copies the folder images a pasted Text block embeds into the same place in this project's folder, unless a file is already there. */
-  copyNoteImagesFrom(fromProjectId: string, fromNodeId: string, sources: string[], toProjectId: string): void {
-    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId);
+  /** Takes back the files a paste copied into this project's folder when the paste itself is refused, with the folders they left empty. */
+  discardCopies(projectId: string, paths: string[]): void {
+    let files: FolderFiles;
+    try { files = this.require(projectId).files; } catch { return; }
+    for (const rel of paths) try { files.remove(rel); files.prune(rel, rel.split('/')[0]!); } catch { /* already gone */ }
+  }
+  /** Copies the folder images a pasted Text block embeds into the same place in this project's folder, unless a file is already there. Returns the paths it wrote. */
+  copyNoteImagesFrom(fromProjectId: string, fromNodeId: string, sources: string[], toProjectId: string): string[] {
+    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId), written: string[] = [];
     for (const src of new Set(sources)) {
       try {
         // The folder's own path rules (posix.relative cannot read C:\ paths), then the / that project paths use.
         const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(relative(source.root, found.absolute).split(sep).join('/'));
-        if (!files.exists(rel)) files.write(rel, source.read(rel, FILE_BYTES).bytes);
+        if (!files.exists(rel)) { files.write(rel, source.read(rel, FILE_BYTES).bytes); written.push(rel); }
       } catch { /* an image ros.ai cannot find stays as written */ }
     }
+    return written;
   }
   /** A block of the project, for routes that check its saved paths. */
   storeNode(projectId: string, nodeId: string): CanvasNode | undefined { return this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId); }
@@ -781,7 +813,9 @@ export class ProjectFolders implements NotebookFolders {
     else if (kind === 'notebook') node = { ...base, blockType: 'notebook' };
     else node = { ...base, blockType: 'report' };
     // The file is recorded with the block in one transaction, so the folder pass that follows never writes a second copy.
-    return this.store.atomic(() => {
+    // When the block cannot be made, the record goes too: a file recorded without a block would be moved to .ros-ai/trash.
+    const before = record.files[id];
+    try { return this.store.atomic(() => {
       record.files[id] = { path: rel, kind, hash: read.observed.hash, disk: read.observed };
       this.save(record);
       this.store.mutate(projectId, [{ type: 'addNode', node }], `Added ${rel} from the project folder`);
@@ -795,7 +829,7 @@ export class ProjectFolders implements NotebookFolders {
       }
       this.save(record);
       return added;
-    });
+    }); } catch (error) { if (before) record.files[id] = before; else delete record.files[id]; throw error; }
   }
   private ownArtifact(projectId: string, artifactId: string): boolean { try { return this.store.getArtifact(artifactId).projectId === projectId; } catch { return false; } }
 
@@ -975,8 +1009,10 @@ export class ProjectFolders implements NotebookFolders {
       for (let pending = this.pendingText.get(projectId); pending?.size; pending = this.pendingText.get(projectId)) {
         const [nodeId] = pending;
         pending.delete(nodeId);
-        try { await this.readFileText(projectId, nodeId); }
-        catch (error) { const entry = this.load(projectId)?.files[nodeId]; if (entry) { entry.problem = message(error); this.save(this.load(projectId)!); } }
+        let problem: string | undefined;
+        try { await this.readFileText(projectId, nodeId); } catch (error) { problem = message(error); }
+        const record = this.load(projectId), entry = record?.files[nodeId];
+        if (record && entry && entry.textProblem !== problem) { if (problem) entry.textProblem = problem; else delete entry.textProblem; this.save(record); }
       }
     } finally { this.readingText.delete(projectId); }
   }
@@ -1036,7 +1072,7 @@ export class ProjectFolders implements NotebookFolders {
       entry.missing = false;
       if (seen.observed.hash === entry.hash) { delete entry.problem; continue; }
       // A PDF or image replaced on disk: the card shows the new file, and a PDF's text is read again.
-      if (entry.kind === 'file') { entry.hash = seen.observed.hash; entry.disk = seen.observed; delete entry.problem; this.queueText(record.projectId, nodeId); continue; }
+      if (entry.kind === 'file') { entry.hash = seen.observed.hash; entry.disk = seen.observed; delete entry.problem; delete entry.textProblem; this.queueText(record.projectId, nodeId); continue; }
       // A version already seen and refused keeps its problem until the file changes again.
       if (!seen.bytes || !TWO_WAY.has(entry.kind)) continue;
       try {
@@ -1198,10 +1234,19 @@ export class ProjectFolders implements NotebookFolders {
       for (const output of record.outputs[nodeId]) try { this.retire(files, output.path, output.hash, false); files.prune(output.path, 'outputs'); } catch (error) { problems.push({ path: output.path, message: message(error) }); }
       delete record.outputs[nodeId];
     }
+    // Each Code block's outputs go in a folder named after its own file, so two blocks with one title, or a notebook
+    // of the same name, never write over each other's figures.
+    const used = new Set(Object.values(record.files).filter(entry => entry.kind === 'notebook' && !entry.removed).map(entry => stemOf(entry.path).toLowerCase())), folders = new Map<string, string>();
+    for (const node of codeBlocks) {
+      const entry = record.files[node.id], base = entry && !entry.removed ? stemOf(entry.path) : safeFileBase(node.title);
+      let name = base;
+      for (let index = 2; used.has(name.toLowerCase()); index++) name = `${base} ${index}`;
+      used.add(name.toLowerCase()); folders.set(node.id, name);
+    }
     for (const node of codeBlocks) {
       const run = runs.find(item => item.nodeId === node.id && item.status === 'completed' && item.configuration.kind === 'local-experiment');
       const outputs = (run?.artifactIds ?? []).map(id => artifacts.get(id)).filter((artifact): artifact is Artifact => Boolean(artifact && isOutputArtifact(artifact)));
-      const previous = record.outputs[node.id] ?? [], folder = posix.join('outputs', safeFileBase(node.title)), names = new Set<string>();
+      const previous = record.outputs[node.id] ?? [], folder = posix.join('outputs', folders.get(node.id)!), names = new Set<string>();
       const wanted = outputs.map(artifact => {
         const file = outputFile(artifact), stem = safeFileBase(artifact.title);
         let path = posix.join(folder, `${stem}${file.extension}`);
@@ -1408,7 +1453,8 @@ export function attachProjectFolderRoutes(app: Express, folders: ProjectFolders)
       res.status(206).setHeader('Content-Range', `bytes ${start}-${end}/${file.size}`);
     }
     res.setHeader('Content-Length', String(end - start + 1));
-    if (req.method === 'HEAD') { res.end(); return; }
+    // An empty file has nothing to stream, and a read from 0 to -1 would throw.
+    if (req.method === 'HEAD' || !file.size) { res.end(); return; }
     const stream = createReadStream(file.absolute, { start, end });
     stream.on('error', () => { if (!res.headersSent) res.status(404); res.end(); });
     stream.pipe(res);

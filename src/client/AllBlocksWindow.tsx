@@ -21,18 +21,18 @@ const METRIC_SOURCES: { id: MetricSource; label: string; detail: string; needs: 
   { id: 'umami', label: 'Umami', detail: 'Website visitors, clicks and downloads', needs: 'Needs Umami connected on the Plugins page with an API key. Leave the website empty when the key reaches only one.' },
   { id: 'railway', label: 'Railway', detail: 'Whether each service is up', needs: 'Needs Railway connected on the Plugins page with an account token. Leave the project empty when the token reaches only one.' },
 ];
-export type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput; postLink?: string };
-type Props = { initial?: KindId; scope: string | null; groups: { id: string; title: string }[]; folder: boolean; local: boolean; onClose: () => void; onCreate: (kind: BlockKind, options: AddOptions) => Promise<void>; onPaper: (scope: string | null, paperId: string) => Promise<void> };
+type AddOptions = { title: string; scope: string | null; label?: string; file?: File; notion?: NotionView; googleLink?: string; training?: TrainingView; metric?: MetricInput; postLink?: string };
+type Props = { initial?: KindId; scope: string | null; groups: { id: string; title: string }[]; folder: boolean; onClose: () => void; onCreate: (kind: BlockKind, options: AddOptions) => Promise<void>; onPaper: (scope: string | null, paperId: string) => Promise<void> };
 
 /** All blocks: every kind in three groups, a search over them, and the chosen kind shown as it looks on the map with
  *  what it does and what it needs. A kind that needs a file, a link or a paper asks for it here. Enter adds. */
-export function AllBlocksWindow({ initial, scope, groups, folder, local, onClose, onCreate, onPaper }: Props) {
+export function AllBlocksWindow({ initial, scope, groups, folder, onClose, onCreate, onPaper }: Props) {
   const [query, setQuery] = useState(''), [selected, setSelected] = useState<KindId>(initial ?? 'text'), [busy, setBusy] = useState(false), [menu, setMenu] = useState<'label' | 'where' | null>(null);
   const [title, setTitle] = useState(''), [label, setLabel] = useState(''), [where, setWhere] = useState<string | null>(scope);
   const [file, setFile] = useState<File | null>(null), [paper, setPaper] = useState<PaperSummary | null>(null);
   const [notionUrl, setNotionUrl] = useState(''), [notionFilter, setNotionFilter] = useState(''), [googleUrl, setGoogleUrl] = useState(''), [trainingFolder, setTrainingFolder] = useState('~/code/ros-nemotron-run'), [trainingHost, setTrainingHost] = useState(''), [metricSource, setMetricSource] = useState<MetricSource>('cloud'), [metricRepo, setMetricRepo] = useState('arkdong/ros-ai'), [metricId, setMetricId] = useState(''), [postLink, setPostLink] = useState('');
   const [resting, setResting] = useState(false), rest = useRef<number | null>(null), foot = useRef<HTMLDivElement>(null);
-  const kinds = searchKinds(query, local), kind = blockKind(selected), frames = PREVIEW_FRAMES[selected], frame = usePreviewLoop(selected, resting);
+  const kinds = searchKinds(query), kind = blockKind(selected), frames = PREVIEW_FRAMES[selected], frame = usePreviewLoop(selected, resting);
   const text = kind.id === 'text', papers = kind.id === 'paper';
   const ready = papers ? Boolean(paper) : kind.id === 'file' ? Boolean(file) : kind.id === 'notion' ? Boolean(notionUrl.trim()) : kind.id === 'google' ? Boolean(googleUrl.trim()) : kind.id === 'training' ? Boolean(trainingFolder.trim()) : kind.id === 'metric' ? metricSource !== 'github' || Boolean(metricRepo.trim()) : kind.id === 'post' ? Boolean(postPlatform(postLink)) : true;
   useEffect(() => { if (kinds.length && !kinds.some(item => item.id === selected)) setSelected(kinds[0].id); }, [query]);

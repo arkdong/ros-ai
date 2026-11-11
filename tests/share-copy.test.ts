@@ -118,3 +118,10 @@ test('names of keys in code are not keys', () => {
   assert.deepEqual(scanText('token = settings.github_token').map(match => match.kind), []);
   assert.deepEqual(scanText('TOKEN=9f8e7d6c5b4a39281706').map(match => match.text), ['9f8e7d6c5b4a39281706']);
 });
+
+test('long dotted text does not slow the scanner, and addresses in it are still found', () => {
+  const started = performance.now();
+  const found = scanText(`${'a.'.repeat(50_000)} write to first.last+tag@mail.example.org today`);
+  assert(performance.now() - started < 1000, 'the scan stays quick');
+  assert.deepEqual(found.map(item => [item.kind, item.text]), [['email', 'first.last+tag@mail.example.org']]);
+});

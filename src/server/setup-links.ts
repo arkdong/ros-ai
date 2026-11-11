@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { childEnvironment } from './codex-app-server.js';
@@ -17,7 +17,7 @@ const word = (value: string) => /\s/u.test(value) ? quoted(value) : value;
 const nodeCommand = (id?: AgentId) => process.env.ROS_NODE_COMMAND || (id === 'cursor' || id === 'claude-app' ? process.execPath : 'node');
 /** The process an agent starts for ros.ai. Pi lists ros.ai's tools with its own rather than behind code it writes;
  * Hermes Agent's MCP client calls itself only "mcp", so its link names it to the bridge. */
-export function entryFor(id: AgentId, bridge: string): { command: string; args: string[]; exposure?: 'direct' } {
+function entryFor(id: AgentId, bridge: string): { command: string; args: string[]; exposure?: 'direct' } {
   return { command: nodeCommand(id), args: id === 'hermes' ? [bridge, '--client=hermes'] : [bridge], ...(id === 'pi' ? { exposure: 'direct' as const } : {}) };
 }
 /** The command a person would paste, or the settings entry they would add. */
@@ -73,7 +73,10 @@ function readSettings(target: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('it is not a JSON object');
   return value as Record<string, unknown>;
 }
-function writeSettings(target: string, value: Record<string, unknown>) {
+function writeSettings(supplied: string, value: Record<string, unknown>) {
+  // A settings file kept as a link (into a dotfiles folder, say) stays a link: the file it points to is the one replaced.
+  let target = supplied;
+  try { target = realpathSync(supplied); } catch { /* not there yet */ }
   const mode = existsSync(target) ? statSync(target).mode & 0o777 : 0o600, temporary = `${target}.ros-ai-tmp`;
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode });

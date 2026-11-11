@@ -7,6 +7,7 @@ import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchResponse } from '../src/server/providers.js';
+import { spendingLimitsOn } from './spending-limits.js';
 
 // All provider calls below are deferred in-memory fixtures. Late responses ignore
 // abort deliberately; these tests do not contact Tavily, Nebius or a runtime.
@@ -97,7 +98,8 @@ test('project stop aborts search through the assistant lock and the saved run li
   assert.equal(f.store.listUsage()[0].status, 'uncertain');
   f.search.requests[0].resolve(sources()); await delay();
   assert.equal(f.store.listArtifacts(f.project.id).length, 0);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: false, searchAvailable: false });
+  const after = f.service.assistantCapabilities(f.project.id);
+  assert.equal(after.modelAvailable, false); assert.equal(after.searchAvailable, false); assert.match(String(after.modelBlocker), /stopped/);
 });
 
 test('shutdown awaits search cleanup, retains interrupted state and discards responses from an abort-ignoring adapter', async t => {
@@ -136,7 +138,8 @@ test('a cancelled parent prevents undispatched search admission and an in-flight
   assert.equal(f.search.requests.length, 1); assert.equal(f.store.listArtifacts(f.project.id).length, 0);
 });
 
-test('failed search budget admission rolls back the project reservation before dispatch', async t => {
+test('with spending limits on, failed search budget admission rolls back the project reservation before dispatch', async t => {
+  spendingLimitsOn(t);
   const f = fixture(t, { tavilyLimit: 0 });
   const result = await observed(f.service.assistantSearch(f.project.id, 'a', 'No search budget', new AbortController().signal, 'turn-no-budget'));
   assert.match(result.error!.message, /budget admission/);
@@ -145,25 +148,18 @@ test('failed search budget admission rolls back the project reservation before d
   assert.equal(f.authority.policy(f.project.id).used.spendUsd, 0);
 });
 
-test('project-aware capabilities respect stop, zero/default allowance, call exhaustion and the exact search ceiling without changing grants', t => {
+test('project-aware capabilities follow a project stop and never write a project policy', t => {
   const f = fixture(t);
   const global = f.service.assistantCapabilities();
-  assert.deepEqual(global, { modelAvailable: true, searchAvailable: true });
-  const empty = f.store.createProject('No project allowance');
-  assert.deepEqual(f.service.assistantCapabilities(empty.id), { modelAvailable: false, searchAvailable: false });
-  assert.equal(f.store.record('policy', empty.id), undefined, 'A capability check never mints a project allowance');
-  const configure = (modelCalls: number, spendUsd: number) => f.authority.configure(f.project.id, { mode: 'ask' });
-  configure(1, TAVILY_CREDIT_USD / 2);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: true, searchAvailable: false });
-  configure(1, TAVILY_CREDIT_USD);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), global);
-  f.authority.reserve(f.project.id, { kind: 'model', nodeId: 'a', fingerprint: 'fixture-exhaustion', spendUsd: TAVILY_CREDIT_USD });
-  const policy = f.authority.policy(f.project.id);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: false, searchAvailable: false });
-  assert.deepEqual(f.authority.policy(f.project.id), policy);
-  configure(1, 10);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: false, searchAvailable: false }, 'Call exhaustion is independent of remaining spend');
-  configure(2, TAVILY_CREDIT_USD);
-  assert.deepEqual(f.service.assistantCapabilities(f.project.id), { modelAvailable: false, searchAvailable: false }, 'Spend exhaustion is independent of remaining calls');
+  assert.deepEqual(global, { modelBlocker: null, modelAvailable: true, searchAvailable: true });
+  const other = f.store.createProject('Never configured');
+  assert.deepEqual(f.service.assistantCapabilities(other.id), global);
+  assert.equal(f.store.record('policy', other.id), undefined, 'A capability check never writes a project policy');
+  f.authority.setStopped(f.project.id, true);
+  const stopped = f.service.assistantCapabilities(f.project.id);
+  assert.equal(stopped.modelAvailable, false); assert.equal(stopped.searchAvailable, false); assert.match(String(stopped.modelBlocker), /stopped/);
+  assert.deepEqual(f.service.assistantCapabilities(other.id), global, 'A stop in one project leaves the others alone');
   assert.deepEqual(f.service.assistantCapabilities(), global, 'No-argument capability checks retain the global view');
+  f.authority.setStopped(f.project.id, false);
+  assert.deepEqual(f.service.assistantCapabilities(f.project.id), global);
 });

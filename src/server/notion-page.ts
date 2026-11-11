@@ -49,7 +49,7 @@ const BLOCK_TAG = new RegExp(`(<\\/?(?:${BLOCK.join('|')})(?:\\s[^<>]*?)?\\/?>)`
 
 /** The content of a page as plain Markdown, block by block: headings, lists, to-dos, quotes, callouts, tables and
  * media become their Markdown forms; columns, tabs and other containers only contribute what they hold. */
-export function notionUnits(content: string, names: UserNames = () => undefined): NotionUnit[] {
+function notionUnits(content: string, names: UserNames = () => undefined): NotionUnit[] {
   const out: string[] = [], stack: Frame[] = [], units: NotionUnit[] = [];
   let cell: string[] | null = null, row: string[] | null = null, tableRows = 0, loose: { from: number } | null = null, pipes: number | null = null;
   const blank = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
@@ -137,7 +137,7 @@ export function notionUnits(content: string, names: UserNames = () => undefined)
 }
 
 /** The content of a page as one piece of plain Markdown. */
-export function notionMarkdown(content: string, names: UserNames = () => undefined): string {
+function notionMarkdown(content: string, names: UserNames = () => undefined): string {
   const lines = notionUnits(content, names).map(unit => unit.markdown);
   // Notion separates every block with a blank line; neighbouring list items read as one list without it.
   return lines.join('\n\n').replace(/^(\s*(?:- |1\. ).*)\n\n(?=\s*(?:- |1\. ))/gmu, '$1\n').trim().slice(0, CONTENT_CHARACTERS);
@@ -145,7 +145,7 @@ export function notionMarkdown(content: string, names: UserNames = () => undefin
 
 type Column = { type: NotionPropertyType; options?: string[] };
 /** What each column of the database holds, from the SQLite schema Notion sends with a page. */
-export function notionSchema(schema: string): Map<string, Column> {
+function notionSchema(schema: string): Map<string, Column> {
   const columns = new Map<string, Column>();
   for (const line of schema.split('\n')) {
     const match = line.match(/^\s*(?:"((?:[^"]|"")+)"|(\w+))\s+(TEXT|FLOAT|INTEGER|REAL)\b[^-]*(?:--\s*(.*))?$/u);
@@ -186,7 +186,7 @@ function property(name: string, raw: unknown, column: Column | undefined, names:
 }
 
 /** The properties in the order the database lists them (its SQLite schema), the title first, then any others. */
-export function notionProperties(propertiesJson: string, schema: string, title: string, names: UserNames): { properties: NotionProperty[]; titleProperty?: string } {
+function notionProperties(propertiesJson: string, schema: string, title: string, names: UserNames): { properties: NotionProperty[]; titleProperty?: string } {
   let raw: Record<string, unknown> = {};
   try { raw = JSON.parse(propertiesJson) as Record<string, unknown>; } catch { return { properties: [] }; }
   const columns = notionSchema(schema);
@@ -212,7 +212,7 @@ export function notionProperties(propertiesJson: string, schema: string, title: 
     if (name === titleProperty) return { ...property(name, value, { type: 'title' }, names), type: 'title' as const, editable: true };
     if (column?.type === 'date' || (value && typeof value === 'object' && !Array.isArray(value) && ('start' in value || 'end' in value || 'datetime' in value))) {
       const parts = (value ?? {}) as { start?: string; end?: string; datetime?: boolean }, start = part(parts.start, parts.datetime), end = part(parts.end, parts.datetime);
-      return { name, value: end ? `${start} – ${end}` : start, type: 'date' as const, editable: true, date: { start: parts.start?.slice(0, 10) ?? '', end: parts.end?.slice(0, 10) ?? '' } };
+      return { name, value: end ? `${start} – ${end}` : start, type: 'date' as const, editable: true, date: { start: parts.start?.slice(0, 10) ?? '', end: parts.end?.slice(0, 10) ?? '', ...(parts.datetime && parts.start && parts.start.length > 10 ? { startAt: parts.start } : {}), ...(parts.datetime && parts.end && parts.end.length > 10 ? { endAt: parts.end } : {}) } };
     }
     return property(name, value, column, names);
   });

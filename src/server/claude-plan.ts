@@ -12,11 +12,10 @@ const LOGIN_SECONDS = 600, STATUS_SECONDS = 15, STATUS_CACHE_MS = 30_000, USAGE_
  * as long as the sign-in happens in Anthropic's own flow and the product never handles the
  * token. So ros.ai only starts the program Anthropic ships with the Agent SDK and asks it to
  * sign in; Claude Code keeps and renews its own login where it always does (the person's usual
- * Claude Code sign-in), and ros.ai never reads, stores or passes it on. Local app only. */
-export const planAllowed = process.env.ROS_PUBLIC_DEMO !== '1';
+ * Claude Code sign-in), and ros.ai never reads, stores or passes it on. */
 
 /** The Claude Code program the Agent SDK ships for this computer, found the way the SDK finds it. */
-export function claudeBinary(): string | null {
+function claudeBinary(): string | null {
   let require: NodeJS.Require;
   try { require = createRequire(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')); } catch { return null; }
   const ext = process.platform === 'win32' ? '.exe' : '';
@@ -53,8 +52,8 @@ export class ClaudePlan {
     if (!force && Date.now() - this.checkedAt <= STATUS_CACHE_MS) return Promise.resolve(this.status);
     if (this.checking) return this.checking;
     const binary = claudeBinary();
-    if (!planAllowed || !binary) {
-      this.status = { state: 'unavailable', message: planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude subscription can only be used in the local app.' };
+    if (!binary) {
+      this.status = { state: 'unavailable', message: 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' };
       this.checkedAt = Date.now();
       return Promise.resolve(this.status);
     }
@@ -124,7 +123,7 @@ export class ClaudePlan {
   startLogin(): ClaudePlanLogin {
     if (this.login?.state === 'waiting') return this.loginState()!;
     const binary = claudeBinary();
-    if (!planAllowed || !binary) return this.fail(planAllowed ? 'The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.' : 'A Claude subscription can only be used in the local app.');
+    if (!binary) return this.fail('The Claude Code program that comes with ros.ai is missing on this computer. Run npm ci, then try again.');
     // Its input stays open so it waits for the browser instead of giving up.
     const child = spawn(binary, ['auth', 'login', '--claudeai'], { env: planEnvironment(), stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
     const login: ClaudePlanLogin & { child?: ChildProcess } = { state: 'waiting', message: 'Finish signing in on the Claude page that opened in your browser.', command: terminalCommand(binary), child };

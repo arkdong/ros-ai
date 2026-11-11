@@ -5,7 +5,7 @@ import type { ProjectDetail } from '../shared/types';
 import { ResearchRing } from './Brand';
 import { RosApprovalMenu, RosModelMenu, RosSizeIcon, rosSizeLabel } from './RosModelMenu';
 import type { ResearchPolicy } from '../shared/research';
-import { readSaved, saveLocal, useDraft } from './persistence';
+import { saveLocal, useDraft } from './persistence';
 import { textPreview } from '../shared/presentation';
 import { useSkillMenu } from './SkillMenu';
 import { StopButton, useEscToStop } from './EscToStop';
@@ -61,7 +61,8 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
     if (!message || busy || (running && !active)) return;
     if (state && !state.modelAvailable && !active) { onOpen('half'); return; }
     setDraft('');
-    if (!await onSend(message, plugins.suggest)) setDraft(message);
+    // A message the server refuses (too long, too many waiting, a timeout) comes back into the box; the page says why.
+    if (!await onSend(message, plugins.suggest).catch(() => false)) setDraft(current => current || message);
     input.current?.focus();
   };
   // Stopping leaves the cursor in the box, ready for the next question.

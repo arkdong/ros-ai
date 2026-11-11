@@ -48,13 +48,13 @@ const snap = (value: number) => Math.round(value / 24) * 24, snapUp = (value: nu
 const now = () => new Date().toISOString();
 const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** A short duration for a turn's steps: "4 s", "2 min 50 s". */
-export const took = (ms: number) => { const seconds = Math.max(1, Math.round(ms / 1000)); return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ''}`; };
+const took = (ms: number) => { const seconds = Math.max(1, Math.round(ms / 1000)); return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min${seconds % 60 ? ` ${seconds % 60} s` : ''}`; };
 /** Blocks an agent's research already shapes (its Agent block, Web and Search blocks, results and findings) keep their tree. */
 const shaped = (node: CanvasNode) => node.kind === 'group' || ['agent', 'web', 'search', 'finding'].includes(node.blockType ?? '') || node.label === 'result';
 const setAside = (node: CanvasNode) => node.title === SET_ASIDE.title && node.description.startsWith(SET_ASIDE.description);
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
-export const LANDING_PROMPT = `You are ROS, the layer that tidies an agent's work on a ros.ai research map. The agent has finished its turn and its words are final: never rewrite or remove anything. You only give its work the map's shape.
+const LANDING_PROMPT = `You are ROS, the layer that tidies an agent's work on a ros.ai research map. The agent has finished its turn and its words are final: never rewrite or remove anything. You only give its work the map's shape.
 
 You get the researcher's request, the agent's reply, the blocks the turn left outside any group (refs n1, n2, ...), the groups already on the map (g1, ...), other blocks on the map (b1, ...) and, when the agent answered only in chat, its answer cut into sections (s1, ...).
 
@@ -71,7 +71,7 @@ const responseShape = z.object({
   toMap: z.object({ keep: z.boolean(), title: z.string() }).nullable(),
 });
 // The contract goes in ROS's own instructions: one system message, which every chat template takes.
-export const LANDING_SYSTEM = `${LANDING_PROMPT}\nReturn only the JSON object, without Markdown fences. Its JSON Schema: ${JSON.stringify(z.toJSONSchema(responseShape))}`;
+const LANDING_SYSTEM = `${LANDING_PROMPT}\nReturn only the JSON object, without Markdown fences. Its JSON Schema: ${JSON.stringify(z.toJSONSchema(responseShape))}`;
 const WORDS = new Set<string>(LINK_WORDS);
 const ref = z.string().trim().min(2).max(16);
 const placeItem = z.object({ block: ref, group: ref });
@@ -405,7 +405,7 @@ function grid(nodes: CanvasNode[]): { node: CanvasNode; at: { x: number; y: numb
   const columns = nodes.length <= 2 ? nodes.length : nodes.length <= 4 ? 2 : 3, step = snapUp(Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP);
   const rows: number[] = [];
   nodes.forEach((node, index) => { const row = Math.floor(index / columns); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
-  const tops = rows.reduce<number[]>((list, height, index) => [...list, index ? list[index - 1] + snapUp(rows[index - 1] + LAYOUT_GAP) : 0], []);
+  const tops = rows.reduce<number[]>((list, _height, index) => [...list, index ? list[index - 1] + snapUp(rows[index - 1] + LAYOUT_GAP) : 0], []);
   return nodes.map((node, index) => ({ node, at: { x: (index % columns) * step, y: tops[Math.floor(index / columns)] } }));
 }
 /** A top-level block's footprint: an open group's frame around its blocks, or a card at its tallest. */

@@ -20,7 +20,7 @@
 .plugin-row-state.off i { background: #c9c9c9; }
 .plugin-row-action { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; color: var(--muted); }
 .plugin-row-action small { font-size: var(--text-xs); white-space: nowrap; }
-.plugins-footnote, .plugin-later { font-size: var(--text-xs); color: var(--muted); line-height: 1.5; margin-top: 22px; }
+.plugins-footnote { font-size: var(--text-xs); color: var(--muted); line-height: 1.5; margin-top: 22px; }
 .plugin-crumbs { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--muted); margin-bottom: 24px; }
 .plugin-crumbs .text-button { font-size: var(--text-sm); color: var(--muted); padding: 0; }
 .plugin-crumbs span { color: var(--ink); }
@@ -31,7 +31,6 @@
 .plugin-uses li { margin: 2px 0; }
 .plugin-section { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin: 26px 0 10px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
 .plugin-section small { font-size: var(--text-sm); font-weight: 400; color: var(--muted); }
-.plugin-later { margin-top: 0; }
 /* Sidebar: rows match the project rows (39px, 8px radius, white tile when active). */
 .plugins-sidebar { display: flex; flex-direction: column; gap: 2px; }
 .single-canvas-shell .sidebar .plugins-nav, .plugins-nav { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 39px; height: 39px; box-sizing: border-box; flex: none; margin: 0; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; line-height: 1.3; color: var(--muted); text-align: left; cursor: pointer; }

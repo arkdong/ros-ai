@@ -13,7 +13,7 @@ const limitFields = {
   perTurnToolCalls: z.number().int().min(0).max(20),
 };
 const limitsSchema = z.object(limitFields).strict();
-export const codexAllowanceUpdateSchema = z.object({
+const codexAllowanceUpdateSchema = z.object({
   ...limitFields, enabled: z.literal(true), acknowledged: z.literal(true),
   nodeIds: z.array(id).max(500).optional(), artifactIds: z.array(id).max(10000).optional(),
 }).strict();

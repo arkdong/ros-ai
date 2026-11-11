@@ -50,10 +50,10 @@ export const PERMISSION_PROFILE = 'ros_ai';
 /** Codex on the person's OpenAI API key instead of their ChatGPT plan. The key reaches only this process, under a
  * CODEX_HOME of its own, so the person's Codex sign-in, settings and history are never in reach. */
 export type CodexApiKey = { key: string; home: string; baseUrl: string; model: string };
-export const API_KEY_ENV = 'OPENAI_API_KEY';
+const API_KEY_ENV = 'OPENAI_API_KEY';
 export const codexProvider = (api: boolean) => api ? 'ros_ai_api' : 'ros_ai_local';
 export type CodexProcessOptions = { disabledMcp?: string[]; isolation?: CodexIsolation | null; api?: CodexApiKey | null };
-export const codexBinary = () => process.env.ROS_CODEX_BINARY || 'codex';
+const codexBinary = () => process.env.ROS_CODEX_BINARY || 'codex';
 const disabledFeatures = ['shell_tool', 'unified_exec', 'shell_snapshot', 'apps', 'plugins', 'browser_use', 'browser_use_external', 'computer_use', 'in_app_browser', 'code_mode', 'code_mode_only', 'multi_agent', 'image_generation', 'hooks', 'workspace_dependencies', 'memories', 'skill_mcp_dependency_install'];
 // -c values are TOML; a permission profile's folders are an inline table.
 const toml = (value: unknown): string => value && typeof value === 'object' ? `{${Object.entries(value).map(([key, item]) => `${JSON.stringify(key)}=${toml(item)}`).join(',')}}` : JSON.stringify(value);

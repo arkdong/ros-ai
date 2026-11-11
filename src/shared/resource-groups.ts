@@ -9,5 +9,5 @@ export function groupResources(resources: readonly ProjectResource[]) {
     const existing = groups.get(key) ?? [];
     existing.push(resource); groups.set(key, existing);
   }
-  return [...groups].map(([id, versions]) => ({ id, versions: versions.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)) }));
+  return [...groups].map(([id, versions]) => ({ id, versions: versions.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) }));
 }

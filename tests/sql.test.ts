@@ -159,6 +159,13 @@ test('a saved result is a new Data block beside its block, or fills an empty one
   assert.equal(store.getProject(project.id).canvas.nodes.length, blocks);
 });
 
+test('one Undo takes a saved result away, the block and its data together', async t => {
+  const { sql, store, project } = await fixture(t);
+  const saved = await sql.save(project.id, { sql: 'SELECT 1 AS one', nodeId: 'sales' });
+  assert.ok(store.getProject(project.id).canvas.nodes.some(node => node.id === saved.nodeId));
+  assert.equal(store.undo(project.id).canvas.nodes.some(node => node.id === saved.nodeId), false);
+});
+
 test('an Excel file needs DuckDB’s Excel reader, and without a folder only Data blocks are tables', async t => {
   // An extension folder that cannot be made stands in for a computer offline, so the test never downloads.
   const { sql, store, project } = await fixture(t, { extensionDirectory: base => { const file = join(base, 'not-a-folder'); writeFileSync(file, ''); return file; } });

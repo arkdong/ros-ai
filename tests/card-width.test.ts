@@ -109,3 +109,18 @@ test('a height saved on a Group, as an agent may send one, does not stretch its 
   // Any other card keeps the height it was given.
   assert.equal(setCardHeight({ ...group, kind: 'topic' }), 1100);
 });
+
+test('undoing Shrink blocks puts the blocks back where they were, and redo draws them together again', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'ros-shrink-undo-'));
+  const store = new Store(directory);
+  try {
+    const project = store.createProject('Shrink');
+    const place = (id: string, x: number, y: number): CanvasNode => ({ id, title: id, description: 'Text', x, y });
+    store.mutate(project.id, [{ type: 'addNode', node: place('a', 96, 96) }, { type: 'addNode', node: place('b', 576, 96) }, { type: 'addNode', node: place('c', 96, 480) }], 'Three blocks');
+    // What the Size menu sends for half size: each block scaled and moved towards the top-left block.
+    store.mutate(project.id, [{ type: 'updateNode', id: 'a', patch: { scale: 0.5, x: 96, y: 96 } }, { type: 'updateNode', id: 'b', patch: { scale: 0.5, x: 336, y: 96 } }, { type: 'updateNode', id: 'c', patch: { scale: 0.5, x: 96, y: 288 } }], 'Shrink blocks');
+    const spots = (nodes: CanvasNode[]) => nodes.map(node => [node.id, node.x, node.y, node.scale ?? 1]);
+    assert.deepEqual(spots(store.undo(project.id).canvas.nodes), [['a', 96, 96, 1], ['b', 576, 96, 1], ['c', 96, 480, 1]]);
+    assert.deepEqual(spots(store.redo(project.id).canvas.nodes), [['a', 96, 96, 0.5], ['b', 336, 96, 0.5], ['c', 96, 288, 0.5]]);
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});

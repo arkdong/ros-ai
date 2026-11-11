@@ -1,7 +1,7 @@
 import type { AssistantReference, OutlineEntry } from './assistant.js';
 import type { ProjectDetail } from './types.js';
 
-export type OutlineBranch = { entry: OutlineEntry; children: OutlineBranch[]; findings: OutlineEntry[] };
+type OutlineBranch = { entry: OutlineEntry; children: OutlineBranch[]; findings: OutlineEntry[] };
 export type OutlineHierarchy = { directions: OutlineBranch[]; sharedFindings: OutlineEntry[]; unassignedFindings: OutlineEntry[]; directionCount: number; findingCount: number };
 type OutlineContext = Pick<ProjectDetail, 'project' | 'artifacts' | 'runs' | 'messages'>;
 

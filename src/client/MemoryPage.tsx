@@ -24,13 +24,12 @@ function MemoryLineRow({ entry, busy, onDecide, showKind }: { entry: MemoryEntry
 }
 
 /** Settings › Memory: the switch, the lines waiting for a decision, the kept lines by subject, and the files. */
-export function MemoryPage({ publicDemo }: { publicDemo: boolean }) {
+export function MemoryPage() {
   const [state, setState] = useState<PersonalMemoryState | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<MemoryKind>('style'), [text, setText] = useState(''), [about, setAbout] = useState(false);
   const refresh = useCallback(async () => {
-    if (publicDemo) return;
     try { setState(await api<PersonalMemoryState>('/api/memory')); setError(''); } catch (cause) { setError(message(cause)); }
-  }, [publicDemo]);
+  }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const run = async (work: () => Promise<unknown>) => { setBusy(true); try { await work(); await refresh(); } catch (cause) { setError(message(cause)); } finally { setBusy(false); } };
   const decide = (id: string, decision: Decision) => void run(() => post(`/api/memory/${id}`, { decision }));
@@ -42,8 +41,7 @@ export function MemoryPage({ publicDemo }: { publicDemo: boolean }) {
         {about && <p className="settings-lead">Each line waits for you under the project's permission choice, and every agent that works on your map gets the kept lines as your preferences, never as instructions. Project memory (the question, decisions and findings) stays with each project.</p>}</div>
       {state && <button type="button" role="switch" aria-checked={state.enabled} aria-label="ROS remembers how you work" className={`switch ${state.enabled ? 'on' : ''}`} disabled={busy} onClick={() => void run(() => api('/api/memory', { method: 'PUT', body: JSON.stringify({ enabled: !state.enabled }) }))}><span/></button>}
     </header>
-    {publicDemo && <p className="rail-page-note">This demo keeps no memory of its own. In the local workspace, ROS remembers how you work.</p>}
-    {!publicDemo && !state && (error ? <p className="inline-error" role="alert">{error}</p> : <p className="rail-page-note"><LoaderCircle size={14} className="spin"/> Reading memory…</p>)}
+    {!state && (error ? <p className="inline-error" role="alert">{error}</p> : <p className="rail-page-note"><LoaderCircle size={14} className="spin"/> Reading memory…</p>)}
     {state && <>
       {error && <p className="inline-error" role="alert">{error}</p>}
       {!state.enabled && <p className="settings-lead memory-off">Off: nothing is proposed or shared. The lines below stay in your files.</p>}

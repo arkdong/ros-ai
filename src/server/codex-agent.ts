@@ -348,6 +348,8 @@ export class CodexAgentService implements AgentRuntime {
     request.signal.addEventListener('abort', stop, { once: true });
     this.active.set(key, { projectId: request.projectId, rpc, stop, done: terminal });
     rpc.onFailure = fail;
+    // Stop pressed while Codex was still starting: the signal has already fired, so no event will come.
+    if (request.signal.aborted) stop();
     rpc.onNotification = (method, params) => {
       if (params.threadId && params.threadId !== threadId) return;
       if (method === 'turn/started') { const turn = object(params.turn); turnId = String(turn.id ?? ''); attempt.turnId = turnId; save(); if (stopped) stop(); }

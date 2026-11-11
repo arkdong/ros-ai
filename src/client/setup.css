@@ -42,7 +42,6 @@
 .setup-command { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 6px 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--canvas); }
 .setup-command code { flex: 1; min-width: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); overflow-wrap: anywhere; user-select: all; }
 .setup-command .icon-button { width: 26px; height: 26px; flex-shrink: 0; }
-.setup-open { margin-top: 6px; text-decoration: none; }
 .setup-note { margin: 0; padding: 10px 0 2px; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
 /* What Connect does with what is ticked, in one line over the footer. */
 .setup-plan { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--line-soft); font-size: var(--text-xs); line-height: 1.5; color: var(--body); }

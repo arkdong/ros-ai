@@ -12,7 +12,6 @@ import { attachRosLayerRoutes, type RosLayer } from './ros-layer.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
 import { Authority, modeSchema } from './authority.js';
-import type { ResearchService } from './research.js';
 import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
@@ -25,13 +24,11 @@ import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
-import { seedDemo } from './demo.js';
 import { projectBudgetReport, usageAnalytics } from './budget-report.js';
 import { providerBalances } from './provider-balances.js';
 import { attachSpendingBudgetRoutes, SpendingBudget } from './spending-budget.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
-import { attachTutorialRoutes, TutorialService } from './tutorial.js';
 import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
 import { attachGoogleRoutes, type GoogleWorkspace } from './google-workspace.js';
@@ -49,7 +46,6 @@ import { Geocoder } from './geocode.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
-import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
@@ -62,8 +58,8 @@ const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{publicDemo?:boolean;projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames;usageCounts?:UsageCounts},guide?:WorkspaceGuideService) {
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'cancelProjectChat'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, assistant?:AssistantService, options:{projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames;usageCounts?:UsageCounts}) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -71,15 +67,15 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     const host = req.headers.host ?? '';
-    if (!options.publicDemo && !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) {
+    if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)) {
       return res.status(403).json({ error: 'ros.ai accepts only local host requests.' });
     }
     const origin = req.headers.origin;
-    if (!options.publicDemo && origin && origin !== `http://${host}`) {
+    if (origin && origin !== `http://${host}`) {
       return res.status(403).json({ error: 'Cross-origin requests are not permitted.' });
     }
     // Changes arrive only as JSON from ros.ai's own page. A form or a request from another site cannot send that without permission.
-    if (!options.publicDemo && req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
+    if (req.path.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
       if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Cross-site requests are not permitted.' });
       const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       // A file dropped on the canvas is sent as itself. A form cannot send these types, and a script from another site needs a CORS preflight ros.ai never answers.
@@ -90,35 +86,32 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
     // ros.ai's page frames only App pages, so an App that navigates its own frame anywhere else sends nothing.
-    if (!options.publicDemo && tools?.appFrames) res.setHeader('Content-Security-Policy', tools.appFrames.framePolicy());
+    if (tools?.appFrames) res.setHeader('Content-Security-Policy', tools.appFrames.framePolicy());
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
     next();
   });
-  app.get(['/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302,'/app'));
-  app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
   // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
-  if (!options.publicDemo) app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
+  app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
   // A skill archive (.zip, up to 12 MB) arrives as base64 inside JSON.
-  if (!options.publicDemo) app.use('/api/skills/preview', express.json({ limit: '17mb' }));
+  app.use('/api/skills/preview', express.json({ limit: '17mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'ros.ai' }));
   app.get('/api/projects', (_req, res) => res.json(store.listProjects()));
-  if(!options.publicDemo)attachArtifactEditingRoutes(app,store);
-  const notebooks=options.publicDemo?undefined:attachNotebookRoutes(app,store,authority,options.notebooks);
-  if(!options.publicDemo&&options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
-  if(!options.publicDemo&&options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
+  attachArtifactEditingRoutes(app,store);
+  const notebooks=attachNotebookRoutes(app,store,authority,options.notebooks);
+  if(options.notebooks?.python?.gate)attachNetworkRoutes(app,options.notebooks.python.gate);
+  if(options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;AgentWorkspaceTools.webFiles=new WebFileFetcher();folders.start();}
-  attachTutorialRoutes(app,new TutorialService(store,experiments,{...options,folders}));
-  // Share: a clean copy of the canvas, as a .html canvas file that opens in any browser. Not in the public demo.
-  if(!options.publicDemo)attachShareRoutes(app,new ShareCopies(store,{files:()=>folders,cache:new ProjectCache(store)}),new StillPage(),process.env.ROS_DEV==='1');
-  // SQL over the project's Data blocks and folder files runs DuckDB on this computer, so the public demo leaves it out.
-  if(!options.publicDemo)attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
-  if(agent&&!options.publicDemo)attachCodexAgentRoutes(app,agent);
-  if(tools&&!options.publicDemo){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.usageCounts)attachUsageCountRoutes(app,tools.usageCounts);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.rosLayer)attachRosLayerRoutes(app,tools.rosLayer);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
-  // Map blocks look places up on OpenStreetMap when asked; the public demo leaves lookups out.
-  if(!options.publicDemo){const geocoder=new Geocoder();AgentWorkspaceTools.geocoder=geocoder;app.get('/api/places',async(req,res)=>res.json({places:await geocoder.search(String(req.query.q??''),5)}));}
-  if(!options.publicDemo){attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));
+  // Share: a clean copy of the canvas, as a .html canvas file that opens in any browser.
+  attachShareRoutes(app,new ShareCopies(store,{files:()=>folders,cache:new ProjectCache(store)}),new StillPage(),process.env.ROS_DEV==='1');
+  // SQL over the project's Data blocks and folder files runs DuckDB on this computer.
+  attachSqlRoutes(app,new SqlService(store,{folders,...(options.localPaths?{extensionDirectory:`${options.localPaths.dataDir}/duckdb/extensions`}:{})}));
+  if(agent)attachCodexAgentRoutes(app,agent);
+  if(tools){attachToolCredentialRoutes(app,tools.credentials);attachGoogleDriveRoutes(app,tools.googleDrive,store);if(tools.google)attachGoogleRoutes(app,store,tools.google);if(tools.papers)attachPaperRoutes(app,store,tools.papers,folders);if(tools.browser)attachBrowserRoutes(app,tools.browser);if(tools.claude)attachClaudeAgentRoutes(app,tools.claude);if(tools.acp)attachAcpAgentRoutes(app,tools.acp);if(tools.plugins)attachPluginRoutes(app,tools.plugins);if(tools.apps){attachAppRoutes(app,tools.apps);const notionViews=new NotionViews(tools.apps,new ProjectCache(store));AgentWorkspaceTools.views=notionViews;AgentWorkspaceTools.notionFiles=new NotionFileSaver(tools.apps);attachNotionViewRoutes(app,store,notionViews);}if(tools.cloud)attachCloudAccountRoutes(app,tools.cloud);if(tools.usageCounts)attachUsageCountRoutes(app,tools.usageCounts);attachFeedbackRoutes(app,tools.cloud);if(tools.localRos)attachLocalRosRoutes(app,tools.localRos);if(tools.rosLayer)attachRosLayerRoutes(app,tools.rosLayer);if(tools.setup)attachSetupRoutes(app,tools.setup);if(tools.updates)attachUpdateRoutes(app,tools.updates);}
+  // Map blocks look places up on OpenStreetMap when asked.
+  {const geocoder=new Geocoder();AgentWorkspaceTools.geocoder=geocoder;app.get('/api/places',async(req,res)=>res.json({places:await geocoder.search(String(req.query.q??''),5)}));}
+  {attachTrainingRoutes(app,store);AgentWorkspaceTools.training=async view=>trainingSummary(await readTraining(view));
     // Metric blocks read GitHub with the GitHub plugin's sign-in when there is one, Umami and Railway with their Plugins keys,
     // and ros.ai cloud with the app's own cloud sign-in.
     const cloud=tools?.cloud,cloudUrl=cloud?.address;
@@ -127,19 +120,18 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // Xiaohongshu is read in ros.ai's signed-in browser, logged in once by the person in Plugins › Xiaohongshu.
     const signedIn=tools?.browser&&options.localPaths?new SignedInBrowser(tools.browser,options.localPaths.dataDir):undefined;if(signedIn){attachSignedInRoutes(app,signedIn);tools!.browser!.onShutdown?.(()=>signedIn.shutdown());}
     const posts=new Posts({...(options.notebooks?.python?{python:options.notebooks.python.runtime}:{}),githubToken:()=>tools?.plugins?.token('github'),...(signedIn?{signedIn}:{})});attachPostRoutes(app,store,posts,{folders,files:AgentWorkspaceTools.webFiles});AgentWorkspaceTools.posts=posts;}
-  if(execution.connectionBudgets&&!options.publicDemo)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
-  if(execution.inference&&!options.publicDemo)attachInferenceConnectionRoutes(app,execution.inference);
+  if(execution.connectionBudgets)attachConnectionBudgetRoutes(app,execution.connectionBudgets);
+  if(execution.inference)attachInferenceConnectionRoutes(app,execution.inference);
   // Which web search service agents use: Tavily, Exa or Brave Search, each with its own key.
-  if(execution.searchStatus&&execution.chooseSearch&&!options.publicDemo){
+  if(execution.searchStatus&&execution.chooseSearch){
     app.get('/api/connections/search',(_req,res)=>res.json(execution.searchStatus!()));
     app.put('/api/connections/search',(req,res)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON search choice.',415);res.json(execution.chooseSearch!(req.body));});
   }
-  if(guide&&!options.publicDemo)attachWorkspaceGuideRoutes(app,guide);
   // App blocks run in the local app only; elsewhere their routes say so.
-  attachAppFrameRoutes(app,options.publicDemo?undefined:tools?.appFrames);
+  attachAppFrameRoutes(app,tools?.appFrames);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
-    const { title:named,start,folder } = z.object({ title: z.string().trim().max(160).optional(),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
+    const { title:named,folder } = z.object({ title: z.string().trim().max(160).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
     if(folder&&!folders)throw new StoreError('Project folders are available in the local app.');
     // Check the folder before the project exists, so a refused folder leaves nothing behind.
     if(folder)folders!.prepare(folder);
@@ -149,7 +141,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     for(let n=2;!named&&titles.has(title);n++)title=`Untitled ${n}`;
     const project=store.createProject(title);
     if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
-    res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));
+    res.status(201).json(store.getProject(project.id));
   });
   // Removing a project keeps its folder unless the person asks for the folder to go to the computer's Trash too.
   app.post('/api/projects/:id/trash',async(req,res)=>{
@@ -183,7 +175,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const { message } = z.object({ message: z.string().trim().min(1).max(12000) }).strict().parse(req.body);
     res.json(await execution.chat(routeId(req.params.id), message));
   });
-  const acceptProposal=(id:string,proposalId:string)=>research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId);
+  const acceptProposal=(id:string,proposalId:string)=>execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId);
   app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(acceptProposal(id,proposalId));});
   // A turn's changes from its review card, in the order given (a change before the ones that build on it). Ones already
   // decided are skipped, so Accept all after accepting a row still works.
@@ -222,10 +214,10 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
   app.get('/api/settings/general', (_req, res) => res.json({ dataDir: options.localPaths?.dataDir ?? null, keysFile: options.localPaths?.keysFile ?? null }));
   const spendingBudget = new SpendingBudget(store);
-  if (!options.publicDemo) attachSpendingBudgetRoutes(app, spendingBudget);
-  if (!options.publicDemo) app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
+  attachSpendingBudgetRoutes(app, spendingBudget);
+  app.get('/api/usage/balances', async (_req, res) => res.json({ balances: await providerBalances({ usage: providerUsage, budget: spendingBudget, cloud: tools?.cloud, codex: agent ? () => agent.rateLimits() : undefined }) }));
   // How much of the Claude and ChatGPT subscriptions' windows is used, as Claude Code and Codex report it. Local app only.
-  if (!options.publicDemo) app.get('/api/usage/plans', async (_req, res) => res.json({ plans: (await Promise.all([tools?.claude?.plan.usage(), agent?.planUsage()].map(item => item?.catch(() => null)))).filter(Boolean) }));
+  app.get('/api/usage/plans', async (_req, res) => res.json({ plans: (await Promise.all([tools?.claude?.plan.usage(), agent?.planUsage()].map(item => item?.catch(() => null)))).filter(Boolean) }));
   app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
   app.get('/api/projects/:id/budget', async (req, res) => {
     const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
@@ -235,7 +227,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
   app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));
-  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);guide?.stopProject(id);if(research)res.json(research.stopProject(id));else{authority.setStopped(id,true);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));}});
+  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);authority.setStopped(id,true);execution.cancelProjectChat?.(id);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));});
   app.get('/api/projects/:id/reviews',(req,res)=>res.json(store.records('review',routeId(req.params.id))));
   app.get('/api/projects/:id/local-connections',(req,res)=>res.json(connections.list(routeId(req.params.id))));
   app.get('/api/projects/:id/resources',(req,res)=>res.json(connections.resources(routeId(req.params.id))));
@@ -248,20 +240,13 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.post('/api/projects/:id/local-connections/:connectionId/export',(req,res)=>{const {artifactIds}=z.object({artifactIds:z.array(identifier).min(1).max(50)}).strict().parse(req.body);res.json(connections.export(routeId(req.params.id),routeId(req.params.connectionId),artifactIds));});
   app.post('/api/projects/:id/local-connections/:connectionId/write',(req,res)=>{const body=z.object({expectedHash:z.string().regex(/^[a-f0-9]{64}$/),content:z.string().min(1).max(500000)}).strict().parse(req.body);res.json(connections.replace(routeId(req.params.id),routeId(req.params.connectionId),body.expectedHash,body.content));});
   app.post('/api/projects/:id/highlights',(req,res)=>res.status(201).json(highlights.save(routeId(req.params.id),req.body)));
-  app.patch('/api/projects/:id/highlights/:highlightId',(req,res)=>res.json(highlights.save(routeId(req.params.id),req.body,routeId(req.params.highlightId))));
   app.delete('/api/projects/:id/highlights/:highlightId',(req,res)=>{highlights.remove(routeId(req.params.id),routeId(req.params.highlightId));res.json({ok:true});});
-  if(research){
-    app.get('/api/projects/:id/research',(req,res)=>res.json(research.list(routeId(req.params.id))));
-    app.post('/api/projects/:id/research',(req,res)=>res.status(201).json(research.start(routeId(req.params.id),req.body)));
-    app.post('/api/research/:id/continue',(req,res)=>{const {message}=z.object({message:z.string().trim().min(1).max(12000).optional()}).strict().parse(req.body);res.json(research.continue(routeId(req.params.id),message));});
-    app.post('/api/research/:id/stop',(req,res)=>res.json(research.stop(routeId(req.params.id))));
-  }
   if (assistant) attachAssistantRoutes(app,assistant);
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
-  if (tools?.memory && !options.publicDemo) attachPersonalMemoryRoutes(app,tools.memory);
-  if (tools?.skills && !options.publicDemo) attachSkillRoutes(app,tools.skills);
-  // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now. The demo cannot connect tools, so it has none.
-  if (tools?.suggestions && !options.publicDemo) { const sources={...tools,...(execution.searchStatus?{search:()=>execution.searchStatus!()}:{})}; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
+  if (tools?.memory) attachPersonalMemoryRoutes(app,tools.memory);
+  if (tools?.skills) attachSkillRoutes(app,tools.skills);
+  // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now.
+  if (tools?.suggestions) { const sources={...tools,...(execution.searchStatus?{search:()=>execution.searchStatus!()}:{})}; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));
   return app;

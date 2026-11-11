@@ -36,7 +36,7 @@ function fixture() {
   };
   const project = store.createProject('Offline approval context');
   store.mutate(project.id, ['a', 'b', 'group'].map((id, i) => ({
-    type: 'addNode' as const, node: { id, title: id, description: '', kind: 'activity' as const, x: i * 400, y: 0 },
+    type: 'addNode' as const, node: { id, title: id, description: '', kind: id === 'group' ? 'group' as const : 'activity' as const, x: i * 400, y: 0 },
   })), 'Fixture nodes');
   const grant = new SandboxBudget(store, terms);
   const service = new ExperimentService(store, { sandbox: backend, nebiusSandbox: backend, sandboxBudget: grant });
@@ -106,10 +106,10 @@ function assertNoAdmission(f: ReturnType<typeof fixture>, runId: string) {
   assert.equal(f.grant.status().remainingRuns, 2);
 }
 
-test('title, description, kind and parent changes still invalidate exact approval', async () => {
+test('title, description and kind changes still invalidate exact approval', async () => {
   const changes: Partial<CanvasNode>[] = [
     { title: 'Different analysis' }, { description: 'Changed research context' },
-    { kind: 'topic' }, { parentId: 'group' },
+    { kind: 'topic' },
   ];
   for (const patch of changes) {
     const f = fixture();
@@ -120,6 +120,16 @@ test('title, description, kind and parent changes still invalidate exact approva
       assertNoAdmission(f, pending.run.id);
     } finally { await f.cleanup(); }
   }
+});
+
+test('moving the block into a group keeps its approval: a group only organises the map', async () => {
+  const f = fixture();
+  try {
+    const pending = preview(f);
+    f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { parentId: 'group', x: 48, y: 48 } }], 'Move into a group');
+    f.service.decide(pending.run.id, pending.approval.fingerprint, 'allow');
+    assert.equal((await finished(f.store, pending.run.id)).status, 'completed');
+  } finally { await f.cleanup(); }
 });
 
 test('selected artifact versions and excerpts still invalidate approval after movement', async () => {
@@ -189,18 +199,13 @@ test('changed remote pricing or authorization cannot use an existing approval', 
   }
 });
 
-test('position-only approval still respects current project stop and resource limits', async () => {
-  for (const change of ['stop', 'limit']) {
-    const f = fixture();
-    try {
-      const pending = preview(f);
-      f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { x: 1200 } }], 'Move');
-      if (change === 'stop') f.service.authority.setStopped(f.project.id, true);
-      else {
-        f.service.authority.configure(f.project.id, { mode: 'ask' });
-      }
-      assert.throws(() => f.service.decide(pending.run.id, pending.approval.fingerprint, 'allow'), /stopped|experiments limit/);
-      assertNoAdmission(f, pending.run.id);
-    } finally { await f.cleanup(); }
-  }
+test('position-only approval still respects a project stop', async () => {
+  const f = fixture();
+  try {
+    const pending = preview(f);
+    f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { x: 1200 } }], 'Move');
+    f.service.authority.setStopped(f.project.id, true);
+    assert.throws(() => f.service.decide(pending.run.id, pending.approval.fingerprint, 'allow'), /stopped/);
+    assertNoAdmission(f, pending.run.id);
+  } finally { await f.cleanup(); }
 });

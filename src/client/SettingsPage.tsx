@@ -59,21 +59,21 @@ const approvalDetail: Record<ApprovalMode, string> = {
   full: 'Code runs straight away in the sandbox and agents change the canvas at once. Everything stays undoable.',
 };
 
-export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, onChanged }: { projectId: string | null; projectTitle: string | null; policy: ResearchPolicy | null; publicDemo: boolean; onChanged: () => Promise<unknown> }) {
+export function GeneralSettings({ projectId, projectTitle, policy, onChanged }: { projectId: string | null; projectTitle: string | null; policy: ResearchPolicy | null; onChanged: () => Promise<unknown> }) {
   const [paths, setPaths] = useState<{ dataDir: string | null; keysFile: string | null } | null>(null);
   const [mode, setMode] = useState<ApprovalMode>(policy?.mode ?? 'ask'), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
   const [network, setNetwork] = useState<{ mode: 'ask' | 'full'; preset: string[]; sites: string[] } | null>(null);
   const networkUrl = `/api/python-network${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`;
   // Only sandboxed Python (macOS) has a network proxy; elsewhere this row stays hidden.
-  useEffect(() => { if (!publicDemo) void api<NonNullable<typeof network>>(networkUrl).then(setNetwork).catch(() => setNetwork(null)); }, [publicDemo, networkUrl]);
+  useEffect(() => { void api<NonNullable<typeof network>>(networkUrl).then(setNetwork).catch(() => setNetwork(null)); }, [networkUrl]);
   const saveNetwork = async (mode: 'ask' | 'full') => { const saved = await api<{ mode: 'ask' | 'full' }>('/api/python-network', { method: 'PUT', body: JSON.stringify({ mode }) }); setNetwork(current => current && { ...current, mode: saved.mode }); };
   const forgetSite = async (host: string) => { if (!projectId) return; const { sites } = await api<{ sites: string[] }>(`/api/python-network/sites/${encodeURIComponent(projectId)}/${encodeURIComponent(host)}`, { method: 'DELETE' }); setNetwork(current => current && { ...current, sites }); };
   const budgetUrl = `/api/settings/budget${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`;
-  useEffect(() => { if (!publicDemo) void api<BudgetStatus>(budgetUrl).then(setBudget).catch(() => {}); }, [publicDemo, budgetUrl]);
-  const saveBudget = async (scope: 'all' | 'project', monthlyUsd: number | null) => setBudget(await api<BudgetStatus>('/api/settings/budget', { method: 'PUT', body: JSON.stringify({ scope, ...(scope === 'project' ? { projectId } : {}), monthlyUsd }) }));
+  useEffect(() => { void api<BudgetStatus>(budgetUrl).then(setBudget).catch(() => {}); }, [budgetUrl]);
+  const saveBudget = async (scope: 'all' | 'project', monthlyUsd: number | null) => setBudget(await api<BudgetStatus>('/api/settings/budget', { method: 'PUT', body: JSON.stringify({ scope, ...(projectId ? { projectId } : {}), monthlyUsd }) }));
   useEffect(() => { setMode(policy?.mode ?? 'ask'); }, [policy?.mode, projectId]);
-  useEffect(() => { if (!publicDemo) void api<{ dataDir: string | null; keysFile: string | null }>('/api/settings/general').then(setPaths).catch(() => {}); }, [publicDemo]);
+  useEffect(() => { void api<{ dataDir: string | null; keysFile: string | null }>('/api/settings/general').then(setPaths).catch(() => {}); }, []);
   const choose = async (next: ApprovalMode) => {
     if (!projectId) return;
     const previous = mode; setMode(next); setBusy(true); setError('');
@@ -83,15 +83,15 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
   };
   return <div className="settings-page">
     <h1>General</h1>
-    {!publicDemo && <UpdateSettings/>}
+    <UpdateSettings/>
     {projectId && <section><h2>This project</h2><div className="settings-card">
       <Row title="Permissions" detail={`${projectTitle ? `${projectTitle}: ` : ''}${approvalDetail[mode]}`}>
         <ChipChoice label="Project permissions" caption="Agents may" value={mode} busy={busy} options={approvalModes.map(item => { const Icon = item.icon; return { id: item.mode, label: item.label, detail: item.detail, icon: <Icon size={13}/> }; })} onChange={value => void choose(value)}/>
       </Row>
     </div>{error && <p className="inline-error" role="alert">{error}</p>}</section>}
-    {!publicDemo && <RosLayerSettings/>}
-    {!publicDemo && <SuggestionSettings/>}
-    {!publicDemo && budget && <section><h2>Monthly budget</h2><div className="settings-card">
+    <RosLayerSettings/>
+    <SuggestionSettings/>
+    {budget && <section><h2>Monthly budget</h2><div className="settings-card">
       <Row title="All projects" detail={budgetDetail(budget.all)}><AmountField label="Monthly budget for all projects" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
       {budget.project && <Row title={projectTitle ?? 'This project'} detail={budgetDetail(budget.project)}><AmountField label="Monthly budget for this project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
     </div></section>}
@@ -101,13 +101,13 @@ export function GeneralSettings({ projectId, projectTitle, policy, publicDemo, o
       </Row>
       {projectId && network.mode === 'ask' && network.sites.map(host => <Row key={host} title={host} detail={`Always allowed in ${projectTitle ?? 'this project'}.`}><button className="small text-button" onClick={() => void forgetSite(host)}>Remove</button></Row>)}
     </div></section>}
-    {!publicDemo && <AppSettings/>}
-    {!publicDemo && <UsageCountSettings/>}
-    {!publicDemo && <FirstRunSettings/>}
-    {!publicDemo && <section><h2>On this computer</h2><div className="settings-card">
+    <AppSettings/>
+    <UsageCountSettings/>
+    <FirstRunSettings/>
+    <section><h2>On this computer</h2><div className="settings-card">
       <Row title="Data folder" detail="Projects, notes and usage records are saved here."><code title={paths?.dataDir ?? ''}>{paths?.dataDir ?? '…'}</code></Row>
       <Row title="Keys file" detail="API keys every data folder reads, kept outside the code."><code title={paths?.keysFile ?? ''}>{paths ? paths.keysFile ?? 'None' : '…'}</code></Row>
-    </div></section>}
+    </div></section>
   </div>;
 }
 
@@ -280,16 +280,17 @@ const DAY = 24 * 60 * 60 * 1000;
 type Range = 7 | 30;
 type Group = 'model' | 'task';
 const money = (value: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < .01 ? 4 : 2 }).format(value);
-const startOfDay = (time: number) => { const day = new Date(time); day.setHours(0, 0, 0, 0); return day.getTime(); };
+/** Local midnight of the day `time` falls on, moved by whole calendar days: a day is 23 or 25 hours when the clocks change. */
+const startOfDay = (time: number, days = 0) => { const day = new Date(time); day.setHours(0, 0, 0, 0); if (days) day.setDate(day.getDate() + days); return day.getTime(); };
 const dayLabel = (time: number) => new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 const groupOf = (event: UsageEvent, group: Group) => group === 'model' ? event.model ?? event.providerName : event.task;
 const share = (part: number, total: number) => { if (!total) return '0%'; const value = part / total * 100; return value > 0 && value < .1 ? '<0.1%' : `${value < 10 ? value.toFixed(1) : Math.round(value)}%`; };
 
 /** What each model and each kind of work spent, from the usage this computer recorded. */
-export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
+export function UsageSettings() {
   const [data, setData] = useState<UsageAnalytics | null>(null), [error, setError] = useState('');
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
-  useEffect(() => { if (!publicDemo) void api<BudgetStatus>('/api/settings/budget').then(setBudget).catch(() => {}); }, [publicDemo, data]);
+  useEffect(() => { void api<BudgetStatus>('/api/settings/budget').then(setBudget).catch(() => {}); }, [data]);
   const [range, setRange] = useState<Range>(7), [group, setGroup] = useState<Group>('model'), [offset, setOffset] = useState(0), [hover, setHover] = useState<number | null>(null);
   useEffect(() => {
     let current = true;
@@ -298,8 +299,8 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     return () => { current = false; window.clearInterval(timer); };
   }, []);
   const view = useMemo(() => {
-    const end = startOfDay(Date.now()) - offset * range * DAY, start = end - (range - 1) * DAY;
-    const events = (data?.events ?? []).filter(event => { const at = Date.parse(event.at); return at >= start && at < end + DAY; });
+    const end = startOfDay(Date.now(), -offset * range), start = startOfDay(end, -(range - 1)), after = startOfDay(end, 1);
+    const events = (data?.events ?? []).filter(event => { const at = Date.parse(event.at); return at >= start && at < after; });
     const totals = new Map<string, number>();
     for (const event of events) totals.set(groupOf(event, group), (totals.get(groupOf(event, group)) ?? 0) + (event.costUsd ?? 0));
     // Colour follows the name: ranked across all recorded usage, not this window, so paging never repaints a series.
@@ -309,7 +310,7 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
     const named = ranked.slice(0, palette.length), color = (name: string) => named.includes(name) ? palette[named.indexOf(name)] : OTHER;
     const series = [...totals.entries()].filter(([, usd]) => usd > 0).sort((a, b) => b[1] - a[1]).map(([name, usd]) => ({ name, usd, color: color(name) }));
     const days = Array.from({ length: range }, (_, index) => {
-      const at = start + index * DAY, dayEvents = events.filter(event => startOfDay(Date.parse(event.at)) === at);
+      const at = startOfDay(start, index), dayEvents = events.filter(event => startOfDay(Date.parse(event.at)) === at);
       const parts = series.map(item => ({ ...item, usd: dayEvents.filter(event => groupOf(event, group) === item.name).reduce((sum, event) => sum + (event.costUsd ?? 0), 0) })).filter(item => item.usd > 0);
       return { at, parts, usd: parts.reduce((sum, item) => sum + item.usd, 0), requests: dayEvents.length };
     });
@@ -328,9 +329,8 @@ export function UsageSettings({ publicDemo }: { publicDemo: boolean }) {
   return <div className="settings-page usage-page">
     <h1>Usage</h1>
     <p className="settings-lead">What your agents and models spent, by model and by task. Recorded on this computer; nothing is sent anywhere.</p>
-    {publicDemo && <p className="rail-page-note">The demo makes no paid calls, so it records no usage.</p>}
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
-    {!publicDemo && <PlanLimits/>}
+    <PlanLimits/>
     <div className="usage-controls">
       <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
       <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
@@ -398,10 +398,10 @@ function PlanLimits() {
 }
 
 /** What each connected model, agent or tool says is left, and where the provider keeps it to itself. */
-export function BalanceSettings({ publicDemo }: { publicDemo: boolean }) {
+export function BalanceSettings() {
   const [balances, setBalances] = useState<ProviderBalance[] | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const load = async () => { setBusy(true); try { setBalances((await api<{ balances: ProviderBalance[] }>('/api/usage/balances')).balances); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
-  useEffect(() => { if (!publicDemo) void load(); }, [publicDemo]);
+  useEffect(() => { void load(); }, []);
   const mark = (id: ProviderBalance['id']) => id === 'ros-cloud' ? <span className="plugins-mark-small balance-ros"><RosMark/></span> : <BrandLogo id={id} size={20}/>;
   // ROS cloud, Codex and Tavily report what is left; the others keep it in their own consoles.
   const typed = (item: ProviderBalance) => ['nebius', 'openai', 'claude'].includes(item.id);
@@ -410,10 +410,9 @@ export function BalanceSettings({ publicDemo }: { publicDemo: boolean }) {
   const reported = balances?.filter(reports) ?? [], silent = balances?.filter(item => !reports(item)) ?? [];
   const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{typed(item) && <AmountField label={`${item.name} credit`} value={item.credit?.amountUsd ?? null} onSave={value => saveCredit(item.id, value)}/>}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
   return <div className="settings-page">
-    <header className="settings-head"><div><h1>Balances</h1><p className="settings-lead">What is left with each connected model, agent and tool, where the provider reports it.</p></div>{!publicDemo && <button className="icon-button" aria-label="Check balances again" disabled={busy} onClick={() => void load()}><RefreshCw size={15} className={busy ? 'spin' : ''}/></button>}</header>
-    {publicDemo && <p className="rail-page-note">The demo has no connected accounts.</p>}
+    <header className="settings-head"><div><h1>Balances</h1><p className="settings-lead">What is left with each connected model, agent and tool, where the provider reports it.</p></div><button className="icon-button" aria-label="Check balances again" disabled={busy} onClick={() => void load()}><RefreshCw size={15} className={busy ? 'spin' : ''}/></button></header>
     {error && <p className="inline-error" role="alert">{error}</p>}
-    {!balances && !publicDemo && !error && <p className="usage-empty"><LoaderCircle size={14} className="spin"/> Checking…</p>}
+    {!balances && !error && <p className="usage-empty"><LoaderCircle size={14} className="spin"/> Checking…</p>}
     {balances && !balances.length && <p className="rail-page-note">Nothing is connected yet. Connect agents and tools on the Agents and Plugins pages.</p>}
     {reported.length > 0 && <section><h2>Reported by the provider</h2><div className="settings-card">{reported.map(row)}</div></section>}
     {silent.length > 0 && <section><h2>Entered by you</h2><p className="settings-lead balance-note">These providers keep your credit in their own console. Enter it once; ros.ai subtracts what it records from then on.</p><div className="settings-card">{silent.map(row)}</div></section>}

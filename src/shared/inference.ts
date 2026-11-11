@@ -11,7 +11,7 @@ export type RegisteredInferenceModel = {
   /** false when the model's own server says it cannot call tools (Ollama, LM Studio), so ros.ai's agent cannot use it. */
   tools?: boolean;
 };
-export type InferenceCaps = {
+type InferenceCaps = {
   maxInputBytes: number;
   maxOutputTokens: number;
   timeoutMs: number;
@@ -27,7 +27,6 @@ export type InferenceConnectionInput = {
   caps: InferenceCaps;
   enabled: boolean;
 };
-export type InferenceAllowanceInput = { requestCeiling: number; usdCeiling: number; enabled: true; acknowledged: true };
 export type InferenceConnectionStatus = {
   id: string;
   name: string;
@@ -51,4 +50,3 @@ export type InferenceConnectionStatus = {
   pricingBasis: string;
   updatedAt: string;
 };
-export type InferenceConnectionsResponse = { connections: InferenceConnectionStatus[] };

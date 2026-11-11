@@ -1,19 +1,36 @@
-# Local Python execution boundary
+# The Python sandbox
 
-Implemented and exercised locally on September 21, 2026. The richer backend runs ordinary Python in a dedicated Docker/Linux container. The earlier numerical interpreter remains a separate compatibility backend. Neither a virtual environment nor an unrestricted host subprocess is used as the Python isolation boundary.
+Code and Notebook blocks run Python inside a boundary the operating system enforces, whatever the project's permission mode is. There are two, chosen by the computer:
 
-## Set up and verify
+- **On a Mac:** ros.ai's own Python inside the macOS sandbox. Nothing to install.
+- **On Linux and Windows:** a dedicated Docker container.
 
-Start the installed Docker engine, then build the dedicated image from the repository root:
+ros.ai never falls back to unconfined Python on the computer. When neither boundary is available, the block says so and does not run.
+
+## On a Mac
+
+The first time a block runs, ros.ai fetches Python 3.12 with [uv](https://docs.astral.sh/uv/) into its app-data folder (about 150 MB, once), with NumPy 2.2.6, pandas 2.2.3, matplotlib 3.10.3 and SciPy 1.15.3. The download of uv itself is checked against a pinned checksum.
+
+Each run starts under `sandbox-exec` with a profile that denies everything and then allows only this (`src/server/local-python.ts`):
+
+- Reading the system's own files, ros.ai's Python, and the folders the run was given: its private working folder, and for a Notebook the project's folder. The rest of the home folder and other drives cannot be read.
+- Writing to the run's working folder and a private temporary folder.
+- Network to one address: ros.ai's own proxy on this computer (`src/server/network-gate.ts`). The proxy asks before a run reaches a new website (once, always for this project, or no), and Settings can allow every site. PyPI is always allowed, so `%pip install` works in a notebook.
+
+This is the same kind of boundary Claude Code and Codex use for commands. It is not a virtual machine: a flaw in macOS's sandbox is outside what it promises.
+
+## In Docker
+
+Start Docker, then build the image from the repository root:
 
 ```sh
 docker build -t ros-ai-research-python:1 src/server/sandbox
 ROS_REQUIRE_DOCKER_TESTS=1 node --import tsx --test tests/sandbox.test.ts
 ```
 
-Image build downloads the Python base and Python packages. Experiments themselves have no external network. The installed versions are Python 3.12.11, NumPy 2.2.6, pandas 2.2.3, matplotlib 3.10.3 and SciPy 1.15.3. Runtime probing checks the image's capture-worker hash against the source; rebuild after worker changes. Each backend capability snapshot includes the immutable local image ID and source/policy hash. If Docker or the matching image is unavailable, this backend fails closed. It never substitutes unrestricted host Python.
+The image holds the same Python and package versions. ros.ai checks the image's worker against the source before every run, so rebuild after changing a file in `src/server/sandbox/`. If Docker or the matching image is missing, the run is refused.
 
-## Analysis contract
+## What a Code block's program gets
 
 Each attempt receives a read-only copy of its captured CSV, program and JSON parameters. The worker provides `df`, `params`, `pd`, `np`, `plt` and `scipy`, and ordinary Python imports, functions, loops and library operations work inside the container. No original connection path or user folder is mounted.
 
@@ -34,9 +51,9 @@ conclusion("Describe the observed association and its uncertainty; do not infer 
 
 `table` captures a DataFrame, Series or JSON-compatible object. `metric` captures one value. `plot` captures a matplotlib figure as SVG; an omitted figure uses the current figure. `export_csv` captures CSV as an artifact, and `conclusion` captures text. Local-folder export is a separate host connection operation governed by its write permission. Arbitrary files left in `/work` are temporary and are removed with the container; save intended outputs through the capture helpers. stdout, stderr, tracebacks, return code and preceding captured outputs survive ordinary Python failures, allowing a new attempt to inspect and revise the failed analysis.
 
-## Actual enforcement
+## What the container enforces
 
-The server creates containers using these controls independently of Ask / Approve for me / Full access approval policy:
+The server creates each container with these controls, whatever the permission mode:
 
 - Linux network namespace with `--network=none`; external networking is disabled. Container loopback still exists.
 - Read-only image filesystem; the only host bind mount is the attempt's copied input directory, also read-only. No Docker socket, original source, project directory, credentials or user's home directory is mounted.
@@ -48,18 +65,12 @@ The server creates containers using these controls independently of Ask / Approv
 
 Stop force-removes the unique container, including subprocesses. Cancellation is retried through the container-creation interval so an immediate stop cannot miss a container that appears slightly later. A separate trusted host deadline watchdog also attempts removal after abrupt server death. Working data is temporary; persisted artifact/history storage belongs to the application service.
 
-## Limits of the claim
+## Limits of the Docker boundary
 
 Python can access installed files and create processes *inside its container*. There is no unrestricted host shell, runtime package-install service, source-write capability or external network tool. Linux kernel, Docker/VM and package vulnerabilities are outside this assurance; a container is not a dedicated VM per attempt. Reliable wall-clock stop requires a responsive Docker engine. Host shutdown stops local work and provides no remote continuation.
 
-Approval policy, connection spending allowances and connection write permissions are enforced separately by the orchestrator. An available container backend does not itself authorize any run. The `ExecutionBackend` interface also supports the September 22 Nebius remote adapter. Its standard-library contract, remote transfer approval, separate spend gate and provider limitations are described in [Nebius setup](nebius-sandbox-setup.md). Catalog access is verified; live remote execution is not. The local Docker limits here must not be attributed to the remote VM.
+Permission modes and write permissions are enforced separately, by the server. An available sandbox does not by itself allow a run.
 
 `tests/sandbox.test.ts` exercises actual local computation, denied host-file/input writes and external networking, environment isolation, actual cgroup/seccomp/privilege settings, failure capture, revisions, deadlines, child-process termination, immediate cancellation and output/file limits. These are local execution checks, not proof of live model planning, automatic review quality, or real-data scientific validity.
 
-## Nebius documentation check — September 21, 2026
-
-Nebius now documents the Sandboxes beta, including asynchronous operations with cancellation, OCI images and checkpoint branching. It describes VM-level isolation, a different boundary from the implemented local Docker backend. These are provider-documented capabilities, not ros.ai integration results. [Official sandbox overview](https://docs.tokenfactory.nebius.com/sandboxes/overview).
-
-The official read-only image-list API requires an IAM bearer token and a separate `Project` header. The existing local configuration contains an inference key but no Nebius/Contree project setting or sandbox configuration, so account access was not verified. No instance was spawned, remote image imported, SDK installed or account changed. A future integration needs confirmed project access, pricing and separately authorized remote resource limits. [Official image-list API](https://docs.tokenfactory.nebius.com/api-reference/sandboxes/images/list-publicly-available-images).
-
-September 22 update: the earlier documentation check above is historical. Authenticated catalog access now succeeds and the remote adapter is implemented. Pricing remains unknown, so no remote instance has been submitted. See current verification.
+`tests/local-python.test.ts` checks the Mac profile: everything denied by default, the home folder closed, and no network except the proxy.

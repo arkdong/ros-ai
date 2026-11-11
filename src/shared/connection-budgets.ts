@@ -17,9 +17,3 @@ export type ConnectionBudgetStatus = {
   revision: number | null;
   updatedAt: string | null;
 };
-export type ConnectionBudgetInput = {
-  limitUsd: number;
-  maxRequests: number;
-  enabled: true;
-  acknowledged: true;
-};

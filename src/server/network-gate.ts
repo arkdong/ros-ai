@@ -21,7 +21,7 @@ export type NetworkEvent = { type: 'request'; request: NetworkRequest } | { type
 const SETTINGS = 'python-network';
 const SITES = 'python-network-sites';
 /** pip needs these to install packages. */
-export const PRESET_SITES = ['pypi.org', 'files.pythonhosted.org'];
+const PRESET_SITES = ['pypi.org', 'files.pythonhosted.org'];
 const WAIT_MS = 120_000;
 
 const hostSchema = z.string().min(1).max(253).regex(/^[a-z0-9.-]+$|^\[?[0-9a-f:.]+\]?$/iu);
@@ -31,7 +31,8 @@ const blockedAddress = (address: string) => localAddress(address);
 
 /** One Python process's proxy. `waiting` is true while a site waits for the person, so wall-clock limits can pause. */
 export type NetworkSession = { port: number; waiting: () => boolean; close: () => void };
-type Pending = NetworkRequest & { session: string; resolve: (allowed: boolean) => void; timer: ReturnType<typeof setTimeout> };
+/** A question shown to the person, and every process waiting on its answer. */
+type Pending = NetworkRequest & { waiters: { session: string; settle: (allowed: boolean) => void }[]; timer: NodeJS.Timeout };
 type Session = { id: string; projectId: string | null; source: string; once: Set<string>; denied: Set<string>; waiting: number };
 
 export class NetworkGate {
@@ -53,7 +54,7 @@ export class NetworkGate {
     this.store.saveRecord(SITES, projectId, projectId, { hosts });
     return hosts;
   }
-  requests(): NetworkRequest[] { return [...this.pending.values()].map(({ resolve: _, timer: __, session: ___, ...request }) => request); }
+  requests(): NetworkRequest[] { return [...this.pending.values()].map(({ waiters: _, timer: __, ...request }) => request); }
   subscribe(listener: (event: NetworkEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   private emit(event: NetworkEvent): void { for (const listener of this.listeners) try { listener(event); } catch { /* a closed stream */ } }
 
@@ -64,7 +65,7 @@ export class NetworkGate {
     clearTimeout(item.timer);
     this.pending.delete(id);
     if (choice === 'always' && item.projectId) this.remember(item.projectId, item.host);
-    item.resolve(choice !== 'deny');
+    for (const waiter of item.waiters) waiter.settle(choice !== 'deny');
     this.emit({ type: 'settled', id });
   }
 
@@ -76,12 +77,12 @@ export class NetworkGate {
     session.waiting++;
     return new Promise<boolean>(resolve => {
       const settle = (allowed: boolean) => { session.waiting--; (allowed ? session.once : session.denied).add(host); resolve(allowed); };
-      if (waiting) { const previous = waiting.resolve; waiting.resolve = allowed => { previous(allowed); settle(allowed); }; return; }
+      if (waiting) { waiting.waiters.push({ session: session.id, settle }); return; }
       const request: NetworkRequest = { id: randomUUID(), host, projectId: session.projectId, source: session.source, at: new Date().toISOString() };
       // An unanswered question is denied for every request that waits on it, not only the first.
-      const timer = setTimeout(() => { const item = this.pending.get(request.id); this.pending.delete(request.id); (item?.resolve ?? settle)(false); this.emit({ type: 'settled', id: request.id }); }, this.waitMs);
+      const timer = setTimeout(() => { const item = this.pending.get(request.id); this.pending.delete(request.id); for (const waiter of item?.waiters ?? []) waiter.settle(false); this.emit({ type: 'settled', id: request.id }); }, this.waitMs);
       timer.unref();
-      this.pending.set(request.id, { ...request, session: session.id, resolve: settle, timer });
+      this.pending.set(request.id, { ...request, waiters: [{ session: session.id, settle }], timer });
       this.emit({ type: 'request', request });
     });
   }
@@ -92,7 +93,14 @@ export class NetworkGate {
     const proxy = await openProxy(host => this.target(session, host));
     return { port: proxy.port, waiting: () => session.waiting > 0, close: () => {
       proxy.close();
-      for (const item of this.pending.values()) if (item.session === session.id) this.answer(item.id, 'deny');
+      // A process that ends takes only its own wait away. A question other processes still wait on stays for the person.
+      for (const item of [...this.pending.values()]) {
+        const own = item.waiters.filter(waiter => waiter.session === session.id);
+        if (!own.length) continue;
+        item.waiters = item.waiters.filter(waiter => waiter.session !== session.id);
+        for (const waiter of own) waiter.settle(false);
+        if (!item.waiters.length) { clearTimeout(item.timer); this.pending.delete(item.id); this.emit({ type: 'settled', id: item.id }); }
+      }
     } };
   }
 

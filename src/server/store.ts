@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_SCALE, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
+import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_SCALE, cardScale, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { isPictureNode } from '../shared/files.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
@@ -26,7 +26,7 @@ const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 /** Names every plain object already has (`__proto__`, `constructor`, `toString`…). A block with one of them as its id is
  * read as that built-in wherever blocks are looked up by id, such as its approval mode, so new blocks may not use them. */
 export const RESERVED_IDS: ReadonlySet<string> = new Set(Object.getOwnPropertyNames(Object.prototype));
-export const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
+const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
 /** Only a picture card may be narrower than CARD_MIN_WIDTH: it keeps its picture's shape, so a small one is useful. */
@@ -96,12 +96,12 @@ const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string()
 /** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). Any other
  * link is left out rather than refused, so a map saved with one earlier can still be edited; the agent tool that places
  * pins refuses such a link with a reason. */
-export const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
+const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
 export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: pinUrlSchema.optional(), place: z.string().trim().max(300).optional() }).strict();
 const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
 /** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
  * tool agents see reads as the training snapshot has it; agents pin numbers with ros_pin_to_dashboard. */
-export const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
+const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
 export const dashboardViewSchema = z.object({ tiles: z.array(dashboardTileSchema).max(MAX_DASHBOARD_TILES) }).strict();
 const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post','dashboard']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), dashboard: dashboardViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
 export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
@@ -224,10 +224,17 @@ function rememberPresentation(history: HistoryState, canvas: Canvas): void {
 }
 function restoreContent(history: HistoryState, target: Canvas, current: Canvas): Canvas {
   const currentNodes = new Map(current.nodes.map(node => [node.id, node]));
+  // Shrinking blocks also draws them together. Undo and redo keep positions as they are now, so a block whose size
+  // comes back is spread out again from the same corner, by as much as its size changes.
+  const rescaled = target.nodes.flatMap(node => { const live = currentNodes.get(node.id); return live && (live.parentId ?? null) === (node.parentId ?? null) && Math.abs(cardScale(node) / cardScale(live) - 1) > 0.001 ? [live] : []; });
+  const corners = new Map<string, { x: number; y: number }>();
+  for (const live of rescaled) { const key = live.parentId ?? '', at = corners.get(key); corners.set(key, at ? { x: Math.min(at.x, live.x), y: Math.min(at.y, live.y) } : { x: live.x, y: live.y }); }
   return { ...clone(target), nodes: target.nodes.map(node => {
     const live = currentNodes.get(node.id);
     const saved = history.presentation?.[presentationKey(node)];
-    const position = live && (live.parentId ?? null) === (node.parentId ?? null) ? live : saved ?? node;
+    const corner = live && rescaled.includes(live) ? corners.get(live.parentId ?? '') : undefined, ratio = live ? cardScale(node) / cardScale(live) : 1;
+    const position = live && corner ? { x: Math.round(corner.x + (live.x - corner.x) * ratio), y: Math.round(corner.y + (live.y - corner.y) * ratio) }
+      : live && (live.parentId ?? null) === (node.parentId ?? null) ? live : saved ?? node;
     const width = live ? live.width : saved ? saved.width : node.width;
     const height = live ? live.height : saved ? saved.height : node.height;
     const restored = { ...node, x: position.x, y: position.y };
@@ -386,7 +393,7 @@ export class Store {
   listTrashedProjects():Project[] { return this.all<Project>('SELECT data FROM projects WHERE id IN (SELECT project_id FROM project_trash) ORDER BY rowid DESC'); }
   trashProject(id:string):Project {
     const project=this.getProject(id);
-    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running')||this.records<{status:string}>('research',id).some(session=>session.status==='running')||this.records<{status:string}>('workspace-guide-review',id).some(review=>['queued','running'].includes(review.status)))throw new StoreError('Stop active research and pending experiments before moving this project to Trash.',409);
+    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running'))throw new StoreError('Stop running work before moving this project to Trash.',409);
     this.db.prepare('INSERT INTO project_trash(project_id,deleted_at) VALUES (?,?)').run(id,now());
     return project;
   }
@@ -897,7 +904,8 @@ export class Store {
   }
 
   /** threadId: the ROS thread a project message belongs to (nodeId null). */
-  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string, threadId?: string): Message {
+  /** counted: false for a copy of a message already sent (a branched thread), which is not a new message to an agent. */
+  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string, threadId?: string, counted = true): Message {
     this.getProject(projectId);
     if (nodeId !== null) this.requireNode(projectId, nodeId, true);
     if (runId) {
@@ -907,7 +915,7 @@ export class Store {
     if (threadId !== undefined && nodeId !== null) throw new StoreError('Only project messages belong to a ROS thread');
     const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
-    if (message.role === 'user') this.countUsage('conversations');
+    if (message.role === 'user' && counted) this.countUsage('conversations');
     return message;
   }
 

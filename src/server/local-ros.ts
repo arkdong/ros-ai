@@ -2,7 +2,7 @@ import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import type { Express } from 'express';
@@ -56,7 +56,7 @@ type UpdateJob = Job & { switching?: boolean };
 
 /** A download that failed in a way trying again can fix: a dropped or stalled connection, a server error, a short file.
  * `mismatch`: a whole file that is not the one listed (too long, or another checksum), which one more try may fix. */
-export class DownloadError extends Error {
+class DownloadError extends Error {
   constructor(message: string, readonly retry: boolean, readonly mismatch = false) { super(message); this.name = 'DownloadError'; }
 }
 const gigabytes = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
@@ -97,6 +97,23 @@ export class LocalRos {
   private get wantFile() { return join(this.dir, 'wanted'); }
   /** Names the model that would not start after an update, so it is not fetched by itself again. */
   private get failedFile() { return join(this.dir, 'update-failed'); }
+  /** The running engine's process number, so the next start can stop an engine that a crash left behind. */
+  private get pidFile() { return join(this.dir, 'engine.pid'); }
+  /** An engine left running by a ros.ai that crashed still holds the model in memory. It is stopped before another starts. */
+  private async stopLeftover(installed: Installed) {
+    let pid: number;
+    try { pid = Number(readFileSync(this.pidFile, 'utf8')); } catch { return; }
+    rmSync(this.pidFile, { force: true });
+    if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return;
+    try {
+      // Only a process that is still this engine: by now the number may belong to something else.
+      const { stdout } = process.platform === 'win32' ? await run('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { timeout: 5000 }) : await run('ps', ['-p', String(pid), '-o', 'args='], { timeout: 5000 });
+      if (!stdout.includes(process.platform === 'win32' ? basename(installed.server) : installed.server)) return;
+      process.kill(pid);
+      // Its port and memory are free once it is gone.
+      for (let tries = 0; tries < 40; tries++) { process.kill(pid, 0); await new Promise(resolve => setTimeout(resolve, 50)); }
+    } catch { /* it is not running any more */ }
+  }
   private installed(): Installed | undefined {
     try { return installedSchema.parse(JSON.parse(readFileSync(join(this.dir, 'installed.json'), 'utf8'))); } catch { return undefined; }
   }
@@ -311,10 +328,13 @@ export class LocalRos {
     return this.starting;
   }
   private async launch(installed: Installed) {
+    await this.stopLeftover(installed);
     const port = await freePort(PREFERRED_PORT);
     // Reasoning is off, as for hosted Nano: the agent loop needs answers within its output cap.
     const child = spawn(installed.server, ['-m', installed.modelFile, '--host', '127.0.0.1', '--port', String(port), '--api-key', installed.apiKey, '--jinja', '--reasoning-budget', '0', '-c', String(CONTEXT_TOKENS), '--alias', 'ros-local', '--no-webui'], { stdio: ['ignore', 'ignore', 'pipe'] });
     this.child = child;
+    if (child.pid) writeFileSync(this.pidFile, String(child.pid));
+    child.once('exit', () => { try { if (readFileSync(this.pidFile, 'utf8') === String(child.pid)) rmSync(this.pidFile, { force: true }); } catch { /* already gone */ } });
     let log = '';
     child.stderr?.on('data', (chunk: Buffer) => { log = (log + chunk.toString()).slice(-2000); });
     // A server that cannot start at all (a missing file, a library it cannot load) reports it here, not as an exit.

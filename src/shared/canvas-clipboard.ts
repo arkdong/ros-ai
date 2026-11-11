@@ -41,7 +41,9 @@ const GRID = 24, grid = (value: number) => Math.ceil(value / GRID) * GRID;
 export function pasteOperations(copy: CopiedBlocks, canvas: Canvas, projectId: string, newId: () => string = () => crypto.randomUUID(), measure?: (node: CanvasNode) => BlockSize | undefined): { operations: Mutation[]; ids: string[]; sources: Record<string, string> } {
   const ids = new Map(copy.nodes.map(node => [node.id, newId()]));
   const present = new Set(canvas.nodes.map(node => node.id)), sameProject = copy.projectId === projectId;
-  const parentOf = (node: CanvasNode) => node.parentId && present.has(node.parentId) ? node.parentId : null;
+  // A Group that was ungrouped since the copy is an ordinary block now and holds nothing.
+  const groups = new Set(canvas.nodes.filter(node => node.kind === 'group').map(node => node.id));
+  const parentOf = (node: CanvasNode) => node.parentId && groups.has(node.parentId) ? node.parentId : null;
   // The room the server keeps clear around a block, or more where the block is shown bigger.
   const size = (node: CanvasNode, placed: boolean): BlockSize => { const shown = measure?.(node); return { width: Math.max(cardWidth(node), shown?.width ?? 0), height: Math.max(placed ? cardFootprintHeight(node) : estimatedCardHeight(node), shown?.height ?? 0) }; };
   const outer = copy.nodes.filter(node => !ids.has(node.parentId ?? '')).map(node => ({ node, parentId: parentOf(node), ...size(node, false) }));

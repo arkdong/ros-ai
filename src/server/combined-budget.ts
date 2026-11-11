@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { Store, StoreError } from './store.js';
 
 /** This build's new authorization is additional to, and cannot rewrite, old grants. */
-export const COMBINED_NEBIUS_BUILD_SCOPE = 'continuous-collaborator-2026-09-22';
-export const COMBINED_NEBIUS_MAX_USD = 10;
+const COMBINED_NEBIUS_BUILD_SCOPE = 'continuous-collaborator-2026-09-22';
+const COMBINED_NEBIUS_MAX_USD = 10;
 const UNITS_PER_USD = 1_000_000_000;
 
 export type CombinedNebiusBudgetOptions = { authorizationId?: string; maxUsd?: number };

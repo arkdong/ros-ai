@@ -5,7 +5,6 @@ import { IN_APP_AGENTS, inAppAgent, type AssistantBackend, type AssistantState, 
 import { modelMaker, type ModelMaker, type ModelSettingsResponse } from '../shared/model-settings';
 import type { ProjectDetail } from '../shared/types';
 import { ACP_AGENTS, isAcpAgent, type AcpAgentStatus } from '../shared/acp-agents';
-import type { ClaudeAgentSettings } from '../shared/claude-agent';
 import { acpLogo } from './AcpAgents';
 import { AgentModelChip, useAgentModel } from './AgentModelPicker';
 import { BrandLogo } from './brand-logos';
@@ -20,7 +19,7 @@ export const reloadProjectModels = () => window.dispatchEvent(new Event(settings
 export type ModelChoice = { provider: string; providerLabel: string; model: string; label: string; maker: ModelMaker };
 
 /** The project's chosen model and the models it could switch to, kept fresh when settings change elsewhere. */
-export function useProjectModels(projectId: string, revision: number) {
+function useProjectModels(projectId: string, revision: number) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
   useEffect(() => {
     let active = true;
@@ -47,7 +46,6 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
   onConnections: () => void; onPermissions: () => void; onError?: (message: string) => void;
 }) {
   const [menu, setMenu] = useState(false), [switching, setSwitching] = useState(false), [acp, setAcp] = useState<AcpAgentStatus[]>([]);
-  const [planAllowed, setPlanAllowed] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const models = useProjectModels(detail.project.id, detail.project.revision);
   const backend = state?.backend, inApp = inAppAgent(backend), inAppId = inApp ? backend as InAppAgent : null;
@@ -61,8 +59,6 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
     if (!menu) return;
     let active = true;
     void api<{ agents: AcpAgentStatus[] }>('/api/agents/acp').then(value => { if (active) setAcp(value.agents); }).catch(() => undefined);
-    // A Claude subscription can only be used in the local app.
-    void api<ClaudeAgentSettings>('/api/agents/claude').then(value => { if (active) setPlanAllowed(value.planAllowed); }).catch(() => undefined);
     return () => { active = false; };
   }, [menu]);
   const acpShown = acp.filter(item => item.installed || item.id === backend);
@@ -88,7 +84,7 @@ export function RosModelMenu({ state, detail, threadId, running, onRefresh, onCo
   // Claude Code and Codex each run here two ways, as two agents with their own names. They always head the menu,
   // the subscription ones first, above the models and the other agents.
   const agents: { id: InAppAgent; caption: string }[] = [
-    ...(planAllowed ? [{ id: 'claude-plan' as const, caption: 'On your Claude subscription' }] : []),
+    { id: 'claude-plan', caption: 'On your Claude subscription' },
     { id: 'codex', caption: 'On your ChatGPT subscription' },
     { id: 'claude', caption: 'On your Claude API key' },
     { id: 'codex-key', caption: 'On your OpenAI API key' },

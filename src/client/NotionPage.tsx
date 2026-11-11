@@ -254,6 +254,13 @@ export function NotionPageEditor({ page, projectId, nodeId, readOnly, onSaved, o
       saved.current = true;
       onSaved(next);
       if (changes.title !== undefined) onTitle?.(next.title);
+      // Notion took the changes but did not answer the read that follows, so no new copy arrives to end "Saving…".
+      // The changes are saved and no longer pending; the page shows its earlier copy until it is read again.
+      if (next.fetchedAt === read.current) {
+        saved.current = false; live.current.clear(); unsaved.delete(nodeId);
+        setEdits({ items: fromPage(page), fields: {}, removed: [] });
+        setStatus({ error: 'Saved in Notion, but Notion did not send the page back, so this shows the earlier copy. Read the page again to see your changes.' });
+      }
     } catch (reason) { setStatus({ error: reason instanceof Error ? reason.message : String(reason) }); }
   };
   const discard = () => { live.current.clear(); unsaved.delete(nodeId); setStatus({}); setEdits({ items: fromPage(page), fields: {}, removed: [] }); };

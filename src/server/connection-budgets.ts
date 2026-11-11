@@ -26,7 +26,7 @@ type Reservation = { provider: ConnectionBudgetProvider; amountUsd: number; purp
  * There is no reset/delete/identifier API. Every dispatch retains its admission
  * after failure, pause, edits, credential replacement and service restart. */
 export class ConnectionBudgets {
-  constructor(private readonly store: Store, private readonly environment?: (provider: ConnectionBudgetProvider) => EnvironmentConnectionBudget, private readonly appBlocker?: () => string | null) {}
+  constructor(private readonly store: Store, private readonly environment?: (provider: ConnectionBudgetProvider) => EnvironmentConnectionBudget) {}
 
   private saved(provider: ConnectionBudgetProvider) { return this.store.globalRecord<Allowance>(namespace, provider); }
   private accounted(saved: Allowance): number {
@@ -42,8 +42,7 @@ export class ConnectionBudgets {
     const saved = this.saved(provider);
     if (!spendingLimitsOn(this.store)) {
       // No ceiling: every request is still recorded, so Usage shows what was spent.
-      const blocker = this.appBlocker?.() ?? null;
-      return { provider, source: 'app', enabled: true, ready: !blocker, limited: false, limitUsd: 0, accountedUsd: saved ? this.accounted(saved) / UNITS_PER_USD : 0, remainingUsd: UNLIMITED_USD, maxRequests: 0, usedRequests: saved?.admissions.length ?? 0, remainingRequests: UNLIMITED_REQUESTS, reason: blocker ?? 'No spending limit is set. Every request is recorded in Usage.', revision: saved?.revision ?? null, updatedAt: saved?.updatedAt ?? null };
+      return { provider, source: 'app', enabled: true, ready: true, limited: false, limitUsd: 0, accountedUsd: saved ? this.accounted(saved) / UNITS_PER_USD : 0, remainingUsd: UNLIMITED_USD, maxRequests: 0, usedRequests: saved?.admissions.length ?? 0, remainingRequests: UNLIMITED_REQUESTS, reason: 'No spending limit is set. Every request is recorded in Usage.', revision: saved?.revision ?? null, updatedAt: saved?.updatedAt ?? null };
     }
     if (!saved) {
       const environment = this.environment?.(provider) ?? { source: 'none' as const, enabled: false, ready: false, limitUsd: 0, accountedUsd: 0, maxRequests: 0, usedRequests: 0, reason: 'Save an explicit connection allowance before paid research. A credential or account balance does not authorize spending.' };
@@ -54,13 +53,11 @@ export class ConnectionBudgets {
     }
     const accounted = this.accounted(saved), remainingUnits = Math.max(0, limitUnits(saved.limitUsd) - accounted);
     const usedRequests = saved.admissions.length, remainingRequests = Math.max(0, saved.maxRequests - usedRequests);
-    const blocker=this.appBlocker?.();
     let reason = 'App allowance active across local projects. Project permissions still apply; retained reservations are admission accounting, not account credit or an invoice.';
-    if (blocker) reason=blocker;
-    else if (!saved.enabled) reason = 'Connection allowance paused. Retained reservations and request counts are unchanged; environment grants cannot replace a saved app allowance.';
+    if (!saved.enabled) reason = 'Connection allowance paused. Retained reservations and request counts are unchanged; environment grants cannot replace a saved app allowance.';
     else if (remainingRequests === 0) reason = 'Connection request limit reached. Failed and uncertain requests count; editing the ceiling retains previous use.';
     else if (!Number.isFinite(requiredUsd) || requiredUsd <= 0 || chargeUnits(requiredUsd) > remainingUnits) reason = 'The conservative request reservation exceeds the connection allowance. Previous, failed and uncertain requests remain accounted.';
-    const ready = !blocker && saved.enabled && remainingRequests > 0 && Number.isFinite(requiredUsd) && requiredUsd > 0 && chargeUnits(requiredUsd) <= remainingUnits;
+    const ready = saved.enabled && remainingRequests > 0 && Number.isFinite(requiredUsd) && requiredUsd > 0 && chargeUnits(requiredUsd) <= remainingUnits;
     return { provider, source: 'app', enabled: saved.enabled, ready, limitUsd: saved.limitUsd, accountedUsd: accounted / UNITS_PER_USD, remainingUsd: remainingUnits / UNITS_PER_USD, maxRequests: saved.maxRequests, usedRequests, remainingRequests, reason, revision: saved.revision, updatedAt: saved.updatedAt };
   }
   statuses() { return connectionBudgetProviders.map(provider => this.status(provider)); }
@@ -87,6 +84,8 @@ export class ConnectionBudgets {
     });
   }
   assertRevision(provider: ConnectionBudgetProvider, expected: number | null) {
+    // Without a limit there are no terms to go out of date. The first request ever opens the ledger; one started beside it still goes out.
+    if (!spendingLimitsOn(this.store)) return;
     if ((this.saved(provider)?.revision ?? null) !== expected) throw new StoreError('The connection allowance changed while preparing this request. No paid dispatch occurred; start a new request under its current terms.', 409);
   }
   reserve(input: Reservation, expectedRevision: number | null): UsageRecord {

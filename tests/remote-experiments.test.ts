@@ -54,12 +54,13 @@ test('approved remote capture persists exact inputs, operation, results and sepa
   }finally{await f.cleanup();}
 });
 
-test('remote always asks under Full access and cannot enter local group; project denial rolls back remote admission',async()=>{
+test('remote always asks under Full access and cannot enter local group; a project stop rolls back remote admission',async()=>{
   const f=fixture(terms);try{
     f.service.authority.configure(f.project.id, { mode: 'full' });
     const attempt=preview(f);assert.equal(attempt.approval.status,'pending');assert.equal(f.remote.inputs.length,0);
     assert.throws(()=>f.service.startAuto(f.project.id,{scope:'fixture',outcome:'fixture',runIds:[attempt.run.id],fingerprints:{[attempt.run.id]:attempt.approval.fingerprint}}),/individual approval/);
-    assert.throws(()=>f.service.decide(attempt.run.id,attempt.approval.fingerprint,'allow'),/spendUsd/);
+    f.service.authority.setStopped(f.project.id,true);
+    assert.throws(()=>f.service.decide(attempt.run.id,attempt.approval.fingerprint,'allow'),/stopped/);
     assert.equal(f.grant.status().remainingRuns,2);assert.equal(f.service.authority.policy(f.project.id).used.experiments,0);
   }finally{await f.cleanup();}
 });

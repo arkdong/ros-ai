@@ -10,12 +10,12 @@ type Row = { id: string; kind?: BlockKind; label: string; caption: string };
 
 /** Add block: the six kinds this person adds most, typing to find any kind, and All blocks for the rest.
  *  Resting on a row shows the block as it looks on the map, one line on what it does, and what it needs. */
-export function AddBlockMenu({ left, top, local, onPick, onBrowse, onClose }: { left: number; top: number; local: boolean; onPick: (kind: BlockKind) => void; onBrowse: (kind?: BlockKind) => void; onClose: () => void }) {
+export function AddBlockMenu({ left, top, onPick, onBrowse, onClose }: { left: number; top: number; onPick: (kind: BlockKind) => void; onBrowse: (kind?: BlockKind) => void; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null), rest = useRef<number | null>(null);
   const [query, setQuery] = useState(''), [active, setActive] = useState(0), [preview, setPreview] = useState<KindId | null>(null), [lift, setLift] = useState(0);
   const searching = Boolean(query.trim());
-  const kinds = searching ? searchKinds(query, local) : mostUsedKinds(local);
-  const rows: Row[] = [...kinds.map(kind => ({ id: kind.id, kind, label: kind.name, caption: kind.caption })), ...(searching ? [] : [{ id: 'all', label: 'All blocks', caption: String(BLOCK_KINDS.filter(kind => local || !kind.localOnly).length) }])];
+  const kinds = searching ? searchKinds(query) : mostUsedKinds();
+  const rows: Row[] = [...kinds.map(kind => ({ id: kind.id, kind, label: kind.name, caption: kind.caption })), ...(searching ? [] : [{ id: 'all', label: 'All blocks', caption: String(BLOCK_KINDS.length) }])];
   const current = rows[Math.min(active, rows.length - 1)];
   // The menu stays above the ROS bar and inside the map: when it would run under either, it moves up by the overlap.
   useLayoutEffect(() => {

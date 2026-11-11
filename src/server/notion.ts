@@ -5,7 +5,7 @@ import { StoreError } from './store.js';
 const VERSION = '2022-06-28';
 const MAX_TEXT = 1900, MAX_BLOCKS = 100, CONTENT_CHARACTERS = 12_000;
 
-export type NotionValue = string | number | boolean | string[] | null;
+type NotionValue = string | number | boolean | string[] | null;
 export type NotionWrite =
   | { type: 'create_page'; parentId: string; title: string; properties: Record<string, NotionValue>; content?: string }
   | { type: 'update_page'; pageId: string; properties: Record<string, NotionValue> }
@@ -85,7 +85,7 @@ function blockLine(block: Json): string {
 }
 
 /** Markdown-like text as Notion blocks: headings, bullets, numbered items, to-dos, quotes and paragraphs. */
-export function textBlocks(content: string): Json[] {
+function textBlocks(content: string): Json[] {
   const blocks: Json[] = [];
   const add = (type: string, line: string, extra: Json = {}) => blocks.push({ object: 'block', type, [type]: { rich_text: rich(line), ...extra } });
   for (const raw of content.replace(/\r\n?/g, '\n').split('\n')) {

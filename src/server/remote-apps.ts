@@ -54,7 +54,7 @@ const slug = (value: string) => value.normalize('NFKD').replace(/\p{M}/gu, '').t
 const unused = (base: string, taken: ReadonlySet<string>) => { let name = base; for (let n = 2; taken.has(name); n++) name = `${base}-${n}`; return name; };
 
 /** `ROS_APP_<ID>_URL` points an app at another server, but only https or this computer (for stand-ins). */
-export function appUrl(id: AppId) {
+function appUrl(id: AppId) {
   const app = entry(id);
   if (app.auth === 'built-in') throw new StoreError(`${app.name} has no MCP server address.`);
   const override = process.env[`ROS_APP_${id.toUpperCase()}_URL`]?.trim();
@@ -427,9 +427,18 @@ export class RemoteApps {
   private forget(id: AppId, key?: string) {
     for (const [ref, cached] of this.clients) if (key === undefined ? ref === id || ref.startsWith(`${id}/`) : ref === `${id}/${key}`) { this.clients.delete(ref); void cached.client.close().catch(() => undefined); }
   }
+  /** Connections being opened now. Calls that arrive together, as after a start, wait for the same one. */
+  private readonly opening = new Map<string, Promise<Connection>>();
   /** probe: connect although the app is not turned on yet, to turn on a desktop server. account: which of an app's
    * accounts, left out for the default. */
-  private async open(id: AppId, probe = false, key?: string): Promise<Connection> {
+  private open(id: AppId, probe = false, key?: string): Promise<Connection> {
+    const slot = `${id}/${key ?? ''}/${probe ? 'probe' : ''}`, pending = this.opening.get(slot);
+    if (pending) return pending;
+    const opened = this.connect(id, probe, key).finally(() => this.opening.delete(slot));
+    this.opening.set(slot, opened);
+    return opened;
+  }
+  private async connect(id: AppId, probe: boolean, key?: string): Promise<Connection> {
     const app = entry(id), token = this.token(id), tokenKey = token ? digest(token) : undefined;
     const account = app.auth === 'sign-in' ? this.pick(id, key) : undefined;
     if (key !== undefined && app.auth === 'sign-in' && SEVERAL.has(id) && !account) throw new StoreError(`No ${app.name} account called ${label(key)}. Open Plugins › ${app.name} to see your accounts.`, 404);
@@ -454,6 +463,9 @@ export class RemoteApps {
     const reads = new Set<string>(app.reads);
     const listed = (await client.listTools()).tools;
     const opened: Connection = { client, key: tokenKey, ref, tools: listed.map(tool => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema as Record<string, unknown>, reads: tool.annotations?.readOnlyHint === true || reads.has(tool.name) })) };
+    // One connection per app or account: an older one opened meanwhile is closed, not left open for the life of ros.ai.
+    const earlier = this.clients.get(ref);
+    if (earlier) void earlier.client.close().catch(() => undefined);
     this.clients.set(ref, opened);
     return opened;
   }
@@ -502,7 +514,7 @@ export class RemoteApps {
 }
 
 /** The address an app sends the browser back to: this ros.ai's own (loopback) address, registered by ros.ai itself. */
-export const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
+const appRedirectUri = (host: string | undefined) => `http://${/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/u.test(host ?? '') ? host : '127.0.0.1:4310'}${CALLBACK}`;
 const cookie = (res: Response, value: string, maxAge: number) => res.cookie(COOKIE, value, { httpOnly: true, sameSite: 'lax', path: CALLBACK, maxAge, secure: false });
 const nonceOf = (req: Request) => { const item = (req.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${COOKIE}=`)); const value = item?.slice(COOKIE.length + 1) ?? ''; return /^[\w-]{43}$/u.test(value) ? value : ''; };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/gu, character => `&#${character.charCodeAt(0)};`);

@@ -73,7 +73,7 @@ test('mixed edits undo content while keeping view, and identical edits do not er
 
 test('content removal restores last saved layout and reparent undo retains scope-relative positions', t => {
   const f = fixture(t), id = f.project.id;
-  f.store.mutate(id, [{ type: 'addNode', node: node('group') }, { type: 'addNode', node: node('child') }], 'Add');
+  f.store.mutate(id, [{ type: 'addNode', node: node('group', { kind: 'group' }) }, { type: 'addNode', node: node('child') }], 'Add');
   f.store.mutate(id, [{ type: 'updateNode', id: 'child', patch: { x: -240, y: 72, width: 520 } }], 'Move root');
   f.store.mutate(id, [{ type: 'updateNode', id: 'child', patch: { parentId: 'group', x: 24, y: 24 } }], 'Move into group');
   f.store.mutate(id, [{ type: 'updateNode', id: 'child', patch: { x: 72, y: 96, width: 600 } }], 'Move child');

@@ -11,8 +11,4 @@ import './mac-app.css';
 // The Mac app window has no system title bar; App draws its own strip instead (desktop/src/main.ts adds ros.ai/<version>).
 if (/Macintosh/.test(navigator.userAgent) && / ros\.ai\/\S+$/.test(navigator.userAgent)) document.documentElement.classList.add('mac-app');
 
-if (/^\/waitlist(?:\/pitch)?\/?$/.test(window.location.pathname)) {
-  window.location.replace('/app');
-} else {
-  createRoot(document.getElementById('root')!).render(<React.StrictMode><ErrorBoundary><App /></ErrorBoundary></React.StrictMode>);
-}
+createRoot(document.getElementById('root')!).render(<React.StrictMode><ErrorBoundary><App /></ErrorBoundary></React.StrictMode>);

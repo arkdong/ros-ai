@@ -19,12 +19,8 @@
   flex: 0 1 auto;
   min-height: 66px;
 }
-.direct-canvas .card-outcome .outcome-label { flex-shrink: 0; }
 .direct-canvas .card-outcome p { min-height: 0; }
 .direct-canvas .expanded-group > .group-heading { max-width: 768px; }
-.direct-canvas .card-copy-button:not(.description-copy) { flex: 0 0 auto; }
-.direct-canvas .expanded-group .card-description { flex-shrink: 1; }
-.direct-canvas .expanded-group .card-bottom { flex-shrink: 0; }
 
 /* The map's state and its stages sit at the top, to the right of the tools card. */
 .direct-canvas .canvas-header {

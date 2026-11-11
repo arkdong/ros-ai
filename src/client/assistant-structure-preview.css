@@ -50,9 +50,6 @@
 .assistant-original-response>summary { cursor:pointer; }
 .assistant-original-response>pre { font-size:10px; line-height:1.6; margin-top:7px; padding:8px; background:#f7f7f7; border-radius:5px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; max-width:100%; }
 .assistant-structure-unreadable { font-size:12px; line-height:1.7; color:#777; margin:8px 0; }
-.assistant-pending-outline { margin:12px 0 18px; }
-.assistant-pending-outline>.assistant-structure-preview { margin-bottom:0; }
-.single-canvas-shell .assistant-pending-outline>.assistant-pending-proposal { margin:0; border-top:0; border-radius:0 0 8px 8px; font-size:12px; }
 
 /* A pending canvas change in the conversation: one quiet card, the changes as rows, then Accept or Dismiss. */
 .proposal-review { margin:12px 0; border:1px solid #e4e4e4; border-radius:10px; padding:10px 12px 8px; background:#fff; min-width:0; }

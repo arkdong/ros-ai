@@ -52,7 +52,7 @@ export type AssistantLive = {turnId:string;threadId?:string;reply:string;status:
 export type AssistantThread = {id:string;projectId:string;title:string;createdAt:string;updatedAt:string;outsideSession?:string;choice?:ThreadChoice;branchedFrom?:ThreadBranch;/** The agent's own session does not hold this thread's conversation (a branch, or a turn stopped for a new message), so
  * the next agent turn gets the earlier conversation written into its request. */carry?:boolean};
 /** Where a branch came from: the thread and the turn it was cut after, with that thread's name then. */
-export type ThreadBranch = {threadId:string;turnId:string;title:string};
+type ThreadBranch = {threadId:string;turnId:string;title:string};
 /** A message typed while its thread was working, sent when the thread is free. paused: it waits for the person (the turn
  * before it was stopped, or ros.ai restarted); note says why. */
 export type QueuedMessage = {id:string;threadId:string;message:string;createdAt:string;paused?:boolean;note?:string};

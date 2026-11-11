@@ -22,7 +22,7 @@ const DAY_BACK = 20 * HOUR, WEEK_BACK = 6.5 * 24 * HOUR;
 const ALL_READS = 48 * HOUR;
 
 /** The value the history held about `ago` before `at`, if ros.ai read the source that long ago. */
-export function earlierValue(history: readonly MetricPoint[], key: string, at: string, ago: number): number | undefined {
+function earlierValue(history: readonly MetricPoint[], key: string, at: string, ago: number): number | undefined {
   const until = Date.parse(at) - ago;
   for (let index = history.length - 1; index >= 0; index--) {
     const point = history[index];

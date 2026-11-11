@@ -31,7 +31,7 @@ export function artifactTable(content: string, csv = true): TableData {
   const columns = [...new Set(value.flatMap(row => row && typeof row === 'object' ? Object.keys(row) : []))];
   return { columns, rows: value.map(row => columns.map(column => { const cell = row?.[column]; return cell === null || cell === undefined ? '' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell); })) };
 }
-export const missing = (cell: string) => !cell.trim();
+const missing = (cell: string) => !cell.trim();
 export function columnSummary(data: TableData) {
   return data.columns.map((name, index) => {
     const values = data.rows.map(row => row[index] ?? ''), present = values.filter(value => !missing(value));

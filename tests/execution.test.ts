@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
 import { BudgetLedger, ExecutionService, evidenceSpans } from '../src/server/execution.js';
+import { spendingLimitsOn } from './spending-limits.js';
 import { DeferredAgentRuntime, NebiusAdapter, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from '../src/server/providers.js';
 
 const info:ModelInfo = {id:'fake-contract-model',contextTokens:100000,inputUsdPerToken:0.0000001,outputUsdPerToken:0.0000003,capabilities:{structuredOutput:true,cancellation:'abort-request',toolCalling:false,modelVersion:false},metadata:{testFixture:true}};
@@ -158,7 +159,8 @@ test('persistent budgets account in-flight, settled and unknown calls separately
   }finally{f.cleanup();}
 });
 
-test('insufficient budget rejects before inference; timeout retains reservation and no artifacts',async()=>{
+test('with spending limits on, an insufficient budget rejects before inference; a timeout retains its reservation and no artifacts',async t=>{
+  spendingLimitsOn(t);
   const f=setup();const model=new FakeModel(async()=>new Promise(()=>{}));
   const service=new ExecutionService(f.store,{model,limits:{nebius:0.001},includeSetupUsage:false});
   try{
@@ -186,7 +188,7 @@ test('model contract validates catalog capability and preserves usage; external 
     const prepared=await model.prepare(signal);assert.equal(prepared.capabilities.structuredOutput,true);
     const result=await model.complete({messages:[{role:'user',content:'Test'}],maxOutputTokens:64,schema:{type:'object'}},signal);
     assert.deepEqual(result.usage,{inputTokens:20,outputTokens:5});assert.equal(result.modelVersion,null);
-    assert.equal(JSON.parse(requests[1].body).max_tokens,64);
+    assert.equal(JSON.parse(requests[1].body).max_completion_tokens,64);
     assert.doesNotMatch(JSON.stringify({prepared,result,requests}),/server-only-fixture-secret/);
     price=null;await assert.rejects(model.prepare(signal),/price unavailable/);
     const runtime=new DeferredAgentRuntime('codex');assert.equal(runtime.capabilities.available,false);assert.equal(runtime.capabilities.toolTrace,false);

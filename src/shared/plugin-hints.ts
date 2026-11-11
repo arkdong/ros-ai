@@ -4,7 +4,7 @@
 import { PLUGINS, type PluginDefinition, type PluginId } from './plugins.js';
 
 /** linked: a link or an identifier names the app without doubt. named: the app's name, checked for double meanings. */
-export type PluginSignal = 'linked' | 'named';
+type PluginSignal = 'linked' | 'named';
 export type PluginMatch = { id: PluginId; signal: PluginSignal };
 
 type Hint = {
@@ -123,7 +123,7 @@ export function suggestionConnect(plugin: PluginDefinition): SuggestionConnect |
  * failed the check. */
 export type PluginReadiness = 'ready' | 'off' | 'missing' | 'failed';
 /** A plugin the person asked not to see: in one project for a while (Not now), or everywhere (Don't suggest again). */
-export type SilencedPlugin = { pluginId: PluginId; projectId: string | null; projectTitle: string | null; until: string | null; at: string };
+type SilencedPlugin = { pluginId: PluginId; projectId: string | null; projectTitle: string | null; until: string | null; at: string };
 export type SuggestionStatus = { enabled: boolean; plugins: Partial<Record<PluginId, PluginReadiness>>; silenced: SilencedPlugin[] };
 /** How long Not now keeps a plugin out of a project's suggestions. */
 export const NOT_NOW_DAYS = 7;

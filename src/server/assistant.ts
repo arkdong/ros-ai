@@ -11,7 +11,7 @@ import {z} from 'zod';
 import {Store,StoreError} from './store.js';
 import {ExecutionService} from './execution.js';
 import {ExperimentService} from './experiments.js';
-import type {ModelMessage,Mutation,ProjectDetail,Run} from '../shared/types.js';
+import type {ModelMessage,Mutation,ProjectDetail} from '../shared/types.js';
 import {inAppAgent,type AssistantBackend,type AssistantAction,type AssistantFocus,type AssistantGlance,type AssistantLive,type AssistantMemoryEntry,type AssistantReference,type AssistantState,type AssistantThread,type AssistantThreadSummary,type AssistantTurn,type QueuedMessage,type InAppAgent,type ThreadChoice,IN_APP_AGENTS,type OutlineEntry,type ResearchMemory,type TurnSuggestion} from '../shared/assistant.js';
 import {codexStatusRecord} from './codex-agent.js';
 import {MEMORY_LIMITS} from '../shared/personal-memory.js';
@@ -350,7 +350,9 @@ export class AssistantService {
   }
   removeQueued(projectId:string,queuedId:string){
     const item=this.queuedRecords(projectId).find(entry=>entry.id===queuedId);
-    if(item)this.store.removeRecord('assistant-queued',item.id,projectId);
+    // A message that started meanwhile is said to have gone, so Edit does not put a second copy of it in the box.
+    if(!item)throw new StoreError('This message has already been sent, so it is no longer waiting.',409);
+    this.store.removeRecord('assistant-queued',item.id,projectId);
     return this.state(projectId);
   }
   /** Branch from here: a new thread that holds this thread's conversation up to the turn, and goes on from there on its
@@ -367,7 +369,7 @@ export class AssistantService {
     const branch=this.createThread(projectId,title,{branchedFrom:{threadId:source.id,turnId:from.id,title:source.title},carry:true,...(source.choice?{choice:source.choice}:{})});
     this.store.atomic(()=>{
       for(const turn of upTo){const {files:_files,suggested:_suggested,remembered:_remembered,layer:_layer,...kept}=turn;const copy:SavedTurn={...kept,id:randomUUID(),threadId:branch.id,copiedFrom:turn.copiedFrom??turn.id,actions:[],steps:[]};this.store.saveRecord('assistant-turn',copy.id,projectId,copy);}
-      for(const message of messages)this.store.addMessage(projectId,null,message.role,message.content,undefined,branch.id);
+      for(const message of messages)this.store.addMessage(projectId,null,message.role,message.content,undefined,branch.id,false);
     });
     return {...this.state(projectId),threadId:branch.id};
   }
@@ -752,7 +754,7 @@ export class AssistantService {
   /** The saved diff of one file a turn changed. */
   fileDiff(projectId:string,turnId:string,path:unknown){return this.files.diff(projectId,this.getTurn(projectId,turnId).id,z.string().min(1).max(4096).parse(path));}
   /** Shows a file a turn changed in the file manager. */
-  revealFile(projectId:string,turnId:string,path:unknown){const turn=this.getTurn(projectId,turnId);return this.files.reveal(projectId,turn.id,z.string().min(1).max(4096).parse(path),turn.files?.changed??[]);}
+  revealFile(projectId:string,turnId:string,path:unknown){const turn=this.getTurn(projectId,turnId);return this.files.reveal(projectId,z.string().min(1).max(4096).parse(path),turn.files?.changed??[]);}
   suggestion(projectId:string,turnId:string){return this.getTurn(projectId,turnId).suggested;}
   /** Closes the plugin card under a reply: the person put it off, declined it, or carried on after connecting. */
   closeSuggestion(projectId:string,turnId:string,status:Exclude<TurnSuggestion['status'],'open'|'moved'>){
@@ -770,12 +772,13 @@ export class AssistantService {
     return this.state(projectId);
   }
   /** why: 'stop' when the person stopped the turn, and the messages waiting for its thread then wait for them too;
-   * 'next' when a waiting message was sent now, which starts once the turn has stopped. */
-  cancel(projectId:string,turnId:string,why:'stop'|'next'='stop'){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);
+   * 'next' when a waiting message was sent now, which starts once the turn has stopped; 'quit' when ros.ai is closing
+   * (to quit or to update), which the turn then says instead of blaming the person. */
+  cancel(projectId:string,turnId:string,why:'stop'|'next'|'quit'='stop'){const turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return this.state(projectId);
     if(why==='stop')for(const item of this.queuedRecords(projectId))if(item.threadId===turn.threadId&&!item.paused)this.store.saveRecord('assistant-queued',item.id,projectId,{...item,paused:true,note:'Waiting: you stopped the turn before it.'});
-    this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save({...turn,status:'cancelled',error:why==='next'?'Stopped to send your next message. Captured work and reservations are preserved.':'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
+    this.active.get(turnId)?.controller.abort();for(const action of turn.actions)if(action.runId){const run=this.store.getRun(action.runId);if(['queued','running'].includes(run.status)&&this.experiments.owns(run.id))this.experiments.cancel(run.id);}this.save(why==='quit'?{...turn,status:'interrupted',error:'ros.ai closed while this was running. Captured work and reservations are preserved; nothing is repeated on its own.'}:{...turn,status:'cancelled',error:why==='next'?'Stopped to send your next message. Captured work and reservations are preserved.':'Stopped by the user. Captured work and reservations are preserved.'});return this.state(projectId);}
   devClear(projectId:string){this.stopProject(projectId);this.store.clearConversation(projectId);this.migrated.delete(projectId);return this.state(projectId);}
-  stopProject(projectId:string){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id);this.drop(turn.id);}}
+  stopProject(projectId:string,why:'stop'|'quit'='stop'){for(const turn of this.turns(projectId)){if(turn.status==='running')this.cancel(projectId,turn.id,why);this.drop(turn.id);}}
   /** Ends what ROS still does beside a turn: arranging it (which changes nothing once stopped), the timers that wait for an
    * outside agent to go quiet, and the look at the folder the turn started from. */
   private drop(turnId:string){this.layering.get(turnId)?.stop.abort();clearTimeout(this.quiet.get(turnId));this.quiet.delete(turnId);clearTimeout(this.filesQuiet.get(turnId));this.filesQuiet.delete(turnId);this.files.forget(turnId);}
@@ -790,7 +793,7 @@ export class AssistantService {
     for(const until=Date.now()+LET_GO_MS;settling()&&Date.now()<until;)await delay(100);
     if(settling())throw new StoreError(`ROS is still stopping in this ${threadId?'thread':'project'}. Try again in a few seconds.`,409);
   }
-  async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id);await Promise.allSettled([...this.active.values()].map(a=>a.done));}
+  async shutdown(){this.closed=true;for(const project of this.store.listProjects())this.stopProject(project.id,'quit');await Promise.allSettled([...this.active.values()].map(a=>a.done));}
 }
 
 export function attachAssistantRoutes(app:Express,service:AssistantService){

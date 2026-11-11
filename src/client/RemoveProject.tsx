@@ -8,14 +8,13 @@ import { Modal } from './Modal';
 const shortPath = (path: string) => path.replace(/^(\/Users|\/home)\/[^/]+(?=\/)/u, '~');
 
 /** Removing a project asks whether its folder goes too. Keeping the files is the default; taking them moves the folder to the computer's Trash. */
-export function RemoveProjectDialog({ project, busy, folders, onCancel, onRemove }: { project: Project; busy: boolean; folders: boolean; onCancel: () => void; onRemove: (files: boolean) => void }) {
+export function RemoveProjectDialog({ project, busy, onCancel, onRemove }: { project: Project; busy: boolean; onCancel: () => void; onRemove: (files: boolean) => void }) {
   const [path, setPath] = useState<string | null>(null), [files, setFiles] = useState(false);
   useEffect(() => {
-    if (!folders) return;
     let current = true;
     api<ProjectFolderStatus>(`/api/projects/${project.id}/folder`).then(status => { if (current && status.attached && status.path) setPath(status.path); }).catch(() => undefined);
     return () => { current = false; };
-  }, [project.id, folders]);
+  }, [project.id]);
   return <Modal title="Remove this project?" onClose={onCancel}>
     <p className="modal-description"><strong>{project.title}</strong> will leave your project list.{path ? '' : ' Nothing on your computer is touched.'}</p>
     {path && <div className="remove-project-files">

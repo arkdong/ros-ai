@@ -6,7 +6,6 @@ import type { Artifact, ConnectionStatus, ModelMessage, Mutation, Proposal, Run,
 import { StoreError, type Store } from './store.js';
 import { Authority } from './authority.js';
 import { CombinedNebiusBudget } from './combined-budget.js';
-import { ComparisonBudget } from './comparison-budget.js';
 import { ConnectionBudgets, type EnvironmentConnectionBudget } from './connection-budgets.js';
 import type { ConnectionBudgetProvider } from '../shared/connection-budgets.js';
 import { ModelSettings } from './model-settings.js';
@@ -32,8 +31,8 @@ const requestText = z.string().trim().min(1).max(12000);
 /** A Web block's sweep runs a few searches at a time, and at most so many start in any minute, shared by every sweep,
  * within each service's limits: a Tavily development key allows 100 a minute, Exa 10 a second, and Brave Search
  * as little as 1 a second on older plans. */
-export const SWEEP_MAX_SEARCHES = 40;
-export const SWEEP_LIMITS:Record<SearchProviderId,{workers:number;perMinute:number}> = {tavily:{workers:6,perMinute:90},exa:{workers:4,perMinute:120},brave:{workers:1,perMinute:60}};
+const SWEEP_MAX_SEARCHES = 40;
+const SWEEP_LIMITS:Record<SearchProviderId,{workers:number;perMinute:number}> = {tavily:{workers:6,perMinute:90},exa:{workers:4,perMinute:120},brave:{workers:1,perMinute:60}};
 const sweepStarts:Record<SearchProviderId,number[]> = {tavily:[],exa:[],brave:[]};
 async function sweepSlot(provider:SearchProviderId,signal:AbortSignal) {
   const starts = sweepStarts[provider], {perMinute} = SWEEP_LIMITS[provider];
@@ -63,10 +62,10 @@ const providerOperation = z.discriminatedUnion('type',[
   z.object({type:z.literal('addConnection'),connection:z.object({id,source:id,target:id,label:z.string().max(160)}).strict()}).strict(),
   z.object({type:z.literal('removeConnection'),id}).strict(),
 ]);
-export const PROJECT_REPLY_SCHEMA = z.toJSONSchema(projectReply.extend({operations:z.array(providerOperation).max(20)}));
+const PROJECT_REPLY_SCHEMA = z.toJSONSchema(projectReply.extend({operations:z.array(providerOperation).max(20)}));
 
 const experimentPlan = z.object({explanation:z.string().min(1).max(8000),code:z.string().min(1).max(20000),parameters:z.record(z.string().min(1).max(80),z.union([z.string().max(1000),z.number().finite(),z.boolean()]))}).strict();
-export const EXPERIMENT_PLAN_SCHEMA = z.toJSONSchema(experimentPlan);
+const EXPERIMENT_PLAN_SCHEMA = z.toJSONSchema(experimentPlan);
 export type LiveAuthorization = {id:string;nebiusUsd:number;tavilyUsd:number;maxRequests:number};
 function configuredAuthorization():LiveAuthorization|undefined {
   const id = process.env.ROS_PAID_AUTHORIZATION_ID?.trim();
@@ -113,7 +112,6 @@ export class ExecutionService {
   readonly ledger:BudgetLedger;
   private readonly authorization?:LiveAuthorization;
   private readonly combinedBudget?:CombinedNebiusBudget;
-  private readonly comparisonBudget?:ComparisonBudget;
   private closed = false;
   constructor(private readonly store:Store,options:Options={}) {
     this.inference=options.inference;
@@ -133,15 +131,13 @@ export class ExecutionService {
     this.authorization = options.liveAuthorization ?? configuredAuthorization();
     this.combinedBudget=options.combinedBudget??(process.env.ROS_NEBIUS_COMBINED_AUTHORIZATION_ID?new CombinedNebiusBudget(store):undefined);
     this.maxConcurrent = Math.max(1,Math.min(4,Math.floor(options.maxConcurrent ?? Number(process.env.ROS_MAX_CONCURRENT || 2))));
-    this.comparisonBudget=ComparisonBudget.fromEnvironment(store);
-    this.maxOutputTokens = this.comparisonBudget?.outputTokenCap ?? Math.max(64,Math.min(2000,options.maxOutputTokens ?? 1400));
-    this.timeoutMs = options.timeoutMs ?? (this.comparisonBudget?.outputTokenCap === 8000 ? 180000 : 90000);
+    this.maxOutputTokens = Math.max(64,Math.min(2000,options.maxOutputTokens ?? 1400));
+    this.timeoutMs = options.timeoutMs ?? 90000;
     const nebius = this.authorization ? Math.min(options.limits?.nebius ?? this.authorization.nebiusUsd,this.authorization.nebiusUsd) : options.limits?.nebius ?? (this.customModel?5:0);
     const tavily = this.authorization ? Math.min(options.limits?.tavily ?? this.authorization.tavilyUsd,this.authorization.tavilyUsd) : options.limits?.tavily ?? (this.search instanceof TavilyAdapter?0:10);
     if (![nebius,tavily].every(n=>Number.isFinite(n)&&n>=0) || ![this.maxConcurrent,this.timeoutMs].every(n=>Number.isFinite(n)&&n>0)) throw new Error('Invalid execution limits.');
     this.ledger = new BudgetLedger(store,{nebius,tavily},this.authorization?.id,this.authorization?.maxRequests);
-    this.connectionBudgets = new ConnectionBudgets(store,provider=>this.environmentBudget(provider),()=>this.comparisonBudget?'Historical comparison mode cannot use an app connection allowance. Its exact environment grant remains restricted to the saved comparison projects and models. Remove comparison mode in server configuration and restart before ordinary app-authorized research.':null);
-    this.comparisonBudget?.validateProviderSettings(this.authorization?.id,nebius,openaiId,openaiUsd);
+    this.connectionBudgets = new ConnectionBudgets(store,provider=>this.environmentBudget(provider));
     if (options.includeSetupUsage === true && !store.getUsage('setup-tavily-2026-09-20')) {
       store.addUsage({id:'setup-tavily-2026-09-20',provider:'tavily',purpose:'Prior credential setup: one basic search, September 20',reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:TAVILY_CREDIT_USD,reportedUsage:null,status:'uncertain',basis:'Official basic search: 1 credit, $0.008/credit PAYG upper bound; original setup request did not return measured usage.',createdAt:now()});
     }
@@ -166,7 +162,6 @@ export class ExecutionService {
   private legacyCloudAllowed(provider:ConnectionBudgetProvider) {
     // Environment grants predate Exa and Brave Search; they run only under an app allowance.
     if(provider==='exa'||provider==='brave')return false;
-    if(provider==='tavily'&&this.comparisonBudget)return false;
     if(provider==='openai')return Boolean(this.openaiLedger.authorizationId&&(this.openaiLedger.limits.openai??0)>0);
     return provider==='nebius' ? this.customModel || Boolean(this.authorization && this.authorization.nebiusUsd>0) : !(this.search instanceof TavilyAdapter) || Boolean(this.authorization && this.authorization.tavilyUsd>0);
   }
@@ -178,16 +173,14 @@ export class ExecutionService {
     const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;
     let ready=enabled&&accountedUsd<limitUsd&&usedRequests<ledger.maxRequests;
     let reason=!enabled?'Save an explicit connection allowance before paid research. Credentials and historical usage do not authorize new spending.':usedRequests>=ledger.maxRequests?'The environment authorization request limit is exhausted.':accountedUsd>=limitUsd?'The environment provider allowance is exhausted; failed and uncertain requests remain accounted.':'Existing environment allowance active. Project permissions and retained provider ceilings still apply.';
-    if(provider==='nebius'&&this.combinedBudget&&!this.comparisonBudget){const combined=this.combinedBudget.status();ready&&=combined.ready;if(!combined.ready)reason=combined.reason;}
-    if(this.comparisonBudget&&provider!=='tavily')reason='The exact historical comparison environment grant applies only to its saved projects and approved models; its retained limits remain enforced.';
+    if(provider==='nebius'&&this.combinedBudget){const combined=this.combinedBudget.status();ready&&=combined.ready;if(!combined.ready)reason=combined.reason;}
     const source=ledger.authorizationId?'environment':'none';
     return {source,enabled,ready,limitUsd,accountedUsd,maxRequests:source==='none'||!enabled?0:ledger.maxRequests,usedRequests:source==='none'||!enabled?0:usedRequests,reason};
   }
   private cloudAllowed(provider:string) {
-    if(provider!=='nebius'&&provider!=='openai'&&!isSearchProvider(provider))return Boolean(this.inference?.status(provider).ready)&&!this.comparisonBudget;
-    if(isSearchProvider(provider)&&this.comparisonBudget)return false;
+    if(provider!=='nebius'&&provider!=='openai'&&!isSearchProvider(provider))return Boolean(this.inference?.status(provider).ready);
     const budget=this.connectionBudgets.status(provider);
-    if(budget.source==='app')return budget.ready&&!this.comparisonBudget;
+    if(budget.source==='app')return budget.ready;
     return this.legacyCloudAllowed(provider);
   }
   private admitWork(requireModel=true,selection?:ModelSelection) {
@@ -197,7 +190,6 @@ export class ExecutionService {
     const provider=selection?.provider??'nebius',model=this.adapter(selection);
     if(provider!=='nebius'&&provider!=='openai'){
       if(requireModel&&(!this.inference||!this.inference.status(provider).ready))throw new Error(this.inference?.status(provider).reason??'Registered connection unavailable.');
-      if(this.comparisonBudget)throw new Error('Historical comparison mode cannot dispatch a registered connection.');
       return;
     }
     if (requireModel && !this.cloudAllowed(provider)) throw new Error(`Paid inference is blocked. ${this.connectionBudgets.status(provider).reason}`);
@@ -238,8 +230,7 @@ export class ExecutionService {
     if(selection&&selection.provider!=='nebius'&&selection.provider!=='openai')return this.registeredModelCall(request,signal,purpose,selection,runId,projectId);
     const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
     if (!this.cloudAllowed(provider)) throw new Error(this.connectionBudgets.status(provider).reason);
-    const allowance=this.connectionBudgets.status(provider),usesAppAllowance=allowance.source==='app'&&!this.comparisonBudget;
-    this.comparisonBudget?.assertScope(projectId,selection);
+    const allowance=this.connectionBudgets.status(provider),usesAppAllowance=allowance.source==='app';
     this.checkSignal(signal);
     const bytes = Buffer.byteLength(JSON.stringify(request),'utf8');
     if (bytes > 64000) throw new Error('This request exceeds the 64 KB context limit. Select a smaller excerpt or start a new node.');
@@ -268,8 +259,7 @@ export class ExecutionService {
       if(projectId) new Authority(this.store).reserve(projectId,{kind:'model',nodeId:runId?this.store.getRun(runId).nodeId:'project',fingerprint:runId??randomUUID(),spendUsd:estimate});
       const basis=`${reservationMultiplier} × (${inputTokens} reserved input tokens × $${info.inputUsdPerToken}/token + ${request.maxOutputTokens} total completion tokens × $${info.outputUsdPerToken}/token). ${tokenReservation.inputBasis}. ${provider==='openai'?'Standard rates recorded from official OpenAI docs on 2026-09-23; app input ceiling 272K.':'Catalog checked per call.'} Reservation retained after settlement; follow-ups require separate admission.`;
       const admitted=usesAppAllowance?this.connectionBudgets.reserve({provider,amountUsd:estimate,purpose,basis,runId,trace},allowance.revision):ledger.reserve(provider,estimate,purpose,basis,runId,trace);
-      if(this.comparisonBudget){if(!projectId||!selection)throw new Error('Comparison admission requires its exact project and model.');this.comparisonBudget.reserve(projectId,selection,admitted);}
-      else if(!usesAppAllowance&&provider==='nebius'&&this.combinedBudget){if(!projectId)throw new Error('Combined Nebius admission requires a project.');this.combinedBudget.reserve({kind:'inference',attemptId:admitted.id,projectId,amountUsd:estimate,basis:admitted.basis});}
+      if(!usesAppAllowance&&provider==='nebius'&&this.combinedBudget){if(!projectId)throw new Error('Combined Nebius admission requires a project.');this.combinedBudget.reserve({kind:'inference',attemptId:admitted.id,projectId,amountUsd:estimate,basis:admitted.basis});}
       return admitted;
     });
     const reservedTrace=usage.reportedUsage as Record<string,unknown>;
@@ -295,7 +285,6 @@ export class ExecutionService {
   private async registeredModelCall(request:ModelRequest,signal:AbortSignal,purpose:string,selection:ModelSelection,runId?:string,projectId?:string):Promise<{response:ModelResponse;info:ModelInfo;usage:UsageRecord}>{
     const registry=this.inference;
     if(!registry||!projectId)throw new Error('Registered inference requires a local project and connection registry.');
-    if(this.comparisonBudget)throw new Error('Historical comparison mode cannot dispatch registered inference.');
     this.checkSignal(signal);
     const before=registry.status(selection.provider);
     if(!before.ready)throw new Error(before.reason);
@@ -317,7 +306,7 @@ export class ExecutionService {
     else if(wireBytes+4096+request.maxOutputTokens>info.contextTokens)throw new Error('Selected context exceeds the conservative application byte/context guard. Select less context or configure the model capacity; its tokenizer remains unverified.');
     const reserveUsd=local?0:Math.max(0.000001,2*info.contextTokens*(info.inputUsdPerToken+info.outputUsdPerToken));
     const basis=local?'Loopback inference: no provider USD debit; processing location/runtime are unverified. Request count, bytes, declared completion cap and deadline remain bounded.':`2 × full declared ${info.contextTokens} context × (input $${info.inputUsdPerToken}/token + output $${info.outputUsdPerToken}/token). Full output context reserved because total billable/reasoning cap is unverified. User-declared upper rates/context, not verified account pricing; reservation retained, no automatic retry.`;
-    const trace={scope:purpose==='Explicit workspace guide review'?'workspace-guide':runId?'node':'project',projectId,request:structuredClone(request),wireRequest,provider:selection.provider,model:selection.model,catalog:info.metadata,processingDestination:before.endpointOrigin,processingLocation:local?'local-unverified':'external'};
+    const trace={scope:runId?'node':'project',projectId,request:structuredClone(request),wireRequest,provider:selection.provider,model:selection.model,catalog:info.metadata,processingDestination:before.endpointOrigin,processingLocation:local?'local-unverified':'external'};
     const usage=this.store.atomic(()=>{
       registry.assertRevision(selection.provider,before.revision);
       new Authority(this.store).reserve(projectId,{kind:'model',nodeId:runId?this.store.getRun(runId).nodeId:'project',fingerprint:randomUUID(),spendUsd:reserveUsd});
@@ -350,17 +339,16 @@ export class ExecutionService {
     const selection=projectId?this.modelSelection(projectId,nodeId):undefined;
     if(selection&&selection.provider!=='nebius'&&selection.provider!=='openai'){
       const c=this.inference?.statuses().find(c=>c.id===selection.provider),policy=projectId?new Authority(this.store).policy(projectId):undefined;
-      const blocker=!c?'The selected inference connection is unavailable.':!c.models.some(m=>m.id===selection.model)?'The selected model is no longer configured.':!c.ready?c.reason:this.comparisonBudget?'Historical comparison mode cannot use registered connections.':policy?.stopped?'Project research is stopped.':null;
+      const blocker=!c?'The selected inference connection is unavailable.':!c.models.some(m=>m.id===selection.model)?'The selected model is no longer configured.':!c.ready?c.reason:policy?.stopped?'Project research is stopped.':null;
       const service=this.searchService(),search=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd);
       return {modelAvailable:!blocker,modelBlocker:blocker,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&search.ready&&!policy?.stopped};
     }
     const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
-    const service=this.searchService(),allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd),usesAppAllowance=allowance.source==='app'&&!this.comparisonBudget;
-    const comparison=this.comparisonBudget?.status(projectId,selection);
-    const modelBudgetReady=comparison?comparison.ready:usesAppAllowance?allowance.ready:provider!=='nebius'||!this.combinedBudget||this.combinedBudget.status().ready;
+    const service=this.searchService(),allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd),usesAppAllowance=allowance.source==='app';
+    const modelBudgetReady=usesAppAllowance?allowance.ready:provider!=='nebius'||!this.combinedBudget||this.combinedBudget.status().ready;
     const ledgerReady=usesAppAllowance?allowance.ready:ledger.accounted(provider)<(ledger.limits[provider]??0)&&(allowance.source!=='environment'||allowance.remainingRequests>0);
     const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:service.id==='tavily'&&this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
-    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? comparison?.reason??this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
+    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
     if(projectId&&new Authority(this.store).policy(projectId).stopped){
       capabilities.modelBlocker??='Project research is stopped. Open Permissions and resume deliberately.';
       capabilities.modelAvailable=false;capabilities.searchAvailable=false;
@@ -385,13 +373,6 @@ export class ExecutionService {
     const key=this.chatKey(projectId,`ros-layer:${randomUUID()}`),controller=new AbortController();this.chats.set(key,controller);
     try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'ROS arranging an agent turn',undefined,projectId,1,selection);}
     finally{this.chats.delete(key);}
-  }
-  async guideComplete(projectId:string,request:ModelRequest,signal:AbortSignal,selection:ModelSelection){
-    this.store.getProject(projectId);this.admitWork(true,selection);
-    if(this.chatting(projectId))throw new Error('Finish or stop the current project response before a guide review.');
-    const controller=new AbortController();this.chats.set(projectId,controller);
-    try{return await this.modelCall(request,AbortSignal.any([signal,this.signal(controller)]),'Explicit workspace guide review',undefined,projectId,1,selection);}
-    finally{if(this.chats.get(projectId)===controller)this.chats.delete(projectId);}
   }
   /** `arranged`: ros.ai laid out the moved blocks itself, so they keep their positions. `browser`: accepting it opens a
    * browser, which Approve for me asks about first. */
@@ -657,14 +638,11 @@ export class ExecutionService {
       this.store.acceptProposal(proposal.projectId,proposal.id);
     });
   }
-  startResearchStep(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;sessionId:string;messages:ModelMessage[];schema:Record<string,unknown>}) {
-    return this.startRun(projectId,nodeId,{request:options.request,useSearch:false,experimentDatasetId:options.datasetArtifactId,research:{sessionId:options.sessionId,messages:options.messages,schema:options.schema}});
-  }
-  startRun(projectId:string,nodeId:string,options:{request:string;useSearch:boolean;retryOf?:string;experimentDatasetId?:string;experimentBackend?:'bounded'|'docker-python'|'nebius-sandbox';research?:{sessionId:string;messages:ModelMessage[];schema:Record<string,unknown>}}):Run {
+  startRun(projectId:string,nodeId:string,options:{request:string;useSearch:boolean;retryOf?:string;experimentDatasetId?:string;experimentBackend?:'bounded'|'docker-python'|'nebius-sandbox'}):Run {
     const request = requestText.parse(options.request);
     const duplicate = this.store.listRuns(projectId).find(r=>r.nodeId===nodeId && (r.status==='queued'||r.status==='running'));
     if (duplicate) {
-      if (duplicate.configuration.kind==='local-experiment' || ['assistant-search','agent-search'].includes(String(duplicate.configuration.purpose)) || Boolean(options.experimentDatasetId)!==(duplicate.configuration.purpose==='experiment-plan') || (options.experimentDatasetId && !options.research && (duplicate.configuration.backend??'bounded')!==(options.experimentBackend??'bounded'))) throw new Error('This node already has different active work. Finish or cancel its current run or local approval preview first.');
+      if (duplicate.configuration.kind==='local-experiment' || ['assistant-search','agent-search'].includes(String(duplicate.configuration.purpose)) || Boolean(options.experimentDatasetId)!==(duplicate.configuration.purpose==='experiment-plan') || (options.experimentDatasetId && (duplicate.configuration.backend??'bounded')!==(options.experimentBackend??'bounded'))) throw new Error('This node already has different active work. Finish or cancel its current run or local approval preview first.');
       return duplicate;
     }
     const selection=this.modelSelection(projectId,nodeId);
@@ -685,8 +663,7 @@ export class ExecutionService {
     }
     const run:Run = {id:runId,projectId,nodeId,request,useSearch:Boolean(options.useSearch),status:'queued',retryOf:options.retryOf,createdAt:now(),projectRevision:detail.project.revision,node:structuredClone(node),inputs:structuredClone(inputs),messages:history,provider:this.customModel?this.model.provider:selection.provider,model:this.customModel?this.model.model:selection.model,modelVersion:null,configuration:{maxOutputTokens:this.maxOutputTokens,temperature:0.3,contextPolicy:'Only this node conversation and explicitly selected immutable materials; no graph traversal.',toolPolicy:`At most one ${service.id==='tavily'?'basic Tavily':pricing.label} search then one model call; no automatic retries or executable code.`,timeoutMs:this.timeoutMs,...(options.useSearch?{searchService:service.id}:{})},tools:options.useSearch?[pricing.schema]:[],events:[],artifactIds:[]};
     this.store.createRun(run);
-    if (options.experimentDatasetId) this.store.updateRun(runId,{configuration:{...run.configuration,purpose:'experiment-plan',datasetArtifactId:options.experimentDatasetId,...(!options.research?{backend:options.experimentBackend??'bounded'}:{}),toolPolicy:'One validated experiment proposal; no code execution. Separate exact-action preview and approval required.'}});
-    if(options.research)this.store.updateRun(runId,{configuration:{...this.store.getRun(runId).configuration,purpose:'research-step',research:options.research}});
+    if (options.experimentDatasetId) this.store.updateRun(runId,{configuration:{...run.configuration,purpose:'experiment-plan',datasetArtifactId:options.experimentDatasetId,backend:options.experimentBackend??'bounded',toolPolicy:'One validated experiment proposal; no code execution. Separate exact-action preview and approval required.'}});
     this.store.addMessage(projectId,nodeId,'user',request,runId);
     const controller = new AbortController();
     const active:Active = {controller,done:Promise.resolve()};
@@ -704,7 +681,6 @@ export class ExecutionService {
       let run = this.store.getRun(runId);
       this.store.updateRun(runId,{status:'running',startedAt:now()});
       this.event(runId,'started','Captured node and selected input versions.');
-      if(run.configuration.purpose==='research-step'){await this.performResearchStep(run,signal);return;}
       if (run.configuration.purpose==='experiment-plan') { await this.performExperimentPlan(run,signal); return; }
       const sourceArtifacts:Artifact[] = [];
       const toolCalls:unknown[] = [];
@@ -780,14 +756,6 @@ export class ExecutionService {
     this.event(run.id,'tool-proposal','Validated experiment response shape. Code still requires local policy validation and exact-action approval.',{name:'propose_local_experiment',arguments:plan,decision:'preview-required',artifactId:artifact.id});
     this.store.addMessage(run.projectId,run.nodeId,'assistant',`${plan.explanation}\n\nCode proposal saved. Review it in the experiment editor; this model response did not execute it.`,run.id);
     this.store.updateRun(run.id,{status:'completed',endedAt:now(),modelVersion:response.modelVersion,artifactIds:[artifact.id],tools:[{name:'propose_local_experiment',schema:EXPERIMENT_PLAN_SCHEMA,arguments:plan,decision:'preview-required'}],usage:response.usage,cost:{estimatedUsd:usage.estimatedUsd,reservedUsd:usage.reservedUsd,basis:usage.basis},configuration:{...this.store.getRun(run.id).configuration,experimentPlan:plan,modelInfo:info,responseMetadata:response.metadata}});
-  }
-  private async performResearchStep(run:Run,signal:AbortSignal){
-    const config=run.configuration.research as {sessionId:string;messages:ModelMessage[];schema:Record<string,unknown>};
-    this.event(run.id,'model-start','Requesting one research step; code and additional blocks pass independent approval.');
-    const {response,info,usage}=await this.modelCall({messages:config.messages,maxOutputTokens:3000,schema:config.schema,responseName:'research_step',responseMode:'text-json'},signal,'Research collaborator step',run.id,run.projectId);
-    this.checkSignal(signal);
-    const artifact=this.store.addArtifact({projectId:run.projectId,nodeId:run.nodeId,runId:run.id,kind:'result',title:`${run.node.title} — research step`,content:response.content,mediaType:'application/json',capture:'generated'});
-    this.store.updateRun(run.id,{status:'completed',endedAt:now(),modelVersion:response.modelVersion,artifactIds:[artifact.id],usage:response.usage,cost:{estimatedUsd:usage.estimatedUsd,reservedUsd:usage.reservedUsd,basis:usage.basis},configuration:{...this.store.getRun(run.id).configuration,researchResponse:response.content,modelInfo:info,responseMetadata:response.metadata}});
   }
   cancelRun(runId:string):Run {
     const run = this.store.getRun(runId);

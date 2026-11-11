@@ -76,20 +76,20 @@ test('outline relationship references identify source and consumer without mutat
   } finally { await f.close(); }
 });
 
-test('invalid model contracts retain the captured response, apply no tools and remain readable', async () => {
+test('invalid model contracts show the reply with a warning, retain the captured response and apply no tools', async () => {
   const invalid = reply({ references: [{ kind: 'dataset', id: 'invalid', label: 'Invalid reference kind' }], tools: [{ type: 'search', nodeId: 'a', query: 'Must not dispatch' }] });
   const f = fixture([invalid]);
   try {
     f.assistant.start(f.project.id, { message: 'Exercise malformed model output' });
     const turn = await finished(f);
-    assert.equal(turn.status, 'failed'); assert.match(turn.error!, /expected contract.*references.0.kind/);
+    assert.equal(turn.status, 'completed'); assert.match(turn.warning!, /invalid action-contract fields \(references\.0\.kind\)\. No actions or memory updates/);
     assert.equal(turn.actions.length, 0); assert.equal(f.searches.length, 0);
     const saved = f.store.record<AssistantTurn & { steps: { response: string }[] }>('assistant-turn', turn.id)!;
     assert.deepEqual(JSON.parse(saved.steps[0].response), invalid);
     saved.steps[0].response = '{invalid JSON';
     f.store.saveRecord('assistant-turn', turn.id, f.project.id, saved);
     assert.equal(f.assistant.state(f.project.id).turns[0].question, null);
-    assert.equal(f.assistant.state(f.project.id).turns[0].status, 'failed');
+    assert.equal(f.assistant.state(f.project.id).turns[0].status, 'completed', 'A saved response that can no longer be read does not break the conversation');
   } finally { await f.close(); }
 });
 
@@ -134,7 +134,7 @@ test('Ask note proposals preserve structure until accepted and tools cannot use 
     assert.equal(turn.actions[0].status, 'pending'); assert.equal(turn.actions[1].status, 'failed');
     assert.match(turn.actions[1].error!, /does not exist|Accept/); assert.equal(f.searches.length, 0);
     assert.equal(f.execution.acceptGovernedProposal(f.project.id, turn.actions[0].proposalId!), true);
-    assert.ok(f.store.getProject(f.project.id).canvas.nodes.some(n => n.id === 'new-note' && n.description.includes('Why this note exists')));
+    assert.ok(f.store.getProject(f.project.id).canvas.nodes.some(n => n.title === 'New fixture note' && n.description.includes('Why this note exists')));
     assert.equal(f.assistant.state(f.project.id).turns[0].actions[0].status, 'completed');
     assert.equal(f.experiments.authority.policy(f.project.id).used.createdActions, 1); assert.equal(f.starts.length, 0);
   } finally { await f.close(); }
@@ -225,6 +225,25 @@ test('cancelling a pending model call retains admission and discards late output
     assert.equal(f.signals[0].aborted, true); assert.equal((await finished(f, state.activeTurnId!)).status, 'cancelled');
     assert.doesNotMatch(JSON.stringify(f.assistant.state(f.project.id)), /LATE_RESPONSE_MUST_NOT_PERSIST|late-note/);
     assert.ok(f.store.listUsage()[0].reservedUsd > 0); assert.equal(f.store.detail(f.project.id).proposals.length, 0);
+  } finally { release(reply()); await f.close(); }
+});
+
+test('a turn cut short because ros.ai closes says so, and a waiting message is not blamed on the person', async () => {
+  let release!: (value: unknown) => void;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const f = fixture([() => waiting]);
+  try {
+    const state = f.assistant.start(f.project.id, { message: 'Still running when ros.ai quits' });
+    await until(() => f.requests.length === 1);
+    f.assistant.start(f.project.id, { message: 'Waiting behind it', threadId: state.threadId });
+    const closing = f.assistant.shutdown();
+    release(reply());
+    await closing;
+    const turn = f.assistant.state(f.project.id).turns.find(item => item.id === state.activeTurnId)!;
+    assert.equal(turn.status, 'interrupted');
+    assert.match(turn.error!, /^ros\.ai closed while this was running/);
+    const queued = f.assistant.state(f.project.id).queued[0];
+    assert.notEqual(queued.paused, true); assert.equal(queued.note, undefined, 'The next start marks it as waiting since the restart');
   } finally { release(reply()); await f.close(); }
 });
 
@@ -411,6 +430,7 @@ test('threads keep their own history, two run at once, and the earlier conversat
     const waiting = f.assistant.start(f.project.id, { message: 'Too soon', threadId: legacy });
     assert.equal(waiting.queued.length, 1); assert.equal(waiting.turns.filter(turn => turn.threadId === legacy && turn.status === 'running').length, 1);
     f.assistant.removeQueued(f.project.id, waiting.queued[0].id);
+    assert.throws(() => f.assistant.removeQueued(f.project.id, waiting.queued[0].id), /already been sent/, 'A message that is no longer waiting cannot be taken back a second time');
     const two = f.assistant.start(f.project.id, { message: 'A separate question in a new thread' });
     assert.ok(two.threadId && two.threadId !== legacy); assert.equal(two.threads.filter(thread => thread.running).length, 2);
     assert.equal(two.threads.find(thread => thread.id === two.threadId)!.title, 'A separate question in a new thread');

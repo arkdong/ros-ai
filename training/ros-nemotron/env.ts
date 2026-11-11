@@ -14,7 +14,7 @@ import type { ExecutionBackend, SandboxCapabilities } from '../../src/server/san
 import { ToolLoopAgentService } from '../../src/server/tool-loop-agent.js';
 import { AgentWorkspaceTools } from '../../src/server/agent-tools.js';
 import { NotionApi } from '../../src/server/notion.js';
-import { seedDemo } from '../../src/server/demo.js';
+import { seedWeatherProject } from './weather-project.js';
 import type { ChatMessage, ModelAdapter, ModelRequest, ModelResponse, SearchAdapter } from '../../src/server/providers.js';
 import type { AgentEvent } from '../../src/shared/agent-runtime.js';
 import type { BlockType, CanvasNode, Mutation, Run } from '../../src/shared/types.js';
@@ -63,7 +63,7 @@ const notionStub = () => new NotionApi(() => 'training-stub', async () => new Re
 
 function build(store: Store, fixture: Fixture) {
   const project = store.createProject(fixture.title);
-  if (fixture.seed === 'demo') { seedDemo(store, project.id); return { projectId: project.id, ids: new Map(store.getProject(project.id).canvas.nodes.map(node => [node.title, node.id])) }; }
+  if (fixture.seed === 'demo') { seedWeatherProject(store, project.id); return { projectId: project.id, ids: new Map(store.getProject(project.id).canvas.nodes.map(node => [node.title, node.id])) }; }
   const ids = new Map<string, string>();
   for (const item of [...fixture.groups ?? [], ...fixture.blocks]) ids.set(item.slug, randomUUID());
   const operations: Mutation[] = [];

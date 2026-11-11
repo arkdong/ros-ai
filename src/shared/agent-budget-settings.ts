@@ -9,4 +9,3 @@ export type CodexAllowanceStatus = {
   used: CodexAllowanceResources; remaining: CodexAllowanceResources; scope: CodexAllowanceScope;
   createdAt: string | null; updatedAt: string | null; expiresAt: string | null; limitations: string[];
 };
-export type CodexAllowanceUpdate = CodexAllowanceLimits & { enabled: true; acknowledged: true; nodeIds?: string[]; artifactIds?: string[] };

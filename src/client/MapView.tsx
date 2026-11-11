@@ -9,6 +9,7 @@ import { api } from './api';
 import { stop } from './live-block';
 import './live-block.css';
 import './map-block.css';
+import { markGoogleMapsScriptLoaded } from './google-maps-script';
 
 type FoundPlace = { name: string; address: string; lat: number; lng: number };
 
@@ -138,6 +139,7 @@ function loadGoogle(key: string): Promise<Maps> {
     const callback = '__rosGoogleMapsReady', host = window as unknown as Record<string, unknown>;
     host[callback] = () => resolve(google.maps);
     host.gm_authFailure = () => { googleRefused = true; refusedListeners.forEach(listener => listener()); };
+    markGoogleMapsScriptLoaded();
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?${new URLSearchParams({ key, v: 'weekly', loading: 'async', callback })}`;
     script.async = true;

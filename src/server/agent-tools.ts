@@ -20,7 +20,7 @@ import { CLOUD_SHOWS, METRIC_TOOLS, metricSummary } from '../shared/metrics.js';
 import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS, tilesFor } from '../shared/dashboards.js';
 import { MAX_ROW_BLOCKS, ROW_LINK } from '../shared/notion-rows.js';
 import { appCatalogue, type AgentApp, type AppId, type AppTool, type RemoteApps } from './remote-apps.js';
-import { projectFolderRoot, type ProjectFolders } from './project-folders.js';
+import { projectFolderRoot, safeFileBase, type ProjectFolders } from './project-folders.js';
 import { addPaperSchema, paperBlock, type Papers } from './papers.js';
 import { NOTION_SAVE_TOOL, notionSaveSchema, notionSaveTool, type NotionFileSaver } from './notion-files.js';
 import { MAX_WEB_FILES, isWebAddress, type WebFile, type WebFileFetcher } from './web-files.js';
@@ -255,11 +255,11 @@ export class AgentWorkspaceTools {
   static apps?: RemoteApps;
   /** Live Google Sheet and Doc blocks, read for the agent as the canvas shows them. */
   static google?: GoogleWorkspace;
-  /** Training runs on this computer (Training blocks), read for the agent as the block shows them; unset in the public demo. */
+  /** Training runs on this computer (Training blocks), read for the agent as the block shows them. */
   static training?: (view: TrainingView) => Promise<unknown>;
-  /** Launch numbers (Metrics blocks), read for the agent and for Apps as the block shows them; unset in the public demo. */
+  /** Launch numbers (Metrics blocks), read for the agent and for Apps as the block shows them. */
   static metrics?: MetricViews;
-  /** YouTube, Reddit, Hacker News and GitHub posts for Post blocks; unset in the public demo. */
+  /** YouTube, Reddit, Hacker News and GitHub posts for Post blocks. */
   static posts?: Posts;
   /** The project folders, which say which PDFs and images a File block can show. */
   static folders?: ProjectFolders;
@@ -269,7 +269,7 @@ export class AgentWorkspaceTools {
   static notionFiles?: NotionFileSaver;
   /** Downloads pictures and PDFs from the web into the project folder when a File block is given a web address. */
   static webFiles?: WebFileFetcher;
-  /** Looks places up on OpenStreetMap for Map block pins; unset in the public demo, where pins need lat and lng. */
+  /** Looks places up on OpenStreetMap for Map block pins; without it pins need lat and lng. */
   static geocoder?: Geocoder;
   /** The person's skill library (Skills page); its tool is offered while at least one skill is on. */
   static skills?: SkillLibrary;
@@ -512,6 +512,12 @@ export class AgentWorkspaceTools {
       // a block of this turn that still waits for Accept is named as such instead of doubled.
       const onCanvas = value.nodeId !== undefined && canvas.nodes.some(n => n.id === value.nodeId);
       if (value.nodeId !== undefined && !onCanvas && [...this.waiting.values()].some(change => change.nodes.has(value.nodeId!))) this.node(value.nodeId);
+      if (!onCanvas) {
+        // Whatever can refuse the report is checked before its block is added, so a refused call leaves no block proposal behind.
+        this.current();
+        if (value.sourceArtifactId) { this.artifact(value.sourceArtifactId); throw new StoreError('Report revision must remain in the original selected block.'); }
+        for (const id of new Set(value.evidenceIds)) this.artifact(id);
+      }
       const nodeId = onCanvas ? value.nodeId! : this.addReportBlock(value.title);
       if (onCanvas) this.node(nodeId);
       this.current();
@@ -830,7 +836,7 @@ export class AgentWorkspaceTools {
       }
       const file = result.value;
       let path = saved.get(address);
-      if (!path) { path = folders.saveFile(this.scope.projectId, `${title}${file.extension}`, file.bytes).path; saved.set(address, path); }
+      if (!path) { path = folders.saveFile(this.scope.projectId, `${safeFileBase(title)}${file.extension}`, file.bytes).path; saved.set(address, path); }
       const from = file.page ? `${file.page} (its main picture, ${file.image})` : file.image;
       const source = `Source: ${from}`;
       if (op.type === 'addNode') {
@@ -1112,6 +1118,8 @@ export class AgentWorkspaceTools {
     if (!browsing.session) {
       if (value.action !== 'open') throw new StoreError('The browser is closed. Open a page again with action "open" and a url.', 409);
       browsing.session = await service.open();
+      // A browser that finished starting after the turn was stopped is closed here: the stop has already fired.
+      if (this.signal.aborted) { await this.close(); throw new StoreError('The turn has stopped, so the browser was closed again.', 409); }
       this.signal.addEventListener('abort', () => void this.close(), { once: true });
     }
     const session = browsing.session;
@@ -1658,7 +1666,7 @@ const findingCard = (finding: z.infer<typeof findingsSchema>['findings'][number]
 const textHash = (text: string) => createHash('sha256').update(text).digest('hex');
 /** Quotes are compared word for word, ignoring case, spacing and the style of quotation marks and dashes.
  * An ellipsis may leave words out between parts, which must appear in order. */
-export function quoted(text: string, quote: string): boolean {
+function quoted(text: string, quote: string): boolean {
   const plain = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[‘’‚‛′]/gu, "'").replace(/[“”„‟″]/gu, '"').replace(/[‐‑‒–—―]/gu, '-').replace(/\s+/gu, ' ').trim();
   const haystack = plain(text), parts = plain(quote).replace(/^["']+|["']+$/gu, '').split(/\s*(?:\[(?:\.\.\.|…)\]|\.\.\.|…)\s*/u).filter(Boolean);
   let from = 0;

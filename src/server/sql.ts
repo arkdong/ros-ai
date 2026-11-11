@@ -124,7 +124,8 @@ export class SqlService {
       const artifact = this.store.addArtifact({ projectId, nodeId: node.id, runId: run.id, kind: 'dataset', title, content: csv, mediaType: 'text/csv', capture: 'generated',
         metadata: { origin: 'sql', engine, query: body.sql, tables, rows: result.rows.length, columns: result.columns, contribution: 'user query' } });
       this.store.updateRun(run.id, { status: 'completed', endedAt: now(), artifactIds: [artifact.id] });
-      this.store.mutate(projectId, [{ type: 'updateNode', id: node.id, patch: { artifactId: artifact.id } }], label);
+      // The block and its data arrive together, so one Undo takes both away.
+      this.store.mutate(projectId, [{ type: 'updateNode', id: node.id, patch: { artifactId: artifact.id } }], label, undefined, { sameStep: operations.length > 0 });
       return { artifact, nodeId: node.id };
     });
   }

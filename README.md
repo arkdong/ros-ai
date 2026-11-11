@@ -11,7 +11,7 @@ ros.ai is the open workspace that holds your whole project's context on one canv
 
 Your notes, code, data, files, papers and Notion pages sit on the canvas as blocks. Claude Code, Codex, Gemini CLI, Goose, OpenCode, local models and ROS, our own agent, work from those blocks with the same tools. Their work lands back on the canvas with its sources, under the permissions you set, and every change can be undone. ros.ai runs on your own computer, and the code is MIT.
 
-[ros-ai.io](https://ros-ai.io) · [Live demo](https://ros-ai-production.up.railway.app/app) · [Guide](docs/guide.md)
+[ros-ai.io](https://ros-ai.io) · [Guide](docs/guide.md)
 
 ## Install
 
@@ -35,7 +35,7 @@ Everything stays on this computer: projects, keys and the Python sandbox. Model 
 2. **Set up ROS.** Sign in for free hosted ROS, or continue without an account. On a Mac you can also download ROS to run on this computer.
 3. **Connect your tools.** ros.ai finds Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, Ollama and LM Studio on this computer and links them in one go. Nothing is sent anywhere.
 
-Then one card starts a project: a name, a folder, and **Start from** a blank canvas, a folder you already have or an example.
+Then one card starts a project: a name, a folder, and **Start from** a blank canvas or a folder you already have.
 
 ## The canvas
 
@@ -104,25 +104,21 @@ Keys pasted on the Agents and Plugins pages are saved in the data folder: `~/Lib
 
 ros.ai checks GitHub for a newer release at start and every six hours, sending nothing about you. An **Update** button appears when one is ready. Settings › General › Updates turns the check off.
 
-## Examples
-
-**Start from** offers two guided examples: [From idea to report](examples/demo-workflow/), a research run on AI in Dutch business, and [the banking question](examples/dutch-ai-adoption/README.md) on CBS figures. The `examples/` folder holds more projects to open as a folder.
-
 ## Development
 
 ```sh
 npm run dev            # live reload
 npm run lint           # TypeScript
-npm run build          # production build, which CI runs on every pull request
+npm run build          # production build
 npm run try -- 42      # start pull request #42 on localhost, your checkout untouched
 npm run app            # the Mac app on this checkout; npm run app:build makes the DMG
-npm test               # unit suite
+npm test               # unit suite; CI runs the build and this on every pull request
 ```
 
 The Mac and Windows apps are an Electron shell around the same server, in [desktop/](desktop/README.md), built and released by [a GitHub workflow](.github/workflows/mac-app.yml) on every `v*` tag. [AGENTS.md](AGENTS.md) holds the rules for coding agents working on this repository.
 
-Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [Python sandbox](docs/python-sandbox.md), [tool connections](docs/tool-connections.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site). The live demo is built from the root Dockerfile on `main`, with saved results only.
+Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [Python sandbox](docs/python-sandbox.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site).
 
 ## Licence
 
-ros.ai's code and documentation are [MIT](LICENSE). The licence does not cover the hosted service (sign-in, the hosted ROS gateway and the usage ledger), which lives in the private repository `arkdong/ros-ai-cloud` and will sell the paid tiers; the app works without it, and `ROS_CLOUD_URL=off` hides it. It also does not cover the ros.ai name and logo (`public/brand/`, `.github/readme/`, `desktop/build/icon.png`), other organisations' logos in `src/client/brand-logos/` and `src/client/ModelMakerSymbol.tsx`, shown only to identify their services, or the third-party data in `examples/`: KNMI weather observations ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), CBS statistics (CBS's reuse terms) and NDW counter-site records (ODC PDDL).
+ros.ai's code and documentation are [MIT](LICENSE). The licence does not cover the hosted service (sign-in, the hosted ROS gateway and the usage ledger), which lives in the private repository `arkdong/ros-ai-cloud` and will sell the paid tiers; the app works without it, and `ROS_CLOUD_URL=off` hides it. It also does not cover the ros.ai name and logo (`public/brand/`, `.github/readme/`, `desktop/build/icon.png`), other organisations' logos in `src/client/brand-logos/` and `src/client/ModelMakerSymbol.tsx`, shown only to identify their services, or the KNMI weather observations in `training/ros-nemotron/` ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).

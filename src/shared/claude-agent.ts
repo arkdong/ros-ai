@@ -20,4 +20,4 @@ export type ClaudeWebSearch = 'own' | 'ros';
 export type ClaudePlanStatus = { state: 'unknown' | 'signed-in' | 'signed-out' | 'unavailable'; email?: string | null; plan?: string | null; message?: string | null };
 export type ClaudePlanLogin = { state: 'waiting' | 'completed' | 'failed' | 'cancelled'; message: string; command: string | null };
 /** model: on the API key; planModel: on the subscription. Each agent's effort and the models it offers come from /api/agents/claude/model. */
-export type ClaudeAgentSettings = { model: ClaudeModel; planModel: ClaudeModel; webSearch: ClaudeWebSearch; planAllowed: boolean; plan: ClaudePlanStatus; login: ClaudePlanLogin | null; turnUsd: number; sdkVersion: string; apiKeyConfigured: boolean; allowanceReady: boolean };
+export type ClaudeAgentSettings = { model: ClaudeModel; planModel: ClaudeModel; webSearch: ClaudeWebSearch; plan: ClaudePlanStatus; login: ClaudePlanLogin | null; turnUsd: number; sdkVersion: string; apiKeyConfigured: boolean; allowanceReady: boolean };

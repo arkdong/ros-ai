@@ -100,7 +100,7 @@ test('a turn records the files that changed in the project folder, with diffs', 
     ]);
     assert.match(files.diff(f.project.id, 'turn-1', 'notes.md').patch, /-two\n\+TWO\n three\n\+four/);
     assert.throws(() => files.diff(f.project.id, 'turn-1', 'picture.bin'), /No saved diff/);
-    assert.throws(() => files.reveal(f.project.id, 'turn-1', '../outside.txt', result.changed), /did not change that file/);
+    assert.throws(() => files.reveal(f.project.id, '../outside.txt', result.changed), /did not change that file/);
     assert.equal(files.has('turn-1'), false);
     rmSync(root, { recursive: true, force: true });
   } finally { await f.close(); }
@@ -170,7 +170,9 @@ test('Branch from here copies the conversation up to a turn into a new thread', 
     f.assistant.start(f.project.id, { message: 'Question two', threadId: one.threadId });
     await settled(f);
     const original = f.assistant.state(f.project.id).turns.filter(turn => turn.threadId === one.threadId);
+    const sent = () => Object.values(f.store.globalRecord<Record<string, number>>('usage-counts', new Date().toISOString().slice(0, 10)) ?? {}).reduce((sum, count) => sum + count, 0), before = sent();
     const branched = f.assistant.branch(f.project.id, original[0].id);
+    assert.equal(sent(), before, 'The copied messages are not counted as new messages to an agent');
     assert.ok(branched.threadId && branched.threadId !== one.threadId);
     const thread = branched.threads.find(item => item.id === branched.threadId)!;
     assert.deepEqual(thread.branchedFrom, { threadId: one.threadId, turnId: original[0].id, title: 'Question one' });

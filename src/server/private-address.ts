@@ -30,12 +30,13 @@ export function localAddress(address: string): boolean {
   const groups = ipv6Groups(address);
   if (!groups) return true;
   const zeros = (count: number) => groups.slice(0, count).every(group => group === 0);
-  const embedded = (high: number, low: number) => localIPv4([high >> 8, high & 255]);
+  // Loopback, unspecified and link-local show in the first two bytes of the carried IPv4 address.
+  const embedded = (high: number) => localIPv4([high >> 8, high & 255]);
   // ::1 and :: are judged as the IPv4 0.0.0.1 and 0.0.0.0 they also spell.
-  if (zeros(6)) return embedded(groups[6], groups[7]);
-  if (zeros(5) && groups[5] === 0xffff) return embedded(groups[6], groups[7]);
-  if (groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every(group => group === 0)) return embedded(groups[6], groups[7]);
-  if (groups[0] === 0x2002) return embedded(groups[1], groups[2]);
+  if (zeros(6)) return embedded(groups[6]);
+  if (zeros(5) && groups[5] === 0xffff) return embedded(groups[6]);
+  if (groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every(group => group === 0)) return embedded(groups[6]);
+  if (groups[0] === 0x2002) return embedded(groups[1]);
   return (groups[0] & 0xffc0) === 0xfe80;
 }
 const localIPv4 = ([a, b]: number[]) => a === 127 || a === 0 || (a === 169 && b === 254);

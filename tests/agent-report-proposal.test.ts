@@ -88,6 +88,17 @@ test('a report accepted into a block that got its own report meanwhile is refuse
   } finally { await f.close(); }
 });
 
+test('a report that is refused leaves no report block behind', async () => {
+  const f = fixture('review');
+  try {
+    // The canvas content changed after the agent read it, so the report is refused.
+    f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'finding-1', patch: { title: 'Changed while the agent wrote' } }], 'Edit the finding');
+    await assert.rejects(f.propose(report), /canvas changed/);
+    assert.equal(f.nodes().length, 1, 'No report block was added');
+    assert.equal(f.store.detail(f.project.id).proposals.length, 0, 'No block proposal was left behind');
+  } finally { await f.close(); }
+});
+
 test('citeByTitle names the blocks and drops ids that are no block, in reports and in answers', () => {
   const nodes = [{ id: 'a', title: 'Alpha' }, { id: 'main-findings-note', title: 'Main findings' }];
   assert.equal(citeByTitle('Seen 【a, main-findings-note】 and 【a】.', nodes), 'Seen (Alpha, Main findings) and (Alpha).');

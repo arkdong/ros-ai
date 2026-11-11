@@ -15,8 +15,9 @@ const API_ROOT='https://www.googleapis.com/drive/v3/', SHEETS_ROOT='https://shee
 const MAX_CSV_BYTES=500000, AUTH_TTL=10*60*1000;
 const fileIdSchema=z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/u);
 /** What live Sheet and Doc blocks and the agents' Drive tools may read: a file listing, one file's details or export,
- * and a spreadsheet's tabs and values. */
-const READ_PATHS={drive:/^files(\/[a-zA-Z0-9_-]{1,200}(\/export)?)?$/u,sheets:/^spreadsheets\/[a-zA-Z0-9_-]{1,200}(\/values:batchGet|\/values\/[^/?#]{1,600})?$/u};
+ * and a spreadsheet's tabs and values. A tab name holds up to 100 characters, and one in Chinese, Arabic or emoji takes
+ * up to twelve characters each once encoded, so a range may be 1,500 long. */
+const READ_PATHS={drive:/^files(\/[a-zA-Z0-9_-]{1,200}(\/export)?)?$/u,sheets:/^spreadsheets\/[a-zA-Z0-9_-]{1,200}(\/values:batchGet|\/values\/[^/?#]{1,1500})?$/u};
 /** A refusal from Google's API, with Google's reason (SERVICE_DISABLED, cannotExportFile…) for callers that fall back. */
 export class GoogleApiError extends StoreError {constructor(message:string,status:number,readonly reason:string){super(message,status);this.name='GoogleApiError';}}
 const disabledReasons=new Set(['SERVICE_DISABLED','accessNotConfigured']);

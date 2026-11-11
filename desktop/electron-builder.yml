@@ -21,7 +21,6 @@ files:
   - dist/app-kit/**
   - dist/still/**
   - scripts/ros-ai-mcp.mjs
-  - examples/**
   - "!**/*.map"
   - "!**/*.ts"
   - "!**/__pycache__/**"

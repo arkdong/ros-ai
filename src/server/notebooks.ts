@@ -98,7 +98,7 @@ const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sor
 const outputHash = (output: NotebookOutput) => sha(JSON.stringify(sorted(output)));
 /** The notebook as Jupyter itself writes it (sorted keys, one-space indent, multi-line text as lists of lines),
  * so Jupyter, VS Code and Git see ordinary files. Tables ros.ai keeps for saving results stay out of the file. */
-export function ipynb(notebook: Pick<NotebookContent, 'nbformatMinor' | 'metadata' | 'cells'>): string {
+function ipynb(notebook: Pick<NotebookContent, 'nbformatMinor' | 'metadata' | 'cells'>): string {
   const bundle = (data: Record<string, unknown>) => Object.fromEntries(Object.entries(data).filter(([mime]) => mime !== 'text/csv')
     .map(([mime, value]) => [mime, typeof value === 'string' && (mime.startsWith('text/') || mime === 'application/javascript' || mime === 'image/svg+xml') ? lines(value) : value]));
   const output = (item: NotebookOutput) => item.output_type === 'stream' ? { ...item, text: lines(item.text) }

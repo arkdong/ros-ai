@@ -36,11 +36,11 @@ type Handlers = {
 type Props = {
   node: CanvasNode; detail: ProjectDetail; file?: FolderFile; mode?: ApprovalMode;
   onClose(): void; onRefresh(): Promise<unknown>; onError(cause: unknown): void; onPermissions(): void;
-  onOpenArtifact(artifact: Artifact): void; onReport(artifact: Artifact): void; onInterpret(artifact: Artifact, destinationId: string): void;
+  onOpenArtifact(artifact: Artifact): void; onReport(artifact: Artifact): void;
 };
 
 /** A Notebook block, opened over the canvas: cells run one at a time in this notebook's own sandboxed Python. */
-export function NotebookView({ node, detail, file, mode: chosenMode, onClose, onRefresh, onError, onPermissions, onOpenArtifact, onReport, onInterpret }: Props) {
+export function NotebookView({ node, detail, file, mode: chosenMode, onClose, onRefresh, onError, onPermissions, onOpenArtifact, onReport }: Props) {
   const base = `/api/projects/${encodeURIComponent(detail.project.id)}/nodes/${encodeURIComponent(node.id)}/notebook`;
   const [state, setState] = useState<NotebookState | null>(null), [loadError, setLoadError] = useState('');
   const [cells, setCells] = useState<NotebookCell[]>([]);
@@ -372,7 +372,7 @@ export function NotebookView({ node, detail, file, mode: chosenMode, onClose, on
         {cells.map((cell, index) => <CellView key={cell.id} cell={cell} index={index} last={index === cells.length - 1} selected={cell.id === selected} editing={cell.id === editing}
           state={queue[cell.id]} approval={approval?.cellId === cell.id && approval.source === cell.source ? approval : null} mode={mode} ranSource={ran.current.get(cell.id)}
           saved={saved} busy={busy} detail={detail} on={handlers} editorRef={editorRef(editors.current, cell.id)} element={elementRef(elementRefs.current, elements.current, cell.id)}
-          onOpenArtifact={onOpenArtifact} onReport={onReport} onInterpret={onInterpret} onRefresh={onRefresh}/>)}
+          onOpenArtifact={onOpenArtifact} onReport={onReport} onRefresh={onRefresh}/>)}
         <div className="nb-add"><button className="secondary small" onClick={() => insert('code', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Code</button><button className="secondary small" onClick={() => insert('markdown', 'below', cells.at(-1)?.id ?? null, true)}><Plus size={14}/> Text</button></div>
         <footer className="nb-footer">
           <p>{state.runtime.network ? 'Python runs in a sandbox and asks before reaching a new website; %pip install works.' : 'Python runs in a sandbox with no network.'} {state.outputs ? <>It can read this project’s folder and save files in <code>{state.outputs}/</code>.</> : 'It can save files in /tmp only, because this project has no folder.'}</p>
@@ -398,10 +398,10 @@ type CellProps = {
   cell: NotebookCell; index: number; last: boolean; selected: boolean; editing: boolean; state?: 'queued' | 'running';
   approval: Approval | null; mode?: ApprovalMode; ranSource?: string; saved: Record<string, string>; busy: string; detail: ProjectDetail;
   on: MutableRefObject<Handlers>; editorRef: MutableRefObject<CodeEditorApi | null>; element: (element: HTMLDivElement | null) => void;
-  onOpenArtifact(artifact: Artifact): void; onReport(artifact: Artifact): void; onInterpret(artifact: Artifact, destinationId: string): void; onRefresh(): Promise<unknown>;
+  onOpenArtifact(artifact: Artifact): void; onReport(artifact: Artifact): void; onRefresh(): Promise<unknown>;
 };
 /** One cell. Cells that did not change keep their editor untouched while others stream output. */
-const CellView = memo(function CellView({ cell, index, last, selected, editing, state, approval, mode, ranSource, saved, busy, detail, on, editorRef, element, onOpenArtifact, onReport, onInterpret, onRefresh }: CellProps) {
+const CellView = memo(function CellView({ cell, index, last, selected, editing, state, approval, mode, ranSource, saved, busy, detail, on, editorRef, element, onOpenArtifact, onReport, onRefresh }: CellProps) {
   const code = cell.cell_type === 'code', outputs = cell.outputs ?? [];
   const failure = outputs.find(output => output.output_type === 'error');
   const line = failure && ranSource === cell.source ? errorLine(failure, cell.execution_count) : null;
@@ -430,7 +430,7 @@ const CellView = memo(function CellView({ cell, index, last, selected, editing, 
       {outputs.length > 0 && <div className="nb-outputs" aria-label={`Output of ${label}`}>{outputs.map((output, at) => {
         const savedId = saved[`${cell.id}/${at}`], artifact = savedId ? detail.artifacts.find(item => item.id === savedId) : undefined;
         const actions = output.output_type === 'error' || state ? undefined : artifact
-          ? <ResultActions artifact={artifact} detail={detail} onChanged={onRefresh} onOpen={onOpenArtifact} onReport={onReport} onInterpret={onInterpret}/>
+          ? <ResultActions artifact={artifact} detail={detail} onChanged={onRefresh} onOpen={onOpenArtifact} onReport={onReport}/>
           : savedId ? <small className="subtle">Saved as a result</small>
           : <button className="text-button small" disabled={busy === `save:${cell.id}/${at}`} onClick={() => on.current.saveOutput(cell.id, at)} title="Keep this output as a result you can use as input or in a report">{busy === `save:${cell.id}/${at}` ? 'Saving…' : 'Save as result'}</button>;
         return <OutputView key={at} output={output} actions={actions}/>;

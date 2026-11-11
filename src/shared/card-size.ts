@@ -18,7 +18,7 @@ export const CARD_MAX_SET_HEIGHT = 1200;
  * limit. */
 export const PICTURE_MIN_WIDTH = 96;
 export const PICTURE_MIN_HEIGHT = 48;
-export const PICTURE_MAX_RATIO = 2;
+const PICTURE_MAX_RATIO = 2;
 
 /** A shrunk block draws its whole card at a fraction of its size, so nothing in it is cut off: Small and Medium, or
  * Full (no scale). A Group is never shrunk itself; shrinking it shrinks the blocks inside. */
@@ -56,7 +56,7 @@ export function pictureCardHeight(width: number, image: ImageSize) {
 /** The height a card takes at the size the browser measured: a card of text between its minimum and the preview
  * limit, a picture card as tall as its picture. */
 /** A Dashboard card grows to show its sections, up to this. */
-export const DASHBOARD_MAX_HEIGHT = 720;
+const DASHBOARD_MAX_HEIGHT = 720;
 export function measuredCardHeight(measured: number, picture = false, dashboard = false) {
   if (dashboard) return Math.min(DASHBOARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
   return picture ? Math.max(3, Math.min(CARD_MAX_SET_HEIGHT, measured)) : Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, measured));
@@ -94,7 +94,7 @@ export function estimatedCardHeight(node: { width?: number; height?: number | nu
 }
 /** A collapsed Group card before the browser measures it: its title, a line of overview and the first few
  * blocks it lists, each up to two lines of 18px, 7px apart, then how many more it holds. */
-export function estimatedGroupHeight(node: { width?: number; title: string; description: string }, listed: { title: string }[], members = listed.length) {
+function estimatedGroupHeight(node: { width?: number; title: string; description: string }, listed: { title: string }[], members = listed.length) {
   const width = cardWidth(node), lines = (text: string, size: number, inset: number) => Math.max(1, Math.ceil(Array.from(text).length * size / (width - inset)));
   const shown = listed.slice(0, GROUP_PREVIEW_MEMBERS), more = members > shown.length ? 25 : 0;
   const rows = shown.reduce((sum, item, index) => sum + Math.min(2, lines(item.title, 6.5, 70)) * 18 + (index ? 7 : 0), more);

@@ -52,7 +52,7 @@ export function CommandBox({ command, label }: { command: string; label: string 
 }
 
 /** The ROS-on-this-computer row of the first run: the download's progress, then Ready. Nothing to choose here. */
-export function LocalRosRow({ status, computer }: { status: LocalRosStatus; computer: string }) {
+function LocalRosRow({ status, computer }: { status: LocalRosStatus; computer: string }) {
   const percent = percentOf(status);
   const why = status.state === 'downloading' ? status.note || 'Downloading in the background' : status.state === 'starting' ? 'Downloaded · getting ROS ready' : status.state === 'ready' ? `Works offline. Nothing leaves ${computer}.` : status.error || 'The download stopped';
   return <div className="setup-row static">

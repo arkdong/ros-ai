@@ -16,11 +16,16 @@ export function NoteTree({ projectId, nodes, runs, selectedId, limit, onSelect }
   useEffect(() => { saveLocal(`notes-expanded:${projectId}`, expanded); }, [projectId, expanded]);
   const ids = new Set(nodes.map(node => node.id));
   const byId = new Map(nodes.map(node => [node.id, node]));
+  // The Groups above a block open once when it is picked, so closing one of them afterwards holds.
+  const revealed = useRef('');
   useEffect(() => {
     const above: string[] = [];
     for (let parent = selectedId ? byId.get(selectedId)?.parentId : undefined; parent && byId.has(parent) && !above.includes(parent); parent = byId.get(parent)?.parentId) above.push(parent);
+    const key = [selectedId ?? '', ...above].join('>');
+    if (key === revealed.current) return;
+    revealed.current = key;
     if (above.some(id => !expanded.includes(id))) setExpanded(current => [...new Set([...current, ...above])]);
-  }, [selectedId, nodes, expanded]); // eslint-disable-line react-hooks/exhaustive-deps -- byId follows nodes
+  }, [selectedId, nodes]); // eslint-disable-line react-hooks/exhaustive-deps -- byId follows nodes
   const children = (parentId: string | null) => nodes.filter(node => parentId ? node.parentId === parentId : !node.parentId || !ids.has(node.parentId)).sort((a, b) => a.y - b.y || a.x - b.x || a.title.localeCompare(b.title));
   const toggle = (id: string) => setExpanded(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   const keyDown = (event: KeyboardEvent<HTMLDivElement>, node: CanvasNode, hasChildren: boolean, open: boolean) => {

@@ -98,12 +98,15 @@ test('known admission failure rolls back combined, provider, project and sandbox
   try {
     const authority = new Authority(f.store);
     const remote = new SandboxBudget(f.store, { ...sandboxTerms, combinedBudget: f.budget });
+    // The project refuses the last admission of the set (it is stopped), so everything admitted before it is undone.
+    authority.setStopped(f.project.id, true);
     assert.throws(() => f.store.atomic(() => {
       addUsage(f.store, 'rollback-model', 2);
       f.budget.reserve(f.request('rollback-model', 2));
       remote.reserve('rollback-sandbox', f.project.id);
       authority.reserve(f.project.id, { kind: 'model', nodeId: 'project', fingerprint: 'fixture-denial', spendUsd: 2 });
-    }), /spendUsd/);
+    }), /stopped/);
+    authority.setStopped(f.project.id, false);
     assert.equal(f.budget.status().accountedUsd, 0);
     assert.equal(f.store.listUsage().length, 0);
     assert.equal(remote.status().remainingRuns, 10);

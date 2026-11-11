@@ -9,7 +9,7 @@ import { Store, StoreError, trainingViewSchema } from './store.js';
 
 const run = promisify(execFile);
 /** Where train_lora.py writes on the GPU machine when train/ was copied to its home folder, as the README says. */
-export const DEFAULT_REMOTE = '~/train/out';
+const DEFAULT_REMOTE = '~/train/out';
 /** Data is still being made while the rollout log grew this recently. */
 const LIVE_MS = 3 * 60_000;
 const SPLIT = '@@ros-training@@';

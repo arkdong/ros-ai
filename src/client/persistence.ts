@@ -6,7 +6,7 @@ export function readSaved<T>(key: string, fallback: T): T {
 export function saveLocal(key: string, value: unknown) {
   try { localStorage.setItem(`ros-ai:${key}`, JSON.stringify(value)); } catch { /* Durable project data is still saved by the service. */ }
 }
-export function removeLocal(key: string) {
+function removeLocal(key: string) {
   try { localStorage.removeItem(`ros-ai:${key}`); } catch { /* Nothing kept to remove. */ }
 }
 /** A saved list, keeping only the entries this copy of ros.ai can still show, so one saved by an older or newer copy breaks nothing. */

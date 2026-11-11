@@ -57,12 +57,11 @@ export function SkillsSidebar({ skills, selected, onSelect }: { skills: SkillIte
   return <CatalogueSidebar sections={[{ id: 'skills', label: 'Skills' }]} label="Your skills" empty="No skills yet" installed={skills.map(item => ({ id: item.name, name: item.title, mark: <BookText size={16}/>, off: !item.enabled }))} selected={selected} onSelect={onSelect} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
 }
 
-export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publicDemo: boolean; selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillItem[]) => void }) {
+export function SkillsPage({ selected, onSelect, onSkills }: { selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillItem[]) => void }) {
   const [state, setState] = useState<SkillsState | null>(lastReads.state ?? null), [found, setFound] = useState<FoundSkill[]>(lastReads.found ?? []), [error, setError] = useState(''), [remembered] = useState(lastSkills);
   const [adding, setAdding] = useState<AddStart | null>(null), [notice, setNotice] = useState('');
   useEffect(() => { lastReads = { state: state ?? undefined, found }; }, [state, found]);
   const refresh = useCallback(async () => {
-    if (publicDemo) return;
     // Your skills show as soon as they are read; the look through your other tools' folders follows on its own.
     const local = api<{ found: FoundSkill[] }>('/api/skills/found').then(value => setFound(value.found), () => undefined);
     try {
@@ -71,10 +70,9 @@ export function SkillsPage({ publicDemo, selected, onSelect, onSkills }: { publi
       saveLocal('skills-list', library.skills.map(({ name, title, description, enabled }) => ({ name, title, description, enabled })));
     } catch (cause) { setError(fail(cause)); }
     await local;
-  }, [publicDemo, onSkills]);
+  }, [onSkills]);
   useEffect(() => { void refresh(); }, [refresh]);
   const head = (action?: ReactNode) => <header className="plugins-head"><div><h1>Skills</h1><p>Ways of working your agents follow when a task matches</p></div>{action}</header>;
-  if (publicDemo) return <div className="plugins-page skills-page">{head()}<p className="rail-page-note">This demo keeps no skills. Launch the local workspace to add yours.</p></div>;
   const skills: SkillItem[] = state?.skills ?? remembered;
   const added = (names: string[]) => {
     setAdding(null);

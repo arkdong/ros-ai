@@ -53,7 +53,6 @@ const previewSchema = z.discriminatedUnion('kind', [
 const installSchema = z.object({ draftId: z.string().uuid(), names: z.array(nameSchema).max(50).optional(), replace: z.boolean().default(false) }).strict();
 const openSchema = z.object({ name: nameSchema.optional() }).strict();
 const useSchema = z.object({ name: z.string().trim().max(200).optional(), file: z.string().trim().max(500).optional(), offset: z.number().int().min(0).default(0) }).strict();
-export type SkillUse = z.infer<typeof useSchema>;
 export const skillUseSchema = useSchema;
 
 const inside = (root: string, target: string) => { const rel = relative(root, target); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)); };

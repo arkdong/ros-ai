@@ -27,7 +27,7 @@ const BASES = { openalex: 'https://api.openalex.org', arxiv: 'https://export.arx
 /** The Zotero app's local API (Zotero 7 and later): the person's library with no key, while the app is open and lets
  * other apps on this computer read it. It is not one of BASES, whose hosts PDF links may reach unchecked.
  * ROS_ZOTERO_LOCAL_URL names a stand-in on this computer. */
-export function zoteroLocalBase() {
+function zoteroLocalBase() {
   const set = process.env.ROS_ZOTERO_LOCAL_URL?.trim();
   if (!set) return 'http://127.0.0.1:23119/api';
   const url = new URL(set);
@@ -463,13 +463,13 @@ export function citation(paper: Pick<Paper, 'authors' | 'year' | 'title' | 'venu
   return [`${authors || 'Unknown authors'} (${paper.year ?? 'n.d.'}).`, /[.?!]$/u.test(paper.title) ? paper.title : `${paper.title}.`, paper.venue ? `*${paper.venue.replace(/\*/gu, '')}*.` : null, paper.doi ? `https://doi.org/${paper.doi}` : paper.link].filter(Boolean).join(' ');
 }
 /** A paper block's text: the citation, the abstract and where the paper (and its PDF) came from. */
-export function paperText(paper: Paper, place: string | null, note?: string | null): string {
+function paperText(paper: Paper, place: string | null, note?: string | null): string {
   const found = [`Found in ${paperSourceName(paper.source)}`, paper.citedBy !== null ? `cited by ${paper.citedBy.toLocaleString('en-US')}` : null, place ? `PDF saved from ${place} on ${new Date().toISOString().slice(0, 10)}` : null].filter(Boolean).join(' · ');
   return [citation(paper), paper.abstract ? `**Abstract.** ${paper.abstract}` : null, `${found}.`, note || null].filter(Boolean).join('\n\n').slice(0, TEXT);
 }
 /** A readable file name: first author's family name, year and title, as reference managers name PDFs. */
 const fileName = (paper: Paper) => `${[paper.authors[0]?.split(/\s+/u).at(-1), paper.year, paper.title].filter(Boolean).join(' ').slice(0, 90)}.pdf`;
-export const paperRef = (paper: Paper): PaperRef => ({ source: paper.source, id: paper.id, ...(paper.doi ? { doi: paper.doi } : {}), link: paper.link });
+const paperRef = (paper: Paper): PaperRef => ({ source: paper.source, id: paper.id, ...(paper.doi ? { doi: paper.doi } : {}), link: paper.link });
 
 /** The block for a paper, not placed yet: a File block when its open PDF could be saved into the project folder,
  * otherwise a Text block with the reference. `existing` is the block already showing this paper. */

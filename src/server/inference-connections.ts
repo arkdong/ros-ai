@@ -166,7 +166,7 @@ export class InferenceConnections{
 /** Chat-completions transport; no shell, catalog probes or automatic fallback.
  * An agent loop may send ros.ai's tool definitions: the model only names calls,
  * which ros.ai validates and runs. prepare() reads declarations and performs no network. */
-export class CompatibleHttpAdapter implements ModelAdapter{
+class CompatibleHttpAdapter implements ModelAdapter{
   private prepared?:{config:PrivateConnection;revision:number};
   constructor(readonly provider:string,readonly model:string,private readonly snapshot:()=>{config:PrivateConnection;revision:number},private readonly active:Map<string,number>){}
   get configured(){try{this.snapshot();return true;}catch{return false;}}
@@ -200,7 +200,7 @@ export class CompatibleHttpAdapter implements ModelAdapter{
     this.active.set(this.provider,count+1);
     try{
       const response=await fetch(url,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',...(config.apiKey?{Authorization:`Bearer ${config.apiKey}`}:{})},body:JSON.stringify(wire),signal:combined});
-      if(!response.ok){await response.body?.cancel();throw new StoreError(`Configured inference endpoint returned HTTP ${response.status}. No automatic retry occurred.`,503);}
+      if(!response.ok){const said=[401,402,429].includes(response.status)?await refusalMessage(response):'';await response.body?.cancel().catch(()=>{});throw new StoreError(said?`${said} (HTTP ${response.status}; no automatic retry occurred.)`:`Configured inference endpoint returned HTTP ${response.status}. No automatic retry occurred.`,503);}
       const reader=response.body?.getReader();if(!reader)throw new StoreError('Configured inference endpoint returned an empty response.',503);
       const chunks:Uint8Array[]=[];let bytes=0;
       for(;;){const result=await reader.read();if(result.done)break;bytes+=result.value.byteLength;if(bytes>config.caps.maxResponseBytes){await reader.cancel();throw new StoreError('Inference response exceeded its configured byte cap.',503);}chunks.push(result.value);}
@@ -210,6 +210,19 @@ export class CompatibleHttpAdapter implements ModelAdapter{
     }catch(error){if(error instanceof StoreError)throw error;throw new StoreError(combined.aborted?'Inference stopped or reached its deadline. Outcome may be uncertain; no automatic retry occurred.':'Configured inference connection failed. No automatic retry occurred.',503);}
     finally{const remaining=(this.active.get(this.provider)??1)-1;if(remaining>0)this.active.set(this.provider,remaining);else this.active.delete(this.provider);}
   }
+}
+
+/** Why an endpoint refused: its own words for a sign-in, allowance or rate limit refusal (the first 4 KB, one line),
+ * such as ros.ai cloud's "Today's free allowance is used up". Empty when it gave none. */
+async function refusalMessage(response:Response):Promise<string>{
+  try{
+    const reader=response.body?.getReader();if(!reader)return '';
+    const chunks:Uint8Array[]=[];let bytes=0;
+    while(bytes<4096){const result=await reader.read();if(result.done)break;bytes+=result.value.byteLength;chunks.push(result.value);}
+    await reader.cancel().catch(()=>{});
+    const message=JSON.parse(Buffer.concat(chunks).toString('utf8'))?.error?.message;
+    return typeof message==='string'?message.replace(/[\u0000-\u001f\u007f]+/gu,' ').trim().slice(0,300):'';
+  }catch{return '';}
 }
 
 export function registeredInferenceConnections(store:Store){return store.globalRecord<{connections:InferenceConnectionStatus[]}>(indexNamespace,'all')?.connections??[];}
