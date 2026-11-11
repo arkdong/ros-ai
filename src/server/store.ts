@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_SCALE, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
+import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_SCALE, cardScale, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
 import { isPictureNode } from '../shared/files.js';
 import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
@@ -224,10 +224,17 @@ function rememberPresentation(history: HistoryState, canvas: Canvas): void {
 }
 function restoreContent(history: HistoryState, target: Canvas, current: Canvas): Canvas {
   const currentNodes = new Map(current.nodes.map(node => [node.id, node]));
+  // Shrinking blocks also draws them together. Undo and redo keep positions as they are now, so a block whose size
+  // comes back is spread out again from the same corner, by as much as its size changes.
+  const rescaled = target.nodes.flatMap(node => { const live = currentNodes.get(node.id); return live && (live.parentId ?? null) === (node.parentId ?? null) && Math.abs(cardScale(node) / cardScale(live) - 1) > 0.001 ? [live] : []; });
+  const corners = new Map<string, { x: number; y: number }>();
+  for (const live of rescaled) { const key = live.parentId ?? '', at = corners.get(key); corners.set(key, at ? { x: Math.min(at.x, live.x), y: Math.min(at.y, live.y) } : { x: live.x, y: live.y }); }
   return { ...clone(target), nodes: target.nodes.map(node => {
     const live = currentNodes.get(node.id);
     const saved = history.presentation?.[presentationKey(node)];
-    const position = live && (live.parentId ?? null) === (node.parentId ?? null) ? live : saved ?? node;
+    const corner = live && rescaled.includes(live) ? corners.get(live.parentId ?? '') : undefined, ratio = live ? cardScale(node) / cardScale(live) : 1;
+    const position = live && corner ? { x: Math.round(corner.x + (live.x - corner.x) * ratio), y: Math.round(corner.y + (live.y - corner.y) * ratio) }
+      : live && (live.parentId ?? null) === (node.parentId ?? null) ? live : saved ?? node;
     const width = live ? live.width : saved ? saved.width : node.width;
     const height = live ? live.height : saved ? saved.height : node.height;
     const restored = { ...node, x: position.x, y: position.y };

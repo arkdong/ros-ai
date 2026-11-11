@@ -802,7 +802,9 @@ export class ProjectFolders implements NotebookFolders {
     else if (kind === 'notebook') node = { ...base, blockType: 'notebook' };
     else node = { ...base, blockType: 'report' };
     // The file is recorded with the block in one transaction, so the folder pass that follows never writes a second copy.
-    return this.store.atomic(() => {
+    // When the block cannot be made, the record goes too: a file recorded without a block would be moved to .ros-ai/trash.
+    const before = record.files[id];
+    try { return this.store.atomic(() => {
       record.files[id] = { path: rel, kind, hash: read.observed.hash, disk: read.observed };
       this.save(record);
       this.store.mutate(projectId, [{ type: 'addNode', node }], `Added ${rel} from the project folder`);
@@ -816,7 +818,7 @@ export class ProjectFolders implements NotebookFolders {
       }
       this.save(record);
       return added;
-    });
+    }); } catch (error) { if (before) record.files[id] = before; else delete record.files[id]; throw error; }
   }
   private ownArtifact(projectId: string, artifactId: string): boolean { try { return this.store.getArtifact(artifactId).projectId === projectId; } catch { return false; } }
 
@@ -1219,10 +1221,19 @@ export class ProjectFolders implements NotebookFolders {
       for (const output of record.outputs[nodeId]) try { this.retire(files, output.path, output.hash, false); files.prune(output.path, 'outputs'); } catch (error) { problems.push({ path: output.path, message: message(error) }); }
       delete record.outputs[nodeId];
     }
+    // Each Code block's outputs go in a folder named after its own file, so two blocks with one title, or a notebook
+    // of the same name, never write over each other's figures.
+    const used = new Set(Object.values(record.files).filter(entry => entry.kind === 'notebook' && !entry.removed).map(entry => stemOf(entry.path).toLowerCase())), folders = new Map<string, string>();
+    for (const node of codeBlocks) {
+      const entry = record.files[node.id], base = entry && !entry.removed ? stemOf(entry.path) : safeFileBase(node.title);
+      let name = base;
+      for (let index = 2; used.has(name.toLowerCase()); index++) name = `${base} ${index}`;
+      used.add(name.toLowerCase()); folders.set(node.id, name);
+    }
     for (const node of codeBlocks) {
       const run = runs.find(item => item.nodeId === node.id && item.status === 'completed' && item.configuration.kind === 'local-experiment');
       const outputs = (run?.artifactIds ?? []).map(id => artifacts.get(id)).filter((artifact): artifact is Artifact => Boolean(artifact && isOutputArtifact(artifact)));
-      const previous = record.outputs[node.id] ?? [], folder = posix.join('outputs', safeFileBase(node.title)), names = new Set<string>();
+      const previous = record.outputs[node.id] ?? [], folder = posix.join('outputs', folders.get(node.id)!), names = new Set<string>();
       const wanted = outputs.map(artifact => {
         const file = outputFile(artifact), stem = safeFileBase(artifact.title);
         let path = posix.join(folder, `${stem}${file.extension}`);
