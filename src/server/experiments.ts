@@ -7,9 +7,7 @@ import type { Express } from 'express';
 import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import { Authority } from './authority.js';
-import { DockerPythonBackend, type ExecutionBackend, type RemoteExecutionState } from './sandbox.js';
-import { NebiusSandboxBackend } from './nebius-sandbox.js';
-import { SandboxBudget } from './sandbox-budget.js';
+import { DockerPythonBackend, type ExecutionBackend } from './sandbox.js';
 import type { Artifact, CodeDocument, Run } from '../shared/types.js';
 import type { AutoResearch, ExperimentApproval, ExperimentCapabilities, ExperimentParameters, ExperimentPreview } from '../shared/experiments.js';
 
@@ -22,15 +20,14 @@ const MAX_QUEUE = 20;
 const environment = { PATH: '/usr/bin:/bin', LC_ALL: 'C.UTF-8' };
 const workerPath = fileURLToPath(new URL('./experiment_worker.py', import.meta.url));
 const paramsSchema = z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite().min(-1e100).max(1e100), z.boolean()]));
-const previewSchema = z.object({ nodeId: z.string().min(1).max(128), request: z.string().trim().min(1).max(12000), csv: z.string().max(500000).optional(), datasetArtifactId: z.string().max(128).optional(), code: z.string().min(1).max(100000).refine(value=>!!value.trim()&&Buffer.byteLength(value)<=100000,'Code must be nonempty and at most 100 KB.').optional(), parameters: paramsSchema.default({}), retryOf: z.string().max(128).optional(), planRunId: z.string().max(128).optional(), backend:z.enum(['bounded','docker-python','nebius-sandbox']).default('bounded'), manualCode:z.boolean().optional() }).strict();
+const previewSchema = z.object({ nodeId: z.string().min(1).max(128), request: z.string().trim().min(1).max(12000), csv: z.string().max(500000).optional(), datasetArtifactId: z.string().max(128).optional(), code: z.string().min(1).max(100000).refine(value=>!!value.trim()&&Buffer.byteLength(value)<=100000,'Code must be nonempty and at most 100 KB.').optional(), parameters: paramsSchema.default({}), retryOf: z.string().max(128).optional(), planRunId: z.string().max(128).optional(), backend:z.enum(['bounded','docker-python']).default('bounded'), manualCode:z.boolean().optional() }).strict();
 type PreviewRequest = z.input<typeof previewSchema>;
 type LocalConfiguration = {
   kind: 'local-experiment'; policy: string; approval: ExperimentApproval; code: string; csv: string;
   datasetHash: string|null; codeHash: string; parameters: ExperimentParameters; planner: string;
   sourceDatasetArtifactId?: string; capabilities: ExperimentCapabilities; autoResearch?: AutoResearch;
   originPlan?: { runId: string; codeChanged: boolean; parametersChanged: boolean; datasetChanged: boolean };
-  backend?:'bounded'|'docker-python'|'nebius-sandbox';
-  remote?:RemoteExecutionState; sandboxGrantFingerprint?:string;
+  backend?:'bounded'|'docker-python';
   manualCode?:boolean; language?:string; codeSource?:CodeDocument; inputMode?:'none'|'single-csv';
 };
 type WorkerOutput = { outputs: { kind: 'table' | 'metric' | 'plot'; title: string; data: unknown }[]; dataset: { columns: string[]; rowCount: number }; runtime: string; stdout: string };
@@ -47,51 +44,24 @@ export class ExperimentService {
   private closed = false;
   readonly authority:Authority;
   private readonly sandbox:ExecutionBackend;
-  private readonly nebiusSandbox:ExecutionBackend & {reconcile?:(operationId:string,onProgress?:(state:RemoteExecutionState)=>void)=>Promise<RemoteExecutionState>};
-  private readonly sandboxBudget:SandboxBudget;
-  private readonly recovery:Promise<unknown>[]=[];
 
-  constructor(private readonly store: Store, options: { python?: string; timeoutMs?: number; sandbox?:ExecutionBackend; nebiusSandbox?:ExecutionBackend & {reconcile?:(operationId:string,onProgress?:(state:RemoteExecutionState)=>void)=>Promise<RemoteExecutionState>}; sandboxBudget?:SandboxBudget } = {}) {
+  constructor(private readonly store: Store, options: { python?: string; timeoutMs?: number; sandbox?:ExecutionBackend } = {}) {
     this.authority=new Authority(store);
     this.sandbox=options.sandbox??new DockerPythonBackend();
-    this.nebiusSandbox=options.nebiusSandbox??new NebiusSandboxBackend();
-    this.sandboxBudget=options.sandboxBudget??new SandboxBudget(store);
     this.python = options.python ?? '/usr/bin/python3';
     const probe = spawnSync(this.python, ['-I', '-S', '-c', 'import sys; print(sys.version.split()[0])'], { encoding: 'utf8', timeout: 3000, env: environment, maxBuffer: 10000 });
     this.capabilitiesValue = {
       available: probe.status === 0, permissionMode: 'ask', executionTarget: 'Local Python numerical interpreter', runtime: probe.status === 0 ? `Python ${probe.stdout.trim()}` : null, workerHash: hash(readFileSync(workerPath, 'utf8')),
       approveForMe: { available: true, reason: 'Independent deterministic reviewer runs plain data-analysis code and escalates imports, I/O and anything unfamiliar.' }, fullAccess: true,
       sandbox:this.sandbox.capabilities(),
-      nebiusSandbox:this.nebiusSandbox.capabilities(),
       enforcement: ['Python AST allowlist; no imports, attributes, loops, filesystem, network, shell, or package installation API.', 'Child receives only explicit CSV/code/parameters, with an allowlisted environment excluding provider credentials.', '10,000 rows, 40 columns, 2,000 syntax nodes, 20 outputs; stdout/stderr caps and process timeout; at most two active workers.', 'CPU limit is requested through Python resource; application timeout always kills the child.'],
       limitations: ['Application capability controls are not an OS sandbox. Python/interpreter vulnerabilities are outside this boundary.', 'No general Python, third-party packages, arbitrary local files, or guaranteed memory isolation on macOS.', 'Closing the browser leaves the local server working. Server/laptop shutdown interrupts work; there is no remote worker or automatic restart/retry.'],
       maxConcurrency: 2, timeoutMs: Math.max(100, Math.min(options.timeoutMs ?? 10000, 30000)), sampleCsv: SAMPLE, exampleCode: EXAMPLE,
     };
-    this.recoverRemoteRuns();
   }
 
-  capabilities(): ExperimentCapabilities { return structuredClone({...this.capabilitiesValue,sandbox:this.sandbox.capabilities(),nebiusSandbox:{...this.nebiusSandbox.capabilities(),costGate:this.sandboxBudget.status()}}); }
-  private backend(config:LocalConfiguration){return config.backend==='nebius-sandbox'?this.nebiusSandbox:this.sandbox;}
-  private isSandbox(config:LocalConfiguration){return config.backend==='docker-python'||config.backend==='nebius-sandbox';}
-  private remoteProgress(runId:string,state:RemoteExecutionState){
-    const current=this.store.getRun(runId), config=this.config(current);
-    // Finished attempts remain immutable. Recovery is a separate audit record.
-    if(!['queued','running'].includes(current.status)){
-      const prior=this.store.record<{state:RemoteExecutionState;events:{at:string;state:RemoteExecutionState}[]}>('remote-recovery',runId);
-      this.store.saveRecord('remote-recovery',runId,current.projectId,{state,events:[...(prior?.events??[]),{at:now(),state}]});return;
-    }
-    this.store.updateRun(runId,{configuration:{...config,remote:state},events:[...current.events,{at:now(),type:`remote-${state.phase}`,message:state.phase==='uncertain'?'Remote outcome is uncertain. This attempt will not be resubmitted automatically.':`Nebius sandbox ${state.phase}${state.status?`: ${state.status}`:''}.`,data:state}]});
-  }
-  private recoverRemoteRuns(){
-    for(const project of this.store.listProjects())for(const run of this.store.listRuns(project.id)){
-      if(run.configuration.kind!=='local-experiment'||run.configuration.backend!=='nebius-sandbox')continue;
-      const state=this.store.record<{state:RemoteExecutionState}>('remote-recovery',run.id)?.state??this.config(run).remote;
-      if(!state||state.phase==='terminal')continue;
-      if(state.operationId&&this.nebiusSandbox.reconcile&&this.nebiusSandbox.capabilities().available){
-        this.recovery.push(this.nebiusSandbox.reconcile(state.operationId,next=>this.remoteProgress(run.id,next)).then(next=>this.remoteProgress(run.id,next)).catch(()=>this.remoteProgress(run.id,{...state,phase:'uncertain',error:'Unable to reconcile the remote operation after restart; no new execution was submitted.'})));
-      }else this.remoteProgress(run.id,{...state,phase:'uncertain',error:state.operationId?'Remote credentials unavailable; termination could not be confirmed.':'Submission identity is unknown; no automatic retry. The requested provider execution timeout still applies.'});
-    }
-  }
+  capabilities(): ExperimentCapabilities { return structuredClone({...this.capabilitiesValue,sandbox:this.sandbox.capabilities()}); }
+  private isSandbox(config:LocalConfiguration){return config.backend==='docker-python';}
   owns(runId: string): boolean { return this.store.getRun(runId).configuration.kind === 'local-experiment'; }
   private config(run: Run): LocalConfiguration {
     if (run.configuration.kind !== 'local-experiment') throw new StoreError('This is not a local experiment run.');
@@ -99,7 +69,7 @@ export class ExperimentService {
   }
   inspect(runId: string): ExperimentPreview {
     const run = this.store.getRun(runId), config = this.config(run);
-    return { run, approval: config.approval, code: config.code, csv: config.csv, parameters: config.parameters, planner: config.planner, ...(config.manualCode?{manualCode:true,inputMode:config.inputMode,codeSource:config.codeSource}:{}), remoteRecovery:this.store.record<{state:RemoteExecutionState}>('remote-recovery',run.id)?.state };
+    return { run, approval: config.approval, code: config.code, csv: config.csv, parameters: config.parameters, planner: config.planner, ...(config.manualCode?{manualCode:true,inputMode:config.inputMode,codeSource:config.codeSource}:{}) };
   }
   private saveConfig(runId: string, config: LocalConfiguration): Run { return this.store.updateRun(runId, { configuration: config }); }
   private event(runId: string, type: string, message: string, data?: unknown) {
@@ -118,9 +88,8 @@ export class ExperimentService {
   }
   private assertCurrent(run: Run) {
     const config=this.config(run);
-    const captured=config.backend==='nebius-sandbox'?config.capabilities.nebiusSandbox:config.capabilities.sandbox;
-    if (this.isSandbox(config) ? captured?.workerHash!==this.backend(config).capabilities().workerHash||captured?.imageId!==this.backend(config).capabilities().imageId||captured?.timeoutMs!==this.backend(config).capabilities().timeoutMs : config.capabilities.workerHash !== hash(readFileSync(workerPath, 'utf8'))) throw new StoreError('The execution runtime changed. Preview a new action before approving execution.', 409);
-    if(config.backend==='nebius-sandbox'&&config.sandboxGrantFingerprint!==this.sandboxBudget.fingerprint())throw new StoreError('The remote pricing or authorization changed. Preview a new action before approving execution.',409);
+    const changed=()=>{const captured=config.capabilities.sandbox, current=this.sandbox.capabilities();return captured?.workerHash!==current.workerHash||captured?.imageId!==current.imageId||captured?.timeoutMs!==current.timeoutMs;};
+    if (this.isSandbox(config) ? changed() : config.capabilities.workerHash !== hash(readFileSync(workerPath, 'utf8'))) throw new StoreError('The execution runtime changed. Preview a new action before approving execution.', 409);
     const node = this.store.getProject(run.projectId).canvas.nodes.find(item => item.id === run.nodeId);
     // Code's saved single-input choice is explicit and independent of the other
     // versions available in this block's input pool. They are not runtime inputs.
@@ -193,7 +162,7 @@ export class ExperimentService {
     if (csv.length > 500000 || Buffer.byteLength(csv)>500000) throw new StoreError('CSV is limited to 500 KB.');
     if(request.manualCode&&sourceDatasetArtifactId&&!csv.trim())throw new StoreError('The selected CSV version is empty. Choose a nonempty captured input or run without an input.');
     const column = firstNumericColumn(csv);
-    const code = request.code ?? (request.backend==='nebius-sandbox'?`import statistics\nvalues = [float(row[${JSON.stringify(column)}]) for row in rows]\nmetric("Mean", statistics.mean(values))\ntable("Summary", [{"count": len(values), "mean": statistics.mean(values)}])\nplot("Values", values)`:`values = column(${JSON.stringify(column)})\ntable("Summary", describe(values))\nmetric("Mean", mean(values))\nplot("Values", values)`);
+    const code = request.code ?? `values = column(${JSON.stringify(column)})\ntable("Summary", describe(values))\nmetric("Mean", mean(values))\nplot("Values", values)`;
     const previous = this.store.listRuns(projectId).find(run => run.nodeId === node.id && ['queued', 'running'].includes(run.status));
     if (previous) {
       if (previous.configuration.kind === 'local-experiment' && this.config(previous).approval.status === 'pending') this.cancel(previous.id, 'Superseded by a new code/input preview.');
@@ -201,24 +170,18 @@ export class ExperimentService {
     }
     if (this.store.listProjects().flatMap(item => this.store.listRuns(item.id)).filter(run => run.configuration.kind === 'local-experiment' && ['queued', 'running'].includes(run.status)).length >= MAX_QUEUE) throw new StoreError('Local experiment queue is full.', 409);
     const runId = randomUUID(), timestamp = now();
-    const fingerprint = hash(JSON.stringify({ policy: POLICY, backend:request.backend, code, csv:request.manualCode&&!sourceDatasetArtifactId?null:csv, parameters: request.parameters, node, inputs, request: request.request, capabilities: this.capabilities(),...(request.backend==='nebius-sandbox'?{grant:this.sandboxBudget.fingerprint()}:{}) }));
+    const fingerprint = hash(JSON.stringify({ policy: POLICY, backend:request.backend, code, csv:request.manualCode&&!sourceDatasetArtifactId?null:csv, parameters: request.parameters, node, inputs, request: request.request, capabilities: this.capabilities() }));
     const configuration: LocalConfiguration = { kind: 'local-experiment', policy: POLICY, approval: { fingerprint, status: 'pending', requestedAt: timestamp }, code, csv, datasetHash: request.manualCode&&!sourceDatasetArtifactId?null:hash(csv), codeHash: hash(code), parameters: request.parameters, planner: request.manualCode?'User-authored saved Code block. No model inference or hidden sample input.':planRun ? `Code originates from saved ${planRun.provider}/${planRun.model} plan ${planRun.id}. Local execution is a separate permission decision.` : request.code ? 'User-supplied or separately proposed code; no model inference in local preview.' : 'Built-in local descriptive-analysis recipe. This is not an AI-generated plan; review or edit it for your request.', ...(request.manualCode?{manualCode:true,language:node.code!.language,codeSource:structuredClone(node.code!),inputMode:sourceDatasetArtifactId?'single-csv' as const:'none' as const}:{}), ...(sourceDatasetArtifactId ? { sourceDatasetArtifactId } : {}), ...(planRun && plan ? { originPlan: { runId: planRun.id, codeChanged: code !== plan.code, parametersChanged: JSON.stringify(request.parameters) !== JSON.stringify(plan.parameters), datasetChanged: hash(csv) !== planRun.inputs.find(input => input.artifactId === planRun!.configuration.datasetArtifactId)?.artifact.hash } } : {}), capabilities: this.capabilities() };
     configuration.backend=request.backend;
-    if(this.isSandbox(configuration))configuration.policy=this.backend(configuration).capabilities().policy;
-    if(request.backend==='nebius-sandbox'){
-      configuration.sandboxGrantFingerprint=this.sandboxBudget.fingerprint();
-      configuration.planner=planRun?`Code originates from saved ${planRun.provider}/${planRun.model} plan ${planRun.id}. Sending it and the captured dataset to Nebius requires separate approval.`:request.code?'User-supplied or separately proposed code; no model inference in remote preview.':'Built-in descriptive-analysis recipe for remote Python. Review or edit it for your request.';
-    }
-    let run = this.store.createRun({ id: runId, projectId, nodeId: node.id, request: request.request, useSearch: false, status: 'queued', ...(request.retryOf ? { retryOf: request.retryOf } : {}), createdAt: timestamp, projectRevision: project.revision, node: structuredClone(node), inputs, messages: [], provider: request.backend==='nebius-sandbox'?'nebius-sandbox':'local', model: request.backend==='nebius-sandbox'?'python-3.12-stdlib':request.backend==='docker-python'?'isolated-python':'bounded-python-recipe-v1', modelVersion: null, configuration, tools: [{ name: request.backend==='nebius-sandbox'?'nebius_sandbox_python':request.backend==='docker-python'?'isolated_python':'python_numerical', codeHash: configuration.codeHash, datasetHash: configuration.datasetHash, parameters: request.parameters, permissionMode: request.backend==='nebius-sandbox'?'ask':this.authority.mode(projectId,node.id), policy: configuration.policy }], events: [{ at: timestamp, type: 'approval-requested', message: 'Waiting for approval of the exact code, CSV, parameters, selected inputs, and selected execution policy.', data: { fingerprint } }], artifactIds: [], cost: request.backend==='nebius-sandbox'?{estimatedUsd:null,basis:'Sandbox cost is not reported in a verified USD unit. A separate conservative allowance is required before execution.'}:{ estimatedUsd: 0, basis: 'Local execution only; no provider request or cloud charge.' } });
+    if(this.isSandbox(configuration))configuration.policy=this.sandbox.capabilities().policy;
+    let run = this.store.createRun({ id: runId, projectId, nodeId: node.id, request: request.request, useSearch: false, status: 'queued', ...(request.retryOf ? { retryOf: request.retryOf } : {}), createdAt: timestamp, projectRevision: project.revision, node: structuredClone(node), inputs, messages: [], provider: 'local', model: request.backend==='docker-python'?'isolated-python':'bounded-python-recipe-v1', modelVersion: null, configuration, tools: [{ name: request.backend==='docker-python'?'isolated_python':'python_numerical', codeHash: configuration.codeHash, datasetHash: configuration.datasetHash, parameters: request.parameters, permissionMode: this.authority.mode(projectId,node.id), policy: configuration.policy }], events: [{ at: timestamp, type: 'approval-requested', message: 'Waiting for approval of the exact code, CSV, parameters, selected inputs, and selected execution policy.', data: { fingerprint } }], artifactIds: [], cost: { estimatedUsd: 0, basis: 'Local execution only; no provider request or cloud charge.' } });
     const dataset = request.manualCode&&!sourceDatasetArtifactId?undefined:this.artifact(run, 'dataset', 'Dataset — captured CSV', csv, 'text/csv', { executionRole:'input', origin: sourceDatasetArtifactId ? 'selected-artifact-version' : request.csv === undefined ? 'built-in-sample' : 'user-supplied', ...(sourceDatasetArtifactId ? { sourceArtifactId: sourceDatasetArtifactId } : {}) });
-    const codeArtifact = this.artifact(run, 'code', request.backend==='nebius-sandbox'?'Program — Nebius sandbox Python':request.backend==='docker-python'?'Program — isolated Python':'Program — bounded Python', code, 'text/x-python',{executionRole:'program'});
+    const codeArtifact = this.artifact(run, 'code', request.backend==='docker-python'?'Program — isolated Python':'Program — bounded Python', code, 'text/x-python',{executionRole:'program'});
     run = this.store.updateRun(runId, { artifactIds: [...(dataset?[dataset.id]:[]), codeArtifact.id] });
-    if(request.backend==='nebius-sandbox')run=this.store.updateRun(runId,{events:[...run.events,{at:now(),type:'external-transfer-preview',message:'Exact approval sends the captured code, CSV and parameters to a disposable Nebius VM. Networking is disabled; provider retention of request data and logs is undocumented. Credentials remain on the local server.'}]});
     this.store.addMessage(projectId, node.id, 'user', request.request, runId);
     const review=this.authority.review(projectId,{kind:'experiment',nodeId:node.id,fingerprint,code,runtimeSeconds:this.timeout(configuration)/1000});
     this.event(runId,'permission-review',review.reason,review);
-    if(request.backend==='nebius-sandbox')this.event(runId,'remote-approval-required','Remote execution always requires explicit approval of this exact external transfer, independently of the project automatic mode.');
-    else if(review.outcome==='allow')this.decide(run.id,fingerprint,'allow',`Automatic ${review.mode}: ${review.reason}`);
+    if(review.outcome==='allow')this.decide(run.id,fingerprint,'allow',`Automatic ${review.mode}: ${review.reason}`);
     return this.inspect(run.id);
   }
 
@@ -234,17 +197,13 @@ export class ExperimentService {
     if (checkCurrent) this.assertCurrent(run);
     return { run, config };
   }
-  private timeout(config:LocalConfiguration){return this.isSandbox(config)?(config.backend==='nebius-sandbox'?config.capabilities.nebiusSandbox:config.capabilities.sandbox)?.timeoutMs??this.backend(config).capabilities().timeoutMs:config.capabilities.timeoutMs;}
+  private timeout(config:LocalConfiguration){return this.isSandbox(config)?config.capabilities.sandbox?.timeoutMs??this.sandbox.capabilities().timeoutMs:config.capabilities.timeoutMs;}
   decide(runId: string, fingerprint: string, decision: 'allow' | 'deny' | 'cancel', reason?:string): Run {
     const { run, config } = this.validateDecision(runId, fingerprint, decision === 'allow');
-    if (decision === 'allow' && !(this.isSandbox(config)?this.backend(config).capabilities().available:this.capabilitiesValue.available)) throw new StoreError('Python runtime unavailable. No permission was granted and no fallback will run.', 503);
+    if (decision === 'allow' && !(this.isSandbox(config)?this.sandbox.capabilities().available:this.capabilitiesValue.available)) throw new StoreError('Python runtime unavailable. No permission was granted and no fallback will run.', 503);
     config.approval = { ...config.approval, status: decision === 'allow' ? 'allowed' : decision === 'deny' ? 'denied' : 'cancelled', decidedAt: now(), decisionReason: reason??`User ${decision}; exact action fingerprint ${fingerprint}` };
     this.store.atomic(()=>{
-      if(decision==='allow'){
-        const spendUsd=config.backend==='nebius-sandbox'?this.sandboxBudget.reserve(run.id,run.projectId):0;
-        this.authority.reserve(run.projectId,{kind:'experiment',nodeId:run.nodeId,fingerprint:run.id,runtimeSeconds:this.timeout(config)/1000,spendUsd});
-        if(config.backend==='nebius-sandbox')this.store.updateRun(run.id,{cost:{reservedUsd:spendUsd,estimatedUsd:null,basis:'Worst-case USD ceiling reserved from a separate sandbox grant, not a measured charge. Raw provider cost has undocumented units.'}});
-      }
+      if(decision==='allow')this.authority.reserve(run.projectId,{kind:'experiment',nodeId:run.nodeId,fingerprint:run.id,runtimeSeconds:this.timeout(config)/1000});
       this.saveConfig(runId, config);
       this.event(runId, `approval-${decision}`, decision === 'allow' ? 'User approved this exact action. Queued within the two-worker limit.' : 'Execution prevented by the permission decision.', { fingerprint });
     });
@@ -325,21 +284,19 @@ export class ExperimentService {
   }
   private executeSandbox(run:Run,config:LocalConfiguration){
     this.store.updateRun(run.id,{status:'running',startedAt:now()});
-    const backend=this.backend(config);
-    this.event(run.id,'process-start',config.backend==='nebius-sandbox'?'Submitting the approved Python and captured inputs to a disposable Nebius sandbox.':'Executing model/user Python in the local sandbox.',{backend:backend.capabilities()});
+    this.event(run.id,'process-start','Executing model/user Python in the local sandbox.',{backend:this.sandbox.capabilities()});
     try {
-      const handle=backend.start({projectId:run.projectId,code:config.code,...(config.manualCode&&config.inputMode==='none'?{}:{csv:config.csv}),parameters:config.parameters,timeoutMs:this.timeout(config),...(config.backend==='nebius-sandbox'?{onProgress:(state:RemoteExecutionState)=>this.remoteProgress(run.id,state)}:{})});
+      const handle=this.sandbox.start({projectId:run.projectId,code:config.code,...(config.manualCode&&config.inputMode==='none'?{}:{csv:config.csv}),parameters:config.parameters,timeoutMs:this.timeout(config)});
       const active:Active={done:Promise.resolve(),cancel:()=>handle.cancel('User stopped this experiment.')};
       this.active.set(run.id,active);
       active.done=handle.done.then(result=>{
-        if(result.remote)this.remoteProgress(run.id,result.remote);
         const current=this.store.getRun(run.id);
         const log=this.artifact(current,'log','Execution log and runtime',JSON.stringify({...result,outputs:result.outputs.map(o=>({kind:o.kind,title:o.title,mediaType:o.mediaType})),codeHash:config.codeHash,datasetHash:config.datasetHash,parameters:config.parameters},null,2),'application/json');
         const ids=[...current.artifactIds,log.id];
         for(const output of result.outputs){const artifact=this.artifact(current,output.kind,output.title,output.content,output.mediaType,{...output.metadata,executionRole:'output'});ids.push(artifact.id);this.event(run.id,'artifact',`Captured ${output.kind}: ${output.title}`,{artifactId:artifact.id,hash:artifact.hash});}
-        const status=result.remote?.phase==='uncertain'?'interrupted':active.stop??result.status;
+        const status=active.stop??result.status;
         this.store.addMessage(run.projectId,run.nodeId,status==='completed'?'assistant':'system',status==='completed'?`Isolated Python completed with ${result.outputs.length} saved outputs. Inputs, code, runtime and logs are preserved.`:result.error??active.reason??'Experiment stopped.',run.id);
-        this.store.updateRun(run.id,{artifactIds:ids,status,endedAt:now(),error:result.remote?.phase==='uncertain'?result.error??'Remote termination is unconfirmed; no automatic retry.':active.reason??result.error});
+        this.store.updateRun(run.id,{artifactIds:ids,status,endedAt:now(),error:active.reason??result.error});
       }).catch(error=>{const current=this.store.getRun(run.id);if(['queued','running'].includes(current.status))this.store.updateRun(run.id,{status:'failed',endedAt:now(),error:String(error).slice(0,1000)});}).finally(()=>{this.active.delete(run.id);this.drain();});
     } catch(error){this.store.updateRun(run.id,{status:'failed',endedAt:now(),error:String(error).slice(0,1000)});}
   }
@@ -369,7 +326,6 @@ export class ExperimentService {
     const captured = body.runIds.map(id => {
       const value = this.validateDecision(id, body.fingerprints[id]);
       if (value.run.projectId !== projectId) throw new StoreError('Auto Research cannot include another project.');
-      if(value.config.backend==='nebius-sandbox')throw new StoreError('Remote execution requires individual approval; it is not part of local Auto Research.');
       if(!(value.config.backend==='docker-python'?this.sandbox.capabilities().available:this.capabilitiesValue.available))throw new StoreError('Selected experiment runtime unavailable; no group was admitted.',503);
       return value;
     });
@@ -411,7 +367,7 @@ export class ExperimentService {
       if (!worker) this.store.updateRun(run.id, { status: 'interrupted', endedAt: now() });
     }
     this.queue = [];
-    await Promise.allSettled([...active.map(item => item.done),...this.recovery]);
+    await Promise.allSettled(active.map(item => item.done));
   }
 }
 

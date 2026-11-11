@@ -5,7 +5,6 @@ import { CARD_MAX_HEIGHT } from '../shared/card-size.js';
 import type { Artifact, ConnectionStatus, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
 import { StoreError, type Store } from './store.js';
 import { Authority } from './authority.js';
-import { CombinedNebiusBudget } from './combined-budget.js';
 import { ConnectionBudgets, type EnvironmentConnectionBudget } from './connection-budgets.js';
 import type { ConnectionBudgetProvider } from '../shared/connection-budgets.js';
 import { ModelSettings } from './model-settings.js';
@@ -77,7 +76,7 @@ function configuredAuthorization():LiveAuthorization|undefined {
 }
 
 /** freeSearch: Tavily and Exa search with no key, on the allowance each gives anyone (the local app turns it on). */
-type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;limits?:{nebius?:number;tavily?:number};maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;liveAuthorization?:LiveAuthorization;combinedBudget?:CombinedNebiusBudget;inference?:InferenceConnections};
+type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;limits?:{nebius?:number;tavily?:number};maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;liveAuthorization?:LiveAuthorization;inference?:InferenceConnections};
 type Active = {controller:AbortController;done:Promise<void>};
 export class BudgetLedger {
   constructor(private readonly store:Store,readonly limits:{nebius:number;tavily:number;openai?:number},readonly authorizationId?:string,readonly maxRequests=Number.MAX_SAFE_INTEGER) {}
@@ -111,7 +110,6 @@ export class ExecutionService {
   private readonly chatTasks = new Set<Promise<unknown>>();
   readonly ledger:BudgetLedger;
   private readonly authorization?:LiveAuthorization;
-  private readonly combinedBudget?:CombinedNebiusBudget;
   private closed = false;
   constructor(private readonly store:Store,options:Options={}) {
     this.inference=options.inference;
@@ -129,7 +127,6 @@ export class ExecutionService {
     this.injectedSearch=Boolean(options.search);
     this.searches={tavily:this.search,exa:new ExaAdapter(undefined,free),brave:new BraveAdapter()};
     this.authorization = options.liveAuthorization ?? configuredAuthorization();
-    this.combinedBudget=options.combinedBudget??(process.env.ROS_NEBIUS_COMBINED_AUTHORIZATION_ID?new CombinedNebiusBudget(store):undefined);
     this.maxConcurrent = Math.max(1,Math.min(4,Math.floor(options.maxConcurrent ?? Number(process.env.ROS_MAX_CONCURRENT || 2))));
     this.maxOutputTokens = Math.max(64,Math.min(2000,options.maxOutputTokens ?? 1400));
     this.timeoutMs = options.timeoutMs ?? 90000;
@@ -171,9 +168,8 @@ export class ExecutionService {
     const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.usageLedger();
     const enabled=this.legacyCloudAllowed(provider),limitUsd=ledger.limits[provider]??0,accountedUsd=ledger.accounted(provider);
     const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;
-    let ready=enabled&&accountedUsd<limitUsd&&usedRequests<ledger.maxRequests;
-    let reason=!enabled?'Save an explicit connection allowance before paid research. Credentials and historical usage do not authorize new spending.':usedRequests>=ledger.maxRequests?'The environment authorization request limit is exhausted.':accountedUsd>=limitUsd?'The environment provider allowance is exhausted; failed and uncertain requests remain accounted.':'Existing environment allowance active. Project permissions and retained provider ceilings still apply.';
-    if(provider==='nebius'&&this.combinedBudget){const combined=this.combinedBudget.status();ready&&=combined.ready;if(!combined.ready)reason=combined.reason;}
+    const ready=enabled&&accountedUsd<limitUsd&&usedRequests<ledger.maxRequests;
+    const reason=!enabled?'Save an explicit connection allowance before paid research. Credentials and historical usage do not authorize new spending.':usedRequests>=ledger.maxRequests?'The environment authorization request limit is exhausted.':accountedUsd>=limitUsd?'The environment provider allowance is exhausted; failed and uncertain requests remain accounted.':'Existing environment allowance active. Project permissions and retained provider ceilings still apply.';
     const source=ledger.authorizationId?'environment':'none';
     return {source,enabled,ready,limitUsd,accountedUsd,maxRequests:source==='none'||!enabled?0:ledger.maxRequests,usedRequests:source==='none'||!enabled?0:usedRequests,reason};
   }
@@ -259,7 +255,6 @@ export class ExecutionService {
       if(projectId) new Authority(this.store).reserve(projectId,{kind:'model',nodeId:runId?this.store.getRun(runId).nodeId:'project',fingerprint:runId??randomUUID(),spendUsd:estimate});
       const basis=`${reservationMultiplier} × (${inputTokens} reserved input tokens × $${info.inputUsdPerToken}/token + ${request.maxOutputTokens} total completion tokens × $${info.outputUsdPerToken}/token). ${tokenReservation.inputBasis}. ${provider==='openai'?'Standard rates recorded from official OpenAI docs on 2026-09-23; app input ceiling 272K.':'Catalog checked per call.'} Reservation retained after settlement; follow-ups require separate admission.`;
       const admitted=usesAppAllowance?this.connectionBudgets.reserve({provider,amountUsd:estimate,purpose,basis,runId,trace},allowance.revision):ledger.reserve(provider,estimate,purpose,basis,runId,trace);
-      if(!usesAppAllowance&&provider==='nebius'&&this.combinedBudget){if(!projectId)throw new Error('Combined Nebius admission requires a project.');this.combinedBudget.reserve({kind:'inference',attemptId:admitted.id,projectId,amountUsd:estimate,basis:admitted.basis});}
       return admitted;
     });
     const reservedTrace=usage.reportedUsage as Record<string,unknown>;
@@ -345,10 +340,9 @@ export class ExecutionService {
     }
     const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
     const service=this.searchService(),allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd),usesAppAllowance=allowance.source==='app';
-    const modelBudgetReady=usesAppAllowance?allowance.ready:provider!=='nebius'||!this.combinedBudget||this.combinedBudget.status().ready;
     const ledgerReady=usesAppAllowance?allowance.ready:ledger.accounted(provider)<(ledger.limits[provider]??0)&&(allowance.source!=='environment'||allowance.remainingRequests>0);
     const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:service.id==='tavily'&&this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
-    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !modelBudgetReady ? this.combinedBudget?.status().reason??allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&modelBudgetReady&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
+    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
     if(projectId&&new Authority(this.store).policy(projectId).stopped){
       capabilities.modelBlocker??='Project research is stopped. Open Permissions and resume deliberately.';
       capabilities.modelAvailable=false;capabilities.searchAvailable=false;
@@ -607,7 +601,7 @@ export class ExecutionService {
     } else reply = `${label}\nYour request is recorded. A useful next step is one focused task for that outcome. You can ask “Add a task for …” to preview it, or add a Text block directly. Open a node to inspect data and run a local analysis. Connect a model on the Agents page for a full conversation.`;
     return {message:this.store.addMessage(projectId,null,'assistant',reply),proposal};
   }
-  startExperimentPlan(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;backend?:'bounded'|'docker-python'|'nebius-sandbox'}) {
+  startExperimentPlan(projectId:string,nodeId:string,options:{request:string;datasetArtifactId:string;backend?:'bounded'|'docker-python'}) {
     return this.startRun(projectId,nodeId,{request:options.request,useSearch:false,experimentDatasetId:options.datasetArtifactId,experimentBackend:options.backend??'bounded'});
   }
   /** Accepts what the approval mode lets land at once: in Full access every change, in Approve for me additions and
@@ -638,7 +632,7 @@ export class ExecutionService {
       this.store.acceptProposal(proposal.projectId,proposal.id);
     });
   }
-  startRun(projectId:string,nodeId:string,options:{request:string;useSearch:boolean;retryOf?:string;experimentDatasetId?:string;experimentBackend?:'bounded'|'docker-python'|'nebius-sandbox'}):Run {
+  startRun(projectId:string,nodeId:string,options:{request:string;useSearch:boolean;retryOf?:string;experimentDatasetId?:string;experimentBackend?:'bounded'|'docker-python'}):Run {
     const request = requestText.parse(options.request);
     const duplicate = this.store.listRuns(projectId).find(r=>r.nodeId===nodeId && (r.status==='queued'||r.status==='running'));
     if (duplicate) {
@@ -737,10 +731,8 @@ export class ExecutionService {
     }
   }
   private async performExperimentPlan(run:Run,signal:AbortSignal) {
-    const backend = run.configuration.backend === 'nebius-sandbox' ? 'nebius-sandbox' : run.configuration.backend === 'docker-python' ? 'docker-python' : 'bounded';
-    const runtimeContract = backend === 'nebius-sandbox'
-      ? 'Code targets Python 3.12 standard library in a remote Nebius Sandbox (nebius-sandbox). The captured CSV is already parsed as rows, a list of dictionaries keyed by the CSV headers with string values; params is the captured parameter dictionary. Use float or int to convert numeric cells and standard library modules such as statistics, math, csv, json and datetime when useful. Ordinary Python functions, loops and comprehensions are supported. pandas, NumPy, SciPy and Matplotlib are NOT installed; df, pd, np, plt and scipy globals are NOT available. Do not use the legacy column or linear_fit helpers. Use the injected rows directly; do not request network, shell, subprocesses, package installation, credentials or host files. Capture results with metric(title,value), table(title,rows), plot(title,numeric_values[,labels]) for a simple SVG plot, export_csv(title,rows), and conclusion(text). Output helpers use positional arguments. Example: import statistics; values = [float(row["value"]) for row in rows]; metric("Mean", statistics.mean(values)); table("First rows", rows[:10]); plot("Values", values). Exact CSV, code and parameters are transferred only after a separate explicit execution approval; planning grants no remote execution permission.'
-      : backend === 'docker-python'
+    const backend = run.configuration.backend === 'docker-python' ? 'docker-python' : 'bounded';
+    const runtimeContract = backend === 'docker-python'
       ? 'Code targets ordinary Python in the isolated Docker research runtime (docker-python), with pandas, NumPy, Matplotlib and SciPy installed. The captured CSV is already loaded as df, a pandas DataFrame; params is the captured parameter dictionary. Injected globals: df, params, pd, np, plt, scipy. Standard Python functions, loops, comprehensions, attributes and imports from these research libraries are supported. Use the captured df directly; do not open files or request network, shell, subprocesses or package installation. Capture results with metric(title,value), table(title,DataFrame_or_Series_or_rows), plot(title,figure) for a Matplotlib Figure (or omit figure for the current figure), export_csv(title,DataFrame), and conclusion(text); a figure saved with savefig or left open at the end is kept as a plot too. Output helpers use positional arguments. Example: metric("Mean", df["value"].mean()); table("Summary", df.describe().reset_index()); fig, ax = plt.subplots(); ax.plot(df["value"]); plot("Values", fig). The legacy column, describe and linear_fit helper functions are not available in this runtime.'
       : 'Code targets the local bounded Python expression runner, NOT arbitrary Python. Allowed syntax: assignment, expression statements, direct function calls, arithmetic, list/dict literals, subscripts. No imports, attributes, loops, comprehensions, function/class definitions, filesystem, network, shell, packages or external tools. Exposed APIs: column(name) numeric list; columns() header list; mean/sum/min/max/len/median/stdev/variance/sorted/round/abs; describe(values) list of metric/value rows; metric(title,value); table(title,rows); plot(title,values[,labels]); linear_fit(x,y) dict with slope/intercept/r_squared; params dict. Output functions use positional arguments.';
     const messages:ModelMessage[] = [
@@ -770,7 +762,7 @@ export class ExecutionService {
     const run = this.store.getRun(runId);
     if (!['failed','cancelled','interrupted'].includes(run.status)) throw new Error('Only failed, cancelled, or interrupted runs can be retried.');
     if(['assistant-search','agent-search'].includes(String(run.configuration.purpose)))throw new Error('Repeat source discovery in the project assistant. A search-only run cannot be retried as a new model synthesis.');
-    return this.startRun(run.projectId,run.nodeId,{request:run.request,useSearch:run.useSearch,retryOf:run.id,...(typeof run.configuration.datasetArtifactId==='string'?{experimentDatasetId:run.configuration.datasetArtifactId,experimentBackend:run.configuration.backend==='nebius-sandbox'?'nebius-sandbox':run.configuration.backend==='docker-python'?'docker-python':'bounded'}:{})});
+    return this.startRun(run.projectId,run.nodeId,{request:run.request,useSearch:run.useSearch,retryOf:run.id,...(typeof run.configuration.datasetArtifactId==='string'?{experimentDatasetId:run.configuration.datasetArtifactId,experimentBackend:run.configuration.backend==='docker-python'?'docker-python':'bounded'}:{})});
   }
   private safeError(error:unknown) { return error instanceof z.ZodError ? 'Model returned an invalid proposal schema; no canvas edits were applied.' : error instanceof SyntaxError ? 'Model returned invalid JSON; no canvas edits were applied.' : error instanceof Error ? error.message.slice(0,500) : 'Request failed. No automatic retry was attempted.'; }
   async shutdown() {

@@ -10,12 +10,7 @@ export type CardOutcome = {
   artifactIds: string[];
   runId?: string;
 };
-export type CardOutcomeOptions = {
-  projectId?: string;
-  /** Current runtime gates, keyed by backend. An empty string clears a captured
-   * blocker; an absent key falls back to the attempt's captured capabilities. */
-  blockers?: Partial<Record<'bounded' | 'docker-python' | 'nebius-sandbox', string>>;
-};
+type CardOutcomeOptions = { projectId?: string };
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const newest = <T extends { createdAt: string; id: string }>(items: T[]) => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
@@ -60,15 +55,12 @@ function savedOutcome(run: Run, artifacts: Artifact[]): Pick<CardOutcome, 'text'
   return undefined;
 }
 
-function executionBlocker(run: Run, options: CardOutcomeOptions): string | undefined {
+function executionBlocker(run: Run): string | undefined {
   if (run.configuration.kind !== 'local-experiment' || run.status === 'completed' || run.status === 'running') return;
   const backend = String(run.configuration.backend ?? 'bounded');
-  if (options.blockers && Object.hasOwn(options.blockers, backend)) return options.blockers[backend as keyof NonNullable<CardOutcomeOptions['blockers']>] || undefined;
   const capabilities = record(run.configuration.capabilities);
-  const runtime = record(backend === 'nebius-sandbox' ? capabilities.nebiusSandbox : backend === 'docker-python' ? capabilities.sandbox : capabilities);
-  const costGate = record(runtime.costGate);
-  if (costGate.ready === false && typeof costGate.reason === 'string') return costGate.reason;
-  if (runtime.available === false) return `${backend === 'nebius-sandbox' ? 'Nebius Sandbox' : backend === 'docker-python' ? 'Sandboxed Python' : 'Local Python'} is unavailable; execution cannot start.`;
+  const runtime = record(backend === 'docker-python' ? capabilities.sandbox : capabilities);
+  if (runtime.available === false) return `${backend === 'docker-python' ? 'Sandboxed Python' : 'Local Python'} is unavailable; execution cannot start.`;
 }
 
 /** Display-only, deterministic evidence selection. This does not produce new
@@ -86,9 +78,7 @@ export function deriveCardOutcome(node: CanvasNode, runs: Run[], artifacts: Arti
   const state = (label: string, tone: CardOutcome['tone'], text: string): CardOutcome => ({ label, tone, text: prior(text), hasResult: !!result, artifactIds: result?.artifactIds ?? [], ...(latest ? { runId: latest.id } : {}) });
 
   if (latest) {
-    const remote = record(latest.configuration.remote);
-    if (remote.phase === 'uncertain') return state('Outcome uncertain', 'warning', 'The remote execution outcome is unconfirmed; inspect this attempt before trying again.');
-    const blocker = executionBlocker(latest, options);
+    const blocker = executionBlocker(latest);
     if (blocker) return state('Blocked', 'warning', blocker);
     const approval = record(latest.configuration.approval);
     if (latest.status === 'running') return state('In progress', 'progress', latest.configuration.kind === 'external-notebook-capture' ? 'The external notebook capture is in progress; ros.ai is not executing its cells.' : latest.configuration.kind === 'local-experiment' ? 'The approved experiment is running; its outcome is not yet available.' : 'Research is in progress; its outcome is not yet available.');

@@ -9,12 +9,10 @@ import { z } from 'zod';
 import { confinedEnv, ProcessTree, proxyEnv, PYTHON_PACKAGES, type Confine, type PythonRuntime } from './local-python.js';
 import type { NetworkGate, NetworkSession } from './network-gate.js';
 
-import type { RemoteExecutionState } from '../shared/experiments.js';
-export type { RemoteExecutionState } from '../shared/experiments.js';
-export type SandboxInput = { projectId?: string; code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number; onProgress?:(state:RemoteExecutionState)=>void };
-export type SandboxOutput = { kind: 'table' | 'metric' | 'plot' | 'result' | 'dataset'; title: string; content: string; mediaType: string; metadata?: Record<string, unknown> };
+export type SandboxInput = { projectId?: string; code: string; csv?: string; parameters: Record<string, string | number | boolean>; timeoutMs?: number };
+type SandboxOutput = { kind: 'table' | 'metric' | 'plot' | 'result' | 'dataset'; title: string; content: string; mediaType: string; metadata?: Record<string, unknown> };
 export type SandboxCapabilities = {
-  available: boolean; backend: 'docker-python' | 'nebius-sandbox'; policy: string; runtime: string | null;
+  available: boolean; backend: 'docker-python'; policy: string; runtime: string | null;
   workerHash: string; imageId: string | null; libraries: Record<string, string>; enforcement: string[];
   limitations: string[]; timeoutMs: number; maxMemoryMb: number|null; maxOutputBytes: number;
   exampleCode?:string; dataContract?:string;
@@ -22,7 +20,7 @@ export type SandboxCapabilities = {
 export type SandboxResult = {
   status: 'completed' | 'failed' | 'cancelled'; outputs: SandboxOutput[]; stdout: string; stderr: string;
   exitCode: number | null; signal: string | null; error?: string; runtime: string | null;
-  startedAt: string; endedAt: string; enforcement: string[]; remote?:RemoteExecutionState;
+  startedAt: string; endedAt: string; enforcement: string[];
 };
 export type SandboxHandle = { done: Promise<SandboxResult>; cancel: (reason?: string) => void; containerName?: string };
 /** Execution transport only. Approval, node scope, shared budgets and attempt storage belong to the caller. */
@@ -309,12 +307,4 @@ export class LocalPythonBackend implements ExecutionBackend {
     })();
     return { done, cancel: (reason = 'User stopped this isolated experiment.') => { stopped ??= reason; tree?.end(); } };
   }
-}
-
-/** Adapter seam only. The public API is documented; this account's beta access and execution are unverified. */
-export class UnavailableNebiusSandboxBackend implements ExecutionBackend {
-  capabilities(): SandboxCapabilities {
-    return { available: false, backend: 'nebius-sandbox', policy: 'unavailable', runtime: null, workerHash: '', imageId: null, libraries: {}, enforcement: [], limitations: ['Nebius publishes a sandbox API, but this account\'s beta access and remote execution are unverified; no cloud execution is implemented.'], timeoutMs: 0, maxMemoryMb: 0, maxOutputBytes: 0 };
-  }
-  start(_input: SandboxInput): SandboxHandle { throw new Error('Nebius sandbox account access and execution are unverified. Choose an available local backend.'); }
 }

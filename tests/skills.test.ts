@@ -10,7 +10,6 @@ import { Store } from '../src/server/store.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { ExperimentService } from '../src/server/experiments.js';
 import { AssistantService } from '../src/server/assistant.js';
-import { SandboxBudget } from '../src/server/sandbox-budget.js';
 import { AgentWorkspaceTools } from '../src/server/agent-tools.js';
 import { SkillLibrary, calledSkills } from '../src/server/skills.js';
 import { groupSkills, parseSkillMd, readZip, updateSkillMd, writeSkillMd, yamlString } from '../src/server/skill-format.js';
@@ -344,7 +343,7 @@ test('Every assistant turn carries the skills: agents get the list and /name cal
   const runtime: ExecutionBackend = { capabilities: () => ({ available: false, backend: 'docker-python', policy: 'offline', runtime: null, workerHash: 'offline', imageId: null, libraries: {}, enforcement: [], limitations: [], timeoutMs: 1, maxMemoryMb: 1, maxOutputBytes: 1 }), start() { throw new Error('No execution in this fixture.'); } };
   const agent: AgentRuntime = { status: async () => { throw new Error('unused'); }, async execute(request) { agentRequests.push(request); return { reply: 'Agent done.', sessionId: 's', actions: [], requestId: 'r' }; }, async shutdown() {} };
   const execution = new ExecutionService(f.store, { model, limits: { nebius: 5, tavily: 10 }, includeSetupUsage: false });
-  const experiments = new ExperimentService(f.store, { sandbox: runtime, sandboxBudget: new SandboxBudget(f.store, {}) });
+  const experiments = new ExperimentService(f.store, { sandbox: runtime });
   const assistant = new AssistantService(f.store, execution, experiments, agent, undefined, undefined, undefined, f.skills);
   const project = f.store.createProject('Skills in turns');
   experiments.authority.configure(project.id, { mode: 'ask' });

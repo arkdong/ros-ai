@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
-import { CombinedNebiusBudget } from '../src/server/combined-budget.js';
 import { arrangeCanvas } from '../src/shared/layout.js';
 import type { CanvasNode, Mutation, Run } from '../src/shared/types.js';
 
@@ -103,13 +102,10 @@ test('Trash and restore retain exact project history, artifacts, policy and cons
   const authority = new Authority(f.store);
   authority.configure(id, { mode: 'review' });
   authority.reserve(id, { kind: 'model', nodeId: 'source', fingerprint: 'retained-project-spend', spendUsd: 3 });
-  const authorization = { authorizationId: 'offline-trash-test', maxUsd: 10 };
-  const budget = new CombinedNebiusBudget(f.store, authorization);
   f.store.addUsage({ id: 'retained-provider-usage', provider: 'nebius', purpose: 'Offline fixture', reservedUsd: 3, estimatedUsd: .01, reportedUsage: null, status: 'settled', basis: 'Offline conservative fixture', createdAt: '2026-09-22T09:00:00Z' });
-  budget.reserve({ kind: 'inference', attemptId: 'retained-provider-usage', projectId: id, amountUsd: 3, basis: 'Offline conservative fixture' });
   f.store.mutate(id, [{ type: 'updateNode', id: 'source', patch: { title: 'A later title' } }], 'Rename');
   f.store.undo(id);
-  const before = f.store.detail(id), policy = authority.policy(id), usage = f.store.listUsage(), budgetBefore = budget.status(), admissions = f.store.records('admission', id);
+  const before = f.store.detail(id), policy = authority.policy(id), usage = f.store.listUsage(), admissions = f.store.records('admission', id);
   assert.equal(before.canRedo, true);
   const neighbor = f.store.createProject('Unrelated project remains available');
   assert.deepEqual(f.store.trashProject(id), before.project);
@@ -117,10 +113,8 @@ test('Trash and restore retain exact project history, artifacts, policy and cons
   assert.deepEqual(f.store.listTrashedProjects(), [before.project]);
   assert.throws(() => f.store.getProject(id), /Trash/);
   assert.throws(() => f.store.mutate(id, [{ type: 'updateNode', id: 'source', patch: { title: 'Must not change' } }], 'Edit trashed project'), /Trash/);
-  assert.deepEqual(budget.status(), budgetBefore, 'Trash cannot release shared spending reservations');
   f.reopen();
   assert.deepEqual(f.store.listTrashedProjects(), [before.project]);
-  assert.deepEqual(new CombinedNebiusBudget(f.store, authorization).status(), budgetBefore);
   assert.deepEqual(f.store.restoreProject(id), before.project);
   assert.deepEqual(f.store.detail(id), before);
   assert.deepEqual(new Authority(f.store).policy(id), policy);

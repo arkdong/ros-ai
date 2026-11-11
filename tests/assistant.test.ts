@@ -9,7 +9,6 @@ import { Store } from '../src/server/store.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { ExperimentService } from '../src/server/experiments.js';
 import { AssistantService } from '../src/server/assistant.js';
-import { SandboxBudget } from '../src/server/sandbox-budget.js';
 import type { ModelAdapter, ModelRequest, ModelResponse, SearchAdapter } from '../src/server/providers.js';
 import type { ExecutionBackend, SandboxCapabilities, SandboxResult } from '../src/server/sandbox.js';
 import type { Artifact, Run } from '../src/shared/types.js';
@@ -36,7 +35,7 @@ function services(store: Store, answers: Answer[], configured = true, runtimeOve
   const search: SearchAdapter = { configured: true, async search(query) { searches.push(query); return { results: [{ title: 'Offline source excerpt', url: 'https://example.org/offline-fixture', content: 'EXACT_OFFLINE_SOURCE_CLAIM; incomplete excerpt.', locator: 'chars 0-54' }], credits: 1, requestId: 'offline-search-only' }; } };
   const runtime: ExecutionBackend = runtimeOverride ?? { capabilities: () => structuredClone(caps), start(input) { starts.push(input); throw new Error('No execution is permitted by this orchestration fixture.'); } };
   const execution = new ExecutionService(store, { model, search, limits: { nebius: 5, tavily: 10 }, includeSetupUsage: false });
-  const experiments = new ExperimentService(store, { sandbox: runtime, nebiusSandbox: runtime, sandboxBudget: new SandboxBudget(store, {}) });
+  const experiments = new ExperimentService(store, { sandbox: runtime });
   const assistant = new AssistantService(store, execution, experiments);
   return { assistant, execution, experiments, requests, signals, searches, starts, async shutdown() { await assistant.shutdown(); await execution.shutdown(); await experiments.shutdown(); } };
 }
