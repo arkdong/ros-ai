@@ -54,7 +54,7 @@ let lastReads: { state?: SkillsState; found?: FoundSkill[] } = {};
 
 /** The sidebar lists the person's skills; a dot marks the ones that are on. */
 export function SkillsSidebar({ skills, selected, onSelect }: { skills: SkillItem[]; selected: string | null; onSelect: (name: string | null) => void }) {
-  return <CatalogueSidebar sections={[{ id: 'skills', label: 'Skills' }]} label="Your skills" empty="No skills yet" installed={skills.map(item => ({ id: item.name, name: item.title, mark: <BookText size={16}/>, off: !item.enabled }))} selected={selected} onSelect={onSelect} note="Every agent in ros.ai uses the skills that are on. Click one to read or change it."/>;
+  return <CatalogueSidebar sections={[{ id: 'skills', label: 'Skills' }]} label="Your skills" empty="No skills yet" installed={skills.map(item => ({ id: item.name, name: item.title, mark: <BookText size={16}/>, off: !item.enabled }))} selected={selected} onSelect={onSelect}/>;
 }
 
 export function SkillsPage({ selected, onSelect, onSkills }: { selected: string | null; onSelect: (name: string | null) => void; onSkills: (skills: SkillItem[]) => void }) {
