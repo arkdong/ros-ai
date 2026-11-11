@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { Readable } from 'node:stream';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
 import { ProjectFolders } from '../src/server/project-folders.js';
@@ -51,5 +52,52 @@ test('two Code blocks with one title keep their outputs in separate folders', as
     assert.deepEqual(readdirSync(join(root, 'outputs')).sort(), ['Analysis', 'Analysis 2']);
     assert.match(read('outputs/Analysis/Figure 1.svg'), /<title>first</u);
     assert.match(read('outputs/Analysis 2/Figure 1.svg'), /<title>second</u);
+  } finally { folders.shutdown(); store.close(); rmSync(data, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('two videos of one name sent at once each get their own file', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'ros-video-data-')), root = mkdtempSync(join(tmpdir(), 'ros-video-folder-'));
+  const store = new Store(data), folders = new ProjectFolders(store, { reserved: [data] });
+  try {
+    const project = store.createProject('Videos');
+    folders.attach(project.id, root);
+    const [first, second] = await Promise.all([folders.saveVideo(project.id, 'clip.mp4', Readable.from([Buffer.from('first')])), folders.saveVideo(project.id, 'clip.mp4', Readable.from([Buffer.from('second')]))]);
+    assert.notEqual(first.path, second.path);
+    assert.equal(readFileSync(join(root, first.path), 'utf8'), 'first');
+    assert.equal(readFileSync(join(root, second.path), 'utf8'), 'second');
+  } finally { folders.shutdown(); store.close(); rmSync(data, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a PDF whose text cannot be read says so, and keeps saying so while the file stays as it is', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'ros-pdf-data-')), root = mkdtempSync(join(tmpdir(), 'ros-pdf-folder-'));
+  const store = new Store(data), folders = new ProjectFolders(store, { reserved: [data] });
+  const settle = () => new Promise(resolve => setTimeout(resolve, 400));
+  try {
+    const project = store.createProject('Papers');
+    folders.attach(project.id, root);
+    const path = folders.saveFile(project.id, 'broken.pdf', Buffer.from('%PDF-1.7\nnot really a PDF')).path;
+    store.mutate(project.id, [{ type: 'addNode', node: { id: 'paper', title: 'Broken', description: '', kind: 'topic', blockType: 'file', parentId: null, x: 0, y: 0, file: { path } } }], 'Add a PDF');
+    await settle();
+    const problem = () => folders.status(project.id).problems.find(item => item.path === path)?.message;
+    assert.match(problem() ?? '', /could not be read as a PDF/);
+    // Another change makes the folder pass run again, with the file as it was.
+    store.mutate(project.id, [{ type: 'updateNode', id: 'paper', patch: { title: 'Still broken' } }], 'Rename');
+    await settle();
+    assert.match(problem() ?? '', /could not be read as a PDF/);
+  } finally { folders.shutdown(); store.close(); rmSync(data, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a removed project stays removed when opening its folder is refused', () => {
+  const data = mkdtempSync(join(tmpdir(), 'ros-reopen-data-')), root = mkdtempSync(join(tmpdir(), 'ros-reopen-folder-'));
+  const store = new Store(data), folders = new ProjectFolders(store, { reserved: [data] });
+  try {
+    const removed = store.createProject('Removed'), other = store.createProject('Other');
+    folders.attach(removed.id, join(root, 'Removed')); folders.attach(other.id, join(root, 'Other'));
+    folders.release(removed.id); store.trashProject(removed.id);
+    // The kept folder was moved inside another project's folder, where ros.ai will not open it.
+    renameSync(join(root, 'Removed'), join(root, 'Other', 'Removed'));
+    assert.throws(() => folders.openFolder(join(root, 'Other', 'Removed')), /overlaps the folder/);
+    assert.deepEqual(store.listProjects().map(project => project.id), [other.id]);
+    assert.deepEqual(store.listTrashedProjects().map(project => project.id), [removed.id]);
   } finally { folders.shutdown(); store.close(); rmSync(data, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
 });

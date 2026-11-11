@@ -73,7 +73,9 @@ export function wholeFolder(real: string, home: string, fold = FOLDS_CASE): bool
 }
 
 type Observed = { hash: string; mtimeMs: number; size: number };
-type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string };
+type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string;
+  /** Why a PDF's text could not be read. It stays until the file changes: a folder pass that finds the file as it was does not clear it. */
+  textProblem?: string };
 type OutputEntry = { path: string; hash: string; artifactId: string };
 /** ros.ai's side of the sync. `hash` is the content ros.ai and the file last agreed on. */
 type FolderRecord = { projectId: string; path: string; device: number; inode: number; attachedAt: string; files: Record<string, FileEntry>; outputs: Record<string, OutputEntry[]>; board?: string };
@@ -415,7 +417,7 @@ export class ProjectFolders implements NotebookFolders {
     return { attached: true, path: record.path, available: checked?.available ?? true, ...(checked?.reason ? { reason: checked.reason } : {}), revision: project.revision,
       files: entries.map(([nodeId, entry]) => { const shape = this.pictureSize(record, entry); return { nodeId, path: entry.path, kind: entry.kind, ...(entry.missing ? { missing: true } : {}), ...(entry.kind === 'file' && entry.disk ? { bytes: entry.disk.size, version: entry.hash.slice(0, 12) } : {}), ...(shape ? { image: { width: shape.width, height: shape.height } } : {}), ...(shape?.seconds !== undefined ? { seconds: shape.seconds } : {}) }; }),
       unplaced: checked?.unplaced ?? [],
-      problems: [...entries.filter(([, entry]) => entry.problem).map(([, entry]) => ({ path: entry.path, message: entry.problem! })), ...(checked?.problems ?? [])],
+      problems: [...entries.flatMap(([, entry]) => entry.problem || entry.textProblem ? [{ path: entry.path, message: (entry.problem ?? entry.textProblem)! }] : []), ...(checked?.problems ?? [])],
       ...(checked ? { checkedAt: checked.checkedAt } : {}) };
   }
 
@@ -505,11 +507,14 @@ export class ProjectFolders implements NotebookFolders {
     if (!isAbsolute(path) || !existsSync(path) || !statSync(path).isDirectory()) throw new StoreError('Choose an existing folder.');
     const manifest = this.manifest(realpathSync(path));
     const owner = manifest && [...this.store.listProjects(), ...this.store.listTrashedProjects()].find(project => project.id === manifest.projectId);
-    // A removed project whose folder was kept comes back when its folder is opened again.
-    if (owner && this.store.listTrashedProjects().some(project => project.id === owner.id)) this.store.restoreProject(owner.id);
     if (owner) {
+      // A removed project whose folder was kept comes back when its folder is opened again, once the folder
+      // is one ros.ai can use: a refused folder leaves the project removed.
+      const removed = this.store.listTrashedProjects().some(project => project.id === owner.id);
       const real = this.prepare(path, owner.id);
-      this.connect(owner.id, real, manifest);
+      if (removed) this.store.restoreProject(owner.id);
+      try { this.connect(owner.id, real, manifest); }
+      catch (error) { if (removed) this.store.trashProject(owner.id); throw error; }
       return this.store.getProject(owner.id);
     }
     const real = this.prepare(path, manifest?.projectId);
@@ -647,10 +652,16 @@ export class ProjectFolders implements NotebookFolders {
     const { record, files } = this.require(projectId);
     if (!isVideoType(fileMediaType(name))) throw new StoreError('Only MP4 and MOV videos are saved this way.');
     if (declared !== undefined && declared > fileLimit(name)) throw new StoreError(tooLarge(name), 413);
-    const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extensionOf(name).toLowerCase(), this.mapped(record));
-    await files.writeStream(path, body, fileLimit(name));
+    // A video still arriving holds its name, so a second one of the same name sent meanwhile gets its own file.
+    const path = this.freePath(files, FOLDER_DIRECTORIES.file, safeFileBase(stemOf(name)), extensionOf(name).toLowerCase(), new Set([...this.mapped(record), ...(this.arriving.get(projectId) ?? [])]));
+    const arriving = this.arriving.get(projectId) ?? new Set<string>();
+    this.arriving.set(projectId, arriving.add(path.toLowerCase()));
+    try { await files.writeStream(path, body, fileLimit(name)); }
+    finally { arriving.delete(path.toLowerCase()); if (!arriving.size) this.arriving.delete(projectId); }
     return { path };
   }
+  /** Paths of videos being written now, by project. */
+  private readonly arriving = new Map<string, Set<string>>();
   /** Whether the project has a folder ros.ai can use now. */
   hasFolder(projectId: string): boolean { try { this.require(projectId); return true; } catch { return false; } }
   /** Copies a File block's PDF or image into files/ of this project, from another project's folder or this one, for a pasted block. Returns the new path. */
@@ -998,8 +1009,10 @@ export class ProjectFolders implements NotebookFolders {
       for (let pending = this.pendingText.get(projectId); pending?.size; pending = this.pendingText.get(projectId)) {
         const [nodeId] = pending;
         pending.delete(nodeId);
-        try { await this.readFileText(projectId, nodeId); }
-        catch (error) { const entry = this.load(projectId)?.files[nodeId]; if (entry) { entry.problem = message(error); this.save(this.load(projectId)!); } }
+        let problem: string | undefined;
+        try { await this.readFileText(projectId, nodeId); } catch (error) { problem = message(error); }
+        const record = this.load(projectId), entry = record?.files[nodeId];
+        if (record && entry && entry.textProblem !== problem) { if (problem) entry.textProblem = problem; else delete entry.textProblem; this.save(record); }
       }
     } finally { this.readingText.delete(projectId); }
   }
@@ -1059,7 +1072,7 @@ export class ProjectFolders implements NotebookFolders {
       entry.missing = false;
       if (seen.observed.hash === entry.hash) { delete entry.problem; continue; }
       // A PDF or image replaced on disk: the card shows the new file, and a PDF's text is read again.
-      if (entry.kind === 'file') { entry.hash = seen.observed.hash; entry.disk = seen.observed; delete entry.problem; this.queueText(record.projectId, nodeId); continue; }
+      if (entry.kind === 'file') { entry.hash = seen.observed.hash; entry.disk = seen.observed; delete entry.problem; delete entry.textProblem; this.queueText(record.projectId, nodeId); continue; }
       // A version already seen and refused keeps its problem until the file changes again.
       if (!seen.bytes || !TWO_WAY.has(entry.kind)) continue;
       try {
