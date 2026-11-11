@@ -32,11 +32,18 @@
 .single-canvas-shell .workspace-welcome { background-color: var(--paper); }
 .single-canvas-shell .rail-page { background: var(--paper); }
 
-/* Controls. */
+/* Controls. One main button everywhere: a 32px pill, 13px medium, black. The second action is the same pill in white
+   with a hairline; a third is a plain word (.text-button). No screen sets its own height, corner or weight. */
+.single-canvas-shell .primary, .single-canvas-shell .secondary,
+.modal .primary, .modal .secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
+  height: 32px; padding: 0 14px; border-radius: var(--radius-pill);
+  font-size: var(--text-sm); font-weight: 500; line-height: 1; white-space: nowrap; box-shadow: none;
+}
 .single-canvas-shell .secondary,
-.modal .secondary { border-radius: var(--radius-pill); padding: 7px 13px; border-color: var(--line); background: var(--paper); box-shadow: var(--shadow-block); }
-.single-canvas-shell .primary,
-.modal .primary { border-radius: var(--radius-pill); padding: 8px 14px; }
+.modal .secondary { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.single-canvas-shell .secondary:hover:not(:disabled),
+.modal .secondary:hover:not(:disabled) { background: var(--sidebar); border-color: var(--line); }
 .single-canvas-shell .icon-button { border-radius: var(--radius-control); }
 
 /* Things that float over the map. */
@@ -101,8 +108,6 @@
 .rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: var(--radius-block); background: var(--paper); border: 1px solid var(--line-soft); }
 .rail-page .connection-state { font-size: var(--text-xs); }
 .rail-page .resources-panel { border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
-/* Buttons on these pages are the canvas's 30 px pills: black for the one action, white hairline for a second, text chips for the rest. */
-.rail-page .primary, .rail-page .secondary, .skill-modal .primary, .skill-modal .secondary { height: 30px; padding: 0 14px; border-radius: var(--radius-pill); font-size: var(--text-sm); font-weight: 500; }
 .rail-page .text-button { font-size: var(--text-sm); }
 .rail-page .icon-button { width: 30px; height: 30px; border-radius: var(--radius-control); }
 .rail-page .inline-error { background: transparent; padding: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--fail); }

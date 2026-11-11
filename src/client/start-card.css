@@ -26,7 +26,7 @@
 .pc-foot .chip-slot > .chip-button { max-width: min(280px, 100%); }
 .pc-foot > .chip-button, .pc-foot .primary { flex-shrink: 0; }
 .pc-foot .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-foot .primary, .single-canvas-shell .pc-foot .primary { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: var(--radius-pill); font-size: var(--text-sm); white-space: nowrap; }
+.pc-foot .primary, .single-canvas-shell .pc-foot .primary { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pc-foot .chip-menu { width: 300px; max-width: calc(100vw - 48px); }
 .folder-menu { gap: 8px; padding: 10px; }
 .folder-menu p { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }

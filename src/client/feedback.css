@@ -62,7 +62,6 @@
 .feedback-public { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
 .feedback .feedback-public { color: var(--body); }
 .feedback .feedback-public:hover { color: var(--ink); }
-.feedback-card footer .primary, .feedback-card footer .secondary { height: 32px; padding: 0 16px; border-radius: var(--radius-control); font-size: var(--text-sm); font-weight: 600; }
 /* Only GitHub with ros.ai cloud off: one dark button with the white mark. */
 .feedback-card footer .feedback-github { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
 .feedback-github .brand-logo { filter: invert(1); }

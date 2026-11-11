@@ -26,7 +26,7 @@
 .ros-dl-sp { flex: 1; }
 .ros-dl-actions .text-button { padding: 0; font-size: var(--text-sm); color: var(--body); }
 .ros-dl-actions .text-button:hover:not(:disabled) { color: var(--ink); }
-.ros-dl-actions .primary, .ros-dl-actions .secondary { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--radius-control); font-size: var(--text-sm); }
+.ros-dl-actions .primary, .ros-dl-actions .secondary { display: inline-flex; align-items: center; gap: 6px; }
 @media (prefers-reduced-motion: reduce) { .ros-dl-chip.downloading::after, .ros-dl-bar i { transition: none; } }
 /* Phones: the mark and the share only, like the Feedback button's icon. */
 @media (max-width: 600px) {

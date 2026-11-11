@@ -22,7 +22,7 @@
 .share-find .text-button, .share-find .share-count { margin-left: auto; flex: none; }
 .share-foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px 12px 20px; border-top: 1px solid var(--line-soft); }
 .share-foot-note { color: var(--muted); font-size: var(--text-sm); min-width: 0; }
-.share-foot .primary { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-pill); }
+.share-foot .primary { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 760px) {
   .share-body { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 1fr) auto; }
   .share-preview { border-right: 0; border-bottom: 1px solid var(--line-soft); }

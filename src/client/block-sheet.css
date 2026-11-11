@@ -47,7 +47,7 @@ input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; bo
 .bv-head .icon-button { width: 30px; height: 30px; border-radius: var(--radius-control); color: var(--muted); }
 .bv-head .icon-button:hover:not(:disabled) { background: var(--rail); color: var(--ink); }
 .bv-head .icon-button.active { background: var(--line-soft); color: var(--ink); }
-.bv-head .primary, .bv-head .secondary { height: 30px; padding: 0 12px; border-radius: var(--radius-pill); font-size: var(--text-sm); white-space: nowrap; }
+.bv-head .primary, .bv-head .secondary { white-space: nowrap; }
 .bv-head .primary { display: inline-flex; align-items: center; gap: 6px; }
 .bv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; container-type: inline-size; }
 .bv-body > .file-bar { flex-shrink: 0; margin: 0; padding: 12px 28px 10px; }

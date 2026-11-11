@@ -376,9 +376,7 @@ blockquote {
   color: var(--ink);
 }
 .history-banner .secondary {
-  font-size: var(--text-md);
   margin-left: 8px;
-  padding: 6px;
 }
 .inspector {
   display: flex;
@@ -496,9 +494,6 @@ blockquote {
 }
 .relationship-form>.row {
   margin-top: 8px;
-}
-.relationship-form .secondary {
-  font-size: var(--text-md);
 }
 .newer-hint {
   display: block;
@@ -834,9 +829,6 @@ blockquote {
   .canvas-empty h2 {
     font-size: var(--text-xl);
   }
-  .canvas-empty .primary {
-    font-size: var(--text-md);
-  }
   .canvas-empty small {
     display: none;
   }
@@ -849,8 +841,6 @@ blockquote {
     padding: 9px;
   }
   .history-banner>.secondary {
-    font-size: var(--text-md);
-    padding: 5px;
     white-space: normal;
   }
   .history-banner>div {
@@ -946,9 +936,6 @@ blockquote {
   .canvas-empty p {
     font-size: var(--text-md);
   }
-  .canvas-empty .primary {
-    font-size: var(--text-md);
-  }
   .canvas-tools {
     right: 13px;
   }
@@ -1009,6 +996,22 @@ button {
   white-space: nowrap;
   color: inherit;
 }
+/* Every button answers: it eases to its hover colours and sinks a little while pressed. A row that fills its
+   list (--press: 1) keeps its size and darkens instead. */
+button {
+  transition: background-color var(--dur-out) var(--ease), border-color var(--dur-out) var(--ease), color var(--dur-out) var(--ease), opacity var(--dur-out) var(--ease), scale var(--dur-press) var(--ease);
+}
+button:hover { transition-duration: var(--dur-in); }
+button:active:not(:disabled) { scale: var(--press, .97); transition-duration: var(--dur-press); }
+:where(.new-project-button, .project-item, .project-row, .profile-row, .profile-item, .plugins-nav, .plugin-row, .resource-row,
+  .history-entry, .history-evidence-link, .note-tree-row, .ab-row, .add-block-row, .setup-row, .ros-thread-row, .table-query,
+  .agent-model-list > button, .ros-question-options > button, .assistant-question-list > button, .dash-pin-menu > button,
+  [class*="-menu"] button) { --press: 1; }
+:where(.new-project-button, .project-item, .project-row, .profile-row, .profile-item, .plugins-nav, .plugin-row, .resource-row,
+  .history-entry, .history-evidence-link, .note-tree-row, .ab-row, .add-block-row, .setup-row, .ros-thread-row, .table-query,
+  .agent-model-list > button, .ros-question-options > button, .assistant-question-list > button, .dash-pin-menu > button,
+  [class*="-menu"] button):active:not(:disabled) { filter: brightness(.96); }
+
 input,textarea,select {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -1058,17 +1061,13 @@ a {
 .secondary {
   border: 1px solid var(--line);
   background: white;
-  padding: 8px 11px;
   color: var(--ink);
-  font-size: var(--text-md);
 }
 .primary {
-  padding: 9px 13px;
   box-shadow: var(--shadow-block);
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
-  font-size: var(--text-md);
 }
 .icon-button {
   border-radius: var(--radius-control);
@@ -1603,9 +1602,6 @@ a {
 .modal input,.modal textarea,.modal select {
   font-size: var(--text-md);
 }
-.modal-actions .primary,.modal-actions .secondary {
-  font-size: var(--text-md);
-}
 .error-toast {
   position: fixed;
   bottom: 22px;
@@ -1914,8 +1910,6 @@ a {
   line-height: 1.65;
 }
 .canvas-empty .primary {
-  padding: 9px 13px;
-  font-size: var(--text-md);
   margin-top: 12px;
 }
 /* The empty map's one action: a black Add a block in the middle, under the lead, in the bar's black. */
@@ -2161,9 +2155,6 @@ a {
   .canvas-empty p {
     font-size: var(--text-md);
   }
-  .canvas-empty .primary {
-    font-size: var(--text-md);
-  }
   .unified-canvas .canvas-tools {
     bottom: 16px;
     right: 12px;
@@ -2221,7 +2212,6 @@ a {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--paper);
-  font-weight: 500;
   box-shadow: none;
 }
 .single-canvas-shell .primary:hover:not(:disabled) {
@@ -2233,18 +2223,15 @@ a {
   opacity: .48;
 }
 .single-canvas-shell .secondary {
-  padding: 9px 12px;
   color: var(--ink);
   background: var(--paper);
   border-color: var(--line);
-  font-size: var(--text-md);
 }
 .single-canvas-shell .secondary:hover:not(:disabled) {
   background: var(--sidebar);
   border-color: var(--line);
 }
 .single-canvas-shell .small {
-  padding: 7px 10px;
   font-size: var(--text-sm);
 }
 .single-canvas-shell .icon-button {
@@ -2584,9 +2571,6 @@ a {
 .single-canvas-shell .canvas-empty p {
   font-size: var(--text-md);
   color: var(--muted);
-}
-.single-canvas-shell .canvas-empty .primary {
-  font-size: var(--text-md);
 }
 .assistant-panel {
   position: relative;
@@ -2950,9 +2934,6 @@ a {
   display: flex;
   gap: 10px;
   margin-top: 13px;
-}
-.assistant-action-buttons .primary {
-  font-size: var(--text-sm);
 }
 .assistant-action-buttons .text-button {
   font-size: var(--text-sm);
