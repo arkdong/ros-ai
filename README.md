@@ -35,7 +35,7 @@ Everything stays on this computer: projects, keys and the Python sandbox. Model 
 2. **Set up ROS.** Sign in for free hosted ROS, or continue without an account. On a Mac you can also download ROS to run on this computer.
 3. **Connect your tools.** ros.ai finds Claude Code, Codex, Cursor, Gemini CLI, Pi, Hermes Agent, Ollama and LM Studio on this computer and links them in one go. Nothing is sent anywhere.
 
-Then one card starts a project: a name, a folder, and **Start from** a blank canvas, a folder you already have or an example.
+Then one card starts a project: a name, a folder, and **Start from** a blank canvas or a folder you already have.
 
 ## The canvas
 
@@ -117,8 +117,8 @@ npm test               # unit suite; CI runs the build and this on every pull re
 
 The Mac and Windows apps are an Electron shell around the same server, in [desktop/](desktop/README.md), built and released by [a GitHub workflow](.github/workflows/mac-app.yml) on every `v*` tag. [AGENTS.md](AGENTS.md) holds the rules for coding agents working on this repository.
 
-Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [roadmap](docs/roadmap.md), [Python sandbox](docs/python-sandbox.md), [tool connections](docs/tool-connections.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site).
+Docs: [working in ros.ai](docs/guide.md), [architecture](docs/architecture.md), [Python sandbox](docs/python-sandbox.md), [ros-nemotron](training/ros-nemotron/README.md). The website lives in [arkdong/ros-ai-site](https://github.com/arkdong/ros-ai-site).
 
 ## Licence
 
-ros.ai's code and documentation are [MIT](LICENSE). The licence does not cover the hosted service (sign-in, the hosted ROS gateway and the usage ledger), which lives in the private repository `arkdong/ros-ai-cloud` and will sell the paid tiers; the app works without it, and `ROS_CLOUD_URL=off` hides it. It also does not cover the ros.ai name and logo (`public/brand/`, `.github/readme/`, `desktop/build/icon.png`), other organisations' logos in `src/client/brand-logos/` and `src/client/ModelMakerSymbol.tsx`, shown only to identify their services, or the third-party data in `examples/`: KNMI weather observations ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), CBS statistics (CBS's reuse terms) and NDW counter-site records (ODC PDDL).
+ros.ai's code and documentation are [MIT](LICENSE). The licence does not cover the hosted service (sign-in, the hosted ROS gateway and the usage ledger), which lives in the private repository `arkdong/ros-ai-cloud` and will sell the paid tiers; the app works without it, and `ROS_CLOUD_URL=off` hides it. It also does not cover the ros.ai name and logo (`public/brand/`, `.github/readme/`, `desktop/build/icon.png`), other organisations' logos in `src/client/brand-logos/` and `src/client/ModelMakerSymbol.tsx`, shown only to identify their services, or the KNMI weather observations in `training/ros-nemotron/` ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
