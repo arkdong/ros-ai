@@ -169,7 +169,7 @@ export function RichText({ text, sources = [], scope = '', onArtifact }: { text:
 /** Drop a marker left open by a cut, rather than show it. */
 const balance = (text: string, marker: string) => { const parts = text.split(marker); return parts.length % 2 ? text : `${parts.slice(0, -1).join(marker)}${parts.at(-1)}`; };
 /** A card-sized excerpt: whole lines while they fit, so emphasis and links stay intact; the card clips the rest.
- *  `scroll` keeps empty lines as space and lets the wheel scroll the text inside the card while there is more to see. */
+ *  `scroll` keeps empty lines as space and lets the text scroll inside the card (on the map, once the block is picked). */
 export function MarkdownPreview({ text, limit = 420, scroll = false }: { text: string; limit?: number; scroll?: boolean }) {
   const box = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), thumb = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -186,16 +186,9 @@ export function MarkdownPreview({ text, limit = 420, scroll = false }: { text: s
       el.classList.toggle('more-below', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
       el.classList.toggle('more-above', el.scrollTop > 1);
     };
-    // A native listener runs before the canvas's own wheel handler, so stopping it here keeps the map still.
-    // Pinch zoom (ctrl) and a wheel the text can't use any more still reach the canvas.
-    const wheel = (event: WheelEvent) => {
-      if (event.ctrlKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
-      const down = event.deltaY > 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 1, up = event.deltaY < 0 && el.scrollTop > 0;
-      if (down || up) event.stopPropagation();
-    };
     const resize = new ResizeObserver(mark); resize.observe(el); if (el.firstElementChild) resize.observe(el.firstElementChild);
-    el.addEventListener('wheel', wheel, { passive: true }); el.addEventListener('scroll', mark, { passive: true }); mark();
-    return () => { resize.disconnect(); el.removeEventListener('wheel', wheel); el.removeEventListener('scroll', mark); };
+    el.addEventListener('scroll', mark, { passive: true }); mark();
+    return () => { resize.disconnect(); el.removeEventListener('scroll', mark); };
   }, [scroll]);
   const kept: string[] = []; let used = 0;
   for (const line of text.trim().split('\n')) {

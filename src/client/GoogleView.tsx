@@ -25,7 +25,7 @@ export function GoogleBlock({ projectId, nodeId, view, full = false, onCopy, onS
   const copy = async (event: { stopPropagation: () => void }) => { stop(event); setCopying(true); try { setCopied(await onCopy!()); } finally { setCopying(false); } };
   return <div className={`live-block google-block${full ? ' full' : ''}${view.kind === 'doc' ? ' document' : ''}`}>
     {/* One box of fixed height in a card, whatever the state, so the card is measured once at its full size. */}
-    <div className="live-block-scroll nowheel">{error ? <p className="live-block-error">{error}</p>
+    <div className="live-block-scroll">{error ? <p className="live-block-error">{error}</p>
       : !read ? <p className="live-block-loading"><LoaderCircle size={13} className="spin"/> Reading from {app}…</p>
       : sheet ? <SheetBody sheet={sheet}/> : <DocBody doc={doc!} full={full}/>}</div>
     {read?.notice && <p className="live-block-notice">{read.notice}</p>}
