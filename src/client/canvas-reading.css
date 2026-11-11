@@ -20,7 +20,7 @@
   min-height: 66px;
 }
 .direct-canvas .card-outcome p { min-height: 0; }
-.direct-canvas .expanded-group > .group-heading { max-width: 768px; }
+.direct-canvas .expanded-group > .group-heading { max-width: none; }
 
 /* The map's state and its stages sit at the top, to the right of the tools card. */
 .direct-canvas .canvas-header {

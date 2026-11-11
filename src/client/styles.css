@@ -1989,36 +1989,6 @@ a {
   background: var(--paper);
   box-shadow: var(--shadow-block);
 }
-.expanded-group>.group-heading {
-  height: 153px;
-  min-height: 0;
-  padding: 14px 22px;
-  border-bottom: 1px solid var(--line);
-  border-radius: var(--radius-block) var(--radius-block) 0 0;
-}
-.expanded-group .card-top {
-  margin-bottom: 4px;
-}
-.expanded-group .card-title {
-  font-size: var(--text-xl);
-}
-.group-actions {
-  position: absolute;
-  bottom: 13px;
-  left: 24px;
-  right: 24px;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 15px;
-  font-size: var(--text-sm);
-  color: var(--muted);
-}
-.group-actions .secondary {
-  background: var(--paper);
-  font-size: var(--text-sm);
-  border-color: var(--line);
-}
 .research-card.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);

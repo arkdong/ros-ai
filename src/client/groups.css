@@ -1,12 +1,20 @@
 .direct-canvas .research-block .card-controls{opacity:0;transition:opacity var(--dur-out) var(--ease)}
 .direct-canvas .research-block:hover .card-controls,.direct-canvas .research-block.selected .card-controls,.direct-canvas .research-block:focus-within .card-controls{opacity:1}
-.direct-canvas .organizational-group{border-radius:var(--radius-block);border:1px solid var(--line);background:#f9fbfaf5}
-.direct-canvas.unified-canvas .organizational-group.expanded-group{background:#eef2f140;border:1px solid var(--line);box-shadow:none;border-radius:var(--radius-block)}
-.direct-canvas.unified-canvas .organizational-group.expanded-group>.group-heading{height:124px;max-width:none;border:0;padding:16px 22px;background:#ffffffb0;border-radius:var(--radius-block) var(--radius-block) 0 0}
-.direct-canvas .organizational-group .card-type{color:var(--body);font-weight:600}
+/* A Group in the app greys. Closed, it is a card that lists what it holds. Open, it is a hairline frame with a 44px
+   header: its name, how many blocks it holds, and Add, Open and Close. */
+.direct-canvas .organizational-group{border-radius:var(--radius-block);border:1px solid var(--line);background:var(--paper)}
+.direct-canvas.unified-canvas .organizational-group.expanded-group{background:color-mix(in srgb,var(--paper) 55%,transparent);border:1px solid var(--line);box-shadow:none;border-radius:var(--radius-block)}
+.direct-canvas.unified-canvas .organizational-group.expanded-group>.group-heading.group-bar{display:flex;flex-direction:row;align-items:center;gap:8px;height:44px;min-height:44px;max-width:none;box-sizing:border-box;padding:0 8px 0 16px;border:0;border-bottom:1px solid var(--line-soft);background:none;border-radius:var(--radius-block) var(--radius-block) 0 0;color:var(--muted)}
+.direct-canvas .group-bar>svg{flex:none}
+.direct-canvas .organizational-group.expanded-group .group-bar .card-title{flex:0 1 auto;min-width:0;margin:0;font-size:var(--text-md);font-weight:600;line-height:20px;letter-spacing:0;color:var(--ink);display:block;max-height:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.direct-canvas .group-bar .group-item-count{flex:none;font-size:var(--text-xs);color:var(--muted)}
+.direct-canvas .group-bar .group-contained-work{flex:none;margin:0}
+.direct-canvas .group-bar .card-controls{margin:0 0 0 auto;gap:2px}
+.direct-canvas .research-card .group-bar .card-controls .icon-button{width:28px;height:28px;border:0;background:none;color:var(--muted)}
+.direct-canvas .research-card .group-bar .card-controls .icon-button:hover,.direct-canvas .research-card .group-bar .card-controls .icon-button:focus-visible{background:var(--rail);color:var(--ink)}
+.direct-canvas .organizational-group .card-type{color:var(--muted);font-weight:500}
 .direct-canvas .organizational-group .group-overview-excerpt{font-size:var(--text-sm);line-height:1.5;color:var(--muted);margin:0;max-height:40px;overflow:hidden}
 .direct-canvas .group-item-count{font-weight:400}
-.direct-canvas .group-expand-control{border:1px solid var(--line);background:var(--rail);color:var(--body)}
 .direct-canvas .group-chosen-highlights{display:flex;flex-direction:column;gap:7px;margin:10px 0}
 .direct-canvas .group-highlight-preview{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-control);padding:7px;width:100%;min-height:59px;color:var(--ink)}
 .direct-canvas .group-highlight-preview>img{width:104px;height:62px;object-fit:contain}
@@ -30,14 +38,13 @@
 .direct-canvas .group-member-list li>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .direct-canvas .group-member-list li.more{padding-left:19px;font-size:var(--text-xs);color:var(--muted)}
 .direct-canvas .group-contained-work{display:block;font-size:var(--text-xs);line-height:16px;color:var(--wait);margin:0 0 5px}
-.direct-canvas .organizational-group.expanded-group .card-title{display:block;max-height:25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .direct-canvas .organizational-group.expanded-group .group-overview-excerpt{display:none}
 .direct-canvas .group-highlight-preview>span>strong{-webkit-line-clamp:1;max-height:17px}
 .direct-canvas .group-highlight-preview>.block-text-preview,.direct-canvas .group-highlight-preview>.block-table-preview{max-height:42px}
 .direct-canvas .block-work-state{display:flex;align-items:center;gap:5px;font-size:var(--text-xs);color:var(--muted);margin:0 0 11px}
 .direct-canvas .block-work-state.failed,.direct-canvas .block-work-state.interrupted{color:var(--wait)}
 .direct-canvas .block-work-state.running,.direct-canvas .block-work-state.queued{color:var(--wait)}
-.direct-canvas .block-primary-preview{display:block;flex:1;min-height:64px;max-height:195px;overflow:hidden;margin:0 0 8px}
+.direct-canvas .block-primary-preview{display:block;flex:1;min-height:0;max-height:195px;overflow:hidden;margin:0 0 8px}
 .direct-canvas .block-figure-preview{display:block;width:100%;height:172px;object-fit:contain;background:var(--canvas)}
 /* A figure or Code card grows to show its figure or code, up to the card's height limit, instead of keeping its first estimated height. */
 .direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-figure-preview),.direct-canvas.unified-canvas .research-card:not(.expanded-group)>.group-heading:has(.block-code-source){flex-shrink:0}

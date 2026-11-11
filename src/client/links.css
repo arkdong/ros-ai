@@ -1,13 +1,14 @@
 /* Links between blocks: a soft curve from the side of one block that faces the other to the facing side, drawn beneath
-   the cards, with its word in a chip at the middle. Trails, the lines ros.ai draws itself to show where a block came
+   the cards, with its word in a chip at the middle. Links with the same word that meet on one side of a block share
+   one chip there. A resting line is the muted grey at half strength, so it reads as a line and not as text. Trails, the lines ros.ai draws itself to show where a block came
    from, are dotted and carry no word. Lime marks only the selected link's chip, as it marks the selected block. */
 .direct-canvas .react-flow__edgelabel-renderer { z-index: 1000; pointer-events: none; }
-.direct-canvas .react-flow__edge.link .react-flow__edge-path { stroke: var(--line); stroke-width: 1.5; transition: stroke var(--dur-out) var(--ease); }
-.direct-canvas .react-flow__edge.link .link-edge.hovered .react-flow__edge-path { stroke: var(--muted); }
-.direct-canvas .react-flow__edge.link.selected .react-flow__edge-path { stroke: var(--ink); stroke-width: 2; }
-.direct-canvas .react-flow__edge.link.trail .react-flow__edge-path { stroke: var(--line); stroke-width: 1.25; stroke-dasharray: 3 5; stroke-linecap: round; }
-.direct-canvas .react-flow__edge.link.trail .link-edge.hovered .react-flow__edge-path { stroke: var(--muted); }
-.direct-canvas .react-flow__edge.link.trail.selected .react-flow__edge-path { stroke: var(--muted); stroke-width: 1.5; }
+.direct-canvas .react-flow__edge.link .react-flow__edge-path { stroke: var(--muted); stroke-width: 1.5; opacity: .5; transition: opacity var(--dur-out) var(--ease), stroke var(--dur-out) var(--ease); }
+.direct-canvas .react-flow__edge.link .link-edge.hovered .react-flow__edge-path { opacity: 1; }
+.direct-canvas .react-flow__edge.link.selected .react-flow__edge-path { stroke: var(--ink); stroke-width: 2; opacity: 1; }
+.direct-canvas .react-flow__edge.link.trail .react-flow__edge-path { stroke-width: 1.25; opacity: .35; stroke-dasharray: 3 5; stroke-linecap: round; }
+.direct-canvas .react-flow__edge.link.trail .link-edge.hovered .react-flow__edge-path { opacity: .8; }
+.direct-canvas .react-flow__edge.link.trail.selected .react-flow__edge-path { stroke: var(--muted); stroke-width: 1.5; opacity: 1; }
 .direct-canvas .react-flow__edge.link .react-flow__edge-interaction { cursor: pointer; }
 /* The line being dragged from a handle. */
 .direct-canvas .react-flow__connection-path { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
@@ -48,8 +49,9 @@
 .direct-canvas .link-list-note { margin: 0; padding-top: 8px; border-top: 1px solid var(--line-soft); font-size: var(--text-xs); line-height: 17px; color: var(--muted); }
 /* Handles: four small dots on the border, shown while the pointer is over the block. Drag one onto another block,
    or click it and then the block. The block under a drag gets a dark hairline; lime stays for selection. */
-.direct-canvas.unified-canvas .relationship-handle { width: 8px; height: 8px; min-width: 8px; min-height: 8px; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 50%; background: var(--paper); opacity: 0; z-index: 4; transition: opacity var(--dur-out) var(--ease), border-color var(--dur-out) var(--ease); cursor: crosshair; }
-.direct-canvas .relationship-handle:before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+.direct-canvas.unified-canvas .relationship-handle { width: 8px; height: 8px; min-width: 8px; min-height: 8px; box-sizing: border-box; border: 1.5px solid var(--muted); border-radius: 50%; background: var(--paper); opacity: 0; z-index: 4; transition: opacity var(--dur-out) var(--ease), border-color var(--dur-out) var(--ease); cursor: crosshair; }
+/* The dot is 8px; the area that takes the pointer is 28px. */
+.direct-canvas .relationship-handle:before { content: ''; position: absolute; inset: -10px; border-radius: 50%; }
 .direct-canvas .research-card:hover > .relationship-handle, .direct-canvas .research-card:focus-within > .relationship-handle, .direct-canvas.is-connecting .relationship-handle, .direct-canvas .relationship-handle:focus-visible { opacity: 1; }
 .direct-canvas.unified-canvas .relationship-handle:hover, .direct-canvas .relationship-handle:focus-visible { outline: 0; border-color: var(--ink); box-shadow: none; }
 .direct-canvas.is-connecting .research-card { cursor: crosshair; }

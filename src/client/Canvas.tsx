@@ -39,7 +39,7 @@ import './agent-view.css';
 import './source-check.css';
 import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupKeepsNote, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
-import { BlockPreview } from './BlockPreview';
+import { BlockPreview, artifactFacts } from './BlockPreview';
 import { PartBoundary } from './ErrorBoundary';
 import { AddBlockMenu } from './AddBlockMenu';
 import type { KindId } from './block-kinds';
@@ -149,14 +149,13 @@ function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
   if(data.app){
     parts.push(<small key="reads">{data.app.inputs?`reads ${data.app.inputs} block${data.app.inputs===1?'':'s'}`:'reads no blocks'}</small>);
     if(appErrors?.length)parts.push(<small key="errors" className="app-error" title={appErrors.join('\n')}>{appErrors.length} error{appErrors.length===1?'':'s'}</small>);
-    parts.push(<small key="version" className="block-version">Version {data.app.version}</small>);
     return <div className="outcome-footer provenance">{parts}</div>;
   }
   const searching=data.blockType==='search'||(data.label==='result'&&data.description===RESULT_PLACEHOLDER);
   if(searching){if(data.sources?.length)parts.push(<small key="found">{data.sources.length} source{data.sources.length===1?'':'s'} found</small>);}
   else if(!data.primary&&data.blockType!=='agent'){const {sources,hosts}=splitSources(data.description);if(sources>0)parts.push(<small key="cited">{data.blockType==='finding'&&hosts.length?`From ${hosts.join(', ')}`:`${sources} source${sources===1?'':'s'} cited`}</small>);}
   if(data.resultCount>0)parts.push(<small key="results">{data.resultCount} result{data.resultCount===1?'':'s'}</small>);
-  if(data.primary)parts.push(<small key="version" className="block-version">{['failed','interrupted','cancelled','queued','running'].includes(data.status??'')?'Earlier saved result · ':'Version · '}{data.primary.hash.slice(0,8)}</small>);
+  if(data.primary&&['failed','interrupted','cancelled','queued','running'].includes(data.status??''))parts.push(<small key="version" className="block-version">Earlier saved result</small>);
   return parts.length?<div className="outcome-footer provenance">{parts}</div>:null;
 }
 type ResearchNode = Node<CardData, 'research'>;
@@ -315,6 +314,11 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   // Only states that need attention get a line; an idle block shows its content.
   const workState=data.awaitingApproval?'Awaiting approval':active?(data.label==='result'?'Searching':data.status):data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
+  // Facts about what the block holds sit in its header line and show while the block is picked or under the pointer.
+  const notebookIdle=notebook&&Boolean(data.notebook?.cells)&&!data.notebook!.running&&(!lastRun||lastRun.status==='ok');
+  const primaryId=data.primary?.id, primaryHash=data.primary?.hash;
+  const facts=useMemo(()=>group?'':notebookIdle?`${data.notebook!.cells} cell${data.notebook!.cells===1?'':'s'}${lastRun?` · ran ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}`:data.primary?artifactFacts(data.primary):'',[group,notebookIdle,data.notebook?.cells,lastRun?.at,primaryId,primaryHash]);
+  const factsLine=facts?<span className="card-facts">{facts}</span>:null;
   const [appErrors,setAppErrors]=useState<string[]>([]);
   // The corner that takes keyboard focus and arrow keys.
   const handle:ResizeEdge='se';
@@ -341,8 +345,19 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   </article>;
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''}${data.post?' post-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
-    <div ref={heading} className="group-heading">
-      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
+    {group&&data.expanded?<div ref={heading} className="group-heading group-bar">
+      <KindIcon kind={data.kind} blockType={data.blockType}/>
+      <div className="card-title" title={data.title}>{data.title||'Untitled'}</div>
+      <span className="group-item-count" title={`${data.members} block${data.members===1?'':'s'}`}>{data.members}</span>
+      {data.workLabel&&<span className="group-contained-work">{data.workLabel}</span>}
+      {data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}
+      <span className="card-controls nodrag">
+        {!data.readonly&&<button className="icon-button group-add-control" aria-label={`Add a block inside ${data.title}`} title="Add inside" onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={16}/></button>}
+        {openButton}
+        <button className="icon-button group-expand-control" aria-label={`Collapse ${data.title}`} title="Collapse group" onClick={event=>{event.stopPropagation();data.onExpand();}}><ChevronUp size={17}/></button>
+      </span>
+    </div>:<div ref={heading} className="group-heading">
+      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{factsLine}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{factsLine}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
         {openButton}
         {group&&<button className="icon-button group-expand-control" aria-label={`${data.expanded?'Collapse':'Expand'} ${data.title}`} title={data.expanded?'Collapse group':'Expand group'} onClick={event=>{event.stopPropagation();data.onExpand();}}>{data.expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</button>}
       </span></div>
@@ -354,7 +369,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
           :data.listed?.length?<ul className="group-member-list">{data.listed.slice(0,GROUP_PREVIEW_MEMBERS).map(member=><li key={member.id} title={member.title}><KindIcon kind={member.kind} blockType={member.blockType} google={member.google} metric={member.metric} post={member.post} size={12}/><span>{member.title}</span></li>)}{data.members>Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)&&<li className="more">{data.members-Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)} more</li>}</ul>
           :<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
       </> : <>
-        {notebook?data.notebook?.cells?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
+        {notebook?data.notebook?.cells&&!notebookIdle?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
         :data.blockType==='agent'?<div className={`block-work-state ${data.agent?.status==='running'?'running':data.agent&&data.agent.status!=='completed'?'failed':''}`}>{data.agent?.status==='running'&&<LoaderCircle size={12} className="spin"/>}{data.agent?`${agentState[data.agent.status]} · ${data.agent.runtime}`:'Agent'}</div>
         :workState&&!data.web&&<div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{workState}</div>}
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
@@ -364,7 +379,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
-    </div>
+    </div>}
     {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
       {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()*(data.scale??1)};data.onActivate();}}
@@ -376,7 +391,6 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
       onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2],shape),true);}:undefined}/>)}
-    {data.expanded&&<div className="group-actions nodrag"><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
 // While a block moves, React Flow moves its frame; the card inside draws again only when its content, size or
@@ -388,7 +402,7 @@ const nodeTypes = { research: memo(ResearchCard, samePlacedProps) };
  * The chip on the line is the word and, once the line is selected, the place to change it, turn the link around or
  * delete it. Several links between the same two blocks share one line and list themselves in a small card. */
 type LinkRow = { id: string; sourceTitle: string; targetTitle: string; word: string; trail: boolean };
-type LinkEdgeData = { path: string; chip: LinkPoint; word: string; count: number; trail: boolean; trailWord: string; editable: boolean; editingId: string | null; links: LinkRow[]; heading: string; note: string; onSelect: () => void; onEdit: (connectionId: string | null) => void; onRename: (connectionId: string, word: string) => void; onSwap: (connectionId: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void };
+type LinkEdgeData = { path: string; chip: LinkPoint; word: string; quiet: boolean; shared: { text: string; point: LinkPoint } | null; count: number; trail: boolean; trailWord: string; editable: boolean; editingId: string | null; links: LinkRow[]; heading: string; note: string; onSelect: () => void; onEdit: (connectionId: string | null) => void; onRename: (connectionId: string, word: string) => void; onSwap: (connectionId: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void };
 type LinkEdge = Edge<LinkEdgeData, 'link'>;
 type Geometry = LinkBox & { id: string; parentId?: string };
 function LinkEdgeView({ id, data, selected, markerStart, markerEnd, interactionWidth }: EdgeProps<LinkEdge>) {
@@ -397,10 +411,12 @@ function LinkEdgeView({ id, data, selected, markerStart, markerEnd, interactionW
   const single = data.count === 1, link = data.links[0], ghost = !data.trail && single && !data.word;
   const text = data.trail ? (selected ? data.trailWord : '') : data.word || (single ? '+ word' : '');
   const editing = single && data.editingId === link.id;
-  const chip = Boolean(text) && !editing && (!ghost || ((hover || selected) && data.editable));
+  // A link that shares its word with others at one end shows its own chip only while it is pointed at or picked.
+  const chip = Boolean(text) && !editing && (!ghost || ((hover || selected) && data.editable)) && (!data.quiet || hover || selected);
   return <g className={`link-edge${hover ? ' hovered' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
     <BaseEdge id={id} path={data.path} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={interactionWidth}/>
     <EdgeLabelRenderer>
+      {data.shared && <div className="link-slot" style={{ transform: `translate(-50%, -50%) translate(${data.shared.point.x}px, ${data.shared.point.y}px)` }}><span className="link-chip still shared">{data.shared.text}</span></div>}
       <div className={`link-slot nodrag nopan${selected ? ' selected' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${data.chip.x}px, ${data.chip.y}px)` }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
         {chip && <button type="button" className={`link-chip${selected ? ' selected' : ''}${ghost ? ' ghost' : ''}${data.trail ? ' trail' : ''}`} aria-label={data.trail ? data.trailWord : single ? `Link: ${link.sourceTitle} → ${link.targetTitle}${data.word ? ` · ${data.word}` : ''}` : data.heading} title={single && !data.trail ? `${link.sourceTitle} → ${link.targetTitle}` : undefined} onClick={event => { event.stopPropagation(); if (selected && single && data.editable && !data.trail) data.onEdit(link.id); else data.onSelect(); }}>{text}</button>}
         {chip && selected && data.editable && <button type="button" className="link-chip-delete" aria-label={single ? 'Delete link' : `Delete ${data.count} links`} onClick={event => { event.stopPropagation(); data.onDelete(data.links.map(item => item.id)); }}><X size={11}/></button>}
@@ -1134,25 +1150,43 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }))];
   // The lines between the visible blocks. Each leaves the side of its block that faces the other block and arrives at
   // the facing side as a soft curve; links sharing a side spread along it; the word sits at the middle of the curve, or
-  // the nearest spot no other block covers. Original endpoints stay visible in open groups; closed groups gather their links.
+  // the nearest spot no other block covers. Links with the same word that meet on one side of a block end at one point
+  // there and share one chip ("supports · 2"), so words never lie on each other. Original endpoints stay visible in
+  // open groups; closed groups gather their links.
   const linkEdges = (groups: AggregateRelationship[], geometry: Geometry[]): LinkEdge[] => {
     const boxes = new Map(geometry.map(item => [item.id, item]));
     const node = (id: string) => displayed.canvas.nodes.find(item => item.id === id), title = (id: string) => node(id)?.title.trim() || 'Untitled block';
     const sided = groups.flatMap(group => { const a = boxes.get(group.source), b = boxes.get(group.target); return a && b ? [{ group, a, b, ...facingSides(a, b) }] : []; });
+    // Bundles: single links with the same word on the same side of a block, where they arrive or where they leave.
+    const words = new Map(sided.map(({ group }) => [group.id, group.contributions.length === 1 && !isTrail(group.contributions[0].connection, node) ? linkWord(group, node) : '']));
+    const bundles = new Map<string, string[]>(), bundleOf = new Map<string, { key: string; end: 'source' | 'target' }>();
+    for (const end of ['target', 'source'] as const) for (const item of sided) {
+      const word = words.get(item.group.id);
+      if (!word || bundleOf.has(item.group.id)) continue;
+      const key = `${end}:${item.group[end]}:${item[end]}:${word.toLowerCase()}`;
+      bundles.set(key, [...(bundles.get(key) ?? []), item.group.id]);
+    }
+    for (const [key, ids] of bundles) if (ids.length > 1) for (const id of ids) if (!bundleOf.has(id)) bundleOf.set(id, { key, end: key.startsWith('target') ? 'target' : 'source' });
+    const slotId = (id: string, end: 'source' | 'target') => { const bundle = bundleOf.get(id); return bundle?.end === end ? bundle.key : id; };
     const slots = new Map<string, { id: string; order: number }[]>();
-    const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
-    for (const { group, a, b, source, target } of sided) { take(group.source, source, group.id, b); take(group.target, target, group.id, a); }
+    const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; if (list.some(item => item.id === id)) return; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
+    for (const { group, a, b, source, target } of sided) { take(group.source, source, slotId(group.id, 'source'), b); take(group.target, target, slotId(group.id, 'target'), a); }
     const fraction = (nodeId: string, side: LinkSide, id: string) => { const list = [...(slots.get(`${nodeId}:${side}`) ?? [])].sort((x, y) => x.order - y.order); return sideFraction(list.findIndex(item => item.id === id), list.length); };
     return sided.map(({ group, a, b, source, target }) => {
-      const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, group.id)), source, sideAnchor(b, target, fraction(group.target, target, group.id)), target);
-      const chip = chipPoint(curve.point, geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id)));
+      const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, slotId(group.id, 'source'))), source, sideAnchor(b, target, fraction(group.target, target, slotId(group.id, 'target'))), target);
+      const obstacles = geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id));
+      const chip = chipPoint(curve.point, obstacles);
+      // The first link of a bundle carries the shared chip, near the end the links share.
+      const bundle = bundleOf.get(group.id), members = bundle ? bundles.get(bundle.key)! : [], near = bundle?.end === 'target' ? 1 : 0;
+      const shared = bundle && members[0] === group.id ? { text: `${words.get(group.id)} · ${members.length}`, point: chipPoint(t => curve.point(Math.min(.94, Math.max(.06, t + (near ? .3 : -.3)))), obstacles) } : null;
       const links: LinkRow[] = group.contributions.map(({ connection, sourceTitle, targetTitle }) => { const trail = isTrail(connection, node); return { id: connection.id, sourceTitle, targetTitle, word: trail ? trailWording(connection, node) : connection.label.trim(), trail }; });
       const trail = links.every(item => item.trail), selected = group.id === selectedEdge, arrow = group.bidirectional ? '↔' : '→', word = linkWord(group, node);
-      const color = selected ? (trail ? '#6b6b6b' : '#171717') : trail ? '#cfcfcf' : '#b5b5b5';
+      // The arrowhead takes the line's grey; the style sheet draws a resting line and its arrow at half strength.
+      const color = selected && !trail ? '#171717' : '#6b6b6b';
       const marker = { type: MarkerType.ArrowClosed, width: 24, height: 24, markerUnits: 'userSpaceOnUse', strokeWidth: 1, color };
       const closed = [group.source, group.target].map(node).find(item => item && isGroup(item) && !expandedIds.includes(item.id));
       const edge: LinkEdge = { id: group.id, type: 'link', source: group.source, target: group.target, sourceHandle: source, targetHandle: target, selected, className: trail ? 'link trail' : 'link', ariaLabel: `Link: ${title(group.source)} ${arrow} ${title(group.target)}${word ? ` · ${word}` : ''}`, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}),
-        data: { path: curve.path, chip, word, count: links.length, trail, trailWord: links.length === 1 ? links[0].word : `${links.length} trails`, editable: !readonly, editingId: editingLink && links.some(item => item.id === editingLink.connectionId) ? editingLink.connectionId : null, links, heading: `${links.length} links · ${title(group.source)} ${arrow} ${title(group.target)}`, note: closed ? `Open ${closed.title.trim() || 'the group'} to see each line on its own block.` : '', onSelect: () => linkActions.current.select(group.id), onEdit: id => linkActions.current.edit(id), onRename: (id, next) => linkActions.current.rename(id, next), onSwap: id => linkActions.current.swap(id), onDelete: ids => linkActions.current.remove(ids), onClose: () => linkActions.current.select(null) } };
+        data: { path: curve.path, chip, word, quiet: Boolean(bundle), shared, count: links.length, trail, trailWord: links.length === 1 ? links[0].word : `${links.length} trails`, editable: !readonly, editingId: editingLink && links.some(item => item.id === editingLink.connectionId) ? editingLink.connectionId : null, links, heading: `${links.length} links · ${title(group.source)} ${arrow} ${title(group.target)}`, note: closed ? `Open ${closed.title.trim() || 'the group'} to see each line on its own block.` : '', onSelect: () => linkActions.current.select(group.id), onEdit: id => linkActions.current.edit(id), onRename: (id, next) => linkActions.current.rename(id, next), onSwap: id => linkActions.current.swap(id), onDelete: ids => linkActions.current.remove(ids), onClose: () => linkActions.current.select(null) } };
       // An unchanged edge keeps its object, so dragging one block redraws only the lines that move with it.
       const key = JSON.stringify(edge), shown = shownEdges.current.get(group.id);
       if (shown?.key === key) return shown.edge;

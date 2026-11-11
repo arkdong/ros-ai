@@ -8,7 +8,8 @@ export const CARD_DEFAULT_WIDTH = 408;
 export const CARD_MIN_WIDTH = 320;
 export const CARD_MAX_WIDTH = 1200;
 export const CARD_DEFAULT_HEIGHT = 264;
-export const CARD_MIN_HEIGHT = 224;
+/** The shortest card: its header line and a one-line title. A card is as tall as what it holds. */
+export const CARD_MIN_HEIGHT = 96;
 export const CARD_MAX_HEIGHT = 420;
 /** A card the researcher made taller keeps that height; its content fills it instead of being measured. */
 export const CARD_MAX_SET_HEIGHT = 1200;
@@ -71,7 +72,7 @@ export function initialCardSize(node: { width?: number; title: string }, text: s
   const width = cardWidth(node);
   const titleLines = Math.max(1, Math.ceil(Array.from(node.title).length * 9 / (width - 40)));
   const outcomeLines = Math.max(1, Math.ceil(Array.from(text).length * 7.5 / (width - 66)));
-  return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
+  return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(120 + titleLines * 24.3 + outcomeLines * 22.5))) };
 }
 
 /** Cards that preview code, a figure, a table, a report or a running App can grow to the maximum height. */
@@ -90,7 +91,7 @@ export function estimatedCardHeight(node: { width?: number; height?: number | nu
   const titleLines = Math.max(1, Math.ceil(Array.from(node.title).length * 9 / (width - 40)));
   // Each paragraph, heading or list item starts a new line; blank lines add a paragraph's spacing.
   const textLines = Math.max(1, text.split('\n').reduce((sum, line) => sum + (line.trim() ? Math.ceil(Array.from(line).length * 7.5 / (width - 66)) : 0.3), 0));
-  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + Math.min(TEXT_PREVIEW_HEIGHT, textLines * 22.5))));
+  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(120 + titleLines * 24.3 + Math.min(TEXT_PREVIEW_HEIGHT, textLines * 22.5))));
 }
 /** A collapsed Group card before the browser measures it: its title, a line of overview and the first few
  * blocks it lists, each up to two lines of 18px, 7px apart, then how many more it holds. */

@@ -171,6 +171,6 @@ test('Tidy inside a Group packs its blocks into columns without the gaps a row o
   assert.deepEqual([at.profile.x, at.profile.y], [0, 0], 'Content starts at the frame corner');
   assert.deepEqual([at.cv.x, at.cv.y], [792, 0]);
   assert.deepEqual([at.page.x, at.page.y], [0, 384], 'The page goes under the shorter profile, not below the CV');
-  assert.deepEqual(first.sizes.candidate, { width: 1296, height: 1032 });
+  assert.deepEqual(first.sizes.candidate, { width: 1296, height: 936 });
   assert.deepEqual(arrangeCanvas(first.canvas, options), first);
 });
