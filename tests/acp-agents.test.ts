@@ -224,6 +224,17 @@ test('Stopping a turn cancels the agent and keeps the attempt as interrupted; a 
   } finally { await f.close(); }
 });
 
+test('A turn stopped while the agent is still starting sends no prompt', async () => {
+  const f = await workspace({ fake: { SCENARIO: 'turn' } });
+  try {
+    // Stop was pressed before the agent's process was up: the signal has fired by the time the turn listens for it.
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(f.run('gemini', 'What is on the map?', controller.signal).done, /Gemini CLI was stopped before the prompt was sent\./u);
+    assert(!f.report().requests.includes('session/prompt'));
+  } finally { await f.close(); }
+});
+
 test('A Gemini CLI that does not reach ros.ai\'s tools while it opens a session gets no prompt, and its check says so', async () => {
   const f = await workspace({ fake: { LAZY: '1', MODES: 'build,plan,ros-ai' } });
   try {

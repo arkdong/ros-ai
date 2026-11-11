@@ -93,6 +93,16 @@ test('ROS on this computer downloads through a dropped connection, then starts a
     const installed = JSON.parse(readFileSync(join(dir, 'local-ros', 'installed.json'), 'utf8')) as { engineTag: string; server: string };
     assert.equal(installed.engineTag, 'b42', 'the stable release led to the build that holds the programs');
     assert.ok(installed.server.endsWith(join('llama-b42', 'llama-server')));
+    // A ros.ai that crashed leaves its engine running. The next start stops that engine before it loads the model again.
+    const pidFile = join(dir, 'local-ros', 'engine.pid'), left = Number(readFileSync(pidFile, 'utf8'));
+    assert.doesNotThrow(() => process.kill(left, 0), 'the engine is running');
+    const next = new LocalRos(dir, connections as unknown as ConstructorParameters<typeof LocalRos>[1]);
+    try {
+      await next.start();
+      assert.equal(next.status().state, 'ready');
+      assert.throws(() => process.kill(left, 0), 'the engine left behind was stopped');
+      assert.notEqual(Number(readFileSync(pidFile, 'utf8')), left);
+    } finally { next.shutdown(); }
   } finally {
     local.shutdown();
     globalThis.fetch = real;

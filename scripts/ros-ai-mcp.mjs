@@ -10,6 +10,8 @@
 // no HTTP MCP: ROS_AI_MCP_URL and ROS_AI_MCP_TOKEN then name that one turn's endpoint, and mcp.json is not read.
 // An agent whose MCP client gives no name of its own is named by its link: --client=hermes (Hermes Agent).
 import { existsSync, readFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -37,18 +39,35 @@ let session;
 let offline = null, init;
 const write = message => process.stdout.write(`${JSON.stringify(message)}\n`);
 const STATUS_TOOL = { name: 'ros_status', title: 'Check ros.ai', description: 'Say whether ros.ai is running on this computer. Its other tools appear once it is.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } };
+/** One POST to ros.ai. node:http waits as long as the answer takes: fetch gives up after five minutes, while a change
+ * that waits for the person's approval may take longer, and would then land after the agent was told the call failed. */
+function send(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const request = (url.startsWith('https:') ? httpsRequest : httpRequest)(url, { method: 'POST', headers: { ...headers, 'content-length': Buffer.byteLength(body) } }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('error', reject);
+      response.on('end', () => {
+        const status = response.statusCode ?? 0, header = name => { const value = response.headers[name]; return Array.isArray(value) ? value[0] : value ?? null; };
+        resolve({ status, ok: status >= 200 && status < 300, headers: { get: header }, text: async () => Buffer.concat(chunks).toString('utf8') });
+      });
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+}
 async function post(message) {
   const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'x-ros-cwd': encodeURIComponent(process.cwd()) };
   if (session) headers['mcp-session-id'] = session;
   if (client) headers['x-ros-client'] = client;
   let response;
   if (turn) {
-    try { response = await fetch(turn.url, { method: 'POST', headers: { ...headers, authorization: `Bearer ${turn.token}` }, body: JSON.stringify(message) }); } catch { throw new Error('ros.ai stopped during this turn.'); }
+    try { response = await send(turn.url, { ...headers, authorization: `Bearer ${turn.token}` }, JSON.stringify(message)); } catch { throw new Error('ros.ai stopped during this turn.'); }
   } else for (const folder of candidates) {
     // Read on every call: a restarted ros.ai writes a new token.
     let connection;
     try { connection = JSON.parse(readFileSync(join(folder, 'mcp.json'), 'utf8')); } catch { continue; }
-    try { response = await fetch(connection.url, { method: 'POST', headers: { ...headers, authorization: `Bearer ${connection.token}` }, body: JSON.stringify(message) }); break; } catch { /* A stale file from a stopped copy; try the next folder. */ }
+    try { response = await send(connection.url, { ...headers, authorization: `Bearer ${connection.token}` }, JSON.stringify(message)); break; } catch { /* A stale file from a stopped copy; try the next folder. */ }
   }
   if (!response) throw Object.assign(new Error(notRunning), { notRunning: true });
   if (response.headers.get('mcp-session-id')) session = response.headers.get('mcp-session-id');

@@ -512,6 +512,12 @@ export class AgentWorkspaceTools {
       // a block of this turn that still waits for Accept is named as such instead of doubled.
       const onCanvas = value.nodeId !== undefined && canvas.nodes.some(n => n.id === value.nodeId);
       if (value.nodeId !== undefined && !onCanvas && [...this.waiting.values()].some(change => change.nodes.has(value.nodeId!))) this.node(value.nodeId);
+      if (!onCanvas) {
+        // Whatever can refuse the report is checked before its block is added, so a refused call leaves no block proposal behind.
+        this.current();
+        if (value.sourceArtifactId) { this.artifact(value.sourceArtifactId); throw new StoreError('Report revision must remain in the original selected block.'); }
+        for (const id of new Set(value.evidenceIds)) this.artifact(id);
+      }
       const nodeId = onCanvas ? value.nodeId! : this.addReportBlock(value.title);
       if (onCanvas) this.node(nodeId);
       this.current();

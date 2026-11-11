@@ -275,6 +275,8 @@ export class ClaudeAgentService {
     const thought = () => { const text = attempt.reply.slice(thoughtMark).trim(); thoughtMark = attempt.reply.length; if (text) event({ at: now(), type: 'thought', message: text.length > 600 ? `…${text.slice(-600)}` : text }); };
     const deadline = setTimeout(() => { timedOut = true; stop(); }, MAX_SECONDS * 1000);
     request.signal.addEventListener('abort', stop, { once: true });
+    // Stop pressed while the agent was still starting: the signal has already fired, so no event will come.
+    if (request.signal.aborted) stop();
     const tools = toolkit.definitions.map(definition => tool(definition.name, definition.description, toolkit.schema(definition.name).shape as AnyZodRawShape, async (args: unknown) => {
       const reply = (text: string, isError = false) => ({ content: [{ type: 'text' as const, text }], ...(isError ? { isError: true } : {}) });
       if (stopped) return reply('The turn has stopped. No tool effect was applied.', true);

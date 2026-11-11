@@ -135,6 +135,8 @@ export class ToolLoopAgentService {
     let timedOut = false;
     const stop = () => controller.abort(), deadline = setTimeout(() => { timedOut = true; stop(); }, MAX_SECONDS * 1000);
     request.signal.addEventListener('abort', stop, { once: true });
+    // Stop pressed while the agent was still starting: the signal has already fired, so no event will come.
+    if (request.signal.aborted) stop();
     toolkit.signal = controller.signal;
     this.active.set(key, controller);
     try {
