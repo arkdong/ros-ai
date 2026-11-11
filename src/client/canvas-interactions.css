@@ -380,3 +380,33 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
+
+/* Far zoom (below 40%): a block is its kind and its name, enlarged by --far so both stay readable on screen. The card's
+   own content keeps its place underneath, hidden, so no block changes size. Pictures and videos stay themselves. */
+.direct-canvas .card-far { display: none; }
+.direct-canvas.far-zoom .research-card:not(.picture-card):not(.expanded-group) > .group-heading,
+.direct-canvas.far-zoom .research-card:not(.picture-card) > .card-resize { visibility: hidden; }
+.direct-canvas.far-zoom .card-far {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: calc(7px * var(--far, 1)) calc(8px * var(--far, 1));
+  overflow: hidden;
+  border-radius: inherit;
+  font-size: calc(12px * var(--far, 1));
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -.005em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.direct-canvas.far-zoom .card-far > :first-child {
+  display: inline-block;
+  width: calc(12px * var(--far, 1));
+  height: calc(12px * var(--far, 1));
+  margin-right: calc(5px * var(--far, 1));
+  vertical-align: -.14em;
+  color: var(--muted);
+}
+.direct-canvas.far-zoom .link-chip { display: none; }
+

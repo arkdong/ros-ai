@@ -380,6 +380,9 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
     </div>}
+    {/* Far out, a block is its kind and its name at a size that stays readable (shown by .far-zoom on the map). It lies
+        over the card and takes no room, so the card's measured height never changes with the zoom. */}
+    {!data.expanded&&<div className="card-far" aria-hidden="true"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/><span>{data.title||'Untitled'}</span></div>}
     {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
       {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()*(data.scale??1)};data.onActivate();}}
@@ -533,7 +536,11 @@ function canvasWheel(event: WheelEvent) {
 }
 /** The last blocks copied in this window, for browsers that hand a paste only its plain text. */
 let lastCopy: { text: string; plain: string } | null = null;
-type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMoveEnd';
+/** Below this zoom a block shows its kind and name instead of its content. */
+const FAR_ZOOM = .4;
+/** The most a far name is enlarged: readable down to 20%, smaller beyond that. */
+const FAR_SCALE_MAX = 5;
+type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMove' | 'onMoveEnd';
 type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode, LinkEdge>, FlowHandlerName>>;
 /** Handlers that keep their identity across renders and always run the latest code. */
 function useStableHandlers<T extends Record<string, (...args: never[]) => unknown>>(handlers: T): T {
@@ -664,6 +671,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
         return focusReadable(anchor.id, duration);
       }
     }
+    setStageHint(false);
     return flow.setViewport({ x: inset.left + (width - content.width * zoom) / 2 - content.x * zoom, y: inset.top + (height - content.height * zoom) / 2 - content.y * zoom, zoom }, { duration });
   };
   // Blocks shown together stay readable: when they do not fit at 45% they start at the top left, the rest a scroll away.
@@ -690,6 +698,14 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const stageOrder = numberedStageOrder(rootStages);
   rootStages.sort((a, b) => stageOrder ? stageOrder.get(a.id)! - stageOrder.get(b.id)! : a.y - b.y || a.x - b.x);
   const showStageNavigation = rootStages.length > 1 && rootStages.length <= 8 && rootStages.some(node => displayed.canvas.nodes.some(child => child.parentId === node.id));
+  // Below 40% a block is drawn as its kind and name, and link words hide. --far is how much to enlarge that name so it
+  // stays about the same size on screen; it is set on the map itself while zooming, without drawing the blocks again.
+  const [farZoom, setFarZoom] = useState(viewport.current.zoom < FAR_ZOOM);
+  const noteZoom = (zoom: number) => {
+    area.current?.style.setProperty('--far', String(Math.min(FAR_SCALE_MAX, 1 / zoom)));
+    setFarZoom(zoom < FAR_ZOOM);
+  };
+  useEffect(() => noteZoom(flow.getZoom()), []);
   // The stage the window is on: the one nearest the upper middle of the map's free area, where a stage in reading view
   // starts, unless two or more are in view whole.
   const noteStageInView = (view: Viewport) => {
@@ -1375,7 +1391,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       if (target && target !== state.fromNode.id) connect(state.fromNode.id, target);
     },
     onMoveStart: closeLabelMenu,
-    onMoveEnd: (_, view) => { saveLocal(viewKey, view); noteStageInView(view); },
+    onMove: (_, view) => noteZoom(view.zoom),
+    onMoveEnd: (_, view) => { saveLocal(viewKey, view); noteZoom(view.zoom); noteStageInView(view); },
   });
   // Add block opens its menu beside whichever control asked for it: the dock's black tile, or the button in the middle
   // of an empty map. The menu goes to the right of the control, or to its left when the window is too narrow for that.
@@ -1438,7 +1455,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       onShare({ layout, open: expandedIds });
     } }] : []),
   ];
-  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
+  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}${farZoom ? ' far-zoom' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}
     onDoubleClick={openAddMenuAt}>
