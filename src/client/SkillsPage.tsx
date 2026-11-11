@@ -125,7 +125,8 @@ function SkillBrowse({ added, onPick }: { added: Set<string>; onPick: (request: 
       <label className="skill-search"><Search size={14}/><input type="search" placeholder="Search skills" aria-label="Search skills" value={query} onChange={event => setQuery(event.target.value)}/></label>
     </div>
     <p className="skills-intro">{source.about} <a href={`https://github.com/${source.repo}`} target="_blank" rel="noreferrer">{source.repo}<ExternalLink size={11}/></a></p>
-    {error && <p className="inline-error" role="alert">{error} <button type="button" className="text-button" onClick={() => void load(sourceId, true)}>Try again</button></p>}
+    {/* A list that could not be read is not the person's mistake: one grey line with what failed (the rest of the reason on hover) and the way forward. */}
+    {error && <p className="skills-unread" role="status" title={error}>{error.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? error} <button type="button" className="text-button" onClick={() => void load(sourceId, true)}>Try again</button></p>}
     {!listing ? loading === sourceId && <p className="skills-empty"><LoaderCircle size={13} className="spin"/> Reading {source.repo} on GitHub…</p> : <>
       <div className="plugin-grid">{shown.map(entry => <CatalogueRow key={`${entry.name}:${JSON.stringify(entry.request)}`} mark={<BookText size={20}/>} name={entry.title} summary={entry.description} state={added.has(entry.name) ? { label: 'Added', connected: true } : undefined} action={added.has(entry.name) ? <Check size={16}/> : <Plus size={16}/>} onClick={() => onPick(entry.request)}/>)}</div>
       {!entries.length && <p className="skills-empty">{words ? `No skill here matches “${query.trim()}”.` : 'This source lists no skills.'}</p>}

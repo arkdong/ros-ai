@@ -13,7 +13,7 @@
 .app-face { position: relative; height: 220px; border: 1px solid var(--line-soft); border-radius: var(--radius-control); overflow: hidden; background: var(--paper); }
 .app-face.active { border-color: var(--ink); }
 .app-face-use { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font-size: var(--text-xs); cursor: pointer; }
-.app-face-use span { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--glass); box-shadow: var(--shadow-block); opacity: 0; transition: opacity var(--dur-out) var(--ease); }
+.app-face-use span { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--paper); box-shadow: var(--shadow-block); opacity: 0; transition: opacity var(--dur-out) var(--ease); }
 .app-face-use:hover span, .app-face-use:focus-visible span { opacity: 1; }
 .app-face-use.lingering span { opacity: 0; }
 .app-face-still { display: grid; place-content: center; height: 100%; color: var(--muted); font-size: var(--text-sm); }

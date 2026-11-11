@@ -4,6 +4,8 @@
 .switch.on { background: var(--ink); }
 .switch span { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow-block); transition: left var(--dur-out) var(--ease); }
 .switch.on span { left: 12px; }
+.switch:hover:not(:disabled) { filter: brightness(.93); }
+.switch.on:hover:not(:disabled) { filter: none; background: var(--body); }
 .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .memory-page .settings-head .switch { margin-top: 8px; }
 .memory-page .memory-off { margin-top: 10px; color: var(--muted); }

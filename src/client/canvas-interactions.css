@@ -51,6 +51,8 @@
   font-family: inherit;
   cursor: pointer;
 }
+.direct-canvas .research-card .card-type-button:hover,
+.direct-canvas .research-card .card-type-button:focus-visible { color: var(--ink); }
 /* What the block holds (6 rows, 3 cells): shown while the block is picked or under the pointer. */
 .direct-canvas .research-card .card-facts {
   min-width: 0;

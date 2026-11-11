@@ -2,6 +2,8 @@
    Rows, sections and the sidebar come from plugins.css. */
 .skills-intro { font-size: var(--text-sm); color: var(--muted); line-height: 1.5; margin: -2px 0 8px; }
 .skills-intro a { display: inline-flex; align-items: center; gap: 3px; color: var(--body); }
+.skills-unread { font-size: var(--text-sm); line-height: 1.5; color: var(--muted); margin: 4px 0 8px; }
+.skills-unread .text-button { padding: 0; margin-left: 4px; font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
 .skills-empty { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--muted); padding: 8px 8px 4px; }
 
 /* Browse: source tabs and a search on one line. */

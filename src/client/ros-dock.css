@@ -14,7 +14,7 @@
 .ros-dock > * { pointer-events: auto; }
 .ros-bar {
   display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px 16px; border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, .96); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  background: var(--paper);
   border: 1px solid rgba(0, 0, 0, .08); box-shadow: var(--shadow-float), var(--signal-glow);
 }
 .ros-bar.running { padding-top: 8px; padding-left: 8px; }
@@ -189,7 +189,7 @@
   position: absolute; left: 50%; bottom: 18px; top: auto; right: auto; transform: translateX(-50%); z-index: 30;
   width: min(760px, calc(100% - 36px)); max-width: none; height: min(600px, calc(100% - 36px)); flex: none;
   border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); overflow: hidden;
-  background: rgba(255, 255, 255, .94); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  background: var(--paper);
   box-shadow: var(--shadow-view), var(--signal-glow);
 }
 /* The side panel's width, in one place: the map's zoom controls and header keep clear of it (above), and so does an open block's panel (block-sheet.css). */
@@ -199,7 +199,7 @@
   position: absolute; top: 18px; right: 18px; bottom: 18px; left: auto; z-index: 30;
   width: var(--ros-side); max-width: none; flex: none;
   border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); overflow: hidden;
-  background: rgba(255, 255, 255, .96); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  background: var(--paper);
   box-shadow: var(--shadow-view), var(--signal-glow);
 }
 .assistant-panel.ros-full::before { display: none; }

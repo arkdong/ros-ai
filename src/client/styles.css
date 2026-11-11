@@ -338,7 +338,7 @@ blockquote {
   white-space: normal;
   justify-content: flex-start;
   text-align: left;
-  padding: 11px 8px;
+  padding: 8px;
   gap: 10px;
   position: relative;
 }
@@ -357,7 +357,7 @@ blockquote {
   height: 6px;
   width: 6px;
   border-radius: 100%;
-  background: var(--sidebar);
+  background: var(--line);
   flex-shrink: 0;
 }
 .history-entry.active .history-timeline-dot {
@@ -699,8 +699,7 @@ blockquote {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: #00000035;
-  backdrop-filter: blur(3px);
+  background: rgba(23, 23, 23, .28);
   z-index: 80;
   display: flex;
   align-items: center;
@@ -1437,20 +1436,16 @@ a {
 }
 .history-entry strong {
   display: block;
-  line-height: 1.5;
+  line-height: 1.45;
   font-weight: 500;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   color: var(--ink);
 }
 .history-entry small {
   display: block;
-  margin-top: 3px;
-  font-size: var(--text-sm);
-  color: var(--ink);
-}
-.history-panel>.subtle {
-  margin-bottom: 14px;
-  font-size: var(--text-md);
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--muted);
 }
 .history-banner strong {
   display: block;
@@ -1995,10 +1990,6 @@ a {
   top: 61px;
   z-index: 20;
 }
-.single-canvas-shell .modal-backdrop {
-  background: #00000035;
-  backdrop-filter: blur(2px);
-}
 .block-view .inspector {
   display: flex;
   position: relative;
@@ -2334,6 +2325,9 @@ a {
   font-size: var(--text-md);
   padding: 0 11px;
 }
+.single-canvas-shell .new-project-button:hover {
+  background: var(--rail);
+}
 .single-canvas-shell .sidebar-content {
   padding-top: 27px;
 }
@@ -2446,7 +2440,9 @@ a {
   flex: 1;
 }
 /* A group folds from the end of its row, as the project row does. */
+/* The chevron is drawn 20px and takes presses on 28px. */
 .note-tree-toggle {
+  position: relative;
   width: 20px;
   height: 20px;
   margin-left: auto;
@@ -2458,6 +2454,11 @@ a {
 .note-tree-toggle:hover {
   background: var(--line);
   color: var(--ink);
+}
+.note-tree-toggle::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 .note-tree-row>svg {
   color: var(--muted);
@@ -2543,20 +2544,14 @@ a {
   background: var(--sidebar);
   color: var(--ink);
 }
+/* The panel ends above the ROS bar and the zoom buttons. */
 .single-canvas-shell .history-panel {
   border-color: var(--line);
   box-shadow: var(--shadow-float);
+  max-height: calc(100% - 190px);
 }
 .single-canvas-shell .history-entry.active {
   background: var(--sidebar);
-}
-.single-canvas-shell .history-entry strong {
-  font-size: var(--text-md);
-  color: var(--ink);
-}
-.single-canvas-shell .history-entry small {
-  color: var(--muted);
-  font-size: var(--text-sm);
 }
 .single-canvas-shell .canvas-tools .icon-button {
   width: 34px;
