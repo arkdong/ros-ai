@@ -36,7 +36,8 @@ export class LocalConnections {
       const originKey=typeof source.metadata?.connectionId==='string'?`connection:${source.metadata.connectionId}`:typeof source.metadata?.resourceId==='string'?`copy:${source.metadata.resourceId}`:`artifact:${source.id}`;
       return {id:artifact.id,projectId,name:artifact.title,storage:'captured',kind:artifact.kind==='dataset'?'csv':'source',createdAt:artifact.createdAt,bytes:Buffer.byteLength(artifact.content,'utf8'),hash:artifact.hash,artifactId:artifact.id,nodeId:artifact.nodeId,originKey,...(artifact.url?{url:artifact.url}:{}),...(artifact.locator?{locator:artifact.locator}:{})};
     });
-    return [...linked,...copied,...captured].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id));
+    // Newest first. Entries saved in the same millisecond keep the order they were saved in (the sort is stable), not the order of their random ids.
+    return [...linked,...copied,...captured].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   }
   addResource(projectId:string,supplied:unknown):ProjectResource {
     this.store.getProject(projectId);

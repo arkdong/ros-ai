@@ -376,7 +376,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
       onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2],shape),true);}:undefined}/>)}
-    {data.expanded&&<div className="group-actions nodrag"><span>Mixed research blocks · relationships do not run work</span><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
+    {data.expanded&&<div className="group-actions nodrag"><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
 // While a block moves, React Flow moves its frame; the card inside draws again only when its content, size or
@@ -1124,7 +1124,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     const slots = new Map<string, { id: string; order: number }[]>();
     const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
     for (const { group, a, b, source, target } of sided) { take(group.source, source, group.id, b); take(group.target, target, group.id, a); }
-    const fraction = (nodeId: string, side: LinkSide, id: string) => { const list = [...(slots.get(`${nodeId}:${side}`) ?? [])].sort((x, y) => x.order - y.order || x.id.localeCompare(y.id)); return sideFraction(list.findIndex(item => item.id === id), list.length); };
+    const fraction = (nodeId: string, side: LinkSide, id: string) => { const list = [...(slots.get(`${nodeId}:${side}`) ?? [])].sort((x, y) => x.order - y.order); return sideFraction(list.findIndex(item => item.id === id), list.length); };
     return sided.map(({ group, a, b, source, target }) => {
       const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, group.id)), source, sideAnchor(b, target, fraction(group.target, target, group.id)), target);
       const chip = chipPoint(curve.point, geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id)));

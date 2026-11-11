@@ -825,9 +825,6 @@ blockquote {
   .workspace-actions {
     gap: 3px;
   }
-  .local-badge {
-    display: none;
-  }
   .inspector {
     max-width: 44vw;
   }
@@ -972,9 +969,6 @@ blockquote {
   }
   .history-panel {
     width: 285px;
-  }
-  .local-badge {
-    display: none;
   }
 }
 @media (prefers-reduced-motion:reduce) {
@@ -1244,15 +1238,6 @@ a {
   font-weight: 600;
   color: #171717;
   max-width: 340px;
-}
-.local-badge {
-  background: #f7f7f7;
-  border: 1px solid #dedede;
-  border-radius: 4px;
-  padding: 3px 5px;
-  line-height: 1;
-  font-size: 13px;
-  color: #171717;
 }
 .workspace-actions {
   display: flex;
@@ -2023,7 +2008,7 @@ a {
   left: 24px;
   right: 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 15px;
   font-size: 13px;
@@ -2196,9 +2181,6 @@ a {
   .single-canvas-shell .workspace-heading h1 {
     font-size: 15px;
     max-width: 36vw;
-  }
-  .single-canvas-shell .local-badge {
-    display: none;
   }
   .single-canvas-shell .workspace-actions {
     gap: 3px;
@@ -2569,13 +2551,6 @@ a {
   letter-spacing: -.35px;
   font-size: 17px;
   color: #171717;
-}
-.single-canvas-shell .local-badge {
-  background: #f7f7f7;
-  border-color: #dedede;
-  color: #6b6b6b;
-  font-size: 13px;
-  padding: 4px 6px;
 }
 .single-canvas-shell .workspace-actions {
   gap: 8px;
