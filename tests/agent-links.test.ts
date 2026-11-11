@@ -14,7 +14,8 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const home = mkdtempSync(join(tmpdir(), 'ros-ai-agent-links-'));
 process.env.HOME = home;
-for (const key of ['HERMES_HOME', 'PI_CODING_AGENT_DIR', 'ROS_NODE_COMMAND', 'ROS_NO_DETECT']) delete process.env[key];
+// XDG_CONFIG_HOME, which GitHub's runners set, would point the scan at the real settings folder and not at this home.
+for (const key of ['HERMES_HOME', 'PI_CODING_AGENT_DIR', 'ROS_NODE_COMMAND', 'ROS_NO_DETECT', 'XDG_CONFIG_HOME']) delete process.env[key];
 const { detectAgents, yamlServers } = await import('../src/server/setup-detect.js');
 const { SetupLinks, linkCommand } = await import('../src/server/setup-links.js');
 const { OutsideAgents, attachOutsideAgentRoutes, clientLabel } = await import('../src/server/outside-agents.js');
