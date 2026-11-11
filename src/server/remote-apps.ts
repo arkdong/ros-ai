@@ -427,9 +427,18 @@ export class RemoteApps {
   private forget(id: AppId, key?: string) {
     for (const [ref, cached] of this.clients) if (key === undefined ? ref === id || ref.startsWith(`${id}/`) : ref === `${id}/${key}`) { this.clients.delete(ref); void cached.client.close().catch(() => undefined); }
   }
+  /** Connections being opened now. Calls that arrive together, as after a start, wait for the same one. */
+  private readonly opening = new Map<string, Promise<Connection>>();
   /** probe: connect although the app is not turned on yet, to turn on a desktop server. account: which of an app's
    * accounts, left out for the default. */
-  private async open(id: AppId, probe = false, key?: string): Promise<Connection> {
+  private open(id: AppId, probe = false, key?: string): Promise<Connection> {
+    const slot = `${id}/${key ?? ''}/${probe ? 'probe' : ''}`, pending = this.opening.get(slot);
+    if (pending) return pending;
+    const opened = this.connect(id, probe, key).finally(() => this.opening.delete(slot));
+    this.opening.set(slot, opened);
+    return opened;
+  }
+  private async connect(id: AppId, probe: boolean, key?: string): Promise<Connection> {
     const app = entry(id), token = this.token(id), tokenKey = token ? digest(token) : undefined;
     const account = app.auth === 'sign-in' ? this.pick(id, key) : undefined;
     if (key !== undefined && app.auth === 'sign-in' && SEVERAL.has(id) && !account) throw new StoreError(`No ${app.name} account called ${label(key)}. Open Plugins › ${app.name} to see your accounts.`, 404);
@@ -454,6 +463,9 @@ export class RemoteApps {
     const reads = new Set<string>(app.reads);
     const listed = (await client.listTools()).tools;
     const opened: Connection = { client, key: tokenKey, ref, tools: listed.map(tool => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema as Record<string, unknown>, reads: tool.annotations?.readOnlyHint === true || reads.has(tool.name) })) };
+    // One connection per app or account: an older one opened meanwhile is closed, not left open for the life of ros.ai.
+    const earlier = this.clients.get(ref);
+    if (earlier) void earlier.client.close().catch(() => undefined);
     this.clients.set(ref, opened);
     return opened;
   }

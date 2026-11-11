@@ -86,3 +86,25 @@ test('a line with an escaped tag saves, a repeated line is refused before anythi
   await assert.rejects(views.save({ url, kind: 'page' }, { text: [{ old: '- [ ] Call Megan', new: '- [x] Call Megan' }] }), /“- \[ \] Call Megan” is on the page more than once/u);
   assert.equal(calls.filter(call => call.name === 'notion-update-page').length, sent);
 });
+
+test('changing the day of a Notion date keeps its time of day, and an end is never sent without a start', async () => {
+  const url = 'https://www.notion.so/Interview-3f0122069fec813999fbe0bd1235f179';
+  const properties: Record<string, unknown> = { Name: 'Interview', 'date:When:start': '2026-11-12T09:30:00.000+01:00', 'date:When:end': '2026-11-12T10:15:00.000+01:00', 'date:When:is_datetime': 1, 'date:Due:start': '2026-11-20', 'date:Due:is_datetime': 0 };
+  const sent: Record<string, unknown>[] = [];
+  const apps = {
+    connected: () => ['notion'],
+    accountsOf: () => [],
+    async call(_id: string, name: string, args: Record<string, any>) {
+      if (name === 'notion-update-page' && args.command === 'update_properties') { sent.push(args.properties); Object.assign(properties, args.properties); }
+      const text = `<page url="${url}">\n<properties>\n${JSON.stringify(properties)}\n</properties>\n<sqlite-table>CREATE TABLE IF NOT EXISTS "collection://a" (\n"Name" TEXT, -- title\n"date:When:start" TEXT,\n"date:Due:start" TEXT,\n)</sqlite-table>\n<content>\nNotes\n</content>\n</page>`;
+      return { text: JSON.stringify({ metadata: { type: 'page' }, title: 'Interview', url, text }), isError: false };
+    },
+  } as unknown as RemoteApps;
+  const views = new NotionViews(apps);
+  const page = await views.read({ url, kind: 'page' }) as NotionPage;
+  assert.deepEqual(page.properties.find(property => property.name === 'When')?.date, { start: '2026-11-12', end: '2026-11-12', startAt: '2026-11-12T09:30:00.000+01:00', endAt: '2026-11-12T10:15:00.000+01:00' });
+  await views.save({ url, kind: 'page' }, { properties: [{ name: 'When', value: '2026-11-13', end: '2026-11-13' }, { name: 'Due', value: '2026-11-21' }] });
+  assert.deepEqual(sent.at(-1), { 'date:When:start': '2026-11-13T09:30:00.000+01:00', 'date:When:end': '2026-11-13T10:15:00.000+01:00', 'date:When:is_datetime': 1, 'date:Due:start': '2026-11-21', 'date:Due:end': null, 'date:Due:is_datetime': 0 });
+  await views.save({ url, kind: 'page' }, { properties: [{ name: 'Due', value: null, end: '2026-11-25' }] });
+  assert.deepEqual(sent.at(-1), { 'date:Due:start': null, 'date:Due:end': null, 'date:Due:is_datetime': 0 });
+});

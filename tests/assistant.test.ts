@@ -228,6 +228,25 @@ test('cancelling a pending model call retains admission and discards late output
   } finally { release(reply()); await f.close(); }
 });
 
+test('a turn cut short because ros.ai closes says so, and a waiting message is not blamed on the person', async () => {
+  let release!: (value: unknown) => void;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const f = fixture([() => waiting]);
+  try {
+    const state = f.assistant.start(f.project.id, { message: 'Still running when ros.ai quits' });
+    await until(() => f.requests.length === 1);
+    f.assistant.start(f.project.id, { message: 'Waiting behind it', threadId: state.threadId });
+    const closing = f.assistant.shutdown();
+    release(reply());
+    await closing;
+    const turn = f.assistant.state(f.project.id).turns.find(item => item.id === state.activeTurnId)!;
+    assert.equal(turn.status, 'interrupted');
+    assert.match(turn.error!, /^ros\.ai closed while this was running/);
+    const queued = f.assistant.state(f.project.id).queued[0];
+    assert.notEqual(queued.paused, true); assert.equal(queued.note, undefined, 'The next start marks it as waiting since the restart');
+  } finally { release(reply()); await f.close(); }
+});
+
 test('immediate cancellation of the saved-record view is not overwritten by its queued continuation', async () => {
   const f = fixture([], false);
   try {
@@ -411,6 +430,7 @@ test('threads keep their own history, two run at once, and the earlier conversat
     const waiting = f.assistant.start(f.project.id, { message: 'Too soon', threadId: legacy });
     assert.equal(waiting.queued.length, 1); assert.equal(waiting.turns.filter(turn => turn.threadId === legacy && turn.status === 'running').length, 1);
     f.assistant.removeQueued(f.project.id, waiting.queued[0].id);
+    assert.throws(() => f.assistant.removeQueued(f.project.id, waiting.queued[0].id), /already been sent/, 'A message that is no longer waiting cannot be taken back a second time');
     const two = f.assistant.start(f.project.id, { message: 'A separate question in a new thread' });
     assert.ok(two.threadId && two.threadId !== legacy); assert.equal(two.threads.filter(thread => thread.running).length, 2);
     assert.equal(two.threads.find(thread => thread.id === two.threadId)!.title, 'A separate question in a new thread');

@@ -250,7 +250,9 @@ test('GitHub uses its hosted MCP server with the token from its Plugins card, co
     await assert.rejects(f.apps.tools('github'), /GitHub is not connected\. Connect it on the Plugins page/u);
     f.tokens.github = 'ghp_first';
     assert.equal(f.apps.status('github').connected, true);
-    assert.deepEqual((await f.apps.tools('github')).map(tool => [tool.name, tool.reads]), [['get_me', true], ['create_issue', false]]);
+    // Two calls that arrive together, as after a start, share one connection (seen, below, holds one per token).
+    const [listed] = await Promise.all([f.apps.tools('github'), f.apps.tools('github')]);
+    assert.deepEqual(listed.map(tool => [tool.name, tool.reads]), [['get_me', true], ['create_issue', false]]);
     assert.equal((await f.apps.call('github', 'get_me', {})).text, 'get_me ran with {}');
     f.tokens.github = 'ghp_second';
     await f.apps.call('github', 'get_me', {});

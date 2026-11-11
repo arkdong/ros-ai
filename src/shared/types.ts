@@ -23,7 +23,7 @@ export type NotionTable = { kind?:'database'; title:string; url:string; link:str
 export type NotionPropertyType = 'title'|'text'|'select'|'multi_select'|'checkbox'|'date'|'number'|'people'|'relation'|'files'|'computed';
 /** One property of a Notion page as text; `links` are the pages or addresses the value points to; `values` the chosen
  * options of a multi-select; `date` the parts of a date. */
-export type NotionProperty = { name:string; value:string; type:NotionPropertyType; editable:boolean; options?:string[]; values?:string[]; date?:{ start:string; end:string }; links?:{ text:string; url:string }[] };
+export type NotionProperty = { name:string; value:string; type:NotionPropertyType; editable:boolean; options?:string[]; values?:string[]; date?:{ start:string; end:string; /** The whole start and end as Notion holds them, when the date has a time of day. */ startAt?:string; endAt?:string }; links?:{ text:string; url:string }[] };
 /** One block of a page's text, as Markdown; `source` is Notion's own text for it, one line, which an edit replaces
  * (absent for tables, media and other blocks that stay read only), and `labels` what each mention or date in it reads as. */
 export type NotionUnit = { markdown:string; source?:string; labels?:Record<string,string> };

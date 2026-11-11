@@ -904,7 +904,8 @@ export class Store {
   }
 
   /** threadId: the ROS thread a project message belongs to (nodeId null). */
-  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string, threadId?: string): Message {
+  /** counted: false for a copy of a message already sent (a branched thread), which is not a new message to an agent. */
+  addMessage(projectId: string, nodeId: string | null, role: Message['role'], content: string, runId?: string, threadId?: string, counted = true): Message {
     this.getProject(projectId);
     if (nodeId !== null) this.requireNode(projectId, nodeId, true);
     if (runId) {
@@ -914,7 +915,7 @@ export class Store {
     if (threadId !== undefined && nodeId !== null) throw new StoreError('Only project messages belong to a ROS thread');
     const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
-    if (message.role === 'user') this.countUsage('conversations');
+    if (message.role === 'user' && counted) this.countUsage('conversations');
     return message;
   }
 

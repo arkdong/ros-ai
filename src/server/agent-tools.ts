@@ -1118,6 +1118,8 @@ export class AgentWorkspaceTools {
     if (!browsing.session) {
       if (value.action !== 'open') throw new StoreError('The browser is closed. Open a page again with action "open" and a url.', 409);
       browsing.session = await service.open();
+      // A browser that finished starting after the turn was stopped is closed here: the stop has already fired.
+      if (this.signal.aborted) { await this.close(); throw new StoreError('The turn has stopped, so the browser was closed again.', 409); }
       this.signal.addEventListener('abort', () => void this.close(), { once: true });
     }
     const session = browsing.session;

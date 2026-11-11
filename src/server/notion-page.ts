@@ -212,7 +212,7 @@ export function notionProperties(propertiesJson: string, schema: string, title: 
     if (name === titleProperty) return { ...property(name, value, { type: 'title' }, names), type: 'title' as const, editable: true };
     if (column?.type === 'date' || (value && typeof value === 'object' && !Array.isArray(value) && ('start' in value || 'end' in value || 'datetime' in value))) {
       const parts = (value ?? {}) as { start?: string; end?: string; datetime?: boolean }, start = part(parts.start, parts.datetime), end = part(parts.end, parts.datetime);
-      return { name, value: end ? `${start} – ${end}` : start, type: 'date' as const, editable: true, date: { start: parts.start?.slice(0, 10) ?? '', end: parts.end?.slice(0, 10) ?? '' } };
+      return { name, value: end ? `${start} – ${end}` : start, type: 'date' as const, editable: true, date: { start: parts.start?.slice(0, 10) ?? '', end: parts.end?.slice(0, 10) ?? '', ...(parts.datetime && parts.start && parts.start.length > 10 ? { startAt: parts.start } : {}), ...(parts.datetime && parts.end && parts.end.length > 10 ? { endAt: parts.end } : {}) } };
     }
     return property(name, value, column, names);
   });

@@ -9,7 +9,7 @@ import { textPreview } from '../shared/presentation';
 export function RosQueue({ projectId, items, compact = false, onChanged, onEdit }: { projectId: string; items: QueuedMessage[]; compact?: boolean; onChanged: () => unknown; onEdit: (text: string) => void }) {
   const [busy, setBusy] = useState(false), [problem, setProblem] = useState('');
   if (!items.length) return null;
-  const run = async (work: () => Promise<unknown>) => { setBusy(true); setProblem(''); try { await work(); await onChanged(); } catch (cause) { setProblem(cause instanceof Error ? cause.message : 'That did not work.'); } finally { setBusy(false); } };
+  const run = async (work: () => Promise<unknown>) => { setBusy(true); setProblem(''); try { await work(); } catch (cause) { setProblem(cause instanceof Error ? cause.message : 'That did not work.'); } finally { try { await onChanged(); } catch { /* the list refreshes with the next look */ } setBusy(false); } };
   const remove = (id: string) => api(`/api/projects/${projectId}/assistant/queued/${id}`, { method: 'DELETE' });
   return <div className={`ros-queue ${compact ? 'compact' : ''}`} aria-label="Waiting messages">
     {items.map((item, index) => <div key={item.id} className={`ros-queue-row ${item.paused ? 'paused' : ''}`}>

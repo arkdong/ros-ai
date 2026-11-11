@@ -170,7 +170,9 @@ test('Branch from here copies the conversation up to a turn into a new thread', 
     f.assistant.start(f.project.id, { message: 'Question two', threadId: one.threadId });
     await settled(f);
     const original = f.assistant.state(f.project.id).turns.filter(turn => turn.threadId === one.threadId);
+    const sent = () => Object.values(f.store.globalRecord<Record<string, number>>('usage-counts', new Date().toISOString().slice(0, 10)) ?? {}).reduce((sum, count) => sum + count, 0), before = sent();
     const branched = f.assistant.branch(f.project.id, original[0].id);
+    assert.equal(sent(), before, 'The copied messages are not counted as new messages to an agent');
     assert.ok(branched.threadId && branched.threadId !== one.threadId);
     const thread = branched.threads.find(item => item.id === branched.threadId)!;
     assert.deepEqual(thread.branchedFrom, { threadId: one.threadId, turnId: original[0].id, title: 'Question one' });

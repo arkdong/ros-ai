@@ -82,3 +82,23 @@ test('a question nobody answers refuses every connection that waits on it, and t
     assert.equal(proxy.waiting(), false);
   } finally { proxy.close(); }
 });
+
+test('stopping one run leaves a site question for the other runs that wait on it', async () => {
+  const gate = new NetworkGate(memoryStore()), asked: string[] = [];
+  gate.subscribe((event: NetworkEvent) => { if (event.type === 'request') asked.push(event.request.id); });
+  const stopped = await gate.open('p1', 'A Code block'), other = await gate.open('p1', 'A notebook');
+  try {
+    const first = connectStatus(stopped.port, 'shared.invalid:443');
+    while (!asked.length) await new Promise(resolve => setTimeout(resolve, 10));
+    const second = connectStatus(other.port, 'shared.invalid:443');
+    while (!other.waiting()) await new Promise(resolve => setTimeout(resolve, 10));
+    stopped.close();
+    await first.catch(() => undefined);
+    assert.deepEqual(gate.requests().map(request => request.id), asked, 'The question is still there for the run that goes on');
+    assert.equal(other.waiting(), true);
+    gate.answer(asked[0]!, 'always');
+    assert.doesNotMatch(await second, /is not allowed/u);
+    assert.deepEqual(gate.sites('p1'), ['shared.invalid']);
+    assert.equal(asked.length, 1);
+  } finally { other.close(); }
+});

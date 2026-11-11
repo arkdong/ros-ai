@@ -209,8 +209,12 @@ export class NotionViews {
       const value = change.value;
       const empty = value === null || value === '' || (Array.isArray(value) && !value.length);
       if (property.type === 'number' && !empty && !Number.isFinite(Number(value))) throw new StoreError(`${change.name} takes a number.`, 400);
-      if (property.type === 'date') Object.assign(properties, { [`date:${change.name}:start`]: empty ? null : String(value).slice(0, 10), [`date:${change.name}:end`]: change.end ? String(change.end).slice(0, 10) : null, [`date:${change.name}:is_datetime`]: 0 });
-      else properties[key(change.name)] = property.type === 'checkbox' ? (value === true || value === 'true' || value === 'Yes' ? '__YES__' : '__NO__')
+      if (property.type === 'date') {
+        // The editor changes the day. A date that has a time of day keeps it, and an end is sent only with a start.
+        const day = (text: unknown) => String(text).slice(0, 10), time = property.date?.startAt?.slice(10) ?? '', endTime = property.date?.endAt?.slice(10) ?? time;
+        Object.assign(properties, { [`date:${change.name}:start`]: empty ? null : `${day(value)}${time}`, [`date:${change.name}:end`]: !empty && change.end ? `${day(change.end)}${time ? endTime : ''}` : null, [`date:${change.name}:is_datetime`]: !empty && time ? 1 : 0 });
+      }
+      if (property.type !== 'date') properties[key(change.name)] = property.type === 'checkbox' ? (value === true || value === 'true' || value === 'Yes' ? '__YES__' : '__NO__')
         : empty ? null : property.type === 'number' ? Number(value) : property.type === 'multi_select' ? (Array.isArray(value) ? value : [String(value)]).map(String)
         : Array.isArray(value) ? value.join(', ') : String(value);
     }
