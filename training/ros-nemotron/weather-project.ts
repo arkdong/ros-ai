@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { Store } from './store.js';
-import type { Run, Mutation } from '../shared/types.js';
+import { Store } from '../../src/server/store.js';
+import type { Run, Mutation } from '../../src/shared/types.js';
 
-/** Bundled, attributed public data. This starter never claims a model or
- * experiment ran; the user can inspect its source before requesting research. */
-export function seedDemo(store:Store,projectId:string){
+/** The KNMI weather project the 19 October comparison's tasks run on: bundled, attributed public data
+ * and four starter notes. Nothing in it claims a model or an experiment ran. */
+export function seedWeatherProject(store:Store,projectId:string){
   const ids=['question','weather','analysis','follow-up'].map(()=>randomUUID());
   const descriptions=[
     ['Weather, patterns & evidence','Which seasonal patterns appear in Schiphol’s 2024 weather observations, and what can we responsibly infer? Start by clarifying the question with the assistant.','topic'],
@@ -18,7 +18,7 @@ export function seedDemo(store:Store,projectId:string){
   store.mutate(projectId,operations,'Explore the public weather example');
   const project=store.getProject(projectId),at=new Date().toISOString();
   const run:Run={id:randomUUID(),projectId,nodeId:ids[1],request:'Load the bundled public KNMI example',useSearch:false,status:'running',createdAt:at,startedAt:at,projectRevision:project.revision,node:project.canvas.nodes.find(n=>n.id===ids[1])!,inputs:[],messages:[],provider:'local',model:'bundled-public-data-v1',modelVersion:null,configuration:{kind:'example-data-import',preparedBy:'coding assistant',autonomousResearch:false},tools:[],events:[],artifactIds:[]};store.createRun(run);
-  const csv=readFileSync(new URL('../../examples/amsterdam-cycling-weather/schiphol-weather-2024.csv',import.meta.url),'utf8');
+  const csv=readFileSync(new URL('./schiphol-weather-2024.csv',import.meta.url),'utf8');
   const data=store.addArtifact({projectId,nodeId:ids[1],runId:run.id,kind:'dataset',title:'Schiphol daily weather · 2024',content:csv,mediaType:'text/csv',capture:'full-content',metadata:{source:'KNMI station 240',retrievedAt:'2026-09-21T21:25:14.138635+00:00',preparedBy:'coding assistant',autonomousResearch:false}});
   const source=store.addArtifact({projectId,nodeId:ids[1],runId:run.id,kind:'source',title:'KNMI provenance and limitations',url:'https://www.daggegevens.knmi.nl/klimatologie/uurgegevens',capture:'full-content',content:'Bundled data was retrieved from KNMI station 240 on 21 September 2026 and aggregated to local Amsterdam calendar days. Raw response and preparation code are preserved in examples/amsterdam-cycling-weather. This is an attributed local example prepared by the coding assistant, not a new live application search or autonomous experiment. Schiphol is a weather station proxy; the dataset contains no cycling counts. A weather association cannot establish cycling demand or causality.'});
   store.updateRun(run.id,{status:'completed',endedAt:at,artifactIds:[data.id,source.id]});

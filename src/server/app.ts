@@ -25,13 +25,11 @@ import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
-import { seedDemo } from './demo.js';
 import { projectBudgetReport, usageAnalytics } from './budget-report.js';
 import { providerBalances } from './provider-balances.js';
 import { attachSpendingBudgetRoutes, SpendingBudget } from './spending-budget.js';
 import { ModelSettings } from './model-settings.js';
 import { ProviderUsage } from './provider-usage.js';
-import { attachTutorialRoutes, TutorialService } from './tutorial.js';
 import { attachToolCredentialRoutes, type ToolCredentials } from './tool-credentials.js';
 import { attachGoogleDriveRoutes, type GoogleDriveConnection } from './google-drive.js';
 import { attachGoogleRoutes, type GoogleWorkspace } from './google-workspace.js';
@@ -94,8 +92,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
     next();
   });
-  app.get(['/waitlist','/waitlist/pitch'],(_req,res) => res.redirect(302,'/app'));
-  app.all('/api/waitlist',(_req,res) => res.status(410).json({error:'Signup has closed. Explore the demo at /app.'}));
   // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.
   app.use(NOTEBOOK_ROUTE, express.json({ limit: '25mb' }));
   // A skill archive (.zip, up to 12 MB) arrives as base64 inside JSON.
@@ -109,7 +105,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if(options.notebooks?.python)attachPythonSetupRoute(app,options.notebooks.python.runtime);
   const folders=notebooks&&options.projectFolders?new ProjectFolders(store,{reserved:options.projectFolders.reserved,notebooks}):undefined;
   if(folders){attachProjectFolderRoutes(app,folders);app.locals.projectFolders=folders;AgentWorkspaceTools.folders=folders;AgentWorkspaceTools.webFiles=new WebFileFetcher();folders.start();}
-  attachTutorialRoutes(app,new TutorialService(store,experiments,{folders}));
   // Share: a clean copy of the canvas, as a .html canvas file that opens in any browser.
   attachShareRoutes(app,new ShareCopies(store,{files:()=>folders,cache:new ProjectCache(store)}),new StillPage(),process.env.ROS_DEV==='1');
   // SQL over the project's Data blocks and folder files runs DuckDB on this computer.
@@ -139,7 +134,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   attachAppFrameRoutes(app,tools?.appFrames);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
   app.post('/api/projects', (req, res) => {
-    const { title:named,start,folder } = z.object({ title: z.string().trim().max(160).optional(),start:z.enum(['blank','conversation','demo']).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
+    const { title:named,folder } = z.object({ title: z.string().trim().max(160).optional(),folder:z.string().trim().min(1).max(4000).optional() }).strict().parse(req.body);
     if(folder&&!folders)throw new StoreError('Project folders are available in the local app.');
     // Check the folder before the project exists, so a refused folder leaves nothing behind.
     if(folder)folders!.prepare(folder);
@@ -149,7 +144,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     for(let n=2;!named&&titles.has(title);n++)title=`Untitled ${n}`;
     const project=store.createProject(title);
     if(folder)try{folders!.attach(project.id,folder);}catch(error){store.trashProject(project.id);throw error;}
-    res.status(201).json(start==='demo'?seedDemo(store,project.id):store.getProject(project.id));
+    res.status(201).json(store.getProject(project.id));
   });
   // Removing a project keeps its folder unless the person asks for the folder to go to the computer's Trash too.
   app.post('/api/projects/:id/trash',async(req,res)=>{
@@ -260,7 +255,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (tools?.memory) attachPersonalMemoryRoutes(app,tools.memory);
   if (tools?.skills) attachSkillRoutes(app,tools.skills);
-  // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now. The demo cannot connect tools, so it has none.
+  // Plugins suggested in a conversation: the switch, what is silenced, and which plugins agents can use now.
   if (tools?.suggestions) { const sources={...tools,...(execution.searchStatus?{search:()=>execution.searchStatus!()}:{})}; attachSuggestionRoutes(app,tools.suggestions,{store,assistant,readiness:()=>pluginReadiness(sources)}); }
   if (experiments) attachExperimentRoutes(app, experiments);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'This API route does not exist.' }));

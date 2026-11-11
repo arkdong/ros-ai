@@ -104,10 +104,6 @@ Keys pasted on the Agents and Plugins pages are saved in the data folder: `~/Lib
 
 ros.ai checks GitHub for a newer release at start and every six hours, sending nothing about you. An **Update** button appears when one is ready. Settings › General › Updates turns the check off.
 
-## Examples
-
-**Start from** offers two guided examples: [From idea to report](examples/demo-workflow/), a research run on AI in Dutch business, and [the banking question](examples/dutch-ai-adoption/README.md) on CBS figures. The `examples/` folder holds more projects to open as a folder.
-
 ## Development
 
 ```sh

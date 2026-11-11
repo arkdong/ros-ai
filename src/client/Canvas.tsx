@@ -487,7 +487,7 @@ export type CanvasHighlight = { id: string; nodeId: string; artifactId: string; 
 /** The map as it is right now, read when a message goes to ROS: the blocks picked together (a ⌘-click or a box) and the blocks inside
  * the visible part of the map, nearest its middle first, or 'all' when every block shown is in view. */
 export type CanvasView = () => { picked: string[]; onScreen: string[] | 'all' };
-type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string, options?: { undoableLayout?: boolean }) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId, at?: { x: number; y: number }) => void; onBrowse: (parentId: string | null, kind?: KindId, at?: { x: number; y: number }) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; onDemo?: () => void; demoLabel?: string; onTour?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; frame?: { ids: string[]; key: number } | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
+type Props = { notices?: ReactNode; proposalCard?: ReactNode; detail: ProjectDetail; agentTurns?: Record<string, AgentTurnSummary>; selectedId: string | null; onSelect: (id: string | null) => void; onInspect: (id: string) => void; onArtifact: (artifact: Artifact, nodeId: string) => void; highlights: CanvasHighlight[]; mutate: (operations: Mutation[], label: string, options?: { undoableLayout?: boolean }) => Promise<unknown>; onAdd: (parentId: string | null, kind: KindId, at?: { x: number; y: number }) => void; onBrowse: (parentId: string | null, kind?: KindId, at?: { x: number; y: number }) => void; onUndo?: () => void; onRedo?: () => void; onHistory?: () => void; historyOpen?: boolean; busy?: boolean; proposal?: Proposal; historyCanvas?: Canvas; expandedIds: string[]; onExpandedChange: (ids: string[]) => void; focusId?: string | null; missingFiles?: ReadonlySet<string>; folderFiles?: ReadonlyMap<string, FolderFile>; onDropFiles?: (files: File[], position: { x: number; y: number }) => void;
   /** Copies the tab a Google Sheet block shows into a new Data block; false when it did not happen. */
   onGoogleCopy?: (nodeId: string) => Promise<boolean>;
   /** Filled with a reader of what the map shows, for the glance a message to ROS carries. */
@@ -506,7 +506,7 @@ function useStableHandlers<T extends Record<string, (...args: never[]) => unknow
   const latest = useRef(handlers); latest.current = handlers;
   return useMemo(() => Object.fromEntries(Object.keys(latest.current).map(key => [key, (...args: never[]) => latest.current[key](...args)])) as T, []);
 }
-function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, highlights, mutate, onAdd, onBrowse, onUndo, onRedo, onHistory, onDemo, demoLabel='Demo', onTour, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, frame, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste , onShare }: Props) {
+function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onInspect, onArtifact, highlights, mutate, onAdd, onBrowse, onUndo, onRedo, onHistory, historyOpen=false, busy=false, proposal, historyCanvas, expandedIds: requestedExpandedIds, onExpandedChange, focusId, missingFiles, folderFiles, onDropFiles, onGoogleCopy, agentTurns, view, paste , onShare }: Props) {
   const flow = useReactFlow(); const dragging = useRef(false); const area = useRef<HTMLDivElement>(null);
   // The quick Add block menu, placed beside its tile in the tools card.
   const [addMenu, setAddMenu] = useState<{ left: number; top: number; at?: { x: number; y: number } } | null>(null);
@@ -1086,7 +1086,6 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }, [focusRequest, computedNodes]);
   useEffect(() => { if (focusId) setFocusRequest(focusId); }, [focusId]);
   // Shows a set of blocks together once they are on the canvas; a block in a closed group is shown by its group.
-  useEffect(() => { if (frame?.ids.length) setFrameRequest(frame.ids); }, [frame]);
   useEffect(() => {
     // Automatic spacing settles first, so the blocks are shown where they end up.
     if (!frameRequest || animatingLayout) return;
@@ -1316,7 +1315,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     onSelect(null);
     setAddMenu({ left: fits ? event.clientX - frame.left + 8 : event.clientX - frame.left - 8 - 280, top: event.clientY - frame.top - 6, at: { x: Math.round(spot.x - CARD_SIZE.width / 2), y: Math.round(spot.y - 24) } });
   };
-  // The map's tools, in the groups the dock draws: add, pointer, arrange, history, view, demo. Add block is the dock's
+  // The map's tools, in the groups the dock draws: add, pointer, arrange, history, view. Add block is the dock's
   // one black tile, and its hint says what a block can be. An empty map has its Add a block button in the middle
   // instead, and shows the dock only when there is something to undo.
   const divider = (id: string): DockItem => ({ id, divider: true });
@@ -1350,7 +1349,6 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       }
       onShare({ layout, open: expandedIds });
     } }] : []),
-    ...(onDemo || onTour ? [divider('demo-divider'), ...(onDemo ? [{ id: 'demo', label: demoLabel, icon: <BookOpen size={18}/>, onClick: onDemo }] : []), ...(onTour ? [{ id: 'tour', label: 'Tour saved research', icon: <BookOpen size={18}/>, onClick: onTour }] : [])] : []),
   ];
   return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
