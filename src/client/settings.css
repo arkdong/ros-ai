@@ -54,6 +54,11 @@
 .usage-empty { display: flex; align-items: center; gap: 8px; padding: 14px 0 2px; font-size: var(--text-sm); color: var(--muted); }
 .usage-note { margin-top: 14px; font-size: var(--text-xs); color: var(--muted); }
 .usage-table .usage-empty { padding: 16px 18px; }
+/* Nothing to show yet: one card with the fact, when it fills, and the one thing to do. Never an empty frame. */
+.usage-quiet { margin-top: 12px; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); }
+.plan-limits + .usage-chart-card { margin-top: 18px; }
+.settings-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 16px; padding: 20px; }
+.settings-empty p { font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
 .usage-table-head, .usage-table-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 190px) 80px 90px; gap: 14px; align-items: center; padding: 12px 18px; }
 .usage-table-head { font-size: var(--text-sm); color: var(--muted); border-bottom: 1px solid var(--line-soft); }
 .usage-table-row + .usage-table-row { border-top: 1px solid var(--line-soft); }
