@@ -78,4 +78,11 @@ test('a block copied out of a Group that was ungrouped since pastes onto the map
   const added = operations.find(op => op.type === 'addNode');
   assert(added && added.type === 'addNode');
   assert.equal(added.node.parentId ?? null, null);
+  // A Group with nothing of its own just goes, so no empty note lands on its first block.
+  assert.deepEqual(ungroup.at(-1), { type: 'removeNode', id: 'group' });
+  // One with text stays as a note, in the free spot the canvas found for it.
+  const withText: Canvas = { ...canvas, nodes: canvas.nodes.map(item => item.id === 'group' ? { ...item, description: 'Why these belong together' } : item) };
+  const kept = ungroupOperations(withText, withText.nodes[0], inset, { x: 900, y: 100 }).at(-1);
+  assert(kept?.type === 'updateNode');
+  assert.deepEqual([kept.patch.blockType, kept.patch.x, kept.patch.y], ['note', 900, 100]);
 });

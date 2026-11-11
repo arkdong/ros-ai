@@ -58,6 +58,19 @@ function installedApps(): (OpenApp & { path: string })[] {
   });
 }
 const HOME_FOLDERS = ['Documents', 'Desktop', 'Downloads', 'Library', 'Pictures', 'Movies', 'Music', 'Public', 'Applications'];
+/** Mac and Windows disks ignore letter case in names, so ~/documents is ~/Documents there. */
+const FOLDS_CASE = process.platform === 'darwin' || process.platform === 'win32';
+/** A folder is another folder, or lies inside it. */
+export function folderWithin(folder: string, other: string, fold = FOLDS_CASE): boolean {
+  const a = fold ? folder.toLowerCase() : folder, b = fold ? other.toLowerCase() : other;
+  return a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+/** A whole home folder, a system folder, or one of the home's own folders (Documents, Desktop…): never a project folder. */
+export function wholeFolder(real: string, home: string, fold = FOLDS_CASE): boolean {
+  const same = (a: string, b: string) => fold ? a.toLowerCase() === b.toLowerCase() : a === b;
+  return real.split(sep).filter(Boolean).length < 2 || folderWithin(home, real, fold) || SYSTEM_FOLDERS.some(folder => folderWithin(real, folder, fold))
+    || (same(dirname(real), home) && HOME_FOLDERS.some(name => same(name, basename(real))));
+}
 
 type Observed = { hash: string; mtimeMs: number; size: number };
 type FileEntry = { path: string; kind: FolderFileKind; hash: string; disk?: Observed; artifactId?: string; missing?: boolean; removed?: boolean; trashPath?: string; problem?: string };
@@ -456,9 +469,10 @@ export class ProjectFolders implements NotebookFolders {
     const missing: string[] = [];
     let existing = path;
     while (!existsSync(existing)) { missing.unshift(basename(existing)); const parent = dirname(existing); if (parent === existing) break; existing = parent; }
-    const real = join(realpathSync(existing), ...missing), home = realpathSync(homedir());
-    const within = (folder: string, other: string) => folder === other || folder.startsWith(other.endsWith(sep) ? other : other + sep);
-    if (real.split(sep).filter(Boolean).length < 2 || within(home, real) || SYSTEM_FOLDERS.some(folder => within(real, folder)) || (dirname(real) === home && HOME_FOLDERS.includes(basename(real))))
+    // The disk's own spelling of the part that exists, so a path typed in another letter case is the folder it names.
+    const real = join(realpathSync.native(existing), ...missing), home = realpathSync.native(homedir());
+    const within = folderWithin;
+    if (wholeFolder(real, home))
       throw new StoreError('Choose a folder of its own for this project, such as one inside Documents, not a whole home or system folder.');
     if (this.reserved.some(folder => within(real, folder) || within(folder, real))) throw new StoreError('Choose a folder outside ros.ai\'s own files.');
     if (existsSync(real) && !statSync(real).isDirectory()) throw new StoreError('That path is a file. Choose a folder.');
@@ -664,16 +678,23 @@ export class ProjectFolders implements NotebookFolders {
     }
     return moved;
   }
-  /** Copies the folder images a pasted Text block embeds into the same place in this project's folder, unless a file is already there. */
-  copyNoteImagesFrom(fromProjectId: string, fromNodeId: string, sources: string[], toProjectId: string): void {
-    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId);
+  /** Takes back the files a paste copied into this project's folder when the paste itself is refused, with the folders they left empty. */
+  discardCopies(projectId: string, paths: string[]): void {
+    let files: FolderFiles;
+    try { files = this.require(projectId).files; } catch { return; }
+    for (const rel of paths) try { files.remove(rel); files.prune(rel, rel.split('/')[0]!); } catch { /* already gone */ }
+  }
+  /** Copies the folder images a pasted Text block embeds into the same place in this project's folder, unless a file is already there. Returns the paths it wrote. */
+  copyNoteImagesFrom(fromProjectId: string, fromNodeId: string, sources: string[], toProjectId: string): string[] {
+    const source = this.require(fromProjectId).files, { files } = this.require(toProjectId), written: string[] = [];
     for (const src of new Set(sources)) {
       try {
         // The folder's own path rules (posix.relative cannot read C:\ paths), then the / that project paths use.
         const found = this.noteImage(fromProjectId, fromNodeId, src), rel = posix.normalize(relative(source.root, found.absolute).split(sep).join('/'));
-        if (!files.exists(rel)) files.write(rel, source.read(rel, FILE_BYTES).bytes);
+        if (!files.exists(rel)) { files.write(rel, source.read(rel, FILE_BYTES).bytes); written.push(rel); }
       } catch { /* an image ros.ai cannot find stays as written */ }
     }
+    return written;
   }
   /** A block of the project, for routes that check its saved paths. */
   storeNode(projectId: string, nodeId: string): CanvasNode | undefined { return this.store.getProject(projectId).canvas.nodes.find(item => item.id === nodeId); }

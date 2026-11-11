@@ -37,7 +37,7 @@ import './groups.css';
 import './links.css';
 import './agent-view.css';
 import './source-check.css';
-import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
+import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupKeepsNote, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
 import { BlockPreview } from './BlockPreview';
 import { PartBoundary } from './ErrorBoundary';
@@ -868,6 +868,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       if (!letter || letter === 'y' && (mac || event.shiftKey)) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"], .cm-editor')) return;
+      // While Plugins, Agents, Skills or Settings covers the map, the keys must not change a canvas nobody can see.
+      if (document.querySelector('.rail-page')) return;
       event.preventDefault();
       if (event.repeat) return;
       const { onUndo, onRedo, canUndo, canRedo, blocked } = historyRef.current;
@@ -916,7 +918,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   };
   const clipboardRef = useRef({ copy: copySelected, paste: pasteCopied }); clipboardRef.current = { copy: copySelected, paste: pasteCopied };
   useEffect(() => {
-    const typing = (event: ClipboardEvent) => Boolean((event.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]'));
+    // Typing somewhere, or a page that covers the map: copy and paste are not the map's then.
+    const typing = (event: ClipboardEvent) => Boolean((event.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="dialog"]') || document.querySelector('.rail-page'));
     const copy = (event: ClipboardEvent) => { if (!typing(event) && !window.getSelection()?.toString()) clipboardRef.current.copy(event); };
     const paste = (event: ClipboardEvent) => { if (!typing(event)) clipboardRef.current.paste(event); };
     document.addEventListener('copy', copy); document.addEventListener('paste', paste);
@@ -1331,7 +1334,15 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     { id: 'hand', label: 'Hand', hint: 'H, or hold Space', icon: <Hand size={18}/>, pressed: canvasTool.tool === 'hand', onClick: () => canvasTool.setTool('hand') },
     divider('arrange-divider'),
     { id: 'group', label: selecting ? 'Done' : groupable.length ? 'Group selected' : 'Group', hint: selecting ? 'Stop picking blocks' : groupable.length ? `Put the ${groupable.length === 1 ? 'selected block' : `${groupable.length} selected blocks`} in a new group` : 'Pick blocks, then group them', icon: <BoxSelect size={18}/>, pressed: selecting, disabled: readonly || busy, onClick: () => { if (!selecting && groupable.length) { groupBlocks(groupable, 'Untitled'); return; } setSelecting(!selecting); setGroupSelection([]); onSelect(null); } },
-    ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => { void mutate(ungroupOperations(displayed.canvas, selectedGroup, GROUP_INSET), 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage('Group dissolved. Its blocks and its text stay.'); } }); } }] : []),
+    ...(selectedGroup ? [{ id: 'ungroup', label: 'Ungroup', hint: 'Its blocks stay where they are', icon: <Ungroup size={18}/>, disabled: busy, onClick: () => {
+      // The blocks keep their places. A Group with text or links of its own leaves that as a note in the first free spot
+      // beside them, found on the map as it will be once the blocks are out of the frame.
+      const canvas = displayed.canvas, keeps = groupKeepsNote(canvas, selectedGroup), moved = ungroupOperations(canvas, selectedGroup, GROUP_INSET);
+      const places = new Map(moved.flatMap(op => op.type === 'updateNode' && op.id !== selectedGroup.id ? [[op.id, op.patch] as const] : []));
+      const after = { ...canvas, nodes: canvas.nodes.filter(node => node.id !== selectedGroup.id).map(node => places.has(node.id) ? { ...node, ...places.get(node.id) } : node) };
+      const operations = keeps ? ungroupOperations(canvas, selectedGroup, GROUP_INSET, emptyPosition(after, selectedGroup.parentId ?? null, expandedIds)) : moved;
+      void mutate(operations, 'Ungroup').then(saved => { if (saved !== false) { onExpandedChange(expandedIds.filter(id => id !== selectedGroup.id)); onSelect(null); setMessage(keeps ? 'Group dissolved. Its blocks stay, and its text is now a block beside them.' : 'Group dissolved. Its blocks stay where they are.'); } });
+    } }] : []),
     { id: 'up', label: 'Up a level', hint: 'To the group around the block', icon: <CornerLeftUp size={18}/>, onClick: broader },
     { id: 'tidy', label: 'Tidy', hint: 'Line blocks up', icon: arranging || animatingLayout ? <LoaderCircle size={18} className="spin"/> : <LayoutGrid size={18}/>, disabled: readonly || arranging || animatingLayout || !displayed.canvas.nodes.length, onClick: () => void arrange() },
     { id: 'size', label: 'Size', hint: sizeTargets.length ? 'Shrink picked blocks; they stay whole' : 'Pick blocks to shrink them', icon: <Minimize2 size={18}/>, testId: 'canvas-size', disabled: !sizeTargets.length, pressed: Boolean(sizeMenu), expanded: Boolean(sizeMenu), onClick: event => { if (sizeMenu) { setSizeMenu(null); return; } const box = area.current?.getBoundingClientRect(), tile = event.currentTarget.getBoundingClientRect(); setSizeMenu({ left: tile.right - (box?.left ?? 0) + 10, top: tile.top - (box?.top ?? 0) }); } },

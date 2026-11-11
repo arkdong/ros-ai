@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Store } from '../src/server/store.js';
-import { ProjectFolders } from '../src/server/project-folders.js';
+import { ProjectFolders, folderWithin, wholeFolder } from '../src/server/project-folders.js';
 
 test('opening a folder never writes the board over the person’s own .canvas file', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ros-folder-board-'));
@@ -28,4 +28,18 @@ test('opening a folder never writes the board over the person’s own .canvas fi
     folders.shutdown(); store.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a home folder typed in another letter case is still a whole folder on a disk that ignores case', () => {
+  const home = '/Users/sam';
+  // A Mac or Windows disk: ~/documents is ~/Documents, and must never become a project folder.
+  assert.equal(wholeFolder('/Users/sam/documents', home, true), true);
+  assert.equal(wholeFolder('/users/sam', home, true), true);
+  assert.equal(wholeFolder('/system/Library', home, true), true);
+  assert.equal(wholeFolder('/Users/sam/Documents/My project', home, true), false);
+  assert.equal(folderWithin('/users/sam/documents/a', '/Users/sam/Documents', true), true);
+  // A disk that keeps letter case apart treats them as two folders.
+  assert.equal(wholeFolder('/Users/sam/documents', home, false), false);
+  assert.equal(wholeFolder('/Users/sam/Documents', home, false), true);
+  assert.equal(folderWithin('/users/sam/documents/a', '/Users/sam/Documents', false), false);
 });

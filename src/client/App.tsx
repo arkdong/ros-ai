@@ -164,12 +164,25 @@ export function App(){
   // so quick consecutive edits do not trip the server's stale-canvas check.
   const mutationQueue=useRef<Promise<unknown>>(Promise.resolve()),knownRevision=useRef<{projectId:string;revision:number}|null>(null);
   const noteRevision=(id:string,revision:number)=>{const known=knownRevision.current;if(known?.projectId!==id||revision>known.revision)knownRevision.current={projectId:id,revision};};
-  const mutate=(operations:Mutation[],label:string,options?:{undoableLayout?:boolean})=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=projectId,seen=detail.project.revision;
-    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const project=await post<Project>(`/api/projects/${id}/mutations`,{operations,label,expectedRevision:knownRevision.current!.revision,...options});noteRevision(id,project.revision);}));
+  // An edit belongs to the project whose blocks are on screen, which for a moment after switching is not the one being
+  // opened. When the project changed elsewhere since this page last looked (another window, an agent, the project
+  // folder), the newest revision is read and the edit sent once more, so it is not lost.
+  const sendEdit=async<T,>(id:string,seen:number,path:string,body:object):Promise<T>=>{
+    noteRevision(id,seen);
+    const once=()=>post<T>(`/api/projects/${id}/${path}`,{...body,expectedRevision:knownRevision.current!.revision});
+    try{return await once();}
+    catch(cause){
+      if((cause as {status?:number}).status!==409||!/canvas has changed/i.test(cause instanceof Error?cause.message:''))throw cause;
+      noteRevision(id,(await api<ProjectDetail>(`/api/projects/${id}`)).project.revision);
+      return once();
+    }
+  };
+  const mutate=(operations:Mutation[],label:string,options?:{undoableLayout?:boolean})=>{if(!projectId||!detail||historical)return Promise.resolve(false);const id=detail.project.id,seen=detail.project.revision;
+    const run=mutationQueue.current.then(()=>action(async()=>{const project=await sendEdit<Project>(id,seen,'mutations',{operations,label,...options});noteRevision(id,project.revision);}));
     mutationQueue.current=run.catch(()=>undefined);return run;};
   /** Pasted blocks go through the server, which copies the files and saved versions they show from the project they came from. */
-  const pasteBlocks=(body:{operations:Mutation[];label:string;from:string;sources:Record<string,string>;artifacts:Record<string,string>})=>{if(!projectId||!detail||historical)return Promise.resolve(null);const id=projectId,seen=detail.project.revision;let missing:string[]=[];
-    const run=mutationQueue.current.then(()=>action(async()=>{noteRevision(id,seen);const result=await post<{project:Project;missing:string[]}>(`/api/projects/${id}/paste`,{...body,expectedRevision:knownRevision.current!.revision});noteRevision(id,result.project.revision);missing=result.missing;})).then(saved=>saved?{missing}:null);
+  const pasteBlocks=(body:{operations:Mutation[];label:string;from:string;sources:Record<string,string>;artifacts:Record<string,string>})=>{if(!projectId||!detail||historical)return Promise.resolve(null);const id=detail.project.id,seen=detail.project.revision;let missing:string[]=[];
+    const run=mutationQueue.current.then(()=>action(async()=>{const result=await sendEdit<{project:Project;missing:string[]}>(id,seen,'paste',body);noteRevision(id,result.project.revision);missing=result.missing;})).then(saved=>saved?{missing}:null);
     mutationQueue.current=run.catch(()=>undefined);return run;};
   /** A block clicked or opened joins the trail the glance reads; the last dozen are kept. */
   const lookedAt=(nodeId:string)=>{trail.current=[...trail.current.filter(item=>item.nodeId!==nodeId),{nodeId,at:new Date().toISOString()}].slice(-12);};

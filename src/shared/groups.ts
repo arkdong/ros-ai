@@ -58,14 +58,22 @@ export function createGroupOperations(canvas: Canvas, ids: readonly string[], id
     ...roots.map(node => ({ type: 'updateNode' as const, id: node.id, patch: { parentId: id, x: node.x - x, y: node.y - y } }))];
 }
 
-/** Dissolving a new frame retains its overview as a normal note when populated.
+/** A Group that holds something of its own besides its blocks: text, links, or a legacy container's research identity. */
+export function groupKeepsNote(canvas: Canvas, group: CanvasNode): boolean {
+  return Boolean(group.legacyKind || group.description.trim() || canvas.connections.some(line => line.source === group.id || line.target === group.id));
+}
+
+/** Dissolving a frame retains its overview as a normal note when it has one, placed at `noteAt` (a free spot the
+ * caller found) so it does not land on the first block; an empty frame just goes.
  * Legacy containers always retain their research identity and saved outputs.
  * The blocks move right and down by the frame's content inset, so they stay where they were on the map. */
-export function ungroupOperations(canvas: Canvas, group: CanvasNode, inset = { x: 0, y: 0 }): Mutation[] {
+export function ungroupOperations(canvas: Canvas, group: CanvasNode, inset = { x: 0, y: 0 }, noteAt?: { x: number; y: number }): Mutation[] {
   const members = canvas.nodes.filter(node => node.parentId === group.id);
   return [...members.map(node => ({ type: 'updateNode' as const, id: node.id,
     patch: { parentId: group.parentId ?? null, x: group.x + inset.x + node.x, y: group.y + inset.y + node.y } })),
-    { type: 'updateNode', id: group.id, patch: { kind: group.legacyKind ?? 'topic', ...(group.legacyKind ? {} : {blockType: 'note' as const}), groupHighlights: [] } }];
+    groupKeepsNote(canvas, group)
+      ? { type: 'updateNode', id: group.id, patch: { kind: group.legacyKind ?? 'topic', ...(group.legacyKind ? {} : {blockType: 'note' as const}), groupHighlights: [], ...noteAt } }
+      : { type: 'removeNode', id: group.id }];
 }
 
 /** Only organizational/presentation fields and the decision log are omitted, so
