@@ -12,7 +12,6 @@ import { attachRosLayerRoutes, type RosLayer } from './ros-layer.js';
 import { attachExperimentRoutes, type ExperimentService } from './experiments.js';
 import { LocalConnections, Highlights } from './connections.js';
 import { Authority, modeSchema } from './authority.js';
-import type { ResearchService } from './research.js';
 import { attachAssistantRoutes, type AssistantService } from './assistant.js';
 import { attachCodexAgentRoutes,type CodexAgentService } from './codex-agent.js';
 import { attachClaudeAgentRoutes,type ClaudeAgentService } from './claude-agent.js';
@@ -47,7 +46,6 @@ import { Geocoder } from './geocode.js';
 import { ProjectCache } from './project-cache.js';
 import { attachConnectionBudgetRoutes } from './connection-budgets.js';
 import { attachInferenceConnectionRoutes } from './inference-connections.js';
-import { attachWorkspaceGuideRoutes,type WorkspaceGuideService } from './workspace-guide.js';
 import { attachNotebookRoutes, NOTEBOOK_ROUTE } from './notebooks.js';
 import { attachNetworkRoutes, attachPythonSetupRoute } from './network-gate.js';
 import { attachProjectFolderRoutes, ProjectFolders } from './project-folders.js';
@@ -60,8 +58,8 @@ const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
-export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, research?:ResearchService, assistant?:AssistantService, options:{projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames;usageCounts?:UsageCounts},guide?:WorkspaceGuideService) {
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'cancelProjectChat'|'connectionBudgets'|'inference'|'searchStatus'|'chooseSearch'>>;
+export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, assistant?:AssistantService, options:{projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames;usageCounts?:UsageCounts}) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
   const providerUsage = new ProviderUsage(store);
@@ -129,7 +127,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     app.get('/api/connections/search',(_req,res)=>res.json(execution.searchStatus!()));
     app.put('/api/connections/search',(req,res)=>{if(!req.is('application/json'))throw new StoreError('Send a JSON search choice.',415);res.json(execution.chooseSearch!(req.body));});
   }
-  if(guide)attachWorkspaceGuideRoutes(app,guide);
   // App blocks run in the local app only; elsewhere their routes say so.
   attachAppFrameRoutes(app,tools?.appFrames);
   app.get('/api/projects/trash', (_req,res)=>res.json(store.listTrashedProjects()));
@@ -178,7 +175,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     const { message } = z.object({ message: z.string().trim().min(1).max(12000) }).strict().parse(req.body);
     res.json(await execution.chat(routeId(req.params.id), message));
   });
-  const acceptProposal=(id:string,proposalId:string)=>research?.acceptProposal(id,proposalId)||execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId);
+  const acceptProposal=(id:string,proposalId:string)=>execution.acceptGovernedProposal?.(id,proposalId)?store.getProject(id):store.acceptProposal(id,proposalId);
   app.post('/api/projects/:id/proposals/:proposalId/accept', (req, res) => {const id=routeId(req.params.id),proposalId=routeId(req.params.proposalId);res.json(acceptProposal(id,proposalId));});
   // A turn's changes from its review card, in the order given (a change before the ones that build on it). Ones already
   // decided are skipped, so Accept all after accepting a row still works.
@@ -230,7 +227,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
   app.post('/api/projects/:id/policy/resume',(req,res)=>res.json(authority.setStopped(routeId(req.params.id),false)));
-  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);guide?.stopProject(id);if(research)res.json(research.stopProject(id));else{authority.setStopped(id,true);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));}});
+  app.post('/api/projects/:id/stop',(req,res)=>{const id=routeId(req.params.id);assistant?.stopProject(id);authority.setStopped(id,true);execution.cancelProjectChat?.(id);for(const run of store.listRuns(id))if(['queued','running'].includes(run.status)){if(experiments?.owns(run.id))experiments.cancel(run.id);else execution.cancelRun(run.id);}res.json(authority.policy(id));});
   app.get('/api/projects/:id/reviews',(req,res)=>res.json(store.records('review',routeId(req.params.id))));
   app.get('/api/projects/:id/local-connections',(req,res)=>res.json(connections.list(routeId(req.params.id))));
   app.get('/api/projects/:id/resources',(req,res)=>res.json(connections.resources(routeId(req.params.id))));
@@ -243,14 +240,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   app.post('/api/projects/:id/local-connections/:connectionId/export',(req,res)=>{const {artifactIds}=z.object({artifactIds:z.array(identifier).min(1).max(50)}).strict().parse(req.body);res.json(connections.export(routeId(req.params.id),routeId(req.params.connectionId),artifactIds));});
   app.post('/api/projects/:id/local-connections/:connectionId/write',(req,res)=>{const body=z.object({expectedHash:z.string().regex(/^[a-f0-9]{64}$/),content:z.string().min(1).max(500000)}).strict().parse(req.body);res.json(connections.replace(routeId(req.params.id),routeId(req.params.connectionId),body.expectedHash,body.content));});
   app.post('/api/projects/:id/highlights',(req,res)=>res.status(201).json(highlights.save(routeId(req.params.id),req.body)));
-  app.patch('/api/projects/:id/highlights/:highlightId',(req,res)=>res.json(highlights.save(routeId(req.params.id),req.body,routeId(req.params.highlightId))));
   app.delete('/api/projects/:id/highlights/:highlightId',(req,res)=>{highlights.remove(routeId(req.params.id),routeId(req.params.highlightId));res.json({ok:true});});
-  if(research){
-    app.get('/api/projects/:id/research',(req,res)=>res.json(research.list(routeId(req.params.id))));
-    app.post('/api/projects/:id/research',(req,res)=>res.status(201).json(research.start(routeId(req.params.id),req.body)));
-    app.post('/api/research/:id/continue',(req,res)=>{const {message}=z.object({message:z.string().trim().min(1).max(12000).optional()}).strict().parse(req.body);res.json(research.continue(routeId(req.params.id),message));});
-    app.post('/api/research/:id/stop',(req,res)=>res.json(research.stop(routeId(req.params.id))));
-  }
   if (assistant) attachAssistantRoutes(app,assistant);
   if (tools?.outside) attachOutsideAgentRoutes(app,tools.outside);
   if (tools?.memory) attachPersonalMemoryRoutes(app,tools.memory);

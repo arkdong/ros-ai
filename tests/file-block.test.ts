@@ -28,7 +28,7 @@ async function fixture() {
   const data = mkdtempSync(join(tmpdir(), 'ros-file-data-')), folder = join(mkdtempSync(join(tmpdir(), 'ros-file-folder-')), 'Paper project');
   const store = new Store(data);
   const unavailable = (): never => { throw new Error('Provider credentials unavailable in this test.'); };
-  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable, connectionStatuses: () => [] }, undefined, undefined, undefined, { projectFolders: { reserved: [data] }, notebooks: { owner: 'file-block-test' } });
+  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable, connectionStatuses: () => [] }, undefined, undefined, { projectFolders: { reserved: [data] }, notebooks: { owner: 'file-block-test' } });
   app.use(apiErrorHandler);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));

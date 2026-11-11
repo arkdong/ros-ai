@@ -136,11 +136,11 @@ test('Trash refuses queued or running work and accepts the project only after ex
   f.store.mutate(id, add(node('a'), node('b')), 'Notes');
   const running = startRun(f.store, id, 'a'), queued = startRun(f.store, id, 'b', 'queued');
   const before = f.store.detail(id);
-  assert.throws(() => f.store.trashProject(id), /Stop active research/);
+  assert.throws(() => f.store.trashProject(id), /Stop running work/);
   assert.deepEqual(f.store.detail(id), before);
   assert.equal(f.store.listTrashedProjects().length, 0);
   f.store.updateRun(running.id, { status: 'completed' });
-  assert.throws(() => f.store.trashProject(id), /Stop active research/);
+  assert.throws(() => f.store.trashProject(id), /Stop running work/);
   f.store.updateRun(queued.id, { status: 'cancelled' });
   f.store.trashProject(id);
   assert.equal(f.store.listTrashedProjects().length, 1);
@@ -149,12 +149,12 @@ test('Trash refuses queued or running work and accepts the project only after ex
   assert.equal(f.store.getRun(queued.id).status, 'cancelled');
 });
 
-test('Trash also refuses active assistant turns and research sessions between model or experiment runs', t => {
+test('Trash also refuses an active assistant turn between model or experiment runs', t => {
   const f = fixture(t), id = f.project.id;
-  for (const namespace of ['assistant-turn', 'research']) {
+  for (const namespace of ['assistant-turn']) {
     const record = { id: `${namespace}-fixture`, projectId: id, status: 'running' };
     f.store.saveRecord(namespace, record.id, id, record);
-    assert.throws(() => f.store.trashProject(id), /Stop active research/, `${namespace} must block Trash without a current run`);
+    assert.throws(() => f.store.trashProject(id), /Stop running work/, `${namespace} must block Trash without a current run`);
     assert.equal(f.store.listTrashedProjects().length, 0);
     assert.equal(f.store.listProjects().some(p => p.id === id), true);
     f.store.saveRecord(namespace, record.id, id, { ...record, status: 'completed' });

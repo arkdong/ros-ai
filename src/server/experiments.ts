@@ -22,14 +22,14 @@ const MAX_QUEUE = 20;
 const environment = { PATH: '/usr/bin:/bin', LC_ALL: 'C.UTF-8' };
 const workerPath = fileURLToPath(new URL('./experiment_worker.py', import.meta.url));
 const paramsSchema = z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite().min(-1e100).max(1e100), z.boolean()]));
-const previewSchema = z.object({ nodeId: z.string().min(1).max(128), request: z.string().trim().min(1).max(12000), csv: z.string().max(500000).optional(), datasetArtifactId: z.string().max(128).optional(), code: z.string().min(1).max(100000).refine(value=>!!value.trim()&&Buffer.byteLength(value)<=100000,'Code must be nonempty and at most 100 KB.').optional(), parameters: paramsSchema.default({}), retryOf: z.string().max(128).optional(), planRunId: z.string().max(128).optional(), backend:z.enum(['bounded','docker-python','nebius-sandbox']).default('bounded'), researchSessionId:z.string().max(128).optional(), manualCode:z.boolean().optional() }).strict();
+const previewSchema = z.object({ nodeId: z.string().min(1).max(128), request: z.string().trim().min(1).max(12000), csv: z.string().max(500000).optional(), datasetArtifactId: z.string().max(128).optional(), code: z.string().min(1).max(100000).refine(value=>!!value.trim()&&Buffer.byteLength(value)<=100000,'Code must be nonempty and at most 100 KB.').optional(), parameters: paramsSchema.default({}), retryOf: z.string().max(128).optional(), planRunId: z.string().max(128).optional(), backend:z.enum(['bounded','docker-python','nebius-sandbox']).default('bounded'), manualCode:z.boolean().optional() }).strict();
 type PreviewRequest = z.input<typeof previewSchema>;
 type LocalConfiguration = {
   kind: 'local-experiment'; policy: string; approval: ExperimentApproval; code: string; csv: string;
   datasetHash: string|null; codeHash: string; parameters: ExperimentParameters; planner: string;
   sourceDatasetArtifactId?: string; capabilities: ExperimentCapabilities; autoResearch?: AutoResearch;
   originPlan?: { runId: string; codeChanged: boolean; parametersChanged: boolean; datasetChanged: boolean };
-  backend?:'bounded'|'docker-python'|'nebius-sandbox'; researchSessionId?:string;
+  backend?:'bounded'|'docker-python'|'nebius-sandbox';
   remote?:RemoteExecutionState; sandboxGrantFingerprint?:string;
   manualCode?:boolean; language?:string; codeSource?:CodeDocument; inputMode?:'none'|'single-csv';
 };
@@ -140,7 +140,7 @@ export class ExperimentService {
       if(node.blockType!=='code'||!node.code)throw new StoreError('Save this Code block before running it.');
       if(node.code.language.toLowerCase()!=='python')throw new StoreError(`Execution for ${node.code.language} is not implemented. Python uses the isolated Docker runtime.`);
       if(supplied.backend===undefined)request.backend='docker-python';
-      if(request.backend!=='docker-python'||request.planRunId||request.researchSessionId)throw new StoreError('Manual Code blocks use isolated Docker Python, without a model planner or another runtime.');
+      if(request.backend!=='docker-python'||request.planRunId)throw new StoreError('Manual Code blocks use isolated Docker Python, without a model planner or another runtime.');
       if(request.code!==undefined&&request.code!==node.code.source)throw new StoreError('The program differs from the saved Code block. Save it before running.',409);
       if(supplied.parameters!==undefined&&JSON.stringify(request.parameters)!==JSON.stringify(node.code.parameters))throw new StoreError('The parameters differ from the saved Code block. Save them before running.',409);
       const inputId=node.code.inputArtifactId??undefined;
@@ -156,21 +156,17 @@ export class ExperimentService {
       const previous=this.store.getRun(request.retryOf);
       if(previous.projectId!==projectId||previous.nodeId!==node.id)throw new StoreError('Choose a prior experiment from this same Action.');
       previousConfig=this.config(previous);
-      if(request.researchSessionId&&request.researchSessionId!==previousConfig.researchSessionId)throw new StoreError('A revision cannot change its research session.');
-      request.researchSessionId??=previousConfig.researchSessionId;
       request.planRunId??=previousConfig.originPlan?.runId;
       if(!request.manualCode&&request.csv===undefined&&request.datasetArtifactId===undefined)request.datasetArtifactId=previousConfig.sourceDatasetArtifactId;
     }
-    if(request.manualCode&&(request.planRunId||request.researchSessionId))throw new StoreError('Manual Code retries cannot inherit a model-planning or research-session action. Run the saved program as a new Code attempt.');
-    if(request.backend==='nebius-sandbox'&&request.researchSessionId)throw new StoreError('The research collaborator currently uses local Docker. Start a separate Action to approve remote execution.');
+    if(request.manualCode&&request.planRunId)throw new StoreError('Manual Code retries cannot inherit a model-planning action. Run the saved program as a new Code attempt.');
     let inputs = request.manualCode ? [] as Run['inputs'] : this.selected(projectId, node.id);
     let planRun: Run | undefined;
     let plan: { explanation: string; code: string; parameters: ExperimentParameters } | undefined;
     if (request.planRunId) {
       planRun = this.store.getRun(request.planRunId);
-      if (planRun.projectId !== projectId || planRun.nodeId !== node.id || planRun.status !== 'completed' || !['experiment-plan','research-step'].includes(String(planRun.configuration.purpose))) throw new StoreError('Choose a completed experiment plan from this same node.');
-      let raw=planRun.configuration.experimentPlan;
-      if(planRun.configuration.purpose==='research-step'){const step=JSON.parse(String(planRun.configuration.researchResponse));if(step.type!=='experiment')throw new StoreError('Research step does not propose an experiment.');raw={explanation:step.summary,code:step.code,parameters:step.parameters};}
+      if (planRun.projectId !== projectId || planRun.nodeId !== node.id || planRun.status !== 'completed' || planRun.configuration.purpose !== 'experiment-plan') throw new StoreError('Choose a completed experiment plan from this same node.');
+      const raw=planRun.configuration.experimentPlan;
       plan = z.object({ explanation: z.string(), code: z.string().min(1).max(20000), parameters: paramsSchema }).parse(raw);
       if (!request.datasetArtifactId && request.csv === undefined && typeof planRun.configuration.datasetArtifactId === 'string') request.datasetArtifactId = planRun.configuration.datasetArtifactId;
       request.code ??= plan.code;
@@ -196,8 +192,6 @@ export class ExperimentService {
     csv ??= request.manualCode ? '' : SAMPLE;
     if (csv.length > 500000 || Buffer.byteLength(csv)>500000) throw new StoreError('CSV is limited to 500 KB.');
     if(request.manualCode&&sourceDatasetArtifactId&&!csv.trim())throw new StoreError('The selected CSV version is empty. Choose a nonempty captured input or run without an input.');
-    if(previousConfig?.researchSessionId&&hash(csv)!==previousConfig.datasetHash)throw new StoreError('A research-session revision must keep its captured dataset. Start a separate Action to analyze changed data.');
-    if(previousConfig?.researchSessionId)sourceDatasetArtifactId??=previousConfig.sourceDatasetArtifactId;
     const column = firstNumericColumn(csv);
     const code = request.code ?? (request.backend==='nebius-sandbox'?`import statistics\nvalues = [float(row[${JSON.stringify(column)}]) for row in rows]\nmetric("Mean", statistics.mean(values))\ntable("Summary", [{"count": len(values), "mean": statistics.mean(values)}])\nplot("Values", values)`:`values = column(${JSON.stringify(column)})\ntable("Summary", describe(values))\nmetric("Mean", mean(values))\nplot("Values", values)`);
     const previous = this.store.listRuns(projectId).find(run => run.nodeId === node.id && ['queued', 'running'].includes(run.status));
@@ -209,7 +203,7 @@ export class ExperimentService {
     const runId = randomUUID(), timestamp = now();
     const fingerprint = hash(JSON.stringify({ policy: POLICY, backend:request.backend, code, csv:request.manualCode&&!sourceDatasetArtifactId?null:csv, parameters: request.parameters, node, inputs, request: request.request, capabilities: this.capabilities(),...(request.backend==='nebius-sandbox'?{grant:this.sandboxBudget.fingerprint()}:{}) }));
     const configuration: LocalConfiguration = { kind: 'local-experiment', policy: POLICY, approval: { fingerprint, status: 'pending', requestedAt: timestamp }, code, csv, datasetHash: request.manualCode&&!sourceDatasetArtifactId?null:hash(csv), codeHash: hash(code), parameters: request.parameters, planner: request.manualCode?'User-authored saved Code block. No model inference or hidden sample input.':planRun ? `Code originates from saved ${planRun.provider}/${planRun.model} plan ${planRun.id}. Local execution is a separate permission decision.` : request.code ? 'User-supplied or separately proposed code; no model inference in local preview.' : 'Built-in local descriptive-analysis recipe. This is not an AI-generated plan; review or edit it for your request.', ...(request.manualCode?{manualCode:true,language:node.code!.language,codeSource:structuredClone(node.code!),inputMode:sourceDatasetArtifactId?'single-csv' as const:'none' as const}:{}), ...(sourceDatasetArtifactId ? { sourceDatasetArtifactId } : {}), ...(planRun && plan ? { originPlan: { runId: planRun.id, codeChanged: code !== plan.code, parametersChanged: JSON.stringify(request.parameters) !== JSON.stringify(plan.parameters), datasetChanged: hash(csv) !== planRun.inputs.find(input => input.artifactId === planRun!.configuration.datasetArtifactId)?.artifact.hash } } : {}), capabilities: this.capabilities() };
-    configuration.backend=request.backend;configuration.researchSessionId=request.researchSessionId;
+    configuration.backend=request.backend;
     if(this.isSandbox(configuration))configuration.policy=this.backend(configuration).capabilities().policy;
     if(request.backend==='nebius-sandbox'){
       configuration.sandboxGrantFingerprint=this.sandboxBudget.fingerprint();

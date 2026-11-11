@@ -9,7 +9,6 @@ import { createServer } from 'node:http';
 import { Store } from './store.js';
 import { ExecutionService } from './execution.js';
 import { ExperimentService } from './experiments.js';
-import { ResearchService } from './research.js';
 import { CodexAgentService } from './codex-agent.js';
 import { ClaudeAgentService } from './claude-agent.js';
 import { ToolLoopAgentService } from './tool-loop-agent.js';
@@ -40,7 +39,6 @@ import { LocalRos } from './local-ros.js';
 import { RosLayer, type LayerChoice } from './ros-layer.js';
 import type { NotebookService } from './notebooks.js';
 import type { ProjectFolders } from './project-folders.js';
-import { WorkspaceGuideService } from './workspace-guide.js';
 import { OutsideAgents } from './outside-agents.js';
 import { Setup } from './setup.js';
 import { NotionApi } from './notion.js';
@@ -73,7 +71,6 @@ const releaseLock = acquireDataLock(dataDir);
 let store: Store | undefined;
 let execution: ExecutionService | undefined;
 let experiments: ExperimentService | undefined;
-let research:ResearchService|undefined;
 let assistant:AssistantService|undefined;
 let agent:CodexAgentService|undefined;
 let claude:ClaudeAgentService|undefined;
@@ -85,7 +82,6 @@ let cloud:CloudAccount|undefined;
 let usageCounts:UsageCounts|undefined;
 let localRos:LocalRos|undefined;
 let googleDrive:GoogleDriveConnection|undefined;
-let guide:WorkspaceGuideService|undefined;
 let outside:OutsideAgents|undefined;
 let notebooks:NotebookService|undefined;
 let projectFolders:ProjectFolders|undefined;
@@ -102,7 +98,6 @@ async function shutdown() {
     appFrames?.stop();
     updates?.shutdown();
     await notebooks?.shutdown();
-    await guide?.shutdown();
     await assistant?.shutdown();
     await agent?.shutdown();
     await claude?.shutdown();
@@ -114,7 +109,6 @@ async function shutdown() {
     localRos?.shutdown();
     await execution?.shutdown();
     await experiments?.shutdown();
-    await research?.shutdown();
     googleDrive?.shutdown();
     server.close();
     await vite?.close();
@@ -144,7 +138,6 @@ try {
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
     const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
     experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
-    research=new ResearchService(store,execution,experiments);
     agent=new CodexAgentService(store,execution,experiments,dataDir);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);
@@ -165,7 +158,6 @@ try {
       return {engine:'layout'};
     });
     assistant=new AssistantService(store,execution,experiments,agent,claude,loop,personal,skills,acp,rosLayer);
-    guide=new WorkspaceGuideService(store,execution);
     outside=new OutsideAgents(store,execution,experiments,assistant,dataDir,root,personal,skills);
     AgentWorkspaceTools.notion = new NotionApi(() => plugins.token('notion'));
     // Google Sheets and Docs blocks, and Google Drive's tools for agents, read through the Google Drive sign-in.
@@ -192,7 +184,7 @@ try {
     usageCounts.start();
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
     const suggestions = new PluginSuggestions(dataDir);
-    app = createApp(store, execution, experiments,research,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames,usageCounts},guide);
+    app = createApp(store, execution, experiments,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames,usageCounts});
     if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
   }
   notebooks=app.locals.notebooks;

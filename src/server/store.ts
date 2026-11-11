@@ -386,7 +386,7 @@ export class Store {
   listTrashedProjects():Project[] { return this.all<Project>('SELECT data FROM projects WHERE id IN (SELECT project_id FROM project_trash) ORDER BY rowid DESC'); }
   trashProject(id:string):Project {
     const project=this.getProject(id);
-    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running')||this.records<{status:string}>('research',id).some(session=>session.status==='running')||this.records<{status:string}>('workspace-guide-review',id).some(review=>['queued','running'].includes(review.status)))throw new StoreError('Stop active research and pending experiments before moving this project to Trash.',409);
+    if(this.listRuns(id).some(run=>['queued','running'].includes(run.status))||this.records<{status:string}>('assistant-turn',id).some(turn=>turn.status==='running'))throw new StoreError('Stop running work before moving this project to Trash.',409);
     this.db.prepare('INSERT INTO project_trash(project_id,deleted_at) VALUES (?,?)').run(id,now());
     return project;
   }

@@ -1658,7 +1658,7 @@ const findingCard = (finding: z.infer<typeof findingsSchema>['findings'][number]
 const textHash = (text: string) => createHash('sha256').update(text).digest('hex');
 /** Quotes are compared word for word, ignoring case, spacing and the style of quotation marks and dashes.
  * An ellipsis may leave words out between parts, which must appear in order. */
-export function quoted(text: string, quote: string): boolean {
+function quoted(text: string, quote: string): boolean {
   const plain = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[‘’‚‛′]/gu, "'").replace(/[“”„‟″]/gu, '"').replace(/[‐‑‒–—―]/gu, '-').replace(/\s+/gu, ' ').trim();
   const haystack = plain(text), parts = plain(quote).replace(/^["']+|["']+$/gu, '').split(/\s*(?:\[(?:\.\.\.|…)\]|\.\.\.|…)\s*/u).filter(Boolean);
   let from = 0;
