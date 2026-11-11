@@ -4,8 +4,6 @@
 .single-canvas-shell .assistant-signal { width: 32px; height: 32px; }
 .single-canvas-shell .assistant-signal > .research-ring { width: 32px; height: 32px; transform: none; opacity: 1; object-fit: contain; }
 .single-canvas-shell .assistant-signal.working > .research-ring { animation: ring-working 2.5s ease-in-out infinite; }
-.single-canvas-shell .assistant-welcome-signal { width: 58px; height: 58px; margin-left: 0; }
-.single-canvas-shell .assistant-welcome-signal > .research-ring { width: 58px; height: 58px; transform: none; opacity: 1; object-fit: contain; }
 @keyframes ring-working { 50% { opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { .single-canvas-shell .assistant-signal.working > .research-ring { animation: none; } }
 .history-evidence { border-bottom: 1px solid var(--line-soft); }

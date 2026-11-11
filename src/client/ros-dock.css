@@ -182,7 +182,7 @@
 @container ros-composer (max-width: 459px) {
   .ros-bar-footer { flex-wrap: wrap; height: auto; row-gap: 2px; }
 }
-.assistant-panel.ros-panel .assistant-admission { margin: 0 12px 4px; }
+.assistant-panel.ros-panel .assistant-admission { margin: 0 16px 8px; }
 
 .single-canvas-shell .assistant-panel.ros-panel.ros-half,
 .assistant-panel.ros-panel.ros-half {
