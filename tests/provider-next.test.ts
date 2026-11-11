@@ -222,14 +222,14 @@ test('Docker experiment planning HTTP request captures the selected runtime and 
   }
 });
 
-test('Nebius sandbox planning captures the standard-library contract and preserves it on an explicit retry',async()=>{
+test('an explicit retry of a failed code plan keeps its runtime and contract',async()=>{
   const f=fixture(),requests:ModelRequest[]=[];
-  const info:ModelInfo={id:'offline-remote-plan',contextTokens:100000,inputUsdPerToken:0.0000001,outputUsdPerToken:0.0000003,capabilities:{structuredOutput:false,toolCalling:true,cancellation:'abort-request',modelVersion:false},metadata:{fixture:true}};
-  const code='import statistics\nvalues = [float(row["value"]) for row in rows]\nmetric("Mean", statistics.mean(values))\nplot("Values", values)';
+  const info:ModelInfo={id:'offline-retry-plan',contextTokens:100000,inputUsdPerToken:0.0000001,outputUsdPerToken:0.0000003,capabilities:{structuredOutput:false,toolCalling:true,cancellation:'abort-request',modelVersion:false},metadata:{fixture:true}};
+  const code='metric("Mean", df["value"].mean())\nfig, ax = plt.subplots()\nax.plot(df["value"])\nplot("Values", fig)';
   const model:ModelAdapter={provider:'nebius',model:info.id,configured:true,prepare:async()=>info,complete:async request=>{
     requests.push(request);
     if(requests.length===1) throw new Error('Offline first-attempt failure');
-    return {model:info.id,modelVersion:null,usage:{inputTokens:20,outputTokens:50},metadata:{fixture:true},content:JSON.stringify({explanation:'Standard-library fixture plan',code,parameters:{}})};
+    return {model:info.id,modelVersion:null,usage:{inputTokens:20,outputTokens:50},metadata:{fixture:true},content:JSON.stringify({explanation:'Research-library fixture plan',code,parameters:{}})};
   }};
   const service=new ExecutionService(f.store,{model,includeSetupUsage:false}),local=new ExperimentService(f.store);
   const app=createApp(f.store,service,local);app.use(apiErrorHandler);
@@ -241,22 +241,19 @@ test('Nebius sandbox planning captures the standard-library contract and preserv
     local.decide(preview.run.id,preview.approval.fingerprint,'cancel');
     const dataset=f.store.detail(f.project.id).artifacts.find(artifact=>artifact.kind==='dataset')!;
     const base=`http://127.0.0.1:${address.port}`;
-    const response=await fetch(`${base}/api/projects/${f.project.id}/nodes/a/experiment-plan`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request:'Compute a mean and plot',datasetArtifactId:dataset.id,backend:'nebius-sandbox'})});
+    const response=await fetch(`${base}/api/projects/${f.project.id}/nodes/a/experiment-plan`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request:'Compute a mean and plot',datasetArtifactId:dataset.id,backend:'docker-python'})});
     assert.equal(response.status,201);
     const started=await response.json(),failed=await terminal(f.store,started.id);
-    assert.equal(failed.status,'failed');assert.equal(failed.configuration.backend,'nebius-sandbox');assert.equal(requests.length,1);
+    assert.equal(failed.status,'failed');assert.equal(failed.configuration.backend,'docker-python');assert.equal(requests.length,1);
     const retry=await fetch(`${base}/api/runs/${failed.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     assert.equal(retry.status,201);
     const retried=await retry.json(),run=await terminal(f.store,retried.id);
-    assert.equal(run.status,'completed');assert.equal(run.configuration.backend,'nebius-sandbox');assert.equal(requests.length,2);
+    assert.equal(run.status,'completed');assert.equal(run.configuration.backend,'docker-python');assert.equal(requests.length,2);
     for(const request of requests) {
       const prompt=request.messages[0].content;
-      assert.match(prompt,/Python 3\.12 standard library in a remote Nebius Sandbox/);
-      assert.match(prompt,/rows, a list of dictionaries.*string values/);
-      assert.match(prompt,/pandas, NumPy, SciPy and Matplotlib are NOT installed/);
-      assert.match(prompt,/plot\(title,numeric_values\[,labels\]\)/);
-      assert.match(prompt,/separate explicit execution approval/);
-      assert.doesNotMatch(prompt,/Injected globals: df|Exposed APIs: column\(name\)/);
+      assert.match(prompt,/isolated Docker research runtime \(docker-python\)/);
+      assert.match(prompt,/Injected globals: df, params, pd, np, plt, scipy/);
+      assert.doesNotMatch(prompt,/Exposed APIs: column\(name\)/);
     }
     assert.equal(run.inputs[0].artifact.hash,dataset.hash);
     assert.equal((run.configuration.experimentPlan as {code:string}).code,code);

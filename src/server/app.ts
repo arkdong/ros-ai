@@ -189,7 +189,7 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     res.status(201).json(execution.startRun(routeId(req.params.id), nodeId, options));
   });
   app.post('/api/projects/:id/nodes/:nodeId/experiment-plan', (req, res) => {
-    const body = z.object({ request: z.string().trim().min(1).max(12000), datasetArtifactId: identifier, backend: z.enum(['bounded','docker-python','nebius-sandbox']).default('bounded') }).strict().parse(req.body);
+    const body = z.object({ request: z.string().trim().min(1).max(12000), datasetArtifactId: identifier, backend: z.enum(['bounded','docker-python']).default('bounded') }).strict().parse(req.body);
     if (!execution.startExperimentPlan) throw new StoreError('Model experiment planning is unavailable', 503);
     res.status(201).json(execution.startExperimentPlan(routeId(req.params.id), routeId(req.params.nodeId), body));
   });

@@ -17,8 +17,7 @@ import { WebFace, type WebFaceData } from './WebBlock';
 import { VERDICT_ORDER, VERDICT_WORDS, checkTally } from '../shared/source-check';
 import { TEXT_LABELS, blockOrigin, kindName, labelFixed, labelPatch, textLabel } from '../shared/vocabulary';
 import { api } from './api';
-import type { ExperimentCapabilities } from '../shared/experiments';
-import { deriveGroupOutcomes, type CardOutcome, type CardOutcomeOptions } from '../shared/card-outcome';
+import { deriveGroupOutcomes, type CardOutcome } from '../shared/card-outcome';
 import { CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_HEIGHT, CARD_MIN_WIDTH, CARD_MAX_WIDTH, CARD_SCALES, cardScale, cardFootprintHeight, cardWidth, initialCardSize, measuredCardHeight, pictureCardHeight, pictureMinWidth, setCardHeight } from '../shared/card-size';
 import { layoutOnly, savedCanvasPosition } from '../shared/canvas-position';
 import { createCanvasReflowPlan, extendCanvasReflowPlan, reflowCanvas, unsettled, type CanvasReflowPlan } from '../shared/canvas-reflow';
@@ -557,17 +556,6 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const [resizingCards, setResizingCards] = useState<string[]>([]);
   const [resultChoices, setResultChoices] = useState<Record<string, ResultPageChoice>>(() => readSaved(`result-pages:${detail.project.id}`, {}));
   const changeResults = (id: string, choice: ResultPageChoice) => setResultChoices(current => { const next = { ...current, [id]: { size: choice.size, page: choice.page } }; saveLocal(`result-pages:${detail.project.id}`, next); return next; });
-  const [blockers, setBlockers] = useState<CardOutcomeOptions['blockers']>();
-  const runRevision = detail.runs.map(run => `${run.id}:${run.status}`).join('|');
-  useEffect(() => {
-    let active = true;
-    void api<ExperimentCapabilities>('/api/experiments/capabilities').then(capabilities => {
-      if (!active) return;
-      const remote = capabilities.nebiusSandbox;
-      setBlockers({ 'nebius-sandbox': remote?.costGate && !remote.costGate.ready ? remote.costGate.reason : remote && !remote.available ? 'Nebius Sandbox is unavailable; inspect execution details.' : '' });
-    }).catch(() => { /* Keep captured capability evidence when current state is unavailable. */ });
-    return () => { active = false; };
-  }, [detail.project.id, runRevision]);
   const measureCard = useCallback((id: string, width: number, height: number) => setCardMeasurements(current => current[id]?.width === width && current[id]?.height === height ? current : { ...current, [id]: { width, height } }), []);
   const animateNextLayout = useRef<Map<string, { x: number; y: number }> | null>(null), animationFrame = useRef<number | null>(null);
   const shownEdges = useRef(new Map<string, { key: string; edge: LinkEdge }>());
@@ -673,7 +661,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const stageOrder = numberedStageOrder(rootStages);
   rootStages.sort((a, b) => stageOrder ? stageOrder.get(a.id)! - stageOrder.get(b.id)! : a.y - b.y || a.x - b.x);
   const showStageNavigation = rootStages.length > 1 && rootStages.length <= 8 && rootStages.some(node => displayed.canvas.nodes.some(child => child.parentId === node.id));
-  const cardOutcomes = useMemo(() => deriveGroupOutcomes(displayed.canvas.nodes, detail.runs, detail.artifacts, { projectId: detail.project.id, blockers }), [displayed.canvas.nodes, detail.runs, detail.artifacts, detail.project.id, blockers]);
+  const cardOutcomes = useMemo(() => deriveGroupOutcomes(displayed.canvas.nodes, detail.runs, detail.artifacts, { projectId: detail.project.id }), [displayed.canvas.nodes, detail.runs, detail.artifacts, detail.project.id]);
   const descendantIds = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const ids = new Set<string>();
     const visit=(id:string)=>{for(const child of displayed.canvas.nodes.filter(item=>item.parentId===id)){if(!ids.has(child.id)){ids.add(child.id);visit(child.id);}}};
