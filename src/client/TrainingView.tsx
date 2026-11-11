@@ -80,7 +80,7 @@ function DataPane({ read }: { read: TrainingRead }) {
   if (!data.run) return <p className="live-block-empty">No teacher runs yet. They appear here as <code>run.ts rollout</code> writes them.</p>;
   return <>
     <Stats items={[['Tasks run', `${number(data.run)} of ${number(data.tasks)}`], ['Kept', `${number(data.kept)} · ${percent(data.kept, data.run)}`], ['Token Factory', usd(data.spentUsd)], ['Per task', `${(data.seconds / data.run).toFixed(0)} s`]]}/>
-    <div className="live-block-scroll nowheel"><table>
+    <div className="live-block-scroll"><table>
       <thead><tr><th>Kind of task</th><th>Kept</th><th>Pass</th><th>Commonest failure</th></tr></thead>
       <tbody>{data.families.map(item => <tr key={item.family}><td>{item.family}</td><td>{item.kept} of {item.run}</td><td>{percent(item.kept, item.run)}</td><td title={item.top}>{item.top ?? '–'}</td></tr>)}</tbody>
     </table></div>
@@ -101,7 +101,7 @@ function TrainingPane({ read, view }: { read: TrainingRead; view: TrainingView }
 
 function EvaluationPane({ read }: { read: TrainingRead }) {
   if (!read.evals.length) return <p className="live-block-empty">No evaluation yet. Each <code>run.ts eval</code> (Nano 4B as it is, ros-nemotron, Super) adds a row here, scored on the same held-out tasks.</p>;
-  return <div className="live-block-scroll nowheel"><table>
+  return <div className="live-block-scroll"><table>
     <thead><tr><th>Model</th><th>Held-out tasks passed</th><th>Pass</th></tr></thead>
     <tbody>{read.evals.map(item => <tr key={item.label}><td>{item.label}</td><td>{item.passed} of {item.run}</td><td>{percent(item.passed, item.run)}</td></tr>)}</tbody>
   </table></div>;

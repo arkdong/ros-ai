@@ -202,14 +202,14 @@ function PicturePreview({ file, title, missing, onSize }: { file: ShownFile; tit
   return <img className="picture-preview" src={file.src} alt={title} draggable={false} style={file.image ? { aspectRatio: `auto ${file.image.width} / ${file.image.height}`, width: `min(100%, ${file.image.width}px)` } : undefined}
     onLoad={event => onSize?.({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setFailed(file.src)}/>;
 }
-/** The card's PDF: every page under the one before, scrolled with the wheel like a Notion page card (nowheel keeps the
- * wheel off the canvas). Page 1 is drawn at once, the rest as they come near the view, and pages far from it are not. */
+/** The card's PDF: every page under the one before, scrolled like a Notion page card once the block is picked (see
+ * canvasWheel in Canvas.tsx). Page 1 is drawn at once, the rest as they come near the view, and pages far from it are not. */
 function PdfPreview({ file }: { file: ShownFile }) {
   // While the card is resized the drawn pages scale with it; they are drawn again once the width settles.
   const box = useRef<HTMLDivElement>(null), width = useSettled(useWidth(box)), { doc, error } = usePdf(file.src), sizes = usePageSizes(doc);
   const shown = useNearPages(box, sizes.length, 1);
   return <>
-    <div ref={box} className="block-figure-preview file-page-preview nowheel">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 && sizes.length ? sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ aspectRatio: `${size.width} / ${size.height}` }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={width} fluid/>}</div>) : <LoaderCircle size={14} className="spin"/>}</div>
+    <div ref={box} className="block-figure-preview file-page-preview">{error ? <span className="file-preview-note">{error}</span> : doc && width > 0 && sizes.length ? sizes.map((size, index) => <div key={index} className="pdf-page-box" style={{ aspectRatio: `${size.width} / ${size.height}` }}>{shown.has(index + 1) && <PdfPage doc={doc} number={index + 1} width={width} fluid/>}</div>) : <LoaderCircle size={14} className="spin"/>}</div>
     <FileLine parts={['PDF', doc ? `${doc.numPages} page${doc.numPages === 1 ? '' : 's'}` : '', file.bytes ? fileSize(file.bytes) : '']}/>
   </>;
 }
