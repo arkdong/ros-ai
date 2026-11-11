@@ -24,7 +24,7 @@ import { attachSetupRoutes, type Setup } from './setup.js';
 import { attachPersonalMemoryRoutes, type PersonalMemory } from './personal-memory.js';
 import { attachSkillRoutes, type SkillLibrary } from './skills.js';
 import { attachArtifactEditingRoutes } from './artifact-editing.js';
-import { projectBudgetReport, usageAnalytics } from './budget-report.js';
+import { usageAnalytics } from './budget-report.js';
 import { providerBalances } from './provider-balances.js';
 import { attachSpendingBudgetRoutes, SpendingBudget } from './spending-budget.js';
 import { ModelSettings } from './model-settings.js';
@@ -219,10 +219,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
   // How much of the Claude and ChatGPT subscriptions' windows is used, as Claude Code and Codex report it. Local app only.
   app.get('/api/usage/plans', async (_req, res) => res.json({ plans: (await Promise.all([tools?.claude?.plan.usage(), agent?.planUsage()].map(item => item?.catch(() => null)))).filter(Boolean) }));
   app.get('/api/usage/analytics', (_req, res) => res.json(usageAnalytics(store, Object.fromEntries((execution.inference?.statuses() ?? []).map(item => [item.id, item.name])))));
-  app.get('/api/projects/:id/budget', async (req, res) => {
-    const report = projectBudgetReport(store, routeId(req.params.id), { connections: execution.connectionStatuses(), sandbox: experiments?.capabilities().nebiusSandbox?.costGate });
-    res.json({ ...report, providerAccounts: await providerUsage.read() });
-  });
   app.get('/api/projects/:id/policy',(req,res)=>res.json(authority.policy(routeId(req.params.id))));
   app.put('/api/projects/:id/policy',(req,res)=>res.json(authority.configure(routeId(req.params.id),req.body)));
   app.patch('/api/projects/:id/nodes/:nodeId/policy',(req,res)=>{const {mode}=z.object({mode:modeSchema.nullable()}).strict().parse(req.body);res.json(authority.override(routeId(req.params.id),routeId(req.params.nodeId),mode));});
