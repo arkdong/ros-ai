@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
-import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
+import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useNodesInitialized, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
 import { Share as ShareIcon, Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Plus, Redo2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
@@ -553,7 +553,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
   // The link whose word is being edited, and a link just drawn, whose word opens as soon as the canvas shows it.
   const [editingLink, setEditingLink] = useState<{ connectionId: string } | null>(null); const pendingEdit = useRef<string | null>(null);
-  const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
+  const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState(''), [stageHint, setStageHint] = useState(false), [stageInView, setStageInView] = useState<string | null | undefined>(undefined);
   const [animatingLayout, setAnimatingLayout] = useState(false);
   const [reflowRevision, setReflowRevision] = useState(0);
   // Blocks being dragged, or settling after a drop, are drawn from React Flow's own store until they come to rest
@@ -659,7 +659,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!overview && zoom < .65) {
       const anchor = visible.find(node => node.id === selectedId) || visible.filter(node => !node.parentId).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)[0];
       if (anchor) {
-        setMessage('Reading view · use the stage buttons to follow the question, or See all to show the whole canvas.');
+        // Said once per computer, under the stage row it is about.
+        if (showStageNavigation && !readSaved('stage-hint-said', false)) { saveLocal('stage-hint-said', true); setStageHint(true); }
         return focusReadable(anchor.id, duration);
       }
     }
@@ -689,6 +690,24 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const stageOrder = numberedStageOrder(rootStages);
   rootStages.sort((a, b) => stageOrder ? stageOrder.get(a.id)! - stageOrder.get(b.id)! : a.y - b.y || a.x - b.x);
   const showStageNavigation = rootStages.length > 1 && rootStages.length <= 8 && rootStages.some(node => displayed.canvas.nodes.some(child => child.parentId === node.id));
+  // The stage the window is on: the one nearest the upper middle of the map's free area, where a stage in reading view
+  // starts, unless two or more are in view whole.
+  const noteStageInView = (view: Viewport) => {
+    const bounds = area.current?.getBoundingClientRect();
+    if (!bounds || !showStageNavigation) return;
+    const inset = canvasInsets(), left = -view.x / view.zoom, top = -view.y / view.zoom, right = left + bounds.width / view.zoom, bottom = top + bounds.height / view.zoom;
+    const cx = (inset.left + (bounds.width - inset.left - inset.right) / 2 - view.x) / view.zoom, cy = (inset.top + (bounds.height - inset.top - inset.bottom) / 4 - view.y) / view.zoom;
+    let nearest: string | null = null, distance = Infinity, whole = 0;
+    for (const stage of rootStages) {
+      const node = flow.getInternalNode(stage.id);
+      if (!node) continue;
+      const { x, y } = node.internals.positionAbsolute, width = node.measured.width ?? 0, height = node.measured.height ?? 0;
+      if (x >= left && y >= top && x + width <= right && y + height <= bottom) whole += 1;
+      const away = Math.hypot(Math.max(x - cx, 0, cx - x - width), Math.max(y - cy, 0, cy - y - height));
+      if (away < distance) { distance = away; nearest = stage.id; }
+    }
+    setStageInView(whole > 1 ? null : nearest);
+  };
   const cardOutcomes = useMemo(() => deriveGroupOutcomes(displayed.canvas.nodes, detail.runs, detail.artifacts, { projectId: detail.project.id, blockers }), [displayed.canvas.nodes, detail.runs, detail.artifacts, detail.project.id, blockers]);
   const descendantIds = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const ids = new Set<string>();
@@ -756,6 +775,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); setEditingLink(null); }
   };
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 4500); return () => clearTimeout(timer); }, [message]);
+  // The row marks a stage from the first paint on: read once the blocks have their sizes, then after every move.
+  const measured = useNodesInitialized();
+  useEffect(() => { if (measured) noteStageInView(flow.getViewport()); }, [measured, detail.project.id]);
+  const stageNow = stageInView === undefined ? selectedId : stageInView;
+  useEffect(() => { if (!stageHint) return; const timer = setTimeout(() => setStageHint(false), 9000); return () => clearTimeout(timer); }, [stageHint]);
   // Copy and paste answer with a small toast; a paste's toast offers Undo.
   const [toast, setToast] = useState<{ text: string; undo?: boolean; key: number } | null>(null);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), toast.undo ? 5000 : 2200); return () => clearTimeout(timer); }, [toast]);
@@ -1351,7 +1375,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       if (target && target !== state.fromNode.id) connect(state.fromNode.id, target);
     },
     onMoveStart: closeLabelMenu,
-    onMoveEnd: (_, view) => saveLocal(viewKey, view),
+    onMoveEnd: (_, view) => { saveLocal(viewKey, view); noteStageInView(view); },
   });
   // Add block opens its menu beside whichever control asked for it: the dock's black tile, or the button in the middle
   // of an empty map. The menu goes to the right of the control, or to its left when the window is too narrow for that.
@@ -1423,7 +1447,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
       {(historyCanvas || proposal) && <div className="canvas-context"><span className="canvas-state">{historyCanvas ? 'Saved canvas · read only' : 'Proposed changes'}</span></div>}
-      {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
+      {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={stageNow === node.id ? 'active' : ''} aria-current={stageNow === node.id ? 'true' : undefined} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}>{!/^\s*\d+[.·:—–)\s]/u.test(node.title) && <small>{index + 1}</small>}<span>{node.title}</span></button>)}</nav>}
+      {showStageNavigation && stageHint && <p className="canvas-stage-hint" role="status">Reading view. Click a stage to follow the question.</p>}
     </div>
     {dockItems.length > 0 && <CanvasDock label="Canvas tools" items={dockItems}/>}
     {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} onPick={kind => { setAddMenu(null); onAdd(addMenu.at ? null : selectedGroup?.id ?? null, kind.id, addMenu.at); }} onBrowse={kind => { setAddMenu(null); onBrowse(addMenu.at ? null : selectedGroup?.id ?? null, kind?.id, addMenu.at); }} onClose={() => setAddMenu(null)}/>}

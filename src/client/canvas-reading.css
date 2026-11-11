@@ -62,23 +62,41 @@
 }
 .direct-canvas .canvas-stage-navigation button {
   flex: 0 0 auto;
-  max-width: 220px;
-  padding: 8px 11px;
-  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--body);
   font-size: var(--text-sm);
-  line-height: 1.35;
-  white-space: normal;
-  text-align: left;
+  font-weight: 400;
 }
+.direct-canvas .canvas-stage-navigation button > small { font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.direct-canvas .canvas-stage-navigation button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.direct-canvas .canvas-stage-navigation button:hover { background: var(--sidebar); color: var(--ink); }
 .direct-canvas .canvas-stage-navigation button.active {
   border-color: var(--ink);
-  background: var(--rail);
-  color: var(--body);
+  color: var(--ink);
+  font-weight: 500;
 }
+/* Said once, under the row it is about. It hangs below the header so the map's top inset does not move. */
+.direct-canvas .canvas-stage-hint {
+  position: absolute;
+  top: 100%;
+  left: 2px;
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  pointer-events: none;
+  animation: stage-hint var(--dur-menu) var(--ease);
+}
+@keyframes stage-hint { from { opacity: 0; } }
+/* Notices drop below the stage row instead of lying over it. */
+.direct-canvas:has(.canvas-stage-navigation) .canvas-notices { top: 62px; }
 .single-canvas-shell .canvas-stage,
 .single-canvas-shell .canvas-stage > .canvas-area,
 .direct-canvas .react-flow { background: var(--paper); }
