@@ -55,4 +55,4 @@
 .direct-canvas .research-card:hover > .relationship-handle, .direct-canvas .research-card:focus-within > .relationship-handle, .direct-canvas.is-connecting .relationship-handle, .direct-canvas .relationship-handle:focus-visible { opacity: 1; }
 .direct-canvas.unified-canvas .relationship-handle:hover, .direct-canvas .relationship-handle:focus-visible { outline: 0; border-color: var(--ink); box-shadow: none; }
 .direct-canvas.is-connecting .research-card { cursor: crosshair; }
-.direct-canvas.is-connecting .research-card:hover { border-color: var(--muted); box-shadow: 0 0 0 1px var(--muted), var(--shadow-block); }
+.direct-canvas.is-connecting .research-card:hover { border-color: var(--muted); box-shadow: 0 0 0 1px var(--muted); }

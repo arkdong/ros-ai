@@ -35,19 +35,20 @@ export function SettingsSidebar({ section, onSection }: { section: SettingsSecti
   </div>;
 }
 
-export function Row({ title, detail, children }: { title: string; detail?: ReactNode; children: ReactNode }) {
-  return <div className="settings-row"><div><strong>{title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
+/** One setting. With `field`, the row's name is the label of the field with that id. */
+export function Row({ title, detail, field, children }: { title: string; detail?: ReactNode; field?: string; children: ReactNode }) {
+  return <div className="settings-row"><div><strong>{field ? <label htmlFor={field}>{title}</label> : title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
 }
 
 const usd = (value: number) => `US$${value.toFixed(2)}`;
 /** A dollar amount with Save; an empty field clears it. */
-function AmountField({ label, value, onSave }: { label: string; value: number | null; onSave: (value: number | null) => Promise<unknown> }) {
+function AmountField({ id, value, onSave }: { id: string; value: number | null; onSave: (value: number | null) => Promise<unknown> }) {
   const [draft, setDraft] = useState(value === null ? '' : String(value)), [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { setDraft(value === null ? '' : String(value)); }, [value]);
   const parsed = draft.trim() === '' ? null : Number(draft), valid = parsed === null || (Number.isFinite(parsed) && parsed >= 0), changed = parsed !== value;
   const save = async () => { setBusy(true); setError(''); try { await onSave(parsed); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   return <form className="amount-field" onSubmit={event => { event.preventDefault(); if (valid && changed && !busy) void save(); }}>
-    <span className="amount-prefix">US$</span><input aria-label={label} inputMode="decimal" placeholder="None" value={draft} onChange={event => setDraft(event.target.value)}/>
+    <span className="amount-prefix">US$</span><input id={id} inputMode="decimal" placeholder="None" value={draft} onChange={event => setDraft(event.target.value)}/>
     {changed && <button className="secondary small" type="submit" disabled={!valid || busy}>{busy ? <LoaderCircle size={13} className="spin"/> : 'Save'}</button>}
     {error && <span className="inline-error" role="alert">{error}</span>}
   </form>;
@@ -93,8 +94,8 @@ export function GeneralSettings({ projectId, projectTitle, policy, onChanged }: 
     <RosLayerSettings/>
     <SuggestionSettings/>
     {budget && <section><h2>Monthly budget</h2><div className="settings-card">
-      <Row title="All projects" detail={budgetDetail(budget.all)}><AmountField label="Monthly budget for all projects" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
-      {budget.project && <Row title={projectTitle ?? 'This project'} detail={budgetDetail(budget.project)}><AmountField label="Monthly budget for this project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
+      <Row title="All projects" field="budget-all" detail={budgetDetail(budget.all)}><AmountField id="budget-all" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
+      {budget.project && <Row title={projectTitle ?? 'This project'} field="budget-project" detail={budgetDetail(budget.project)}><AmountField id="budget-project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
     </div></section>}
     {network && <section><h2>Python network</h2><div className="settings-card">
       <Row title="Sites" detail={network.mode === 'full' ? 'Python in Code and Notebook blocks can reach any website.' : `Python asks before reaching a new website. ${network.preset.join(' and ')} are always allowed for installing packages.`}>
@@ -146,10 +147,10 @@ function FirstRunSettings() {
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
     <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
-      <button type="button" className="secondary small" onClick={show}>Show</button>
+      <button type="button" className="secondary small" onClick={show}>Show welcome</button>
     </Row>
     <Row title="Reset all connections" detail="Undo every link and sign-in on this computer, then start again from the welcome page, as on a new computer.">
-      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>{busy && !plan && <LoaderCircle size={13} className="spin"/>}Reset all…</button>
+      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>{busy && !plan && <LoaderCircle size={13} className="spin"/>}Reset connections…</button>
     </Row>
     {plan && <div className="settings-confirm">
       <div className="settings-options">
@@ -157,7 +158,7 @@ function FirstRunSettings() {
         {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
       </div>
       {!options.length && <p className="settings-confirm-note">Nothing is connected on this computer; only the welcome comes back.</p>}
-      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset all</button></div>
+      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset connections</button></div>
     </div>}
     {failed.length > 0 && <div className="settings-confirm">
       <p className="settings-confirm-note">Reset, except for these:</p>
@@ -416,7 +417,7 @@ export function BalanceSettings({ onAgents }: { onAgents: () => void }) {
   const saveCredit = async (id: string, amountUsd: number | null) => { await api(`/api/usage/credit/${id}`, { method: 'PUT', body: JSON.stringify({ amountUsd }) }); await load(); };
   const reports = (item: ProviderBalance) => ['ros-cloud', 'codex', 'tavily'].includes(item.id);
   const reported = balances?.filter(reports) ?? [], silent = balances?.filter(item => !reports(item)) ?? [];
-  const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{typed(item) && <AmountField label={`${item.name} credit`} value={item.credit?.amountUsd ?? null} onSave={value => saveCredit(item.id, value)}/>}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
+  const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{typed(item) ? <label htmlFor={`credit-${item.id}`}>{item.name}</label> : item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{typed(item) && <AmountField id={`credit-${item.id}`} value={item.credit?.amountUsd ?? null} onSave={value => saveCredit(item.id, value)}/>}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
   return <div className="settings-page">
     <header className="settings-head"><div><h1>Balances</h1><p className="settings-lead">What is left with each connected model, agent and tool, where the provider reports it.</p></div><button className="icon-button" aria-label="Check balances again" disabled={busy} onClick={() => void load()}><RefreshCw size={15} className={busy ? 'spin' : ''}/></button></header>
     {error && <p className="inline-error" role="alert">{error}</p>}

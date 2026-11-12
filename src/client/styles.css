@@ -255,7 +255,7 @@ blockquote {
 .rich-text p:last-child {
   margin-bottom: 0;
 }
-.rich-text h4:first-child {
+.rich-text :is(h2, h3, h4, h5, h6):first-child {
   margin-top: 0;
 }
 .rich-text ul {
@@ -1320,7 +1320,6 @@ a {
   color: var(--ink);
   padding: 16px;
   border-radius: var(--radius-control);
-  box-shadow: var(--shadow-block);
 }
 .card-top {
   display: flex;
@@ -1365,14 +1364,15 @@ a {
   font-size: inherit;
   color: inherit;
 }
-.rich-text h4 {
+/* A heading in a block's text. Its tag is its place in the page's outline (Content.tsx); md-hN is its look. */
+.rich-text :is(h2, h3, h4, h5, h6) {
   line-height: 1.6;
   margin: 16px 0 7px;
   font-size: var(--text-lg);
   color: var(--ink);
 }
-.rich-text h4.md-h1 { font-size: 1.15em; }
-.rich-text h4.md-h4 { font-size: inherit; color: var(--body); }
+.rich-text :is(h2, h3, h4, h5, h6).md-h1 { font-size: 1.15em; }
+.rich-text :is(h2, h3, h4, h5, h6).md-h4 { font-size: inherit; color: var(--body); }
 .rich-text ol { padding-left: 22px; margin: 10px 0; }
 .rich-text li > ul, .rich-text li > ol { margin: 4px 0; }
 .rich-text ul.md-references { list-style: none; padding-left: 0; font-size: .93em; color: var(--body); }
@@ -1956,7 +1956,6 @@ a {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--paper);
-  box-shadow: var(--shadow-block);
   overflow: visible;
 }
 .research-card .group-heading {
@@ -1994,7 +1993,6 @@ a {
 .unified-canvas .research-card.expanded-group {
   border: 1.5px solid var(--line);
   background: var(--paper);
-  box-shadow: var(--shadow-block);
 }
 .research-card.selected {
   border-color: var(--accent);
@@ -2275,7 +2273,7 @@ a {
 .single-canvas-shell .rich-text strong {
   color: var(--ink);
 }
-.single-canvas-shell .rich-text h4 {
+.single-canvas-shell .rich-text :is(h2, h3, h4, h5, h6) {
   font-size: var(--text-lg);
   color: var(--ink);
 }
@@ -2335,7 +2333,10 @@ a {
 .single-canvas-shell .wordmark span {
   color: var(--ink);
 }
+/* As wide as its label, like every other pill. */
 .single-canvas-shell .new-project-button {
+  align-self: flex-start;
+  width: auto;
   height: 39px;
   background: var(--paper);
   border-color: var(--line);

@@ -50,7 +50,7 @@
 .single-canvas-shell .unified-canvas .canvas-tools { border-radius: var(--radius-block); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow-float); }
 
 /* Blocks on the map. */
-.single-canvas-shell .research-card.research-block { border-radius: var(--radius-block); border-color: var(--line); box-shadow: var(--shadow-block); }
+.single-canvas-shell .research-card.research-block { border-radius: var(--radius-block); border-color: var(--line); box-shadow: none; }
 .single-canvas-shell .research-card.organizational-group { border-radius: var(--radius-card); background: rgba(255, 255, 255, .45); border-color: var(--line); box-shadow: none; }
 
 /* Dialogs. */
@@ -101,12 +101,11 @@
 
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
-.rail-page .tool-connection { border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); margin-bottom: 12px; background: var(--paper); box-shadow: var(--shadow-float); }
 .rail-page .tool-connection-name strong { font-size: var(--text-md); font-weight: 500; }
 .rail-page .tool-connection-name small { font-size: var(--text-sm); color: var(--muted); margin-top: 1px; }
 .rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: var(--radius-block); background: var(--paper); border: 1px solid var(--line-soft); }
-.rail-page .connection-state { font-size: var(--text-xs); }
-.rail-page .resources-panel { border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
+.rail-page .connection-state { font-size: var(--text-sm); }
+.rail-page .resources-panel { border: 1px solid var(--line); border-radius: var(--radius-card); }
 .rail-page .text-button { font-size: var(--text-sm); }
 .rail-page .icon-button { width: 30px; height: 30px; border-radius: var(--radius-control); }
 .rail-page .inline-error { background: transparent; padding: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--fail); }
@@ -151,7 +150,7 @@
 .artifact-more > div:first-of-type { margin-bottom: 12px; }
 
 /* History runs: a status line, the request as the main text, details folded below. */
-.note-view .run-card { margin: 0 0 12px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--paper); box-shadow: var(--shadow-block); }
+.note-view .run-card { margin: 0 0 12px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--paper); }
 .note-view .run-card > summary { gap: 10px; padding: 14px 16px; cursor: pointer; }
 .note-view .run-card > summary strong { font-size: var(--text-md); font-weight: 500; }
 .note-view .run-card > summary small { margin-top: 2px; font-size: var(--text-sm); color: var(--muted); }

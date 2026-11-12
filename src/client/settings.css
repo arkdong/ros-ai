@@ -6,7 +6,8 @@
 .settings-page h2 { font-size: var(--text-md); font-weight: 500; color: var(--ink); margin: 24px 0 8px; }
 .settings-lead { font-size: var(--text-sm); color: var(--body); line-height: 1.5; margin-top: 3px; }
 /* One card recipe, the Accounts card's: 16 px, a hairline, a soft float shadow, #eee dividers. */
-.settings-card { background: var(--paper); border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
+/* A card of settings lies flat on a hairline; shadow is kept for what floats. */
+.settings-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); }
 .settings-row { display: flex; align-items: center; gap: 20px; padding: 13px 18px; min-height: 58px; box-sizing: border-box; }
 .settings-row + .settings-row { border-top: 1px solid var(--line-soft); }
 .settings-row > div:first-child, .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }

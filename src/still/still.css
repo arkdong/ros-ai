@@ -11,12 +11,15 @@
 .still-card { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e3e3e3; border-radius: 12px; padding: 14px 16px 12px; overflow: hidden; cursor: pointer; }
 .still-card:hover { border-color: #c9c9c9; }
 .still-top { display: flex; align-items: center; gap: 6px; min-height: 22px; margin-bottom: 6px; }
-.still-kind { font-size: 12px; font-weight: 500; color: #6b6b6b; }
-.still-label { padding: 1px 8px; border-radius: 999px; background: #f1f1f1; color: #4a4a4a; font-size: 12px; font-weight: 500; }
-.still-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; letter-spacing: -.3px; line-height: 1.3; overflow-wrap: anywhere; }
-.still-body { flex: 1 1 auto; min-height: 0; overflow: hidden; font-size: 13.5px; line-height: 1.5; color: #3d3d3d; -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
-.still-foot { flex: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eeeeee; font-size: 12px; color: #8a8a8a; }
-.still-group { background: rgba(255, 255, 255, .7); border-radius: 18px; }
+.still-kind { font-size: 13px; font-weight: 500; color: #6b6b6b; }
+.still-label { padding: 1px 8px; border-radius: 999px; background: #f1f1f1; color: #4a4a4a; font-size: 13px; font-weight: 500; }
+.still-title { margin: 0 0 8px; font-size: 16px; font-weight: 500; letter-spacing: -.3px; line-height: 1.3; overflow-wrap: anywhere; }
+.still-body { flex: 1 1 auto; min-height: 0; overflow: hidden; font-size: 13.5px; line-height: 1.5; color: #3d3d3d; -webkit-mask-image: linear-gradient(#000 calc(100% - 16px), transparent); mask-image: linear-gradient(#000 calc(100% - 16px), transparent); }
+/* The text runs down into the card's own bottom padding, so a last line that fits is whole and only text that runs on fades. */
+.still-body:last-child { margin-bottom: -12px; padding-bottom: 12px; }
+.still-body > :last-child, .still-body .rich-text > :last-child { margin-bottom: 0; }
+.still-foot { flex: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eeeeee; font-size: 13px; color: #8a8a8a; }
+.still-group { background: rgba(255, 255, 255, .7); border-radius: 20px; }
 .still-members { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
 .still-members li { padding: 5px 10px; background: #f7f7f7; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .still-members .more { background: none; color: #8a8a8a; }
@@ -60,7 +63,7 @@
 .still-frame .rich-text, .still-panel .rich-text { overflow-wrap: anywhere; }
 .still-frame .rich-text p, .still-panel .rich-text p { margin: 0 0 8px; }
 .still-frame .rich-text ul, .still-frame .rich-text ol, .still-panel .rich-text ul, .still-panel .rich-text ol { margin: 0 0 8px; padding-left: 20px; }
-.still-frame .rich-text h4, .still-panel .rich-text h4 { margin: 10px 0 6px; font-size: 14px; }
+.still-frame .rich-text :is(h2, h3, h4, h5, h6), .still-panel .rich-text :is(h2, h3, h4, h5, h6) { margin: 10px 0 6px; font-size: 14px; }
 .still-panel .rich-text .md-h1 { font-size: 18px; } .still-panel .rich-text .md-h2 { font-size: 16px; }
 .still-frame .rich-text a, .still-panel .rich-text a { color: inherit; text-decoration: underline; text-decoration-color: #c2c2c2; text-underline-offset: 2px; }
 .still-frame .rich-text code, .still-panel .rich-text code { font: 13px var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); background: #f1f1f1; padding: 1px 4px; border-radius: 4px; }

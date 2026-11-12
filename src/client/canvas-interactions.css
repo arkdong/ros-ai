@@ -2,11 +2,12 @@
 .direct-canvas.unified-canvas {
   background: var(--canvas);
 }
+/* A block lies flat on its hairline; shadow is kept for what floats over the map. */
 .direct-canvas .research-card {
   color: var(--ink);
   border-color: var(--line);
   background: var(--paper);
-  box-shadow: var(--shadow-block);
+  box-shadow: none;
 }
 .direct-canvas.unified-canvas .research-card .group-heading {
   min-height: 0;
@@ -256,14 +257,14 @@
 .direct-canvas.unified-canvas .research-card.expanded-group {
   background: var(--paper);
   border-color: var(--line);
-  box-shadow: var(--shadow-block);
+  box-shadow: none;
 }
 /* One ring per block. A picked block carries one lime hairline on its own corners; a block reached with the keyboard
    and not picked carries the focus ring, also on its own corners, never a square box around the card. */
 .direct-canvas.unified-canvas .research-card.selected {
   border-color: var(--accent-line);
   outline: 0;
-  box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-block);
+  box-shadow: 0 0 0 1px var(--accent-line);
 }
 .direct-canvas.unified-canvas .react-flow__node:focus-visible { outline: 0; box-shadow: none; }
 .direct-canvas.unified-canvas .react-flow__node:focus-visible > .card-scale > .research-card:not(.selected) { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
@@ -352,7 +353,7 @@
 .direct-canvas.previewing-proposal .research-card.preview-changed {
   border: 1px solid var(--line);
   background: var(--paper);
-  box-shadow: var(--shadow-block);
+  box-shadow: none;
 }
 .direct-canvas .research-card .card-preview-tag {
   margin-left: 6px;

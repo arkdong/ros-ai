@@ -1,5 +1,5 @@
 /* One card per connection, always open: 16 px, a hairline, a soft float shadow. Heading, one line of body, a footer line. */
-.tool-connection { border:1px solid rgba(0,0,0,.08); border-radius:var(--radius-card); margin-bottom:12px; background:var(--paper); box-shadow:var(--shadow-float); }
+.tool-connection { border:1px solid var(--line); border-radius:var(--radius-card); margin-bottom:12px; background:var(--paper); }
 .tool-connection-heading { display:flex; align-items:center; gap:14px; padding:14px 18px 0; }
 .tool-connection-name { flex:1; min-width:0; }
 .tool-connection-name strong { display:block; font-size:var(--text-md); font-weight:500; line-height:1.4; color:var(--ink); }

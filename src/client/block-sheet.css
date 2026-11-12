@@ -5,6 +5,9 @@
 .block-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0; background: var(--paper); overflow: hidden; }
 .block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-view); animation: rise-centered var(--dur-menu) var(--ease) both; }
 .block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; margin: 18px 18px 18px 0; border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-view); animation: rise-beside var(--dur-menu) var(--ease) both; }
+/* A text note's sheet is as tall as its text, up to the full 590 px, so a short note leaves no blank band under it. */
+.block-sheet:has(> .bv-body > .note-view.chat-closed > .note-main > .markdown-editor) { height: auto; max-height: min(590px, calc(100% - 136px)); }
+.block-sheet .note-view.chat-closed > .note-main > .markdown-editor { flex: 0 1 auto; min-height: 96px; }
 /* The map ends at the card, so around the card's margins the body shows in the map's own white. */
 .workspace-body:has(> .block-panel) { background: var(--paper); }
 /* ROS in full view keeps the right edge; the panel moves in beside it, 12 px apart. */

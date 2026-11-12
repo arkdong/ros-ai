@@ -53,7 +53,7 @@
 /* Card faces show the same Markdown as the opened block, set small and clipped by the card. */
 .direct-canvas .rich-text.markdown-preview{font-size:var(--text-md);line-height:1.55;color:var(--body)}
 .direct-canvas .rich-text.markdown-preview p{margin:0 0 6px}
-.direct-canvas .rich-text.markdown-preview h4{font-size:var(--text-md);margin:6px 0 2px;color:var(--body)}
+.direct-canvas .rich-text.markdown-preview :is(h2, h3, h4, h5, h6){font-size:var(--text-md);margin:6px 0 2px;color:var(--body)}
 .direct-canvas .rich-text.markdown-preview ul,.direct-canvas .rich-text.markdown-preview ol{margin:2px 0 6px;padding-left:18px}
 .direct-canvas .rich-text.markdown-preview li{margin:1px 0}
 .direct-canvas .rich-text.markdown-preview strong{color:var(--body)}
