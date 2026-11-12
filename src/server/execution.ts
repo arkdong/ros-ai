@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CARD_SIZE, LAYOUT_GAP } from '../shared/layout.js';
 import { CARD_MAX_HEIGHT } from '../shared/card-size.js';
-import type { Artifact, ConnectionStatus, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
+import type { Artifact, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
 import { StoreError, type Store } from './store.js';
 import { Authority } from './authority.js';
 import { reservePaidUsage } from './paid-usage.js';
@@ -101,13 +101,6 @@ export class ExecutionService {
     if (options.includeSetupUsage === true && !store.getUsage('setup-tavily-2026-09-20')) {
       store.addUsage({id:'setup-tavily-2026-09-20',provider:'tavily',purpose:'Prior credential setup: one basic search, September 20',reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:TAVILY_CREDIT_USD,reportedUsage:null,status:'uncertain',basis:'Official basic search: 1 credit, $0.008/credit PAYG upper bound; original setup request did not return measured usage.',createdAt:now()});
     }
-  }
-  connectionStatuses():ConnectionStatus[] {
-    return [
-      {provider:'nebius',configured:this.model.configured,model:this.model.model,detail:`${this.model.configured?'Credential configured.':'Add NEBIUS_API_KEY server-side.'} Every request is recorded in Usage. Scoped messages and selected data leave this machine during authorized research. Availability/rates are checked per call.`},
-      {provider:'openai',configured:Boolean(process.env.OPENAI_API_KEY),model:'gpt-5.4-mini',detail:`${process.env.OPENAI_API_KEY?'Credential configured.':'Add OPENAI_API_KEY server-side.'} Every request is recorded in Usage. Direct OpenAI SDK model calls.`},
-      {provider:'tavily',configured:this.search.configured,detail:`${this.search.configured?'Credential configured.':'Add TAVILY_API_KEY server-side.'} Every request is recorded in Usage. Sends first 400 request characters; at most one basic search per run.`},
-    ].concat(this.inference?.statuses().map(c=>({provider:c.id,configured:c.enabled&&!c.deleted,model:c.models[0]?.id,detail:`${c.name}: ${c.reason}`}))??[]);
   }
   modelSelection(projectId:string,nodeId?:string|null):ModelSelection { return this.models.resolve(projectId,nodeId).selection; }
   private adapter(selection?:ModelSelection):ModelAdapter {

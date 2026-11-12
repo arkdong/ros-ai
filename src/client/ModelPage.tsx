@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
-import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-setup';
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
@@ -69,7 +68,7 @@ const billingLine: Record<AgentId, string> = {
   gemini: 'Billed through its own Google sign-in or key', goose: 'Billed through the provider Goose is set up with', opencode: 'Billed through OpenCode’s own providers, or free models',
 };
 
-type Props = { projectId:string|null; connections:ConnectionStatus[]; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
+type Props = { projectId:string|null; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** What the page read last in this session: it opens with that at once while it reads again. */
 type AgentReads = { credentials?: CredentialStatus[]; codex?: LocalAgentSetup; codexKey?: LocalAgentSetup; claude?: ClaudeAgentSettings; cloud?: CloudAccountStatus; setup?: SetupStatus; local?: LocalRosStatus; acp?: AcpAgentStatus[] };
 let lastReads: AgentReads = {};
@@ -78,7 +77,7 @@ type Installed = { id: AgentId; label: string };
 const savedAgents = () => readSavedList<Installed>('agents-installed', item => agentItems.some(entry => entry.id === item?.id) && typeof item?.label === 'string');
 export const lastInstalledAgents = () => savedAgents().map(item => item.id);
 /** Model holds only AI model connections. What they spend shows in Settings › Usage. */
-export function ModelPage({projectId,connections,selected,onSelect,onInstalled,onChanged}:Props) {
+export function ModelPage({projectId,selected,onSelect,onInstalled,onChanged}:Props) {
   const [credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[codex,setCodex]=useState(lastReads.codex),[codexKey,setCodexKey]=useState(lastReads.codexKey),[claude,setClaude]=useState(lastReads.claude);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedAgents);
   const [cloud,setCloud]=useState(lastReads.cloud),[setup,setSetup]=useState(lastReads.setup),[local,setLocal]=useState(lastReads.local),[acp,setAcp]=useState<AcpAgentStatus[]>(lastReads.acp??[]);

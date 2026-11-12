@@ -57,7 +57,7 @@ const identifier = z.string().min(1).max(120);
 const routeId = (value: unknown) => identifier.parse(value);
 
 /** The HTTP boundary never returns provider credentials or exposes arbitrary filesystem access. */
-type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun' | 'connectionStatuses'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'cancelProjectChat'|'inference'|'searchStatus'|'chooseSearch'>>;
+type AppExecution = Pick<ExecutionService, 'chat' | 'startRun' | 'cancelRun' | 'retryRun'> & Partial<Pick<ExecutionService, 'startExperimentPlan'|'acceptGovernedProposal'|'cancelProjectChat'|'inference'|'searchStatus'|'chooseSearch'>>;
 export function createApp(store: Store, execution: AppExecution, experiments?: ExperimentService, assistant?:AssistantService, options:{projectFolders?:{reserved:string[]};notebooks?:Parameters<typeof attachNotebookRoutes>[3];localPaths?:{dataDir:string;keysFile:string|null}}={},agent?:CodexAgentService,tools?:{credentials:ToolCredentials;googleDrive:GoogleDriveConnection;google?:GoogleWorkspace;papers?:Papers;browser?:BrowserService;claude?:ClaudeAgentService;acp?:AcpAgentService;plugins?:PluginTokens;apps?:RemoteApps;outside?:OutsideAgents;cloud?:CloudAccount;localRos?:LocalRos;rosLayer?:RosLayer;memory?:PersonalMemory;skills?:SkillLibrary;setup?:Setup;updates?:Updates;suggestions?:PluginSuggestions;appFrames?:AppFrames;usageCounts?:UsageCounts}) {
   const authority=experiments?.authority??new Authority(store),connections=new LocalConnections(store),highlights=new Highlights(store);
   const app = express();
@@ -208,7 +208,6 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     store.removeInput(routeId(req.params.id), routeId(req.params.inputId));
     res.json({ ok: true });
   });
-  app.get('/api/connections', (_req, res) => res.json(execution.connectionStatuses()));
   app.get('/api/usage', (_req, res) => res.json(store.listUsage()));
   app.get('/api/settings/general', (_req, res) => res.json({ dataDir: options.localPaths?.dataDir ?? null, keysFile: options.localPaths?.keysFile ?? null }));
   const spendingBudget = new SpendingBudget(store);

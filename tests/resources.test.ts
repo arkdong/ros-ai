@@ -132,7 +132,7 @@ test('linked CSV reads reject invalid UTF-8 before preview or capture without ch
 
 test('resource HTTP endpoints expose metadata, preview and explicit use with validation', async t => {
   const f = fixture(t), unavailable = (): never => { throw new Error('Provider requests are unavailable in this resource test.'); };
-  const app = createApp(f.store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable, connectionStatuses: () => [] });
+  const app = createApp(f.store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable });
   app.use(apiErrorHandler);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));

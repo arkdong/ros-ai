@@ -11,7 +11,7 @@ async function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'ros-http-'));
   const store = new Store(dir);
   const unavailable = (): never => { throw new Error('Provider credentials unavailable in this HTTP test.'); };
-  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable, connectionStatuses: () => [] });
+  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable });
   app.use(apiErrorHandler);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
