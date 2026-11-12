@@ -41,7 +41,7 @@ function fixture(answers: Answer[] = [], agentReplies: (() => Promise<string>)[]
     async execute(request) { agentRequests.push(request); const next = agentReplies.shift(); const text = next ? await next() : 'AGENT_REPLY'; if (request.signal.aborted) throw new Error('Codex was stopped.'); return { reply: text, sessionId: 's', actions: [], requestId: 'r' }; },
     async shutdown() {},
   };
-  const execution = new ExecutionService(store, { model, search, limits: { nebius: 5, tavily: 10 }, includeSetupUsage: false });
+  const execution = new ExecutionService(store, { model, search, includeSetupUsage: false });
   const experiments = new ExperimentService(store, { sandbox: runtime });
   experiments.authority.configure(project.id, { mode: 'ask' });
   const assistant = new AssistantService(store, execution, experiments, agent);

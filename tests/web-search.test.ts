@@ -14,7 +14,7 @@ import { BRAVE_SEARCH_SCHEMA, BRAVE_SEARCH_USD, BraveAdapter, CHECK_SEARCH_SCHEM
 
 // Offline doubles of Exa's and Brave Search's own APIs on loopback ports. Nothing here reaches either service.
 const EXA_KEY = 'exa-fixture-key-0123456789', BRAVE_KEY = 'brave-fixture-key-0123456789';
-const ENVIRONMENT = ['TAVILY_API_KEY', 'EXA_API_KEY', 'BRAVE_API_KEY', 'EXA_BASE_URL', 'BRAVE_BASE_URL', 'TAVILY_BASE_URL', 'EXA_MCP_URL', 'ROS_SPENDING_LIMITS'] as const;
+const ENVIRONMENT = ['TAVILY_API_KEY', 'EXA_API_KEY', 'BRAVE_API_KEY', 'EXA_BASE_URL', 'BRAVE_BASE_URL', 'TAVILY_BASE_URL', 'EXA_MCP_URL'] as const;
 type Seen = { method: string; url: URL; headers: IncomingMessage['headers']; input: Record<string, unknown> };
 const body = (req: IncomingMessage) => new Promise<Record<string, unknown>>(resolve => { let text = ''; req.on('data', chunk => { text += chunk; }); req.on('end', () => resolve(text ? JSON.parse(text) as Record<string, unknown> : {})); });
 const send = (res: ServerResponse, value: unknown, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); };

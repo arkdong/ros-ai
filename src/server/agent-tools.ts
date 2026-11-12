@@ -393,15 +393,12 @@ export class AgentWorkspaceTools {
   /** Agents known by the name they gave (their client, model or ACP agent) rather than a fixed one. */
   private get named() { return this.agent === 'outside' || this.agent === 'model' || isAcpAgent(this.agent); }
   preview() { return { ...this.capture, artifacts: this.capture.artifacts.map(({ content, ...a }) => ({ ...a, characters: content.length, preview: content.slice(0, 1200), truncated: content.length > 1200 })) }; }
-  /** Blocks and saved versions an explicit allowance keeps this agent to (Codex with spending limits on); unset, the whole project. */
-  within?: { nodeIds: ReadonlySet<string>; artifactIds: ReadonlySet<string> };
   /** A block a tool starts from or writes into: the request's own block, one this turn added, or any other block on the canvas.
    * Where the person clicked never narrows it; the approval mode decides what waits for them. */
   private node(id: string) {
     if (this.scope.nodeIds.includes(id) || this.own.has(id)) return;
     if ([...this.waiting.values()].some(change => change.nodes.has(id))) throw new StoreError(`Block ${id} is a change of this turn that still waits for the person's Accept, so nothing can build on it yet. Say that it waits for review and stop.`, 409);
     this.onCanvas(id);
-    if (this.within && !this.within.nodeIds.has(id)) throw new StoreError(`Block ${id} is outside the Codex allowance for this project.`, 403);
   }
   /** A block a canvas change may touch or put blocks in: any block on this project's canvas. Nothing the person clicked
    * fences off the rest of the map: the approval mode decides what lands at once (Full access every change, Approve for
@@ -413,7 +410,6 @@ export class AgentWorkspaceTools {
   private artifact(id: string) {
     const captured = this.capture.artifacts.find(a => a.id === id);
     if (captured) return captured;
-    if (this.within && !this.within.artifactIds.has(id)) throw new StoreError(`Saved version ${id} is outside the Codex allowance for this project.`, 403);
     return this.readable(id);
   }
   /** Any saved version on this canvas can be read (ros_read_canvas already reads every block's text): the selection's

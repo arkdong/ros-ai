@@ -73,7 +73,6 @@ function workspace() {
 const caps = { maxInputBytes: 64000, maxOutputTokens: 8000, timeoutMs: 30000, maxConcurrent: 1, maxResponseBytes: 256000 };
 function connect(inference: InferenceConnections, port: number, models: { id: string; contextTokens: number; tools?: boolean }[]) {
   const connection = inference.create({ name: 'Ollama', endpoint: `http://127.0.0.1:${port}/v1`, enabled: true, caps, models: models.map(model => ({ ...model, label: model.id, inputUsdPerMillion: 0, outputUsdPerMillion: 0 })) });
-  inference.saveAllowance(connection.id, { requestCeiling: 100, usdCeiling: 0, enabled: true, acknowledged: true });
   return connection.id;
 }
 
@@ -159,7 +158,6 @@ test('two threads run ROS\'s step-by-step agent at the same time, each asking th
   });
   const f = workspace();
   const connection = f.inference.create({ name: 'Ollama', endpoint: `http://127.0.0.1:${model.port}/v1`, enabled: true, caps: { ...caps, maxConcurrent: 2 }, models: [{ id: 'agent', label: 'agent', contextTokens: 32768, tools: true, inputUsdPerMillion: 0, outputUsdPerMillion: 0 }] });
-  f.inference.saveAllowance(connection.id, { requestCeiling: 100, usdCeiling: 0, enabled: true, acknowledged: true });
   const execution = new ExecutionService(f.store, { inference: f.inference, includeSetupUsage: false });
   const loop = new ToolLoopAgentService(f.store, execution, { authority: { policy: () => ({ stopped: false }) } } as unknown as ExperimentService);
   const selection = { provider: connection.id, model: 'agent' };

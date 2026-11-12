@@ -72,7 +72,7 @@ test('Usage over HTTP is read-only and exposes no provider traces', async t => {
   store.addUsage(usage('private-trace', { reportedUsage: { projectId: project.id, authorizationId: 'private-id', response: { text: 'private-response', usage: { inputTokens: 5, outputTokens: 2 } } } }));
   const before = store.detail(project.id), ledger = store.listUsage();
   const unavailable = (): never => { throw new Error('No provider calls permitted.'); };
-  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable, connectionStatuses: () => [] });
+  const app = createApp(store, { chat: async () => unavailable(), startRun: unavailable, cancelRun: unavailable, retryRun: unavailable });
   app.use(apiErrorHandler);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));

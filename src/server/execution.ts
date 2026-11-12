@@ -2,11 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CARD_SIZE, LAYOUT_GAP } from '../shared/layout.js';
 import { CARD_MAX_HEIGHT } from '../shared/card-size.js';
-import type { Artifact, ConnectionStatus, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
+import type { Artifact, ModelMessage, Mutation, Proposal, Run, UsageRecord } from '../shared/types.js';
 import { StoreError, type Store } from './store.js';
 import { Authority } from './authority.js';
-import { ConnectionBudgets, type EnvironmentConnectionBudget } from './connection-budgets.js';
-import type { ConnectionBudgetProvider } from '../shared/connection-budgets.js';
+import { reservePaidUsage } from './paid-usage.js';
 import { ModelSettings } from './model-settings.js';
 import type { ModelSelection } from '../shared/model-settings.js';
 import { OpenAIAdapter } from './openai-provider.js';
@@ -65,39 +64,15 @@ const PROJECT_REPLY_SCHEMA = z.toJSONSchema(projectReply.extend({operations:z.ar
 
 const experimentPlan = z.object({explanation:z.string().min(1).max(8000),code:z.string().min(1).max(20000),parameters:z.record(z.string().min(1).max(80),z.union([z.string().max(1000),z.number().finite(),z.boolean()]))}).strict();
 const EXPERIMENT_PLAN_SCHEMA = z.toJSONSchema(experimentPlan);
-export type LiveAuthorization = {id:string;nebiusUsd:number;tavilyUsd:number;maxRequests:number};
-function configuredAuthorization():LiveAuthorization|undefined {
-  const id = process.env.ROS_PAID_AUTHORIZATION_ID?.trim();
-  if (!id) return;
-  const nebiusUsd = Number(process.env.ROS_NEBIUS_AUTHORIZED_USD ?? 0), tavilyUsd = Number(process.env.ROS_TAVILY_AUTHORIZED_USD ?? 0);
-  const maxRequests = Number(process.env.ROS_PAID_MAX_REQUESTS ?? 1);
-  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(id) || ![nebiusUsd,tavilyUsd].every(n=>Number.isFinite(n)&&n>=0) || !Number.isInteger(maxRequests) || maxRequests<1) throw new Error('Invalid fresh provider authorization settings.');
-  return {id,nebiusUsd,tavilyUsd,maxRequests};
-}
-
 /** freeSearch: Tavily and Exa search with no key, on the allowance each gives anyone (the local app turns it on). */
-type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;limits?:{nebius?:number;tavily?:number};maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;liveAuthorization?:LiveAuthorization;inference?:InferenceConnections};
+type Options = {model?:ModelAdapter;search?:SearchAdapter;freeSearch?:boolean;maxConcurrent?:number;maxOutputTokens?:number;timeoutMs?:number;includeSetupUsage?:boolean;inference?:InferenceConnections};
 type Active = {controller:AbortController;done:Promise<void>};
-export class BudgetLedger {
-  constructor(private readonly store:Store,readonly limits:{nebius:number;tavily:number;openai?:number},readonly authorizationId?:string,readonly maxRequests=Number.MAX_SAFE_INTEGER) {}
-  accounted(provider:'nebius'|'tavily'|'openai') { return this.store.usageLedger().filter(r=>r.provider===provider && (provider==='tavily'||!this.authorizationId || (r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId)).reduce((total,r)=>total+Math.max(r.reservedUsd,r.estimatedUsd ?? 0),0); }
-  reserve(provider:'nebius'|'tavily'|'openai',amount:number,purpose:string,basis:string,runId?:string,trace:unknown=null):UsageRecord {
-    if (this.authorizationId && this.store.usageLedger().filter(r=>(r.reportedUsage as {authorizationId?:string}|null)?.authorizationId===this.authorizationId).length>=this.maxRequests) throw new Error('Fresh authorization request limit reached; no automatic retry or extra provider call is permitted.');
-    if (!Number.isFinite(amount) || amount <= 0 || this.accounted(provider)+amount > (this.limits[provider]??0)) throw new Error(`${provider} verification budget admission refused. Conservative reservations would exceed the $${(this.limits[provider]??0)} ceiling.`);
-    const record:UsageRecord = {id:randomUUID(),provider,purpose,runId,reservedUsd:amount,estimatedUsd:null,reportedUsage:this.authorizationId?{...(trace as object ?? {}),authorizationId:this.authorizationId}:trace,status:'reserved',basis,createdAt:now()};
-    this.store.addUsage(record);
-    return record;
-  }
-}
-
 export class ExecutionService {
   private readonly model:ModelAdapter;
   private readonly customModel:boolean;
   private readonly injectedModel?:ModelAdapter;
   readonly models:ModelSettings;
   readonly inference?:InferenceConnections;
-  readonly connectionBudgets:ConnectionBudgets;
-  private readonly openaiLedger:BudgetLedger;
   private readonly search:SearchAdapter;
   /** Every web search service by id; Tavily's is `search`, which a test may replace. */
   private readonly searches:Record<SearchProviderId,SearchAdapter>;
@@ -108,8 +83,6 @@ export class ExecutionService {
   private readonly active = new Map<string,Active>();
   private readonly chats = new Map<string,AbortController>();
   private readonly chatTasks = new Set<Promise<unknown>>();
-  readonly ledger:BudgetLedger;
-  private readonly authorization?:LiveAuthorization;
   private closed = false;
   constructor(private readonly store:Store,options:Options={}) {
     this.inference=options.inference;
@@ -117,35 +90,17 @@ export class ExecutionService {
     this.injectedModel=options.model;
     this.customModel=Boolean(options.model && !(options.model instanceof NebiusAdapter) && !(options.model instanceof OpenAIAdapter));
     this.models=new ModelSettings(store,this.model.model);
-    const openaiId=process.env.ROS_OPENAI_AUTHORIZATION_ID?.trim();
-    const openaiUsd=openaiId?Number(process.env.ROS_OPENAI_AUTHORIZED_USD??0):0;
-    const openaiRequests=Number(process.env.ROS_OPENAI_MAX_REQUESTS??1);
-    if(!Number.isFinite(openaiUsd)||openaiUsd<0||!Number.isInteger(openaiRequests)||openaiRequests<1)throw new Error('Invalid OpenAI authorization settings.');
-    this.openaiLedger=new BudgetLedger(store,{nebius:0,tavily:0,openai:openaiUsd},openaiId,openaiRequests);
     const free={free:options.freeSearch===true};
     this.search = options.search ?? new TavilyAdapter(undefined,free);
     this.injectedSearch=Boolean(options.search);
     this.searches={tavily:this.search,exa:new ExaAdapter(undefined,free),brave:new BraveAdapter()};
-    this.authorization = options.liveAuthorization ?? configuredAuthorization();
     this.maxConcurrent = Math.max(1,Math.min(4,Math.floor(options.maxConcurrent ?? Number(process.env.ROS_MAX_CONCURRENT || 2))));
     this.maxOutputTokens = Math.max(64,Math.min(2000,options.maxOutputTokens ?? 1400));
     this.timeoutMs = options.timeoutMs ?? 90000;
-    const nebius = this.authorization ? Math.min(options.limits?.nebius ?? this.authorization.nebiusUsd,this.authorization.nebiusUsd) : options.limits?.nebius ?? (this.customModel?5:0);
-    const tavily = this.authorization ? Math.min(options.limits?.tavily ?? this.authorization.tavilyUsd,this.authorization.tavilyUsd) : options.limits?.tavily ?? (this.search instanceof TavilyAdapter?0:10);
-    if (![nebius,tavily].every(n=>Number.isFinite(n)&&n>=0) || ![this.maxConcurrent,this.timeoutMs].every(n=>Number.isFinite(n)&&n>0)) throw new Error('Invalid execution limits.');
-    this.ledger = new BudgetLedger(store,{nebius,tavily},this.authorization?.id,this.authorization?.maxRequests);
-    this.connectionBudgets = new ConnectionBudgets(store,provider=>this.environmentBudget(provider));
+    if (![this.maxConcurrent,this.timeoutMs].every(n=>Number.isFinite(n)&&n>0)) throw new Error('Invalid execution limits.');
     if (options.includeSetupUsage === true && !store.getUsage('setup-tavily-2026-09-20')) {
       store.addUsage({id:'setup-tavily-2026-09-20',provider:'tavily',purpose:'Prior credential setup: one basic search, September 20',reservedUsd:TAVILY_CREDIT_USD,estimatedUsd:TAVILY_CREDIT_USD,reportedUsage:null,status:'uncertain',basis:'Official basic search: 1 credit, $0.008/credit PAYG upper bound; original setup request did not return measured usage.',createdAt:now()});
     }
-  }
-  connectionStatuses():ConnectionStatus[] {
-    const nebius=this.connectionBudgets.status('nebius'),openai=this.connectionBudgets.status('openai'),tavily=this.connectionBudgets.status('tavily');
-    return [
-      {provider:'nebius',configured:this.model.configured,model:this.model.model,detail:`${this.model.configured?'Credential configured.':'Add NEBIUS_API_KEY server-side.'} ${nebius.reason} Scoped messages and selected data leave this machine during authorized research. Availability/rates are checked per call.`,limitUsd:nebius.limitUsd,accountedUsd:nebius.accountedUsd},
-      {provider:'openai',configured:Boolean(process.env.OPENAI_API_KEY),model:'gpt-5.4-mini',detail:`${process.env.OPENAI_API_KEY?'Credential configured.':'Add OPENAI_API_KEY server-side.'} ${openai.reason} Direct OpenAI SDK model calls.`,limitUsd:openai.limitUsd,accountedUsd:openai.accountedUsd},
-      {provider:'tavily',configured:this.search.configured,detail:`${this.search.configured?'Credential configured.':'Add TAVILY_API_KEY server-side.'} ${tavily.reason} Sends first 400 request characters; at most one basic search per run.`,limitUsd:tavily.limitUsd,accountedUsd:tavily.accountedUsd},
-    ].concat(this.inference?.statuses().map(c=>({provider:c.id,configured:c.enabled&&!c.deleted,model:c.models[0]?.id,detail:`${c.name}: ${c.reason}`,limitUsd:c.usdCeiling,accountedUsd:c.accountedUsd}))??[]);
   }
   modelSelection(projectId:string,nodeId?:string|null):ModelSelection { return this.models.resolve(projectId,nodeId).selection; }
   private adapter(selection?:ModelSelection):ModelAdapter {
@@ -156,29 +111,6 @@ export class ExecutionService {
     }
     return selection?.provider==='openai'?new OpenAIAdapter(undefined,selection.model):new NebiusAdapter(undefined,selection?.model??this.model.model);
   }
-  private legacyCloudAllowed(provider:ConnectionBudgetProvider) {
-    // Environment grants predate Exa and Brave Search; they run only under an app allowance.
-    if(provider==='exa'||provider==='brave')return false;
-    if(provider==='openai')return Boolean(this.openaiLedger.authorizationId&&(this.openaiLedger.limits.openai??0)>0);
-    return provider==='nebius' ? this.customModel || Boolean(this.authorization && this.authorization.nebiusUsd>0) : !(this.search instanceof TavilyAdapter) || Boolean(this.authorization && this.authorization.tavilyUsd>0);
-  }
-  private environmentBudget(provider:ConnectionBudgetProvider):EnvironmentConnectionBudget {
-    if(provider==='claude')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:'Save a Claude Code allowance before paid turns. A saved API key does not authorize spending.'};
-    if(provider==='exa'||provider==='brave')return {source:'none',enabled:false,ready:false,limitUsd:0,accountedUsd:0,maxRequests:0,usedRequests:0,reason:`Save ${aSearchLabel(provider)} allowance before paid research. A saved API key does not authorize spending.`};
-    const ledger=provider==='openai'?this.openaiLedger:this.ledger,rows=this.store.usageLedger();
-    const enabled=this.legacyCloudAllowed(provider),limitUsd=ledger.limits[provider]??0,accountedUsd=ledger.accounted(provider);
-    const usedRequests=ledger.authorizationId?rows.filter(row=>(row.reportedUsage as {authorizationId?:string}|null)?.authorizationId===ledger.authorizationId).length:rows.filter(row=>row.provider===provider).length;
-    const ready=enabled&&accountedUsd<limitUsd&&usedRequests<ledger.maxRequests;
-    const reason=!enabled?'Save an explicit connection allowance before paid research. Credentials and historical usage do not authorize new spending.':usedRequests>=ledger.maxRequests?'The environment authorization request limit is exhausted.':accountedUsd>=limitUsd?'The environment provider allowance is exhausted; failed and uncertain requests remain accounted.':'Existing environment allowance active. Project permissions and retained provider ceilings still apply.';
-    const source=ledger.authorizationId?'environment':'none';
-    return {source,enabled,ready,limitUsd,accountedUsd,maxRequests:source==='none'||!enabled?0:ledger.maxRequests,usedRequests:source==='none'||!enabled?0:usedRequests,reason};
-  }
-  private cloudAllowed(provider:string) {
-    if(provider!=='nebius'&&provider!=='openai'&&!isSearchProvider(provider))return Boolean(this.inference?.status(provider).ready);
-    const budget=this.connectionBudgets.status(provider);
-    if(budget.source==='app')return budget.ready;
-    return this.legacyCloudAllowed(provider);
-  }
   private admitWork(requireModel=true,selection?:ModelSelection) {
     if (this.closed) throw new Error('Execution service is shutting down.');
     const controllers=new Set([...this.active.values()].map(task=>task.controller).concat([...this.chats.values()]));
@@ -188,17 +120,12 @@ export class ExecutionService {
       if(requireModel&&(!this.inference||!this.inference.status(provider).ready))throw new Error(this.inference?.status(provider).reason??'Registered connection unavailable.');
       return;
     }
-    if (requireModel && !this.cloudAllowed(provider)) throw new Error(`Paid inference is blocked. ${this.connectionBudgets.status(provider).reason}`);
     if (requireModel && !model.configured) throw new Error(`${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.`);
   }
   private signal(controller:AbortController) { return AbortSignal.any([controller.signal,AbortSignal.timeout(this.timeoutMs)]); }
   private checkSignal(signal:AbortSignal) { if (signal.aborted) throw new Error('Request stopped or timed out. Provider billing outcome may be unknown.'); }
   private reserveSearch(provider:SearchProviderId,purpose:string,basis:string,runId:string,trace:Record<string,unknown>,amountUsd=SEARCH_SERVICES[provider].searchUsd) {
-    const allowance=this.connectionBudgets.status(provider,amountUsd);
-    if(!this.cloudAllowed(provider))throw new Error(allowance.reason);
-    if(allowance.source==='app')return this.connectionBudgets.reserve({provider,amountUsd,purpose,basis,runId,trace},allowance.revision);
-    if(provider!=='tavily')throw new Error(allowance.reason);
-    return this.ledger.reserve('tavily',amountUsd,purpose,basis,runId,trace);
+    return reservePaidUsage(this.store,{provider,amountUsd,purpose,basis,runId,trace});
   }
   /** The web search service in use: the one chosen on the Plugins page while it can search, otherwise the first
    * with a key (Tavily, Exa, Brave Search), otherwise the first free one, otherwise Tavily, whose missing key then
@@ -224,9 +151,7 @@ export class ExecutionService {
   private async modelCall(request:ModelRequest,signal:AbortSignal,purpose:string,runId?:string,projectId?:string,reservationMultiplier=2,selection?:ModelSelection):Promise<{response:ModelResponse;info:ModelInfo;usage:UsageRecord}> {
     selection??=this.customModel?{provider:'nebius',model:this.model.model}:runId?{provider:this.store.getRun(runId).provider as ModelSelection['provider'],model:this.store.getRun(runId).model}:projectId?this.modelSelection(projectId):undefined;
     if(selection&&selection.provider!=='nebius'&&selection.provider!=='openai')return this.registeredModelCall(request,signal,purpose,selection,runId,projectId);
-    const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
-    if (!this.cloudAllowed(provider)) throw new Error(this.connectionBudgets.status(provider).reason);
-    const allowance=this.connectionBudgets.status(provider),usesAppAllowance=allowance.source==='app';
+    const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection);
     this.checkSignal(signal);
     const bytes = Buffer.byteLength(JSON.stringify(request),'utf8');
     if (bytes > 64000) throw new Error('This request exceeds the 64 KB context limit. Select a smaller excerpt or start a new node.');
@@ -248,14 +173,11 @@ export class ExecutionService {
     const inputTokens=bound?.tokens??info.contextTokens;
     const estimate = Math.max(0.000001,reservationMultiplier*(inputTokens*info.inputUsdPerToken+request.maxOutputTokens*info.outputUsdPerToken));
     const tokenReservation={inputTokens,outputTokens:request.maxOutputTokens,wireBytes,multiplier:reservationMultiplier,inputBasis:bound?.basis??`Full published ${info.contextTokens}-token context; no audited request-specific bound`,outputBasis:'Total completion cap includes visible output and reasoning; one choice, no automatic retries.'};
-    const trace = {scope:runId ? 'node' : 'project',projectId,request:structuredClone(request),wireRequest,provider,model:info.id,catalog:info.metadata,tokenReservation,...(!usesAppAllowance&&ledger.authorizationId?{authorizationId:ledger.authorizationId}: {})};
+    const trace = {scope:runId ? 'node' : 'project',projectId,request:structuredClone(request),wireRequest,provider,model:info.id,catalog:info.metadata,tokenReservation};
     const usage = this.store.atomic(()=>{
-      this.connectionBudgets.assertRevision(provider,allowance.revision);
-      if(!this.cloudAllowed(provider))throw new Error(this.connectionBudgets.status(provider).reason);
       if(projectId) new Authority(this.store).reserve(projectId,{kind:'model',nodeId:runId?this.store.getRun(runId).nodeId:'project',fingerprint:runId??randomUUID(),spendUsd:estimate});
       const basis=`${reservationMultiplier} × (${inputTokens} reserved input tokens × $${info.inputUsdPerToken}/token + ${request.maxOutputTokens} total completion tokens × $${info.outputUsdPerToken}/token). ${tokenReservation.inputBasis}. ${provider==='openai'?'Standard rates recorded from official OpenAI docs on 2026-09-23; app input ceiling 272K.':'Catalog checked per call.'} Reservation retained after settlement; follow-ups require separate admission.`;
-      const admitted=usesAppAllowance?this.connectionBudgets.reserve({provider,amountUsd:estimate,purpose,basis,runId,trace},allowance.revision):ledger.reserve(provider,estimate,purpose,basis,runId,trace);
-      return admitted;
+      return reservePaidUsage(this.store,{provider,amountUsd:estimate,purpose,basis,runId,trace});
     });
     const reservedTrace=usage.reportedUsage as Record<string,unknown>;
     if (runId) this.store.updateRun(runId,{messages:request.messages as ModelMessage[],configuration:{...this.store.getRun(runId).configuration,modelInfo:info,request:structuredClone(request)}});
@@ -335,14 +257,10 @@ export class ExecutionService {
     if(selection&&selection.provider!=='nebius'&&selection.provider!=='openai'){
       const c=this.inference?.statuses().find(c=>c.id===selection.provider),policy=projectId?new Authority(this.store).policy(projectId):undefined;
       const blocker=!c?'The selected inference connection is unavailable.':!c.models.some(m=>m.id===selection.model)?'The selected model is no longer configured.':!c.ready?c.reason:policy?.stopped?'Project research is stopped.':null;
-      const service=this.searchService(),search=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd);
-      return {modelAvailable:!blocker,modelBlocker:blocker,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&search.ready&&!policy?.stopped};
+      return {modelAvailable:!blocker,modelBlocker:blocker,searchAvailable:this.searchService().adapter.configured&&!policy?.stopped};
     }
-    const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection),ledger=provider==='openai'?this.openaiLedger:this.ledger;
-    const service=this.searchService(),allowance=this.connectionBudgets.status(provider),searchAllowance=this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd),usesAppAllowance=allowance.source==='app';
-    const ledgerReady=usesAppAllowance?allowance.ready:ledger.accounted(provider)<(ledger.limits[provider]??0)&&(allowance.source!=='environment'||allowance.remainingRequests>0);
-    const searchBudgetReady=searchAllowance.source==='app'?searchAllowance.ready:service.id==='tavily'&&this.ledger.accounted('tavily')+TAVILY_CREDIT_USD<=this.ledger.limits.tavily&&(searchAllowance.source!=='environment'||searchAllowance.remainingRequests>0);
-    const capabilities={modelBlocker:!model.configured ? `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.` : !this.cloudAllowed(provider) ? allowance.reason : !ledgerReady ? allowance.reason : null as string|null,modelAvailable:model.configured&&this.cloudAllowed(provider)&&ledgerReady,searchAvailable:service.adapter.configured&&this.cloudAllowed(service.id)&&searchBudgetReady};
+    const provider=selection?.provider==='openai'?'openai':'nebius',model=this.adapter(selection);
+    const capabilities={modelBlocker:model.configured ? null as string|null : `${provider==='openai'?'OpenAI':'Nebius'} credential is missing. Open Model to configure it server-side.`,modelAvailable:model.configured,searchAvailable:this.searchService().adapter.configured};
     if(projectId&&new Authority(this.store).policy(projectId).stopped){
       capabilities.modelBlocker??='Project research is stopped. Open Permissions and resume deliberately.';
       capabilities.modelAvailable=false;capabilities.searchAvailable=false;
@@ -373,11 +291,10 @@ export class ExecutionService {
   assistantProposal(projectId:string,summary:string,operations:Mutation[],arranged=false,links:{after?:string[];batch?:string}={},browser=false):Proposal {
     return this.reviewProjectProposal(this.store.createProposal(projectId,this.store.getProject(projectId).revision,summary,operations,arranged,links),browser);
   }
-  /** Why an agent cannot search right now, or null when the search service in use has a key and remaining allowance. */
+  /** Why an agent cannot search right now, or null when the search service in use can search. */
   agentSearchBlocker():string|null{
     const service=this.searchService();
     if(!service.adapter.configured)return 'Web search is not connected. Add a Tavily, Exa or Brave Search key on the Plugins page.';
-    if(!this.cloudAllowed(service.id))return this.connectionBudgets.status(service.id,SEARCH_SERVICES[service.id].searchUsd).reason;
     return null;
   }
   /** Why the search service in use cannot read whole pages, or null when it can. */
@@ -398,7 +315,7 @@ export class ExecutionService {
     this.admitWork(false);const key=this.chatKey(projectId,lane);
     this.checkSignal(signal);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
-    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} search has no configured remaining authorization.`);
+    if(!service.adapter.configured)throw new Error(`${pricing.label} search is not connected. Add its key on the Plugins page.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('Choose an existing note for captured search evidence.');
     query=z.string().trim().min(1).max(400).parse(query);
@@ -425,7 +342,7 @@ export class ExecutionService {
     this.checkSignal(signal);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id],read=pricing.read;
     if(!read||!service.adapter.extract)throw new Error(this.pageReadingBlocker()??`${pricing.label} cannot read whole pages.`);
-    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} has no configured remaining authorization for reading pages.`);
+    if(!service.adapter.configured)throw new Error(`${pricing.label} is not connected, so it cannot read pages. Add its key on the Plugins page.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node)throw new Error('The Agent block was removed from the canvas.');
     const urls=z.array(z.string().url().max(2000)).min(1).max(EXTRACT_PAGES_PER_CREDIT).parse(pages.map(page=>page.url));
@@ -461,7 +378,7 @@ export class ExecutionService {
     this.admitWork(false);
     this.checkSignal(signal);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
-    if(!service.adapter.configured||!this.cloudAllowed(service.id))throw new Error(`${pricing.label} search has no configured remaining authorization.`);
+    if(!service.adapter.configured)throw new Error(`${pricing.label} search is not connected. Add its key on the Plugins page.`);
     const project=this.store.getProject(projectId),node=project.canvas.nodes.find(n=>n.id===nodeId);
     if(!node?.web)throw new Error('The Web block was removed from the canvas.');
     const list=z.array(z.object({direction:z.string().min(1).max(128),query:z.string().trim().min(1).max(400)}).strict()).min(1).max(SWEEP_MAX_SEARCHES).parse(searches);
@@ -499,7 +416,7 @@ export class ExecutionService {
         if(reservation)this.store.updateUsage(reservation.id,{status:'uncertain'});
         // A stopped sweep keeps what it saved; its terminal state is already recorded.
         if(signal.aborted||!open())return;
-        // An allowance or a project that refuses one search refuses the rest too.
+        // A monthly budget or a stopped project that refuses one search refuses the rest too.
         if(!reservation)refused??=this.safeError(error);
         this.event(run.id,'search-failed',`Could not search “${query}”: ${this.safeError(error)}`,{search:index+1,direction});
       }
@@ -546,7 +463,8 @@ export class ExecutionService {
     if (this.chatting(projectId)) throw new Error('Project conversation is already running.');
     this.admitWork(false);
     const selection=this.modelSelection(projectId);
-    if (!this.adapter(selection).configured || !this.cloudAllowed(selection.provider)) return this.localProjectChat(projectId,message);
+    const registered=selection.provider!=='nebius'&&selection.provider!=='openai';
+    if (!this.adapter(selection).configured || registered&&!this.inference?.status(selection.provider).ready) return this.localProjectChat(projectId,message);
     const project = this.store.getProject(projectId);
     const controller = new AbortController();
     this.chats.set(projectId,controller);
@@ -642,7 +560,6 @@ export class ExecutionService {
     const selection=this.modelSelection(projectId,nodeId);
     this.admitWork(true,selection);
     const service=this.searchService(),pricing=SEARCH_SERVICES[service.id];
-    if (options.useSearch && !this.cloudAllowed(service.id)) throw new Error(`Fresh explicit ${pricing.label} budget authorization is required for web search.`);
     if (options.useSearch && !service.adapter.configured) throw new Error('No web search key is configured. Add a Tavily, Exa or Brave Search key on the Plugins page, or turn off web search for model-only work.');
     const detail = this.store.detail(projectId);
     const node = detail.project.canvas.nodes.find(n=>n.id===nodeId);

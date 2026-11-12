@@ -8,8 +8,7 @@
  *
  * The code goes into a git worktree next to this checkout (../ros-ai-try/pr-4) with its own
  * packages and its own empty data folder. Your branch, projects and keys stay as they are. The copy
- * takes no keys or allowances from this shell; it reads only your keys file (~/.config/ros.ai/keys.env)
- * if you made one, including any ROS_START_ALLOWANCE_* starting allowance for its fresh data folder.
+ * takes no keys from this shell; it reads only your keys file (~/.config/ros.ai/keys.env) if you made one.
  * Running the same command again updates the copy to the latest push and keeps its test projects.
  */
 import { spawn, spawnSync } from 'node:child_process';
@@ -99,8 +98,7 @@ let port = firstPort;
 while (!(await free(port))) if (++port > firstPort + 20) fail(`No free port between ${firstPort} and ${firstPort + 20}.`);
 const url = `http://127.0.0.1:${port}`;
 
-// Leave out keys and spending settings from this shell: the copy keeps its own usage records,
-// so an allowance passed in here could be spent a second time.
+// Leave out keys and ROS_* settings from this shell: the copy has its own data folder and reads only the keys file.
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(ROS_|NEBIUS_|OPENAI_|ANTHROPIC_|TAVILY_|CONTREE_)/.test(key) && !/(API_KEY|SECRET|TOKEN)$/.test(key)));
 const server = spawn(process.execPath, [join(dir, 'node_modules/tsx/dist/cli.mjs'), 'src/server/index.ts'], {
   cwd: dir, stdio: 'inherit', detached: process.platform !== 'win32',

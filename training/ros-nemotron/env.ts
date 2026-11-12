@@ -103,7 +103,7 @@ class Recording implements ModelAdapter {
 export async function rollout(task: Task, fixture: Fixture, model: ModelAdapter, web: SearchAdapter): Promise<Trajectory> {
   const directory = mkdtempSync(join(tmpdir(), 'ros-nemotron-')), store = new Store(directory), started = Date.now();
   const recording = new Recording(model);
-  const execution = new ExecutionService(store, { model: recording, search: web, limits: { nebius: 1000, tavily: 1000 }, includeSetupUsage: false, maxConcurrent: 4, timeoutMs: 300_000 });
+  const execution = new ExecutionService(store, { model: recording, search: web, includeSetupUsage: false, maxConcurrent: 4, timeoutMs: 300_000 });
   const experiments = new ExperimentService(store, { sandbox }), loop = new ToolLoopAgentService(store, execution, experiments);
   const { projectId, ids } = build(store, fixture);
   new Authority(store).configure(projectId, { mode: task.mode });

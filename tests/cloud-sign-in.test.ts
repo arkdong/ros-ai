@@ -11,7 +11,7 @@ import { CloudAccount } from '../src/server/cloud-account.js';
 
 const caps = { maxInputBytes: 64000, maxOutputTokens: 4096, timeoutMs: 30000, maxConcurrent: 4, maxResponseBytes: 256000 };
 function workspace(t: TestContext) {
-  const dir = mkdtempSync(join(tmpdir(), 'ros-allowance-')), store = new Store(join(dir, 'store')), inference = new InferenceConnections(store, join(dir, 'keys'));
+  const dir = mkdtempSync(join(tmpdir(), 'ros-cloud-sign-in-')), store = new Store(join(dir, 'store')), inference = new InferenceConnections(store, join(dir, 'keys'));
   t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
   return { dir, store, inference };
 }
@@ -21,22 +21,6 @@ function used(store: Store, id: string, requests: number, unitsEach: number) {
   const at = new Date().toISOString();
   store.saveGlobalRecord('inference-connection', id, { ...state, admissions: Array.from({ length: requests }, (_, index) => ({ usageId: `used-${index}`, reservedUnits: unitsEach, createdAt: at })) });
 }
-
-test('ros.ai’s own connections keep an allowance however much they have served, and a ceiling equal to the usage is not below it', t => {
-  const { store, inference } = workspace(t);
-  const cloud = inference.create({ name: 'ros.ai cloud', endpoint: 'https://cloud.example/v1', enabled: true, caps, models: [{ id: 'ros-deep', label: 'ROS', contextTokens: 32768, inputUsdPerMillion: 0.5, outputUsdPerMillion: 2 }] });
-  // 407 deep requests at US$0.31 each: US$126.17, a total whose dollars do not convert back exactly.
-  used(store, cloud.id, 407, 310_000_000);
-  const status = inference.status(cloud.id);
-  assert.equal(status.accountedUsd, 126.17);
-  assert.equal(inference.saveAllowance(cloud.id, { requestCeiling: 10000, usdCeiling: status.accountedUsd, enabled: true, acknowledged: true }).usdCeiling, 126.17);
-  // Past 10,000 requests and US$1,000, the allowance follows the usage instead of failing the sign-in.
-  used(store, cloud.id, 10_001, 310_000_000);
-  const kept = inference.keepAllowance(cloud.id, { requestCeiling: 10000, usdCeiling: 100 });
-  assert.equal(kept.requestCeiling, 10_001);
-  assert.equal(kept.usdCeiling, 3100.31);
-  assert.equal(kept.allowanceEnabled, true);
-});
 
 test('signing in again works after heavy use, and after an earlier sign-in left its connection without the account', async t => {
   const { dir, store, inference } = workspace(t);

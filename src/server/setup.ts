@@ -173,7 +173,6 @@ export class Setup {
       const connection = existing
         ? this.deps.inference.update(existing.id, { models, caps, enabled: true })
         : this.deps.inference.create({ name: model.label, endpoint: model.endpoint, enabled: true, models, caps });
-      if (!this.deps.inference.status(connection.id).allowanceEnabled) this.deps.inference.saveAllowance(connection.id, { requestCeiling: 10000, usdCeiling: 0, enabled: true, acknowledged: true });
       return { id: model.id, ok: true, message: `${models.length} model${models.length === 1 ? '' : 's'} connected. Nothing is spent until you use them.`, connectionId: connection.id };
     } catch (error) { return { id: model.id, ok: false, message: error instanceof Error ? error.message : `${model.label} could not be registered.` }; }
   }

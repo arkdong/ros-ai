@@ -17,6 +17,7 @@ import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult 
 import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type ClaudeModel, type ClaudeWebSearch } from '../shared/claude-agent.js';
 import { EFFORT_LEVELS, effortFor, isEffortLevel, modelEffortLabel, type AgentModel, type AgentModelChoice, type EffortLevel } from '../shared/agent-models.js';
 import { ClaudePlan, planEnvironment } from './claude-plan.js';
+import { reservePaidUsage, settlePaidUsage } from './paid-usage.js';
 import { privateAddress } from './private-address.js';
 import { CANVAS_GRAMMAR } from './canvas-grammar.js';
 
@@ -31,10 +32,10 @@ const OWN_SEARCH_INSTRUCTIONS = `- Look things up on the web with your own WebSe
 // The review card under the answer lists every waiting change, and cost is ros.ai's to track, not the person's to approve.
 const REPLY_INSTRUCTIONS = `- When changes wait for the researcher, the review card under your answer already lists them. Do not list them again or explain how they are split into proposals; say in two or three sentences what you did and anything odd you noticed, then at most one thing you need.
 - Never mention cost, budgets, spending limits or how much of them is left, and never ask the researcher to raise one. If you are about to run out, stop at a clean point and say in one line what is left to do in a follow-up.`;
-const MAX_TOOL_CALLS = 30, MAX_MODEL_TURNS = 30, MAX_SECONDS = 900, MIN_TURN_USD = 0.05;
-// One turn reserves this much of the Claude connection allowance and passes it to
+const MAX_TOOL_CALLS = 30, MAX_MODEL_TURNS = 30, MAX_SECONDS = 900;
+// One turn reserves this much in Usage and passes it to
 // Claude Code as its budget. A completed turn settles at the cost Claude Code reports.
-const TURN_USD = Math.min(20, Math.max(MIN_TURN_USD, Number(process.env.ROS_CLAUDE_TURN_USD) || 5));
+const TURN_USD = Math.min(20, Math.max(0.05, Number(process.env.ROS_CLAUDE_TURN_USD) || 5));
 const sdkVersion = (() => { try { return String(JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')), 'package.json'), 'utf8')).version); } catch { return 'unknown'; } })();
 
 
@@ -189,8 +190,7 @@ export class ClaudeAgentService {
   }
   settings(): ClaudeAgentSettings {
     const { model, planModel, webSearch } = this.saved();
-    const budget = this.execution.connectionBudgets.status('claude');
-    return { model, planModel, webSearch, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()), allowanceReady: budget.ready && budget.remainingUsd >= MIN_TURN_USD };
+    return { model, planModel, webSearch, plan: this.plan.current(), login: this.plan.loginState(), turnUsd: TURN_USD, sdkVersion, apiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY?.trim()) };
   }
   /** Settings with a fresh look at the Claude plan sign-in; still no model request. */
   async checkedSettings() { await this.plan.check(); return this.settings(); }
@@ -212,9 +212,6 @@ export class ClaudeAgentService {
       return { available: true, reason: null };
     }
     if (!process.env.ANTHROPIC_API_KEY?.trim()) return { available: false, reason: 'Connect a Claude API key on the Agents page, then Claude Code can answer here.' };
-    const budget = this.execution.connectionBudgets.status('claude');
-    if (!budget.ready) return { available: false, reason: budget.reason };
-    if (budget.remainingUsd < MIN_TURN_USD) return { available: false, reason: `Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains. Raise the allowance on the Model page.` };
     if (this.experiments.authority.policy(projectId).stopped) return { available: false, reason: 'Project research is stopped. Resume deliberately before a new turn.' };
     return { available: true, reason: null };
   }
@@ -246,13 +243,11 @@ export class ClaudeAgentService {
     mkdirSync(this.configDir, { recursive: true, mode: 0o700 });
 
     // Validate before reserving: a reservation is only returned by a reported, completed turn.
-    // A turn on the person's Claude plan costs ros.ai nothing, so it reserves no allowance; the plan's own limits apply.
-    const requestId = randomUUID(), budget = this.execution.connectionBudgets.status('claude');
-    const reservedUsd = onPlan ? 0 : Math.min(TURN_USD, Math.floor(budget.remainingUsd * 100) / 100);
-    if (!onPlan && reservedUsd < MIN_TURN_USD) throw new StoreError(`Less than US$${MIN_TURN_USD.toFixed(2)} of the Claude Code allowance remains.`, 409);
+    // A turn on the person's Claude plan costs ros.ai nothing, so it reserves no money; the plan's own limits apply.
+    const requestId = randomUUID(), reservedUsd = onPlan ? 0 : TURN_USD;
     const usage = this.store.atomic(() => {
       this.experiments.authority.reserve(request.projectId, { kind: 'model', nodeId: request.nodeIds[0] ?? 'project', fingerprint: `claude:${requestId}`, spendUsd: reservedUsd });
-      return onPlan ? null : this.execution.connectionBudgets.reserve({ provider: 'claude', amountUsd: reservedUsd, purpose: 'Claude Code assistant turn', basis: `Claude Code budget for one turn (maxBudgetUsd ${reservedUsd}); settled at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice`, trace: { requestId, model, projectId: request.projectId, nodeId: request.nodeIds[0] ?? null } }, budget.revision);
+      return onPlan ? null : reservePaidUsage(this.store, { provider: 'claude', amountUsd: reservedUsd, purpose: 'Claude Code assistant turn', basis: `Claude Code budget for one turn (maxBudgetUsd ${reservedUsd}); settled at the cost Claude Code reports at Anthropic's published rates, an estimate rather than an invoice`, trace: { requestId, model, projectId: request.projectId, nodeId: request.nodeIds[0] ?? null } });
     });
 
     // A new selection moves focus, not the conversation: each prompt states the current selection.
@@ -336,7 +331,7 @@ export class ClaudeAgentService {
         // Claude Code reports a running total for a resumed session; this turn is the difference.
         const turnCost = Math.round(Math.max(0, result.cost - (resume && result.sessionId === resume.sessionId && result.cost >= resume.costUsd ? resume.costUsd : 0)) * 1e9) / 1e9;
         attempt.costUsd = turnCost;
-        if (usage) this.execution.connectionBudgets.settle('claude', usage.id, turnCost, { requestId, model, reportedTotalUsd: result.cost, subtype: result.subtype });
+        if (usage) settlePaidUsage(this.store, usage.id, turnCost, { requestId, model, reportedTotalUsd: result.cost, subtype: result.subtype });
         event({ at: now(), type: 'usage', message: onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`, data: { costUsd: turnCost, subtype: result.subtype, billing } });
         // Kept also after an error (the step limit, the turn's budget), so "continue" picks up the work done so far.
         if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
@@ -358,7 +353,7 @@ export class ClaudeAgentService {
     } catch (error) {
       let settled = attempt.costUsd !== undefined;
       // Claude Code reports its session before any model request, so without it nothing was sent.
-      if (!settled && !attempt.sessionId) { if (usage) this.execution.connectionBudgets.settle('claude', usage.id, 0, { requestId, model, outcome: 'Claude Code did not start; no model request was sent' }); attempt.costUsd = 0; settled = true; }
+      if (!settled && !attempt.sessionId) { if (usage) settlePaidUsage(this.store, usage.id, 0, { requestId, model, outcome: 'Claude Code did not start; no model request was sent' }); attempt.costUsd = 0; settled = true; }
       if (!settled && usage) this.store.updateUsage(usage.id, { status: 'uncertain' });
       attempt = { ...attempt, status: stopped && !refused && !timedOut ? 'interrupted' : settled ? 'failed' : 'uncertain', error: error instanceof StoreError ? error.message : `Claude Code failed: ${error instanceof Error ? error.message.slice(0, 300) : 'unknown error'}. Its full reservation stays counted; nothing was repeated.` }; save();
       if (!settled) { const session = this.store.record<Session>('claude-session', key); if (session) this.store.saveRecord('claude-session', key, request.projectId, { ...session, state: 'uncertain' }); }

@@ -40,13 +40,8 @@ export type InferenceConnectionStatus = {
   destination: InferenceDestination;
   models: RegisteredInferenceModel[];
   caps: InferenceCaps;
-  allowanceEnabled: boolean;
-  requestCeiling: number;
-  usdCeiling: number;
   usedRequests: number;
   accountedUsd: number;
-  remainingRequests: number;
-  remainingUsd: number;
   pricingBasis: string;
   updatedAt: string;
 };
