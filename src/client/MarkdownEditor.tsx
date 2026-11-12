@@ -24,16 +24,16 @@ function difference(current: string, next: string) {
 }
 
 const style = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '600' },
-  { tag: tags.heading2, fontSize: '1.35em', fontWeight: '600' },
-  { tag: tags.heading3, fontSize: '1.15em', fontWeight: '600' },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '600' },
-  { tag: tags.strong, fontWeight: '600' },
+  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '500' },
+  { tag: tags.heading2, fontSize: '1.35em', fontWeight: '500' },
+  { tag: tags.heading3, fontSize: '1.15em', fontWeight: '500' },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '500' },
+  { tag: tags.strong, fontWeight: '500' },
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: '#2f5f8a' },
   { tag: tags.url, color: '#2f5f8a' },
-  { tag: tags.monospace, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.9em' },
+  { tag: tags.monospace, fontFamily: 'var(--font-mono)', fontSize: '0.9em' },
   { tag: [tags.processingInstruction, tags.contentSeparator, tags.labelName], color: '#a3a3a3' },
   { tag: tags.quote, color: '#555' },
 ]);

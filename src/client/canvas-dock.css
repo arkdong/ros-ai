@@ -50,7 +50,7 @@
   border-radius: var(--radius-control);
   background: var(--ink);
   color: var(--paper);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   line-height: 1.4;
   white-space: nowrap;
   text-align: left;
@@ -58,7 +58,7 @@
   opacity: 0;
   transition: opacity var(--dur-out) var(--ease);
 }
-.canvas-dock-tip strong { font-weight: 600; }
+.canvas-dock-tip strong { font-weight: 500; }
 .canvas-dock-tip span { color: var(--muted); }
 .canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; transition-delay: .15s; }
 /* The dock rises in with the first block; an empty map has its Add a block button in the middle instead. */
@@ -107,14 +107,14 @@
 /* The canvas proposal: a short title, the reason in grey, the changes, then the decision. */
 .single-canvas-shell .proposal-preview, .proposal-preview { width:min(380px, calc(100vw - 48px)); padding:12px 14px; border-radius:var(--radius-block); border-color:var(--line); box-shadow:var(--shadow-float); }
 .proposal-preview>header { display:flex; align-items:center; justify-content:space-between; }
-.proposal-preview>header .eyebrow { display:inline-flex; align-items:center; gap:5px; font-size:var(--text-xs); color:var(--muted); letter-spacing:0; text-transform:none; }
+.proposal-preview>header .eyebrow { display:inline-flex; align-items:center; gap:5px; font-size:var(--text-sm); color:var(--muted); letter-spacing:0; text-transform:none; }
 .single-canvas-shell .proposal-preview h3, .proposal-preview h3 { font-size:var(--text-md); font-weight:500; line-height:1.5; margin:6px 0 2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.proposal-preview .proposal-reason { font-size:var(--text-xs); line-height:1.55; color:var(--muted); margin:0 0 8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.proposal-preview .proposal-reason { font-size:var(--text-sm); line-height:1.55; color:var(--muted); margin:0 0 8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .proposal-preview .proposal-operations { margin:6px 0 0; }
-.proposal-preview .proposal-operations .operation-tag { font-size:var(--text-xs); padding:2px 6px; }
-.proposal-preview .stale-warning { font-size:var(--text-xs); color:var(--muted); margin:8px 0 0; }
+.proposal-preview .proposal-operations .operation-tag { font-size:var(--text-sm); padding:2px 6px; }
+.proposal-preview .stale-warning { font-size:var(--text-sm); color:var(--muted); margin:8px 0 0; }
 .proposal-preview .proposal-actions { display:flex; align-items:center; gap:4px; margin-top:10px; }
-.proposal-preview .proposal-actions .text-button { font-size:var(--text-xs); color:var(--muted); }
+.proposal-preview .proposal-actions .text-button { font-size:var(--text-sm); color:var(--muted); }
 /* A proposal's card sits beside the blocks it changes. */
 .proposal-anchor .proposal-preview { width: 360px; max-width: calc(100vw - 48px); margin: 0; }
 
@@ -136,7 +136,7 @@
 }
 .canvas-toast > span { overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
 .canvas-toast > svg { flex: none; color: var(--ink); }
-.canvas-toast > button { margin-left: 3px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.canvas-toast > button { margin-left: 3px; padding: 0; border: 0; background: none; font: inherit; font-weight: 500; color: var(--ink); cursor: pointer; }
 .canvas-toast > button:hover { text-decoration: underline; }
 @keyframes canvas-toast-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .canvas-toast { animation: none; } }

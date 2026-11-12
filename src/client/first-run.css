@@ -18,13 +18,13 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .first-run .setup-column { gap: 14px; padding: 26px 24px 12px; box-sizing: border-box; background: var(--paper); border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
 .first-run .setup-card { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .first-run .setup-screen { flex: none; width: 100%; padding: 0; overflow: visible; background: transparent; }
-.first-run .inline-error { margin: 0; font-size: var(--text-xs); }
+.first-run .inline-error { margin: 0; font-size: var(--text-sm); }
 /* Welcome: the sentence large, and one Continue in the middle with nothing beside it. */
 .fr-lead { margin: -2px 0 2px; max-width: 500px; text-align: center; text-wrap: balance; font-size: var(--text-xl); line-height: 1.45; letter-spacing: -.01em; color: var(--ink); }
 .fr-welcome .setup-foot { justify-content: center; height: auto; margin: 4px 0 8px; padding: 0; border-top: 0; }
 .fr-welcome .setup-foot .primary { height: 36px; padding: 0 22px; border-radius: var(--radius-pill); font-size: var(--text-md); }
 /* The step count is a node of its own when there is room for the nodes; under the page otherwise. */
-.fr-step { display: none; margin: -4px 0 0; font-size: var(--text-xs); text-align: center; color: var(--muted); }
+.fr-step { display: none; margin: -4px 0 0; font-size: var(--text-sm); text-align: center; color: var(--muted); }
 
 /* The columns: one each side, centred on the page, every block and group the same width and the same gap apart. */
 .fr-side { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
@@ -35,7 +35,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-side > .fr-sat { width: calc(var(--fr-w) + 19px); }
 /* A group as groups are on the map: a frame with its name inside at the top, its blocks in a column. */
 .fr-group { position: relative; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; padding: 32px 8px 8px; border: 1.5px solid var(--line); border-radius: var(--radius-card); background: rgba(255, 255, 255, .45); animation: fr-rise .45s cubic-bezier(.2, .8, .2, 1) both; }
-.fr-group-head { position: absolute; top: 9px; left: 14px; font-size: var(--text-xs); line-height: 16px; font-weight: 600; color: var(--body); white-space: nowrap; }
+.fr-group-head { position: absolute; top: 9px; left: 14px; font-size: var(--text-sm); line-height: 16px; font-weight: 500; color: var(--body); white-space: nowrap; }
 .fr-group-head em { font-style: normal; font-weight: 400; color: var(--muted); }
 /* The loose layout: the columns zigzag a little, as groups sit on ros-ai.io. */
 .fr-stage.loose .fr-side.left > [data-id="steps"] { margin-right: 14px; }
@@ -45,10 +45,10 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-sat-in { animation: fr-fade .35s ease-out both; }
 /* A line that changes in place, such as an agent's current step, fades in on its own. */
 .fr-swap { display: block; animation: fr-fade .35s ease-out both; }
-.fr-sat-kind { display: flex; align-items: center; gap: 5px; font-size: var(--text-xs); line-height: 16px; color: var(--muted); white-space: nowrap; }
+.fr-sat-kind { display: flex; align-items: center; gap: 5px; font-size: var(--text-sm); line-height: 16px; color: var(--muted); white-space: nowrap; }
 .fr-sat-kind svg, .fr-sat-kind img, .fr-sat-kind .ros-mark, .fr-sat-kind .ros-mark .research-ring { width: 12px; height: 12px; flex-shrink: 0; }
 .fr-sat-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: auto; padding-left: 8px; }
-.fr-sat-title { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: var(--text-lg); font-weight: 600; letter-spacing: -.015em; line-height: 1.3; color: var(--ink); }
+.fr-sat-title { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: var(--text-lg); font-weight: 500; letter-spacing: -.015em; line-height: 1.3; color: var(--ink); }
 .fr-sat-title > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .fr-sat-title .fr-dim { font-weight: 500; color: var(--muted); }
 .fr-sat-aside { margin-left: auto; flex-shrink: 0; display: inline-flex; }
@@ -56,13 +56,13 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-sat-body p { margin: 0; }
 .fr-sat-body p + p { margin-top: 4px; }
 /* The last row: a detail at the left, the agent that made the block at the right, as on the map. */
-.fr-sat-row { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 8px; font-size: var(--text-xs); line-height: 16px; color: var(--muted); }
+.fr-sat-row { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 8px; font-size: var(--text-sm); line-height: 16px; color: var(--muted); }
 .fr-sat-row img, .fr-sat-row svg { flex-shrink: 0; }
 .fr-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-who { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: auto; height: 20px; padding: 0 8px 0 4px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--paper); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
+.fr-who { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: auto; height: 20px; padding: 0 8px 0 4px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--paper); font-size: var(--text-sm); color: var(--body); white-space: nowrap; }
 .fr-who img, .fr-who svg { width: 13px; height: 13px; }
 .fr-badge { position: absolute; top: -8px; right: -8px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow-block); }
-.fr-mark { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+.fr-mark { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: var(--radius-pill); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
 .fr-mark.good { background: rgba(47, 125, 79, .12); color: var(--ok); }
 /* A Notebook's cells, lit one by one as the training runs. */
 .fr-bars { display: flex; align-items: flex-end; gap: 4px; height: 26px; margin-top: 2px; }
@@ -78,7 +78,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-steps li i { display: grid; place-items: center; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); color: var(--paper); flex-shrink: 0; }
 .fr-steps li.done { color: var(--body); }
 .fr-steps li.done i { background: var(--ink); border-color: var(--ink); }
-.fr-steps li.now { color: var(--ink); font-weight: 600; }
+.fr-steps li.now { color: var(--ink); font-weight: 500; }
 .fr-steps li.now i { border-color: var(--ink); }
 .fr-steps li.now i::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
 .fr-steps.live li.now i::after { animation: fr-breathe 1.2s ease-in-out infinite; }
@@ -86,8 +86,8 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-found li { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .fr-found li img, .fr-found li svg { width: 14px; height: 14px; flex-shrink: 0; }
 .fr-found li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.fr-found li small { font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
-.fr-more { margin: 4px 0 0; font-size: var(--text-xs); color: var(--muted); }
+.fr-found li small { font-size: var(--text-sm); color: var(--muted); white-space: nowrap; }
+.fr-more { margin: 4px 0 0; font-size: var(--text-sm); color: var(--muted); }
 .fr-logos { display: flex; gap: 4px; flex-shrink: 0; }
 .fr-logos span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: var(--radius-control); border: 1px solid var(--line-soft); background: var(--paper); opacity: .35; }
 .fr-logos span.on { opacity: 1; }
@@ -106,7 +106,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-sat.proposal.decided { border-style: solid; border-color: var(--line); background: var(--paper); }
 .fr-sat.proposal.later { opacity: .7; }
 .fr-chips { display: flex; gap: 6px; margin-top: 9px; }
-.fr-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border: 1px solid var(--ink); border-radius: var(--radius-pill); background: var(--ink); color: var(--paper); font: inherit; font-size: var(--text-xs); font-weight: 500; cursor: pointer; }
+.fr-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border: 1px solid var(--ink); border-radius: var(--radius-pill); background: var(--ink); color: var(--paper); font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 .fr-chip.lt { border-color: var(--line); background: var(--paper); color: var(--body); }
 .fr-chip:hover { border-color: var(--ink); }
 .fr-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -120,7 +120,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
    border once chosen and a lime Recommended tag; Continue without an account as one quiet row. Then ROS on this
    computer as two tiles, Download ROS and Later, the chosen one with the lime border; one status row once it runs. */
 .fr-account { gap: 8px; }
-.fr-cap { margin: 2px 0 -2px; font-size: var(--text-xs); color: var(--muted); }
+.fr-cap { margin: 2px 0 -2px; font-size: var(--text-sm); color: var(--muted); }
 .fr-cap.second { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .fr-choices { display: flex; flex-direction: column; gap: 8px; }
 .fr-acc { display: flex; flex-direction: column; align-items: stretch; gap: 9px; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: var(--radius-block); background: var(--paper); font: inherit; font-weight: 400; text-align: left; white-space: normal; color: inherit; cursor: pointer; }
@@ -132,9 +132,9 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-acc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fr-acc-head { display: flex; align-items: center; gap: 10px; }
 .fr-acc-head .ros-mark, .fr-acc-head .ros-mark .research-ring { width: 24px; height: 24px; }
-.fr-acc-head b { font-size: var(--text-xl); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: var(--ink); }
-.fr-rec { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-pill); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
-.fr-acc.on .fr-rec { border-color: var(--accent); background: var(--accent); color: var(--ink); font-weight: 600; }
+.fr-acc-head b { font-size: var(--text-xl); font-weight: 500; letter-spacing: -.02em; line-height: 1.25; color: var(--ink); }
+.fr-rec { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-pill); font-size: var(--text-sm); color: var(--body); white-space: nowrap; }
+.fr-acc.on .fr-rec { border-color: var(--accent); background: var(--accent); color: var(--ink); font-weight: 500; }
 .fr-acc-head .setup-ck, .fr-acc-head .setup-state { margin-left: auto; }
 .fr-acc.on .setup-ck { background: var(--ink); border-color: var(--ink); }
 .fr-acc-pts { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); line-height: 1.4; color: var(--body); }
@@ -147,7 +147,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-acc.tile { gap: 6px; }
 .fr-acc.tile .fr-acc-head .ros-mark, .fr-acc.tile .fr-acc-head .ros-mark .research-ring { width: 20px; height: 20px; }
 .fr-acc.tile .fr-acc-head b { font-size: var(--text-lg); letter-spacing: -.015em; }
-.fr-acc-why { font-size: var(--text-xs); line-height: 1.45; color: var(--body); }
+.fr-acc-why { font-size: var(--text-sm); line-height: 1.45; color: var(--body); }
 .fr-dl { display: flex; align-items: center; gap: 12px; padding: 4px 0 2px; }
 .fr-dl-tile { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-block); border: 1px solid var(--line-soft); background: var(--paper); flex-shrink: 0; }
 .fr-dl-tile .ros-mark, .fr-dl-tile .ros-mark .research-ring { width: 22px; height: 22px; }

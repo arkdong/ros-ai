@@ -1,28 +1,28 @@
 .inference-connections { border-top:1px solid var(--line-soft); padding:15px 0; margin-top:8px; }
 .inference-connections .inference-section-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px; }
 .inference-connections h3 { margin:0; font-size:var(--text-sm); }
-.inference-connections h4 { margin:0 0 9px; font-size:var(--text-xs); }
-.inference-connections p { font-size:var(--text-xs); line-height:1.5; margin:7px 0; color:var(--muted); }
-.inference-connections .inference-section-heading p { margin:4px 0 0; font-size:var(--text-xs); }
+.inference-connections h4 { margin:0 0 9px; font-size:var(--text-sm); }
+.inference-connections p { font-size:var(--text-sm); line-height:1.5; margin:7px 0; color:var(--muted); }
+.inference-connections .inference-section-heading p { margin:4px 0 0; font-size:var(--text-sm); }
 .inference-connections .registered-inference { margin:8px 0; border:1px solid var(--line); border-radius:var(--radius-block); }
 .inference-connections .registered-inference > summary { list-style:none; display:flex; align-items:center; gap:8px; padding:11px; cursor:pointer; }
 .inference-connections .registered-inference > summary::-webkit-details-marker { display:none; }
 .inference-connections .registered-inference > summary > span:first-of-type { flex:1; min-width:0; }
-.inference-connections .registered-inference strong { font-size:var(--text-xs); display:block; }
-.inference-connections small { font-size:var(--text-xs); display:block; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }
-.inference-connections .inference-status { font-size:var(--text-xs); color:var(--muted); }
+.inference-connections .registered-inference strong { font-size:var(--text-sm); display:block; }
+.inference-connections small { font-size:var(--text-sm); display:block; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }
+.inference-connections .inference-status { font-size:var(--text-sm); color:var(--muted); }
 .inference-connections .registered-inference-body { padding:0 12px 12px; }
 .inference-connections .inference-configuration { background:var(--canvas); border:1px solid var(--line); border-radius:var(--radius-control); padding:12px; margin:11px 0; }
-.inference-connections label { display:block; font-size:var(--text-xs); margin:9px 0; color:var(--muted); }
+.inference-connections label { display:block; font-size:var(--text-sm); margin:9px 0; color:var(--muted); }
 .inference-connections label span { color:var(--muted); }
-.inference-connections input:not([type=checkbox]),.inference-connections select { width:100%; display:block; margin-top:5px; font-size:var(--text-xs); }
+.inference-connections input:not([type=checkbox]),.inference-connections select { width:100%; display:block; margin-top:5px; font-size:var(--text-sm); }
 .inference-connections .inference-checkbox { display:flex; align-items:flex-start; gap:7px; line-height:1.5; }
 .inference-connections input[type=checkbox] { width:14px; height:14px; flex-shrink:0; margin:2px 0 0; }
 .inference-connections fieldset { border:0; border-top:1px solid var(--line); margin:15px 0 5px; padding:8px 0 0; min-width:0; }
-.inference-connections legend { font-size:var(--text-xs); font-weight:600; }
+.inference-connections legend { font-size:var(--text-sm); font-weight:500; }
 .inference-connections .inference-numeric-row { display:grid; grid-template-columns:1fr 1fr; gap:0 9px; }
-.inference-connections details details { margin:12px 0; font-size:var(--text-xs); }
-.inference-connections details details > summary { font-size:var(--text-xs); cursor:pointer; color:var(--muted); }
-.inference-connections .inference-destination { color:var(--muted); font-size:var(--text-xs); }
-.inference-connections .inference-footnote { font-size:var(--text-xs); margin:9px 0 0; color:var(--muted); }
+.inference-connections details details { margin:12px 0; font-size:var(--text-sm); }
+.inference-connections details details > summary { font-size:var(--text-sm); cursor:pointer; color:var(--muted); }
+.inference-connections .inference-destination { color:var(--muted); font-size:var(--text-sm); }
+.inference-connections .inference-footnote { font-size:var(--text-sm); margin:9px 0 0; color: var(--body); }
 .inference-connections .inline-error { color:var(--fail); }

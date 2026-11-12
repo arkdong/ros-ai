@@ -5,8 +5,8 @@
 .assistant-compact .assistant-signal img { width:35px; height:35px; transform:translate(2px,3px); }
 .assistant-compact .assistant-focus { min-height:36px; padding:7px 16px; gap:7px; }
 .assistant-compact .assistant-focus>div { flex-direction:row; align-items:baseline; gap:7px; }
-.assistant-compact .assistant-focus span { font-size:var(--text-xs); text-transform:none; letter-spacing:0; }
-.assistant-compact .assistant-focus strong { font-weight:500; font-size:var(--text-xs); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.assistant-compact .assistant-focus span { font-size:var(--text-sm); text-transform:none; letter-spacing:0; }
+.assistant-compact .assistant-focus strong { font-weight:500; font-size:var(--text-sm); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .assistant-compact .assistant-focus .icon-button { width:22px; height:22px; padding:3px; }
 .assistant-compact .assistant-scroll { padding:16px; }
 .assistant-admission { flex-shrink:0; display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin:0 16px 8px; font-size:var(--text-sm); line-height:1.45; color:var(--muted); }
@@ -16,14 +16,14 @@
 .ros-starters .chip-button:hover { background:var(--sidebar); }
 .assistant-compact .assistant-composer { margin:0 16px 0; flex-shrink:0; }
 .assistant-compact .assistant-composer textarea { min-height:72px; max-height:160px; font-size:var(--text-md); }
-.assistant-failure-details,.assistant-saved-fallback { font-size:var(--text-xs); color:var(--muted); line-height:1.6; margin-top:8px; }
+.assistant-failure-details,.assistant-saved-fallback { font-size:var(--text-sm); color: var(--body); line-height:1.6; margin-top:8px; }
 .assistant-failure-details summary { display:flex; align-items:center; gap:6px; cursor:pointer; padding:7px 9px; background:var(--sidebar); border:1px solid var(--line); border-radius:var(--radius-control); list-style:none; }
-.assistant-failure-details summary span:last-child { margin-left:auto; font-size:var(--text-xs); text-decoration:underline; text-underline-offset:2px; }
+.assistant-failure-details summary span:last-child { margin-left:auto; font-size:var(--text-sm); text-decoration:underline; text-underline-offset:2px; }
 .assistant-failure-details p { padding:8px 10px; overflow-wrap:anywhere; }
 .assistant-saved-fallback summary { cursor:pointer; }
 .assistant-saved-fallback .rich-text { margin-top:8px; }
-.assistant-compact .assistant-turn-events { font-size:var(--text-xs); margin-top:7px; }
-.assistant-compact .assistant-turn-events summary { font-size:var(--text-xs); }
+.assistant-compact .assistant-turn-events { font-size:var(--text-sm); margin-top:7px; }
+.assistant-compact .assistant-turn-events summary { font-size:var(--text-sm); }
 @media (max-height:700px) { .assistant-compact .assistant-heading { min-height:50px; padding-top:9px; padding-bottom:9px; } .assistant-compact .assistant-composer textarea { min-height:56px; } }
 /* An agent turn's work, stated once above its answer. */
 .agent-work-summary { display: grid; gap: 8px; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--canvas); }
@@ -33,4 +33,4 @@
 .agent-work-summary li.waiting { color: var(--wait); }
 .agent-work-summary li.waiting svg { color: inherit; }
 .agent-work-summary > .text-button { justify-self: start; display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); }
-.assistant-dev-clear { display:inline-flex; align-items:center; gap:4px; font-size:var(--text-xs); color:var(--muted); margin-right:4px; }
+.assistant-dev-clear { display:inline-flex; align-items:center; gap:4px; font-size:var(--text-sm); color:var(--muted); margin-right:4px; }

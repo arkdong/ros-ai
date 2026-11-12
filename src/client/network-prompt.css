@@ -13,7 +13,7 @@
 .python-notice-text strong { overflow-wrap: anywhere; }
 .python-notice-text span { font-size: var(--text-sm); color: var(--muted); }
 .python-notice-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
-.python-notice-actions kbd { margin-left: 6px; font: var(--text-xs) ui-monospace, monospace; opacity: .6; }
+.python-notice-actions kbd { margin-left: 6px; font: var(--text-sm) var(--font-mono); opacity: .6; }
 /* One primary action, with "Always for this project" behind its chevron. */
 .python-notice-allow { position: relative; display: inline-flex; }
 .python-notice-actions .python-notice-allow > button.primary:first-child:not(:only-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
@@ -21,5 +21,5 @@
 .python-notice-menu { position: absolute; right: 0; bottom: calc(100% + 6px); display: grid; padding: 4px; min-width: 190px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-block); box-shadow: var(--shadow-float); }
 .python-notice-menu button { justify-content: flex-start; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: var(--radius-control); }
 .python-notice-menu button:hover { background: var(--canvas); }
-.python-notice-why { justify-self: start; gap: 5px; font-size: var(--text-xs); }
-.python-notice-detail { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: var(--text-xs); line-height: 1.45; color: var(--muted); }
+.python-notice-why { justify-self: start; gap: 5px; font-size: var(--text-sm); }
+.python-notice-detail { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: var(--text-sm); line-height: 1.45; color: var(--body); }

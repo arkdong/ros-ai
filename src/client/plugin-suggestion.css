@@ -28,8 +28,8 @@
 .plugin-key .plugin-key-row input { flex: 1; min-width: 0; width: auto; height: 32px; padding: 0 10px; font-size: var(--text-sm); }
 .plugin-key .plugin-key-row .primary.small { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .plugin-key .plugin-key-row .text-button { font-size: var(--text-sm); white-space: nowrap; }
-.plugin-key-hint { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
-.plugin-key-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--text-xs); color: var(--body); }
+.plugin-key-hint { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
+.plugin-key-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: var(--text-sm); color: var(--body); }
 .plugin-key-link:hover { color: var(--ink); }
 
 /* The card under a reply, beside "ROS noticed". */
@@ -44,8 +44,8 @@
 .plugin-suggestion-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
 .plugin-suggestion-name { display: flex; align-items: center; gap: 10px; }
 .plugin-suggestion-name strong { font-size: var(--text-md); font-weight: 500; color: var(--ink); }
-.plugin-suggestion-ok { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--ok); }
-.plugin-suggestion-text small { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--text-xs); color: var(--muted); }
+.plugin-suggestion-ok { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--ok); }
+.plugin-suggestion-text small { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--text-sm); color: var(--muted); }
 .plugin-suggestion-text small > svg { flex-shrink: 0; }
 .plugin-suggestion-wait { display: inline-flex; align-items: center; gap: 7px; }
 /* With several plugins, each one's button sits under its text, so a narrow panel never squeezes the words. */

@@ -12,14 +12,14 @@
 .picture-preview{display:block;width:100%;max-width:100%;height:auto;margin:0 auto;max-height:min(1198px,calc(200cqw + 2px));object-fit:cover;object-position:top;background:var(--canvas)}
 .picture-missing{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:140px;padding:20px;text-align:center;color:var(--muted);font-size:var(--text-sm);line-height:1.4;background:var(--canvas)}
 .picture-missing span{color:var(--ink);font-weight:500}
-.picture-missing small{font-size:var(--text-xs)}
+.picture-missing small{font-size:var(--text-sm)}
 /* Over the picture, on hover or when selected: the open button at the top right, the title at the bottom left. */
 .picture-chrome{position:absolute;inset:0;pointer-events:none}
 .picture-chrome>*{pointer-events:auto}
 .direct-canvas .picture-card .picture-chrome .card-controls{position:absolute;top:8px;right:8px;margin:0;opacity:0;transition:opacity var(--dur-out) var(--ease)}
 .direct-canvas .picture-card .picture-chrome .card-controls .icon-button{width:30px;height:30px;border-radius:var(--radius-control);background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);color:var(--ink);box-shadow:var(--shadow-block)}
 .direct-canvas .picture-card .picture-chrome .card-controls .icon-button:hover{background:var(--paper);color:var(--ink)}
-.picture-caption{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 56px);padding:4px 9px;border-radius:var(--radius-block);background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);color:var(--ink);font-size:var(--text-xs);font-weight:500;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity var(--dur-out) var(--ease);pointer-events:none}
+.picture-caption{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 56px);padding:4px 9px;border-radius:var(--radius-block);background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.08);color:var(--ink);font-size:var(--text-sm);font-weight:500;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity var(--dur-out) var(--ease);pointer-events:none}
 .picture-card:hover .picture-chrome .card-controls,.picture-card.selected .picture-chrome .card-controls,.picture-card .picture-chrome .card-controls:focus-within,.picture-card:hover .picture-caption,.picture-card.selected .picture-caption{opacity:1}
 .direct-canvas .picture-card .picture-chrome .card-preview-tag{position:absolute;top:10px;left:10px;margin:0}
 /* A small picture keeps most of itself in view: smaller controls closer to the corners, and below 72px tall or 160px
@@ -27,14 +27,14 @@
 .direct-canvas .picture-card.picture-small .picture-chrome .card-controls{top:5px;right:5px}
 .direct-canvas .picture-card.picture-small .picture-chrome .card-controls .icon-button{width:24px;height:24px;border-radius:var(--radius-control)}
 .direct-canvas .picture-card.picture-small .picture-chrome .card-controls .icon-button svg{width:13px;height:13px}
-.picture-card.picture-small .picture-caption{left:5px;bottom:5px;max-width:calc(100% - 40px);padding:2px 7px;border-radius:var(--radius-control);font-size:var(--text-xs)}
+.picture-card.picture-small .picture-caption{left:5px;bottom:5px;max-width:calc(100% - 40px);padding:2px 7px;border-radius:var(--radius-control);font-size:var(--text-sm)}
 .direct-canvas .picture-card.picture-tiny .picture-chrome .card-controls{top:3px;right:3px}
 .direct-canvas .picture-card.picture-tiny .picture-chrome .card-controls .icon-button{width:20px;height:20px;border-radius:var(--radius-control)}
 .direct-canvas .picture-card.picture-tiny .picture-chrome .card-controls .icon-button svg{width:12px;height:12px}
 .picture-card.picture-tiny .picture-caption{display:none}
 .direct-canvas .picture-card.picture-small .picture-chrome .card-preview-tag,.direct-canvas .picture-card.picture-tiny .picture-chrome .card-preview-tag{top:4px;left:4px;transform:scale(.85);transform-origin:top left}
-.file-preview-note{display:inline-flex;align-items:center;gap:6px;font-size:var(--text-xs);color:var(--muted);padding:8px;text-align:center}
-.file-line{display:flex;gap:0;font-size:var(--text-xs);color:var(--muted);margin:6px 0 0}
+.file-preview-note{display:inline-flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--muted);padding:8px;text-align:center}
+.file-line{display:flex;gap:0;font-size:var(--text-sm);color:var(--muted);margin:6px 0 0}
 .file-line small+small::before{content:' · ';white-space:pre}
 .file-viewer{display:flex;flex-direction:column;gap:10px;margin:16px 0 0;min-width:0}
 /* The opened picture: whole in its stage and never larger than its own pixels; zoomed, the stage scrolls. The zoom
@@ -46,20 +46,20 @@
 .file-viewer.picture.fit .picture-stage img{width:100%;height:100%}
 .file-viewer.picture.zoomed .picture-scroll{overflow:auto;background:var(--canvas)}
 .file-viewer.picture.zoomed .picture-stage img{max-width:none;max-height:none;height:auto;cursor:zoom-out}
-.picture-zoom{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;height:28px;padding:0 2px;border-radius:var(--radius-pill);background:rgba(255,255,255,.94);border:1px solid rgba(0,0,0,.08);box-shadow:var(--shadow-block);font-size:var(--text-xs);color:var(--ink);opacity:0;transition:opacity var(--dur-out) var(--ease)}
+.picture-zoom{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;height:28px;padding:0 2px;border-radius:var(--radius-pill);background:rgba(255,255,255,.94);border:1px solid rgba(0,0,0,.08);box-shadow:var(--shadow-block);font-size:var(--text-sm);color:var(--ink);opacity:0;transition:opacity var(--dur-out) var(--ease)}
 .picture-stage:hover .picture-zoom,.picture-zoom:focus-within,.file-viewer.picture.zoomed .picture-zoom{opacity:1}
 .picture-zoom .icon-button{width:24px;height:24px;border-radius:var(--radius-pill);color:var(--ink)}
 .picture-zoom .icon-button:disabled{color:var(--muted)}
-.picture-zoom-level{min-width:40px;height:24px;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;font:inherit;font-size:var(--text-xs);font-variant-numeric:tabular-nums;color:var(--ink);cursor:pointer}
+.picture-zoom-level{min-width:40px;height:24px;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;font:inherit;font-size:var(--text-sm);font-variant-numeric:tabular-nums;color:var(--ink);cursor:pointer}
 .picture-zoom-level:disabled{color:var(--muted);cursor:default}
 .picture-zoom-level:hover:not(:disabled){background:var(--rail)}
-.file-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--text-xs);color:var(--body)}
+.file-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--text-sm);color:var(--body)}
 .file-toolbar-space{flex:1}
 .file-page-counter{font-variant-numeric:tabular-nums;font-weight:500}
 .file-zoom{display:inline-flex;align-items:center;gap:2px}
 .file-zoom span{min-width:42px;text-align:center;font-variant-numeric:tabular-nums}
 .file-modes{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-control);overflow:hidden}
-.file-modes button{border:0;background:transparent;padding:4px 10px;font-size:var(--text-xs);color:var(--body);cursor:pointer}
+.file-modes button{border:0;background:transparent;padding:4px 10px;font-size:var(--text-sm);color:var(--body);cursor:pointer}
 .file-modes button.active{background:var(--ink);color:var(--paper)}
 .file-download{display:inline-flex;align-items:center;gap:5px;text-decoration:none}
 .file-viewport{background:var(--sidebar);border:1px solid var(--line);border-radius:var(--radius-block);overflow:auto;max-height:65vh;min-height:200px}
@@ -77,7 +77,7 @@
 .pdf-text br::selection{background:transparent}
 .pdf-text .endOfContent{display:block;position:absolute;inset:100% 0 0;cursor:default;-webkit-user-select:none;user-select:none}
 .pdf-text.selecting .endOfContent{top:0}
-.file-text{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--text-sm)/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:65vh;overflow:auto;padding:16px;margin:0;background:var(--sidebar);border:1px solid var(--line);border-radius:var(--radius-block)}
+.file-text{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--text-sm)/1.6 var(--font-mono);max-height:65vh;overflow:auto;padding:16px;margin:0;background:var(--sidebar);border:1px solid var(--line);border-radius:var(--radius-block)}
 .canvas-drop-target{outline:2px dashed var(--muted);outline-offset:-6px}
 /* A video card is the video: its first frame until it plays, a round play button in the middle (shown on hover, or
    while paused part way), its length at the bottom right, and a thin line of how far it has played. */
@@ -87,7 +87,7 @@
 .direct-canvas .picture-card .video-card .video-play:hover,.video-play:hover{background:var(--paper);transform:scale(1.05)}
 .direct-canvas .picture-card .video-card.playing .video-play{padding:0;opacity:0}
 .direct-canvas .picture-card:hover .video-card.playing .video-play,.direct-canvas .picture-card .video-card.playing .video-play:focus-visible{opacity:1}
-.video-length{position:absolute;right:8px;bottom:8px;padding:2px 7px;border-radius:var(--radius-control);background:rgba(23,23,23,.72);color:var(--paper);font-size:var(--text-xs);font-weight:500;line-height:1.5;font-variant-numeric:tabular-nums;pointer-events:none}
+.video-length{position:absolute;right:8px;bottom:8px;padding:2px 7px;border-radius:var(--radius-control);background:rgba(23,23,23,.72);color:var(--paper);font-size:var(--text-sm);font-weight:500;line-height:1.5;font-variant-numeric:tabular-nums;pointer-events:none}
 .picture-card:hover .video-length,.picture-card.selected .video-length{opacity:0}
 .video-progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.35);pointer-events:none}
 .video-progress>span{display:block;height:100%;background:var(--paper)}

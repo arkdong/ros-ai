@@ -22,7 +22,7 @@
 .markdown-editor .cm-md-h2 { padding-top: 8px; line-height: 1.45; }
 .markdown-editor .cm-md-h3 { padding-top: 6px; }
 .markdown-editor .cm-md-quote { border-left: 3px solid var(--line); padding-left: 14px; color: var(--body); }
-.markdown-editor .cm-md-codeblock { background: var(--sidebar); padding: 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--text-sm); }
+.markdown-editor .cm-md-codeblock { background: var(--sidebar); padding: 0 12px; font-family: var(--font-mono); font-size: var(--text-sm); }
 .markdown-editor .cm-md-link { color: #2f5f8a; text-decoration: underline; text-decoration-color: #b7c8d8; text-underline-offset: 2px; }
 .markdown-editor .cm-md-bullet { display: inline-block; width: 1ch; color: var(--muted); }
 .markdown-editor .cm-md-task { width: 14px; height: 14px; margin: 0 6px 0 0; vertical-align: -2px; accent-color: var(--ink); cursor: pointer; }
@@ -36,10 +36,10 @@
 .markdown-editor .cm-md-table { width: 100%; border-collapse: collapse; font-size: var(--text-md); line-height: 1.5; }
 .markdown-editor .cm-md-table th, .markdown-editor .cm-md-table td { padding: 7px 12px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
 .markdown-editor .cm-md-table th + th, .markdown-editor .cm-md-table td + td { border-left: 1px solid var(--line-soft); }
-.markdown-editor .cm-md-table th { background: var(--canvas); font-weight: 600; color: var(--ink); }
+.markdown-editor .cm-md-table th { background: var(--canvas); font-weight: 500; color: var(--ink); }
 .markdown-editor .cm-md-table tbody tr:last-child td { border-bottom: 0; }
-.markdown-editor .cm-md-table strong { font-weight: 600; }
-.markdown-editor .cm-md-cell-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: var(--rail); border-radius: var(--radius-mark); padding: 1px 4px; }
+.markdown-editor .cm-md-table strong { font-weight: 500; }
+.markdown-editor .cm-md-cell-code { font-family: var(--font-mono); font-size: 0.9em; background: var(--rail); border-radius: var(--radius-mark); padding: 1px 4px; }
 /* Embedded images: a picture on its own line spans the text width, one inside a sentence or cell sits in the line. */
 .markdown-editor .cm-md-image { display: inline-block; max-width: 100%; vertical-align: middle; cursor: pointer; }
 .markdown-editor .cm-md-image img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-block); }

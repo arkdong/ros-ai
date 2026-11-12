@@ -1,5 +1,5 @@
 /* A model training run: one status line and a progress bar on the card; tabs per stage in the block view. */
-.training-status { display: flex; align-items: center; gap: 7px; font-size: var(--text-xs); color: var(--body); min-width: 0; }
+.training-status { display: flex; align-items: center; gap: 7px; font-size: var(--text-sm); color: var(--body); min-width: 0; }
 .training-status>span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .training-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
 .training-dot.running { background: var(--wait); }
@@ -12,25 +12,25 @@
 .training-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line-soft); }
 .training-tabs button { border: 0; background: none; padding: 8px 12px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .training-tabs button:hover { color: var(--ink); }
-.training-tabs button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.training-tabs button[aria-pressed="true"] { color: var(--ink); font-weight: 500; border-bottom-color: var(--ink); }
 .training-pane { display: grid; gap: 14px; min-width: 0; }
 .training-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 0; }
 .training-stats div { min-width: 0; }
-.training-stats dt { font-size: var(--text-xs); color: var(--muted); }
-.training-stats dd { margin: 2px 0 0; font-size: var(--text-lg); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.training-note { margin: 0; font-size: var(--text-xs); line-height: 1.6; color: var(--body); }
-.training-block .live-block-empty code, .training-note code { font-size: var(--text-xs); }
+.training-stats dt { font-size: var(--text-sm); color: var(--muted); }
+.training-stats dd { margin: 2px 0 0; font-size: var(--text-lg); font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.training-note { margin: 0; font-size: var(--text-sm); line-height: 1.6; color: var(--body); }
+.training-block .live-block-empty code, .training-note code { font-size: var(--text-sm); }
 .training-chart { margin: 0; display: grid; gap: 6px; color: var(--chart-1); }
-.training-chart figcaption { display: flex; gap: 16px; font-size: var(--text-xs); color: var(--body); }
+.training-chart figcaption { display: flex; gap: 16px; font-size: var(--text-sm); color: var(--body); }
 .training-key { display: inline-flex; align-items: center; gap: 6px; }
 .training-key svg { color: var(--chart-1); }
 .training-plot { position: relative; }
 .training-plot svg { display: block; width: 100%; height: auto; touch-action: none; }
-.training-plot text { font-size: var(--text-xs); fill: var(--muted); }
+.training-plot text { font-size: var(--text-sm); fill: var(--muted); }
 .training-grid { stroke: var(--line-soft); }
 .training-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .training-line.dashed { stroke-dasharray: 5 4; }
 .training-point { fill: currentColor; stroke: var(--paper); stroke-width: 2; }
 .training-cross { stroke: var(--line); stroke-width: 1; }
-.training-tip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; display: grid; gap: 1px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper); box-shadow: var(--shadow-float); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
-.training-tip strong { color: var(--ink); font-weight: 600; }
+.training-tip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; display: grid; gap: 1px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper); box-shadow: var(--shadow-float); font-size: var(--text-sm); color: var(--body); white-space: nowrap; }
+.training-tip strong { color: var(--ink); font-weight: 500; }

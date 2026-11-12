@@ -138,7 +138,7 @@
     gap: 7px;
   }
   .detail-polish .detail-disclosure > summary small {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
   .research-settings.detail-polish .approval-choices > label > span {
     display: flex;

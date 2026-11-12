@@ -30,7 +30,7 @@
 .block-view .picture-view .picture-caption-text p { margin: 0 0 4px; }
 .block-view .picture-view .picture-caption-text p:last-child { margin-bottom: 0; }
 /* Open in and Download as footer chips; the menu opens upward, over the picture. */
-.bv-foot .open-in-trigger { height: 26px; min-height: 0; padding: 0 10px; gap: 5px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--canvas); color: var(--body); font-size: var(--text-xs); line-height: 1; box-shadow: none; }
+.bv-foot .open-in-trigger { height: 26px; min-height: 0; padding: 0 10px; gap: 5px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--canvas); color: var(--body); font-size: var(--text-sm); line-height: 1; box-shadow: none; }
 .bv-foot .open-in-trigger:hover, .bv-foot .open-in-trigger[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
 .bv-foot .open-in-menu { top: auto; bottom: calc(100% + 6px); }
 .bv-foot a.chip-button { text-decoration: none; }
@@ -38,8 +38,8 @@
 @media (prefers-reduced-motion: reduce) { .block-sheet, .block-panel { animation: none; } .block-sheet { transform: translateX(-50%); } .workspace-body:has(.ros-full) .block-sheet { transform: none; } }
 
 .bv-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--line-soft); }
-.bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); background: var(--canvas); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
-.bv-title { flex: 1 1 auto; min-width: 0; margin: 0; padding: 2px 6px; border: 0; border-radius: var(--radius-control); background: transparent; font: inherit; font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); background: var(--canvas); font-size: var(--text-sm); color: var(--body); white-space: nowrap; }
+.bv-title { flex: 1 1 auto; min-width: 0; margin: 0; padding: 2px 6px; border: 0; border-radius: var(--radius-control); background: transparent; font: inherit; font-size: var(--text-lg); font-weight: 500; line-height: 1.3; letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 input.bv-title, .single-canvas-shell input.bv-title { width: auto; box-shadow: none; }
 input.bv-title:hover { background: var(--sidebar); }
 input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; border: 0; background: var(--rail); box-shadow: none; }
@@ -55,7 +55,7 @@ input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; bo
 /* Code's two columns scroll on their own; in a narrow frame they stack and the frame scrolls. */
 .bv-body > .code-block { overflow: hidden; }
 @container (max-width: 700px) { .bv-body > .code-block { overflow-y: auto; } }
-.bv-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 44px; padding: 0 16px 0 14px; border-top: 1px solid var(--line-soft); font-size: var(--text-xs); color: var(--muted); }
+.bv-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 44px; padding: 0 16px 0 14px; border-top: 1px solid var(--line-soft); font-size: var(--text-sm); color: var(--muted); }
 .bv-sp { flex: 1; }
 .bv-status { white-space: nowrap; }
 

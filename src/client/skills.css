@@ -1,10 +1,10 @@
 /* Skills: the list, browsing public sources, one skill's page, the Add dialog and the / menu of ROS's composers.
    Rows, sections and the sidebar come from plugins.css. */
-.skills-intro { font-size: var(--text-sm); color: var(--muted); line-height: 1.5; margin: -2px 0 8px; }
+.skills-intro { font-size: var(--text-sm); color: var(--body); line-height: 1.5; margin: -2px 0 8px; }
 .skills-intro a { display: inline-flex; align-items: center; gap: 3px; color: var(--body); }
 .skills-unread { font-size: var(--text-sm); line-height: 1.5; color: var(--muted); margin: 4px 0 8px; }
 .skills-unread .text-button { padding: 0; margin-left: 4px; font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
-.skills-empty { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--muted); padding: 8px 8px 4px; }
+.skills-empty { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--body); padding: 8px 8px 4px; }
 
 /* Browse: source tabs and a search on one line. */
 .skill-browse-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -30,14 +30,14 @@
 .plugin-hero .skill-description:hover { border-color: var(--line-soft); }
 .plugin-hero .skill-description:focus { border-color: var(--line); background: var(--paper); color: var(--ink); }
 .skill-call { font-size: var(--text-sm); color: var(--muted); margin: 0 0 4px; }
-.skill-call code, .skill-review code { font-size: var(--text-xs); padding: 1px 5px; border-radius: var(--radius-mark); background: var(--line-soft); color: var(--ink); }
+.skill-call code, .skill-review code { font-size: var(--text-sm); padding: 1px 5px; border-radius: var(--radius-mark); background: var(--line-soft); color: var(--ink); }
 .skill-instructions { min-height: 120px; padding: 4px 0; font-size: var(--text-md); color: var(--ink); }
 .skill-files { list-style: none; margin: 0; padding: 0; }
 .skill-files button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: var(--radius-control); background: transparent; font: inherit; font-size: var(--text-md); color: var(--ink); text-align: left; cursor: pointer; }
 .skill-files button:hover { background: var(--line-soft); }
 .skill-files button > svg { flex-shrink: 0; color: var(--muted); }
-.skill-files span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--text-sm); }
-.skill-files small { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted); }
+.skill-files span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-sm); }
+.skill-files small { flex-shrink: 0; font-size: var(--text-sm); color: var(--muted); }
 .skill-source { font-size: var(--text-md); line-height: 1.6; color: var(--body); overflow-wrap: anywhere; }
 .skill-source .text-button { padding: 0; font-size: var(--text-md); }
 .skill-warning { display: flex; align-items: flex-start; gap: 7px; margin: 8px 0 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
@@ -48,7 +48,7 @@
 .skill-modal .skill-tabs { margin-bottom: 4px; }
 .skill-modal input:not([type="checkbox"]):not([type="file"]), .skill-modal textarea { width: 100%; box-sizing: border-box; }
 .skill-modal textarea { resize: vertical; line-height: 1.5; }
-.skill-modal .skill-code, .skill-source-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--text-xs); }
+.skill-modal .skill-code, .skill-source-text { font-family: var(--font-mono); font-size: var(--text-sm); }
 .skill-modal .skill-call { margin-top: 6px; }
 .skill-drop { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; min-height: 120px; border: 1px dashed var(--line); border-radius: var(--radius-block); background: var(--canvas); font-size: var(--text-md); color: var(--body); cursor: pointer; }
 .skill-drop:hover { border-color: var(--muted); color: var(--ink); }
@@ -60,7 +60,7 @@
 .skill-review header input[type="checkbox"] { width: 15px; height: 15px; flex: none; margin: 0; padding: 0; accent-color: var(--ink); cursor: pointer; }
 .skill-review header .plugin-row-mark { width: 36px; height: 36px; }
 .skill-review header div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.skill-review header strong { font-size: var(--text-lg); font-weight: 600; color: var(--ink); }
+.skill-review header strong { font-size: var(--text-lg); font-weight: 500; color: var(--ink); }
 .skill-review header code { align-self: flex-start; }
 .skill-review > p { font-size: var(--text-md); line-height: 1.55; color: var(--body); margin: 10px 0 0; }
 .skill-review dl { display: grid; grid-template-columns: 70px 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: var(--text-sm); }

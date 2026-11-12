@@ -13,7 +13,7 @@
   --paper: #ffffff;
   --surface: #ffffff;
 
-  /* Lime is the keyboard focus ring and the hairline round a picked block; the line is a shade deeper so it shows on white. */
+  /* Lime sits round the ink line of the keyboard focus ring and is the hairline round a picked block; the line is a shade deeper so it shows on white. */
   --accent: #b7ef32;
   --accent-line: #a3d52b;
   --accent-light: #f5f5f5;
@@ -33,15 +33,16 @@
 
   --chart-1: #3d6f8f;
 
-  /* Type */
-  --text-xs: 12px;
+  /* Type: one face, shipped with the app (main.tsx loads the files), and its mono for code and paths. */
+  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --text-sm: 13px;
   --text-md: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 28px;
 
-  /* Weights: 400 for text, 500 for names and buttons, 600 for headings. */
+  /* Sizes stop at 13px: nothing in the app is set smaller. Weights: 400 for text, 500 for names, buttons and headings. */
 
   /* Radius: a tick box or inline code, a control, a block or menu, a floating card, a pill. */
   --radius-mark: 4px;

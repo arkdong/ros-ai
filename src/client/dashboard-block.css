@@ -1,37 +1,37 @@
 /* Dashboard block: pinned numbers in the app's three greys; green and red only for a service's real state. */
 .dash-block.full { gap: 16px; }
-.dash-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: var(--text-xs); line-height: 1.4; }
+.dash-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: var(--text-sm); line-height: 1.4; }
 .dash-row dt { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-row dd { flex: none; margin: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--body); }
-.dash-row strong { font-size: var(--text-sm); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.dash-empty, .dash-wait, .dash-missing, .dash-hint { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
+.dash-row strong { font-size: var(--text-sm); font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dash-empty, .dash-wait, .dash-missing, .dash-hint { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
 .dash-wait { display: flex; align-items: center; gap: 6px; }
 .dash-section { display: grid; gap: 10px; }
-.dash-section h3 { margin: 0; font-size: var(--text-md); font-weight: 600; color: var(--ink); }
+.dash-section h3 { margin: 0; font-size: var(--text-md); font-weight: 500; color: var(--ink); }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .dash-tile { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-control); background: var(--paper); }
 .dash-tile.funnel { grid-column: span 2; }
-.dash-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; font-size: var(--text-xs); color: var(--muted); }
+.dash-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--muted); }
 .dash-tile-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-tile-head .icon-button { width: 22px; height: 22px; color: var(--muted); opacity: 0; }
 .dash-tile:hover .dash-tile-head .icon-button, .dash-tile-head .icon-button:focus-visible { opacity: 1; }
 .dash-number { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.dash-number strong { font-size: var(--text-xl); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.dash-change { display: grid; font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.dash-number strong { font-size: var(--text-xl); font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dash-change { display: grid; font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
 .dash-state { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-md); color: var(--ink); }
 .dash-line { display: block; }
 .dash-line path { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .dash-bars { display: flex; align-items: flex-end; gap: 3px; height: 56px; border-bottom: 1px solid var(--line-soft); }
 .dash-bars span { flex: 1; border-radius: var(--radius-mark) var(--radius-mark) 0 0; background: var(--ink); }
 .dash-funnel { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.dash-funnel li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; font-size: var(--text-xs); }
+.dash-funnel li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; font-size: var(--text-sm); }
 .dash-funnel-label { min-width: 0; color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-funnel-value { display: flex; align-items: baseline; gap: 6px; }
-.dash-funnel-value strong { font-size: var(--text-sm); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.dash-funnel-value small { font-size: var(--text-xs); color: var(--muted); }
+.dash-funnel-value strong { font-size: var(--text-sm); font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dash-funnel-value small { font-size: var(--text-sm); color: var(--muted); }
 .dash-funnel-track { grid-column: 1 / -1; height: 10px; border-radius: var(--radius-mark); background: var(--rail); overflow: hidden; }
 .dash-funnel-track span { display: block; height: 100%; border-radius: var(--radius-mark); background: var(--ink); }
-.dash-from { font-size: var(--text-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-from { font-size: var(--text-sm); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-add-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .dash-add-button:hover { background: var(--canvas); }
 .dash-add { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line-soft); border-radius: var(--radius-block); background: var(--canvas); font-size: var(--text-sm); }
@@ -44,7 +44,7 @@
 .dash-shows { display: flex; flex-wrap: wrap; gap: 6px; }
 .dash-shows button { height: 30px; padding: 0 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .dash-shows button[aria-pressed=true] { border-color: var(--ink); }
-.dash-shows.small button { height: 26px; padding: 0 10px; font-size: var(--text-xs); }
+.dash-shows.small button { height: 26px; padding: 0 10px; font-size: var(--text-sm); }
 .dash-add-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dash-secondary, .dash-primary { height: 30px; padding: 0 14px; border-radius: var(--radius-pill); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .dash-secondary { border: 1px solid var(--line-soft); background: var(--paper); color: var(--ink); }
@@ -69,17 +69,17 @@
 /* The card on the map: the opened view's sections and tiles, smaller. */
 .dash-block:not(.full) { gap: 8px; }
 .dash-block:not(.full) .dash-section { gap: 6px; }
-.dash-block:not(.full) .dash-section h3 { font-size: var(--text-xs); color: var(--body); }
+.dash-block:not(.full) .dash-section h3 { font-size: var(--text-sm); color: var(--body); }
 .dash-block:not(.full) .dash-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
 .dash-block:not(.full) .dash-tile { gap: 2px; padding: 6px 8px; border-radius: var(--radius-control); }
 .dash-block:not(.full) .dash-tile.funnel { grid-column: 1 / -1; }
-.dash-block:not(.full) .dash-tile-head { font-size: var(--text-xs); }
+.dash-block:not(.full) .dash-tile-head { font-size: var(--text-sm); }
 .dash-block:not(.full) .dash-number strong { font-size: var(--text-lg); }
 .dash-block:not(.full) .dash-bars { height: 28px; }
 .dash-block:not(.full) .dash-funnel { gap: 5px; }
 .dash-block:not(.full) .dash-funnel-track { height: 6px; }
 .dash-block:not(.full) .dash-section h3 { margin: 0; }
-.dash-block:not(.full) .dash-funnel li { font-size: var(--text-xs); gap: 2px 8px; }
+.dash-block:not(.full) .dash-funnel li { font-size: var(--text-sm); gap: 2px 8px; }
 .dash-block:not(.full) .dash-line { margin-top: 2px; }
 /* Card fixes: rows start at the top, tiles keep their own height, labels wrap to two lines, bars are lighter. */
 .dash-block:not(.full) { align-content: start; }

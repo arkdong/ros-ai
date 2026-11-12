@@ -14,14 +14,14 @@
 
 .ros-dl-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 290px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-block); box-shadow: var(--shadow-float); text-align: left; z-index: 70; }
 .ros-dl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.ros-dl-head strong { font-size: var(--text-md); font-weight: 600; color: var(--ink); }
+.ros-dl-head strong { font-size: var(--text-md); font-weight: 500; color: var(--ink); }
 .ros-dl-head span { font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--body); }
 .ros-dl-bar { display: block; height: 4px; border-radius: var(--radius-pill); background: var(--line-soft); overflow: hidden; }
 .ros-dl-bar i { display: block; height: 100%; background: var(--ink); transition: width var(--dur-menu) var(--ease); }
 .ros-dl-menu p { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--body); overflow-wrap: anywhere; }
 .ros-dl-menu .ros-dl-note { display: flex; align-items: baseline; gap: 7px; color: var(--ink); }
 .ros-dl-menu .ros-dl-note .ros-dl-dot { transform: translateY(-1px); }
-.ros-dl-menu .inline-error { font-size: var(--text-xs); }
+.ros-dl-menu .inline-error { font-size: var(--text-sm); }
 .ros-dl-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .ros-dl-sp { flex: 1; }
 .ros-dl-actions .text-button { padding: 0; font-size: var(--text-sm); color: var(--body); }
