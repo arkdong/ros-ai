@@ -52,7 +52,7 @@ export function RosBar({ state, detail, policy, busy, threadId, onThread, onSend
   const proposed = new Set(allTurns.flatMap(turn => turn.actions.map(action => action.proposalId).filter(Boolean)));
   // Suggestions waiting for a decision, from every thread: open proposals (not ones the canvas has moved past, which can no longer be accepted), pending actions that carry no proposal of their own, lines ROS noticed about the person, and plugins a reply suggested.
   const waiting = detail.proposals.filter(proposal => proposal.status === 'pending' && proposal.baseRevision === detail.project.revision).length + allTurns.flatMap(turn => turn.actions).filter(action => action.status === 'pending' && (!action.proposalId || !proposed.has(action.proposalId))).length + (state?.person?.waiting ?? 0) + suggestionsWaiting(allTurns, suggestions, detail.project.id);
-  const currentStep = active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
+  const currentStep = active?.doing || active?.events.at(-1)?.message || (active ? 'Starting…' : 'Sending your question…');
   useEffect(() => { if (!running) return; setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [running]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();

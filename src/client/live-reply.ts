@@ -23,15 +23,19 @@ export function useLiveTurns(projectId: string | null, enabled: boolean, onSettl
   return live;
 }
 
-/** The saved state with streamed text laid over it, only where the stream is ahead of the last refresh. */
+/** The saved state with the stream laid over it: streamed text only where it is ahead of the last refresh, and what the
+ * agent is doing right now as the stream last said it. */
 export function withLive(state: AssistantState | null, live: Record<string, AssistantLive>): AssistantState | null {
   if (!state) return state;
   let changed = false;
   const turns = state.turns.map(turn => {
     const value = live[turn.id];
-    if (!value || turn.status !== 'running' || value.reply.length <= turn.reply.length) return turn;
+    if (!value || turn.status !== 'running') return turn;
+    const ahead = value.reply.length > turn.reply.length;
+    if (!ahead && value.doing === turn.doing) return turn;
     changed = true;
-    return { ...turn, reply: value.reply, events: value.step && value.step !== turn.events.at(-1)?.message ? [...turn.events, { at: new Date().toISOString(), message: value.step }] : turn.events };
+    const { doing: _doing, ...rest } = turn;
+    return { ...rest, ...(value.doing ? { doing: value.doing } : {}), ...(ahead ? { reply: value.reply, events: value.step && value.step !== turn.events.at(-1)?.message ? [...turn.events, { at: new Date().toISOString(), message: value.step }] : turn.events } : {}) };
   });
   return changed ? { ...state, turns } : state;
 }

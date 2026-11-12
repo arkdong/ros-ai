@@ -14,7 +14,5 @@ const lines = [
   'Give a Text block a label when it is one: question, plan, task, result, finding, decision, draft or report.',
   'x and y are a hint; ros.ai places blocks clear of each other. After your turn ROS may group or link what you left loose, and the person can undo that.',
 ];
-/** As lines of a bulleted list, for Claude Code and the agents over ACP. */
+/** As lines of a bulleted list. */
 export const CANVAS_GRAMMAR = lines.map(line => `- ${line}`).join('\n');
-/** As running text, for Codex and the MCP server's instructions. */
-export const CANVAS_GRAMMAR_TEXT = `How the map is meant to be used: ${lines.join(' ')}`;
