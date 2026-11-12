@@ -300,9 +300,7 @@ export class Store {
         run.status = 'interrupted';
         run.endedAt = now();
         if (run.configuration.kind === 'local-experiment') {
-          run.error = run.configuration.backend==='nebius-sandbox'
-            ? 'Application stopped before the remote experiment finished. Known operations will be reconciled and cancellation requested; termination may be uncertain. No code is resubmitted automatically.'
-            : 'Application stopped before this local experiment finished. Any orphaned worker is bounded by its CPU/time limits; no work is replayed. Preview and approve a new attempt.';
+          run.error = 'Application stopped before this local experiment finished. Any orphaned worker is bounded by its CPU/time limits; no work is replayed. Preview and approve a new attempt.';
           const approval = run.configuration.approval as {status?:string} | undefined;
           if (approval?.status === 'pending') run.configuration.approval = { ...approval, status: 'cancelled', decidedAt: run.endedAt, decisionReason: 'Application restarted before an approval decision; a new preview is required.' };
         } else {

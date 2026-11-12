@@ -108,7 +108,7 @@ const checkAppSchema = z.object({
   title: z.string().trim().min(1).max(200).optional().describe('With source: the App\'s title'),
 }).strict();
 const reuseSchema = z.object({ artifactId: id, targetNodeId: id, reason: z.string().trim().min(1).max(1000) }).strict();
-const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python', 'nebius-sandbox']) }).strict();
+const experimentSchema = z.object({ nodeId: id, datasetArtifactId: id, request: z.string().trim().min(1).max(4000), explanation: z.string().trim().min(1).max(4000), code: z.string().trim().min(1).max(20000), parameters: z.record(z.string().max(100), z.union([z.string().max(1000), z.number().finite(), z.boolean()])).default({}), backend: z.enum(['bounded', 'docker-python']) }).strict();
 const reportSchema = z.object({ nodeId: id.optional(), sourceArtifactId: id.optional(), title: z.string().trim().min(1).max(200), text: z.string().max(200000), evidenceIds: z.array(id).max(30), rationale: z.string().trim().min(1).max(1800) }).strict();
 const MAX_PAGES = 15, MAX_LINKS = 5, MAX_MAP_BLOCKS = 300, MAX_DIRECTIONS = 7, MAX_DIRECTION_QUERIES = 5, MAX_QUERIES = 30, PLAN_WAIT_MS = 8 * 60_000;
 /** Room kept on an approval note for its last line: waiting, done, or why the service refused. */

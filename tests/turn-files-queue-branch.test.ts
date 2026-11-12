@@ -8,7 +8,6 @@ import { Store } from '../src/server/store.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { ExperimentService } from '../src/server/experiments.js';
 import { AssistantService } from '../src/server/assistant.js';
-import { SandboxBudget } from '../src/server/sandbox-budget.js';
 import { TurnFileService, lineEdits, unifiedPatch } from '../src/server/turn-files.js';
 import type { ModelAdapter, ModelRequest, ModelResponse, SearchAdapter } from '../src/server/providers.js';
 import type { ExecutionBackend, SandboxCapabilities } from '../src/server/sandbox.js';
@@ -43,7 +42,7 @@ function fixture(answers: Answer[] = [], agentReplies: (() => Promise<string>)[]
     async shutdown() {},
   };
   const execution = new ExecutionService(store, { model, search, limits: { nebius: 5, tavily: 10 }, includeSetupUsage: false });
-  const experiments = new ExperimentService(store, { sandbox: runtime, nebiusSandbox: runtime, sandboxBudget: new SandboxBudget(store, {}) });
+  const experiments = new ExperimentService(store, { sandbox: runtime });
   experiments.authority.configure(project.id, { mode: 'ask' });
   const assistant = new AssistantService(store, execution, experiments, agent);
   return { dir, store, project, assistant, requests, agentRequests, async close() { await assistant.shutdown(); await execution.shutdown(); await experiments.shutdown(); store.close(); rmSync(dir, { recursive: true, force: true }); } };

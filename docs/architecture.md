@@ -59,7 +59,7 @@ Stack: TypeScript everywhere, Express 5 run through tsx, React 19 with @xyflow/r
 
 ## Usage and spending
 
-Paid calls are recorded, not capped: `spending-limits.ts` is off unless `ROS_SPENDING_LIMITS=on`. `budget-report.ts` and `provider-balances.ts` feed Settings › Usage and Balances; `spending-budget.ts` is the optional monthly budget. The allowance code (`connection-budgets.ts`, `agent-budget.ts`) acts only when limits are on. `combined-budget.ts`, `sandbox-budget.ts` and `nebius-sandbox.ts` are an older scheme, one shared Nebius ceiling and a remote Nebius sandbox, that stays off unless its `ROS_NEBIUS_*` authorizations are set.
+Paid calls are recorded, not capped: `spending-limits.ts` is off unless `ROS_SPENDING_LIMITS=on`. `budget-report.ts` and `provider-balances.ts` feed Settings › Usage and Balances; `spending-budget.ts` is the optional monthly budget. The allowance code (`connection-budgets.ts`, `agent-budget.ts`) acts only when limits are on.
 
 ## The apps and releases
 

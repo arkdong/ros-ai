@@ -9,7 +9,6 @@ import { Store } from '../../src/server/store.js';
 import { Authority } from '../../src/server/authority.js';
 import { ExecutionService } from '../../src/server/execution.js';
 import { ExperimentService } from '../../src/server/experiments.js';
-import { SandboxBudget } from '../../src/server/sandbox-budget.js';
 import type { ExecutionBackend, SandboxCapabilities } from '../../src/server/sandbox.js';
 import { ToolLoopAgentService } from '../../src/server/tool-loop-agent.js';
 import { AgentWorkspaceTools } from '../../src/server/agent-tools.js';
@@ -105,7 +104,7 @@ export async function rollout(task: Task, fixture: Fixture, model: ModelAdapter,
   const directory = mkdtempSync(join(tmpdir(), 'ros-nemotron-')), store = new Store(directory), started = Date.now();
   const recording = new Recording(model);
   const execution = new ExecutionService(store, { model: recording, search: web, limits: { nebius: 1000, tavily: 1000 }, includeSetupUsage: false, maxConcurrent: 4, timeoutMs: 300_000 });
-  const experiments = new ExperimentService(store, { sandbox, nebiusSandbox: sandbox, sandboxBudget: new SandboxBudget(store, {}) }), loop = new ToolLoopAgentService(store, execution, experiments);
+  const experiments = new ExperimentService(store, { sandbox }), loop = new ToolLoopAgentService(store, execution, experiments);
   const { projectId, ids } = build(store, fixture);
   new Authority(store).configure(projectId, { mode: task.mode });
   const nodeIds = task.selection.map(slug => ids.get(slug)).filter((value): value is string => Boolean(value));

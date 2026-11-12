@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { DockerPythonBackend, UnavailableNebiusSandboxBackend, type SandboxResult } from '../src/server/sandbox.js';
+import { DockerPythonBackend, type SandboxResult } from '../src/server/sandbox.js';
 
 // These are real local container checks, never fixtures for model/provider success.
 const backend = new DockerPythonBackend();
@@ -13,13 +13,10 @@ const docker = { skip: !backend.capabilities().available };
 const run = (code: string, timeoutMs?: number) => backend.start({ csv: 'x,y,day\n1,3,weekday\n2,5,weekday\n3,7,weekend\n4,9,weekend\n', parameters: { scale: 2 }, code, timeoutMs });
 const value = (result: SandboxResult, title: string) => JSON.parse(result.outputs.find(output => output.title === title)!.content).value;
 
-test('isolated execution fails closed when Docker/image is missing; unverified Nebius is unavailable', () => {
+test('isolated execution fails closed when Docker/image is missing', () => {
   const unavailable = new DockerPythonBackend({ docker: '/ros-test-no-such-docker' });
   assert.equal(unavailable.capabilities().available, false);
   assert.throws(() => unavailable.start({ csv: 'x\n1', code: 'print(1)', parameters: {} }), /unavailable/);
-  const nebius = new UnavailableNebiusSandboxBackend();
-  assert.equal(nebius.capabilities().available, false);
-  assert.throws(() => nebius.start({ csv: '', code: '', parameters: {} }), /unverified/);
   if (process.env.ROS_REQUIRE_DOCKER_TESTS === '1') assert.equal(backend.capabilities().available, true, backend.capabilities().limitations.join('\n'));
 });
 

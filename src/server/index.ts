@@ -14,8 +14,6 @@ import { ClaudeAgentService } from './claude-agent.js';
 import { ToolLoopAgentService } from './tool-loop-agent.js';
 import { AcpAgentService } from './acp-agent.js';
 import { AssistantService } from './assistant.js';
-import { CombinedNebiusBudget } from './combined-budget.js';
-import { SandboxBudget } from './sandbox-budget.js';
 import { LocalPythonBackend } from './sandbox.js';
 import { PythonRuntime, systemConfine } from './local-python.js';
 import { NetworkGate } from './network-gate.js';
@@ -123,10 +121,9 @@ try {
     store = new Store(dataDir);
     const credentials = new ToolCredentials(dataDir);
     googleDrive = new GoogleDriveConnection({dataDir,port});
-    const combinedBudget = new CombinedNebiusBudget(store);
     const inference = new InferenceConnections(store,dataDir);
     // Web search works with no key: Tavily and Exa answer within the allowance each gives anyone. ROS_FREE_SEARCH=off stops it.
-    execution = new ExecutionService(store,{combinedBudget,inference,freeSearch:process.env.ROS_FREE_SEARCH?.trim().toLowerCase()!=='off'});
+    execution = new ExecutionService(store,{inference,freeSearch:process.env.ROS_FREE_SEARCH?.trim().toLowerCase()!=='off'});
     const started = applyStartingAllowances(execution.connectionBudgets, provider => Boolean(store!.globalRecord('connection-allowance', provider)));
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
@@ -137,7 +134,7 @@ try {
     void localRos.resume();
     // Code and Notebook blocks run ros.ai's own Python in the OS sandbox where ros.ai has one (macOS), else in Docker.
     const confine = systemConfine(), python = confine ? { runtime: new PythonRuntime(resolve(process.env.ROS_PYTHON_HOME || join(appData, 'python'))), confine, gate: new NetworkGate(store) } : undefined;
-    experiments = new ExperimentService(store,{sandboxBudget:new SandboxBudget(store,{combinedBudget}),...(python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{})});
+    experiments = new ExperimentService(store,python?{sandbox:new LocalPythonBackend(python.runtime,python.confine,{gate:python.gate})}:{});
     agent=new CodexAgentService(store,execution,experiments,dataDir);
     claude=new ClaudeAgentService(store,execution,experiments,dataDir);
     loop=new ToolLoopAgentService(store,execution,experiments);

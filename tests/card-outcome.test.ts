@@ -46,19 +46,20 @@ test('reports active work and pending approval without claiming that it finished
   assert.equal(outcome.artifactIds.length, 0);
 });
 
-test('uses explicit captured/current runtime gates rather than names or descriptions', () => {
-  const remote = run('remote', { status: 'interrupted', configuration: { kind: 'local-experiment', backend: 'nebius-sandbox', capabilities: { nebiusSandbox: { available: true, costGate: { ready: false, reason: 'Sandbox pricing has not been verified.' } } } } });
-  assert.equal(deriveCardOutcome(node, [remote], []).label, 'Blocked');
-  assert.equal(deriveCardOutcome(node, [remote], []).text, 'Sandbox pricing has not been verified.');
-  assert.equal(deriveCardOutcome(node, [remote], [], { blockers: { 'nebius-sandbox': 'The current sandbox allowance is exhausted.' } }).text, 'The current sandbox allowance is exhausted.');
-  assert.equal(deriveCardOutcome(node, [remote], [], { blockers: { 'nebius-sandbox': '' } }).label, 'Interrupted');
-  assert.equal(deriveCardOutcome({ ...node, title: 'Nebius blocked', description: 'Pricing blocked.' }, [], []).label, 'Purpose');
-  assert.equal(deriveCardOutcome(node, [{ ...remote, status: 'completed' }], [artifact('result', 'remote')]).label, 'Saved outcome');
+test('uses the captured runtime gate rather than names or descriptions', () => {
+  const blocked = run('blocked', { status: 'interrupted', configuration: { kind: 'local-experiment', backend: 'docker-python', capabilities: { available: true, sandbox: { available: false } } } });
+  assert.equal(deriveCardOutcome(node, [blocked], []).label, 'Blocked');
+  assert.equal(deriveCardOutcome(node, [blocked], []).text, 'Sandboxed Python is unavailable; execution cannot start.');
+  assert.equal(deriveCardOutcome({ ...node, title: 'Python blocked', description: 'Sandbox blocked.' }, [], []).label, 'Purpose');
+  assert.equal(deriveCardOutcome(node, [{ ...blocked, status: 'completed' }], [artifact('result', 'blocked')]).label, 'Saved outcome');
 });
 
-test('does not turn uncertain remote execution into a pricing-only blocker or success', () => {
-  const remote = run('remote', { status: 'interrupted', configuration: { kind: 'local-experiment', backend: 'nebius-sandbox', remote: { phase: 'uncertain' } } });
-  assert.equal(deriveCardOutcome(node, [remote], [], { blockers: { 'nebius-sandbox': 'No allowance.' } }).label, 'Outcome uncertain');
+test('a run saved by the removed Nebius remote sandbox still reads as what happened to it', () => {
+  const remote = run('remote', { status: 'interrupted', error: 'Remote termination is unconfirmed; no automatic retry.', configuration: { kind: 'local-experiment', backend: 'nebius-sandbox', remote: { phase: 'uncertain' }, capabilities: { available: true, nebiusSandbox: { available: true, costGate: { ready: false, reason: 'Sandbox pricing has not been verified.' } } } } });
+  const outcome = deriveCardOutcome(node, [remote], []);
+  assert.equal(outcome.label, 'Interrupted');
+  assert.match(outcome.text, /Remote termination is unconfirmed/);
+  assert.equal(deriveCardOutcome(node, [{ ...remote, status: 'completed' }], [artifact('result', 'remote')]).label, 'Saved outcome');
 });
 
 test('describes imported datasets and source excerpts as saved evidence, not execution', () => {

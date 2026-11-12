@@ -6,20 +6,14 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Store } from '../src/server/store.js';
 import { ExperimentService } from '../src/server/experiments.js';
-import { SandboxBudget, type SandboxBudgetOptions } from '../src/server/sandbox-budget.js';
 import type { ExecutionBackend, SandboxCapabilities, SandboxInput, SandboxResult } from '../src/server/sandbox.js';
 import type { CanvasNode } from '../src/shared/types.js';
-
-const terms: SandboxBudgetOptions = {
-  authorizationId: 'offline-approval-context', maxRuns: 2, maxUsd: 2, maxCostPerRunUsd: 1,
-  pricingBasis: 'Offline fixture only: hypothetical $1 ceiling; not a provider price.',
-};
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'ros-approval-context-'));
   const store = new Store(dir), inputs: SandboxInput[] = [];
   const capabilities: SandboxCapabilities = {
-    available: true, backend: 'nebius-sandbox', policy: 'offline-fixture', runtime: 'fixture Python',
+    available: true, backend: 'docker-python', policy: 'offline-fixture', runtime: 'fixture Python',
     workerHash: 'worker-1', imageId: 'image-1', libraries: {}, enforcement: ['fixture'],
     limitations: ['No live execution'], timeoutMs: 30000, maxMemoryMb: null, maxOutputBytes: 1000000,
   };
@@ -38,17 +32,16 @@ function fixture() {
   store.mutate(project.id, ['a', 'b', 'group'].map((id, i) => ({
     type: 'addNode' as const, node: { id, title: id, description: '', kind: id === 'group' ? 'group' as const : 'activity' as const, x: i * 400, y: 0 },
   })), 'Fixture nodes');
-  const grant = new SandboxBudget(store, terms);
-  const service = new ExperimentService(store, { sandbox: backend, nebiusSandbox: backend, sandboxBudget: grant });
+  const service = new ExperimentService(store, { sandbox: backend });
   service.authority.configure(project.id, { mode: 'ask' });
-  return { store, project, service, grant, backend, capabilities, inputs, async cleanup() {
+  return { store, project, service, capabilities, inputs, async cleanup() {
     await service.shutdown(); store.close(); rmSync(dir, { recursive: true, force: true });
   } };
 }
 
 function preview(f: ReturnType<typeof fixture>) {
   return f.service.preview(f.project.id, {
-    nodeId: 'a', request: 'Review this exact offline experiment', backend: 'nebius-sandbox',
+    nodeId: 'a', request: 'Review this exact offline experiment', backend: 'docker-python',
     csv: 'value\n2\n4\n', code: 'metric("Mean", 3)', parameters: { label: 'captured' },
   });
 }
@@ -94,7 +87,6 @@ test('moving, resizing and arranging nodes preserves an exact pending approval a
     assert.equal(f.service.inspect(run.id).approval.fingerprint, pending.approval.fingerprint);
     assert.deepEqual(capturedArtifacts.map(artifact => f.store.getArtifact(artifact.id)), capturedArtifacts);
     assert.equal(f.service.authority.policy(f.project.id).used.experiments, 1);
-    assert.equal(f.grant.status().remainingRuns, 1);
   } finally { await f.cleanup(); }
 });
 
@@ -103,7 +95,6 @@ function assertNoAdmission(f: ReturnType<typeof fixture>, runId: string) {
   assert.equal(f.service.inspect(runId).approval.status, 'pending');
   assert.equal(f.service.authority.policy(f.project.id).used.experiments, 0);
   assert.equal(f.service.authority.policy(f.project.id).used.spendUsd, 0);
-  assert.equal(f.grant.status().remainingRuns, 2);
 }
 
 test('title, description and kind changes still invalidate exact approval', async () => {
@@ -142,7 +133,7 @@ test('selected artifact versions and excerpts still invalidate approval after mo
         return source.run.artifactIds.map(id => f.store.getArtifact(id)).find(artifact => artifact.kind === 'dataset')!;
       });
       const selection = f.store.addInput(f.project.id, 'a', datasets[0].id, 'value\n2\n');
-      const pending = f.service.preview(f.project.id, { nodeId: 'a', request: 'Use selected data', backend: 'nebius-sandbox' });
+      const pending = f.service.preview(f.project.id, { nodeId: 'a', request: 'Use selected data', backend: 'docker-python' });
       assert.equal(pending.csv, 'value\n2\n');
       f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { x: 1200 } }], 'Move');
       f.store.removeInput(f.project.id, selection.id);
@@ -161,7 +152,7 @@ test('edited code, CSV and parameters require their own approval token', async (
       const original = preview(f);
       f.store.mutate(f.project.id, [{ type: 'updateNode', id: 'a', patch: { y: 400 } }], 'Move');
       const replacement = f.service.preview(f.project.id, {
-        nodeId: 'a', request: original.run.request, backend: 'nebius-sandbox',
+        nodeId: 'a', request: original.run.request, backend: 'docker-python',
         code: original.code, csv: original.csv, parameters: original.parameters, ...change,
       });
       assert.equal(f.store.getRun(original.run.id).status, 'cancelled');
@@ -181,21 +172,6 @@ test('changed worker and container image remain blocked before dispatch', async 
       assert.throws(() => f.service.decide(pending.run.id, pending.approval.fingerprint, 'allow'), /runtime changed/);
       assertNoAdmission(f, pending.run.id);
     } finally { await f.cleanup(); }
-  }
-});
-
-test('changed remote pricing or authorization cannot use an existing approval', async () => {
-  for (const change of [{ pricingBasis: 'Different offline fixture terms' }, { authorizationId: 'different-offline-authorization' }]) {
-    const f = fixture();
-    let reconfigured: ExperimentService | undefined;
-    try {
-      const pending = preview(f);
-      reconfigured = new ExperimentService(f.store, {
-        sandbox: f.backend, nebiusSandbox: f.backend, sandboxBudget: new SandboxBudget(f.store, { ...terms, ...change }),
-      });
-      assert.throws(() => reconfigured!.decide(pending.run.id, pending.approval.fingerprint, 'allow'), /pricing or authorization changed/);
-      assertNoAdmission(f, pending.run.id);
-    } finally { await reconfigured?.shutdown(); await f.cleanup(); }
   }
 });
 
