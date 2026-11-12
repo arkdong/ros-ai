@@ -27,19 +27,18 @@ export function AccountTile({name,small}:{name:string;small?:boolean}) {
  * A row's state shows while connected; shown says it even when off (a skill that is off), with a grey dot. */
 type PluginState = { label: string; connected: boolean; shown?: boolean };
 
-/** One row of a catalogue: logo, name, one line, a status when connected, and + or ··· (or its own action). Shared by Plugins, Skills and Agents. */
+/** One row of a catalogue: logo, name with its status beside it when connected, up to two lines of what it does, and + or ··· (or its own action). Shared by Plugins, Skills and Agents. */
 export function CatalogueRow({mark,name,summary,state,unavailable,action,onClick}:{mark:ReactNode;name:string;summary:string;state?:PluginState;unavailable?:boolean;action?:ReactNode;onClick:()=>void}) {
-  return <button type="button" className="plugin-row" onClick={onClick}><span className="plugin-row-mark">{mark}</span><span className="plugin-row-text"><strong>{name}</strong><small>{summary}</small></span>{(state?.connected||state?.shown)&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}<span className="plugin-row-action">{action??(unavailable?<small>Not yet</small>:state?.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>)}</span></button>;
+  return <button type="button" className="plugin-row" onClick={onClick}><span className="plugin-row-mark">{mark}</span><span className="plugin-row-text"><span className="plugin-row-name"><strong>{name}</strong>{(state?.connected||state?.shown)&&<span className={`plugin-row-state ${state.connected?'':'off'}`}><i/>{state.label}</span>}</span><small>{summary}</small></span><span className="plugin-row-action">{action??(unavailable?<small>Not yet</small>:state?.connected?<MoreHorizontal size={16}/>:<Plus size={16}/>)}</span></button>;
 }
 type SidebarItem = { id: string; name: string; mark: ReactNode; off?: boolean };
-/** The page's sections and its list (what is installed, or the person's skills) in the sidebar, like Codex's left column.
- * section: which section is open when there are several. */
-export function CatalogueSidebar({sections,section,onSection,label='Installed',empty='Nothing connected yet',installed,selected,onSelect,note}:{sections:{id:string;label:string;later?:boolean}[];section?:string;onSection?:(id:string)=>void;label?:string;empty?:string;installed:SidebarItem[];selected:string|null;onSelect:(id:string|null)=>void;note:string}) {
+/** The page's list (what is installed, or the person's skills) in the sidebar. The sections show only when there are several:
+ * a single one would repeat the page's title. section: which section is open. */
+export function CatalogueSidebar({sections,section,onSection,label='Installed',empty='Nothing connected yet',installed,selected,onSelect}:{sections:{id:string;label:string;later?:boolean}[];section?:string;onSection?:(id:string)=>void;label?:string;empty?:string;installed:SidebarItem[];selected:string|null;onSelect:(id:string|null)=>void}) {
   return <div className="plugins-sidebar">
-    {sections.map(item=>item.later?<button key={item.id} type="button" className="plugins-nav" disabled title={`${item.label} come in a later round`}>{item.label}<span className="plugins-later">later</span></button>:<button key={item.id} type="button" className={`plugins-nav ${!selected&&(section??item.id)===item.id?'active':''}`} onClick={()=>onSection?onSection(item.id):onSelect(null)}>{item.label}</button>)}
+    {sections.length>1&&sections.map(item=>item.later?<button key={item.id} type="button" className="plugins-nav" disabled title={`${item.label} come in a later round`}>{item.label}<span className="plugins-later">later</span></button>:<button key={item.id} type="button" className={`plugins-nav ${!selected&&(section??item.id)===item.id?'active':''}`} onClick={()=>onSection?onSection(item.id):onSelect(null)}>{item.label}</button>)}
     <div className="sidebar-label plugins-installed-label">{label}</div>
     {installed.length?installed.map(item=><button key={item.id} type="button" className={`plugins-nav plugins-installed ${selected===item.id?'active':''}`} onClick={()=>onSelect(item.id)}>{item.mark}<span className="plugins-name">{item.name}</span>{!item.off&&<i className="plugins-dot" aria-hidden="true"/>}</button>):<p className="sidebar-empty">{empty}</p>}
-    <p className="plugins-sidebar-note">{note}</p>
   </div>;
 }
 /** Breadcrumb and hero of one item's page. action sits at the right of the hero, after the state. */
@@ -83,7 +82,7 @@ const GOOGLE_MAPS_KEY = {
 
 /** The sidebar lists the plugins connected on this computer. */
 export function PluginsSidebar({installed,selected,onSelect}:{installed:PluginId[];selected:PluginId|null;onSelect:(id:PluginId|null)=>void}) {
-  return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)} note="Connected on this computer. Click one to manage it."/>;
+  return <CatalogueSidebar sections={[{id:'plugins',label:'Plugins'}]} installed={installed.map(id=>({id,name:PLUGINS.find(item=>item.id===id)!.name,mark:<PluginMark id={id} size={16}/>}))} selected={selected} onSelect={id=>onSelect(id as PluginId|null)}/>;
 }
 
 /** What the page read last in this session: it opens with that at once while it reads again. */

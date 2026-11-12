@@ -1,49 +1,49 @@
 .agent-view { display: grid; align-content: start; gap: 18px; padding: 20px 25px 30px; flex: 1; min-height: 0; overflow-y: auto; }
 .agent-view header { display: flex; align-items: center; gap: 10px; }
 .agent-view header > div { display: grid; flex: 1; gap: 1px; }
-.agent-view header strong { font-size: 14px; }
-.agent-view header small { color: #6b6b67; font-size: 12px; }
-.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #f1f1ef; box-shadow: 0 0 0 1px #e1e1e1; }
-.agent-goal .rich-text { font-size: 14px; color: #3d3d3a; }
+.agent-view header strong { font-size: var(--text-md); }
+.agent-view header small { color: var(--muted); font-size: var(--text-sm); }
+.agent-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-block); background: var(--rail); box-shadow: 0 0 0 1px var(--line); }
+.agent-goal .rich-text { font-size: var(--text-md); color: var(--body); }
 /* Section titles are not headings, so Markdown headings inside the answer keep their own style. */
-.agent-section-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #6b6b67; }
+.agent-section-title { margin: 0 0 8px; font-size: var(--text-sm); font-weight: 500; color: var(--muted); }
 .agent-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .agent-step { display: grid; grid-template-columns: 22px 1fr; gap: 8px; position: relative; padding-bottom: 12px; }
-.agent-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: #e3e3e3; }
-.agent-step-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f4f4f4; color: #4a4a46; }
-.agent-step.waiting .agent-step-icon { background: #fbf3e4; color: #8a5a12; }
-.agent-step.failed .agent-step-icon, .agent-step.declined .agent-step-icon { background: #fbecea; color: #9b3a32; }
-.agent-step-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-height: 22px; font-size: 14px; line-height: 22px; color: #26302a; }
-.agent-step-label time { margin-left: auto; font-size: 12px; color: #8a8a85; }
-.agent-step-target { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: #c8c8c3; text-underline-offset: 2px; }
+.agent-step:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: var(--line-soft); }
+.agent-step-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--rail); color: var(--body); }
+.agent-step.waiting .agent-step-icon { background: var(--rail); color: var(--wait); }
+.agent-step.failed .agent-step-icon, .agent-step.declined .agent-step-icon { background: var(--rail); color: var(--fail); }
+.agent-step-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-height: 22px; font-size: var(--text-md); line-height: 22px; color: var(--body); }
+.agent-step-label time { margin-left: auto; font-size: var(--text-sm); color: var(--muted); }
+.agent-step-target { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .agent-step-target:hover { text-decoration-color: currentColor; }
-.agent-step-thought { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: #6b6b67; white-space: pre-wrap; }
-.agent-step-error { margin: 2px 0 0; font-size: 13px; color: #9b3a32; }
+.agent-step-thought { margin: 2px 0 0; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); white-space: pre-wrap; }
+.agent-step-error { margin: 2px 0 0; font-size: var(--text-sm); color: var(--fail); }
 /* What a step made: directions, pages, findings or groups, each opening the block or saved text it names. */
 .agent-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .agent-step .agent-items { margin-top: 6px; }
 .agent-items li { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-.agent-items button, .agent-item-text { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; border: 0; background: none; padding: 3px 0; color: inherit; text-align: left; font-size: 14px; line-height: 20px; }
+.agent-items button, .agent-item-text { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; border: 0; background: none; padding: 3px 0; color: inherit; text-align: left; font-size: var(--text-md); line-height: 20px; }
 .agent-items button { cursor: pointer; }
-.agent-items button svg, .agent-item-text svg { flex: none; margin-top: 4px; color: #6b6b67; }
+.agent-items button svg, .agent-item-text svg { flex: none; margin-top: 4px; color: var(--muted); }
 .agent-items button span, .agent-item-text span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .agent-items button:hover span { text-decoration: underline; }
-.agent-items small, .agent-items a { flex: none; margin-left: auto; padding-top: 4px; font-size: 12px; color: #8a8a85; white-space: nowrap; }
+.agent-items small, .agent-items a { flex: none; margin-left: auto; padding-top: 4px; font-size: var(--text-sm); color: var(--muted); white-space: nowrap; }
 .agent-items a { display: inline-flex; align-items: center; gap: 3px; text-decoration: none; }
-.agent-items a:hover { color: #3d3d3a; text-decoration: underline; }
-.agent-step-note { margin: 4px 0 0; font-size: 13px; color: #8a5a12; }
+.agent-items a:hover { color: var(--body); text-decoration: underline; }
+.agent-step-note { margin: 4px 0 0; font-size: var(--text-sm); color: var(--wait); }
 .agent-step-review { margin-top: 6px; }
-.agent-error { color: #9b3a32; margin: 0; }
+.agent-error { color: var(--fail); margin: 0; }
 /* Canvas card faces for Agent and Search blocks. */
 .agent-face { display: grid; gap: 6px; }
-.agent-face ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: #3d3d3a; }
+.agent-face ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--text-sm); color: var(--body); }
 .agent-face li { display: flex; align-items: center; gap: 6px; }
-.agent-face li svg { flex: none; color: #8a8a85; }
-.agent-waiting { margin: 0; font-size: 13px; color: #8a5a12; }
-.agent-thought { margin: 0; font-size: 13px; line-height: 1.5; color: #6b6b67; }
+.agent-face li svg { flex: none; color: var(--muted); }
+.agent-waiting { margin: 0; font-size: var(--text-sm); color: var(--wait); }
+.agent-thought { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); }
 .search-face { display: grid; gap: 6px; }
-.search-why { margin: 0; font-size: 13px; line-height: 1.45; color: #6b6b67; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.search-why { margin: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .search-queries { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.search-queries li { display: flex; align-items: center; gap: 6px; color: #3d3d3a; font-size: 13px; min-width: 0; }
-.search-queries li svg { flex: none; color: #8a8a85; }
+.search-queries li { display: flex; align-items: center; gap: 6px; color: var(--body); font-size: var(--text-sm); min-width: 0; }
+.search-queries li svg { flex: none; color: var(--muted); }
 .search-queries li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

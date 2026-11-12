@@ -12,13 +12,13 @@
 .direct-canvas .research-card:not(.height-set) .block-primary-preview:has(> .app-face) { flex: none; max-height: none; overflow: visible; }
 .app-face { position: relative; height: 220px; border: 1px solid var(--line-soft); border-radius: var(--radius-control); overflow: hidden; background: var(--paper); }
 .app-face.active { border-color: var(--ink); }
-.app-face-use { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font-size: var(--text-xs); cursor: pointer; }
-.app-face-use span { padding: 3px 10px; border-radius: 999px; background: var(--glass); box-shadow: var(--shadow-block); opacity: 0; transition: opacity .12s; }
+.app-face-use { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font-size: var(--text-sm); cursor: pointer; }
+.app-face-use span { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--paper); box-shadow: var(--shadow-block); opacity: 0; transition: opacity var(--dur-out) var(--ease); }
 .app-face-use:hover span, .app-face-use:focus-visible span { opacity: 1; }
 .app-face-use.lingering span { opacity: 0; }
 .app-face-still { display: grid; place-content: center; height: 100%; color: var(--muted); font-size: var(--text-sm); }
 .direct-canvas .research-card.height-set:not(.expanded-group) .block-primary-preview > .app-face { flex: 1 1 0; height: auto; min-height: 80px; }
-.app-leaves { margin: 6px 0 0; color: var(--wait); font-size: var(--text-xs); }
+.app-leaves { margin: 6px 0 0; color: var(--wait); font-size: var(--text-sm); }
 .provenance .app-error { color: var(--fail); }
 
 /* Block view: App, Code and Inputs. */
@@ -30,8 +30,8 @@
 .app-view-code { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .app-view-code .code-editor { min-height: 360px; max-height: 62vh; }
 .app-view-actions { display: flex; align-items: center; gap: 8px; }
-.app-view-actions .subtle { margin: 0 auto 0 0; font-size: var(--text-xs); }
-.app-view-errors { margin: 0; padding: 10px 12px; border-radius: var(--radius-control); background: #fdf3f2; color: var(--fail); font-size: var(--text-xs); }
+.app-view-actions .subtle { margin: 0 auto 0 0; font-size: var(--text-sm); }
+.app-view-errors { margin: 0; padding: 10px 12px; border-radius: var(--radius-control); background: var(--sidebar); color: var(--fail); font-size: var(--text-sm); }
 .app-view-errors ul { margin: 4px 0 0; padding-left: 18px; }
 .app-view-inputs { display: grid; gap: 8px; }
 .app-view-inputs ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }

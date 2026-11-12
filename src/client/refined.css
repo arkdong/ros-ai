@@ -1,131 +1,119 @@
 /* Version A, refined: white cards on a calm grey, more room, one type scale.
    Loaded last; the shell prefix keeps these rules ahead of older component styles. */
-:root {
-  /* Three tones, like Codex: the rail a touch darker, the sidebar light grey, the page white. */
-  --page: #ffffff;
-  --rail-bg: #f2f2f2;
-  --sidebar-bg: #f7f7f7;
-  --card-line: #e5e5e5;
-  --card-divider: #eeeeee;
-  --card-shadow: 0 1px 2px rgba(16, 16, 16, .04);
-  --float-shadow: 0 2px 8px rgba(0, 0, 0, .05);
-  --sheet-shadow: 0 24px 64px rgba(0, 0, 0, .14);
-  --radius-card: 14px;
-  --radius-sheet: 18px;
-  --radius-button: 9px;
-}
-
 /* Shell: rail and sidebar share the calm grey; the map sits on the same grey. */
-.app-shell.single-canvas-shell { background: var(--sidebar-bg); }
-.single-canvas-shell .app-rail { flex: 0 0 64px; width: 64px; gap: 8px; padding: 16px 0; background: var(--rail-bg); border-right: 1px solid #e6e6e6; }
-.single-canvas-shell .app-rail-button { width: 40px; height: 40px; border-radius: 10px; }
-.single-canvas-shell .app-rail-button.active { background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .07), 0 0 0 1px #e4e4e4; }
-.single-canvas-shell .sidebar { width: 248px; min-width: 248px; padding: 0 14px; background: var(--sidebar-bg); border-right: 1px solid #e6e6e6; }
+.app-shell.single-canvas-shell { background: var(--sidebar); }
+.single-canvas-shell .app-rail { flex: 0 0 64px; width: 64px; gap: 8px; padding: 16px 0; background: var(--rail); border-right: 1px solid var(--line); }
+.single-canvas-shell .app-rail-button { width: 40px; height: 40px; border-radius: var(--radius-block); }
+.single-canvas-shell .app-rail-button.active { background: var(--paper); box-shadow: var(--shadow-block), 0 0 0 1px var(--line); }
+.single-canvas-shell .sidebar { width: 248px; min-width: 248px; padding: 0 14px; background: var(--sidebar); border-right: 1px solid var(--line); }
 /* The sidebar's list scrolls behind a faint 4 px thumb in the sidebar's own gutter, darker under the pointer, the same on every system
    (a system that draws its own bar would put a 15 px one over the rows). */
 .single-canvas-shell .sidebar-content { margin-right: -14px; padding-right: 4px; scrollbar-gutter: stable; }
 .single-canvas-shell .sidebar-content::-webkit-scrollbar { width: 10px; }
 .single-canvas-shell .sidebar-content::-webkit-scrollbar-track { background: transparent; }
-.single-canvas-shell .sidebar-content::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: rgba(0, 0, 0, .12); background-clip: padding-box; }
+.single-canvas-shell .sidebar-content::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: var(--radius-pill); background: rgba(0, 0, 0, .12); background-clip: padding-box; }
 .single-canvas-shell .sidebar-content::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, .3); }
 @supports not selector(::-webkit-scrollbar) { .single-canvas-shell .sidebar-content { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, .14) transparent; } }
 /* The sidebar slides out past its own edge instead of vanishing: the map widens with it, in one motion.
    Closing is a little quicker than opening; once closed it is hidden, so Tab skips it. */
-.single-canvas-shell .sidebar { transition: margin-left .26s cubic-bezier(.2, .8, .2, 1), visibility 0s; }
-.single-canvas-shell.sidebar-hidden .sidebar { display: flex; margin-left: -248px; visibility: hidden; transition: margin-left .2s cubic-bezier(.4, 0, .2, 1), visibility 0s linear .2s; }
-.single-canvas-shell .sidebar-backdrop { animation: sidebar-backdrop .2s ease-out both; }
+.single-canvas-shell .sidebar { transition: margin-left var(--dur-menu) var(--ease), visibility 0s; }
+.single-canvas-shell.sidebar-hidden .sidebar { display: flex; margin-left: -248px; visibility: hidden; transition: margin-left var(--dur-menu) var(--ease), visibility 0s linear var(--dur-menu); }
+.single-canvas-shell .sidebar-backdrop { animation: sidebar-backdrop var(--dur-menu) var(--ease) both; }
 @keyframes sidebar-backdrop { from { opacity: 0; } }
 /* Cards centred with translateX(-50%) rise in: the block sheet and the New project card. */
 @keyframes rise-centered { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .single-canvas-shell .sidebar, .single-canvas-shell.sidebar-hidden .sidebar { transition: none; } .single-canvas-shell .sidebar-backdrop { animation: none; } }
-.single-canvas-shell .sidebar .new-project-button { border-radius: var(--radius-button); }
+.single-canvas-shell .sidebar .new-project-button { border-radius: var(--radius-pill); }
 .single-canvas-shell .project-item.active,
-.single-canvas-shell .note-tree-row.selected { border-radius: var(--radius-button); }
-.single-canvas-shell .workspace-header { height: 64px; min-height: 64px; padding: 0 24px; background: #fff; border-bottom: 1px solid #ebebeb; }
-.single-canvas-shell .workspace-heading h1 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.single-canvas-shell .note-tree-row.selected { border-radius: var(--radius-pill); }
+.single-canvas-shell .workspace-header { height: 64px; min-height: 64px; padding: 0 24px; background: var(--paper); border-bottom: 1px solid var(--line-soft); }
+.single-canvas-shell .workspace-heading h1 { font-size: var(--text-lg); font-weight: 500; letter-spacing: -.01em; }
 .single-canvas-shell .canvas-stage,
-.single-canvas-shell .workspace-welcome { background-color: var(--page); }
-.single-canvas-shell .rail-page { background: var(--page); }
+.single-canvas-shell .workspace-welcome { background-color: var(--paper); }
+.single-canvas-shell .rail-page { background: var(--paper); }
 
-/* Controls. */
+/* Controls. One main button everywhere: a 32px pill, 13px medium, black. The second action is the same pill in white
+   with a hairline; a third is a plain word (.text-button). No screen sets its own height, corner or weight. */
+.single-canvas-shell .primary, .single-canvas-shell .secondary,
+.modal .primary, .modal .secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
+  height: 32px; padding: 0 14px; border-radius: var(--radius-pill);
+  font-size: var(--text-sm); font-weight: 500; line-height: 1; white-space: nowrap; box-shadow: none;
+}
 .single-canvas-shell .secondary,
-.modal .secondary { border-radius: var(--radius-button); padding: 7px 13px; border-color: #e3e3e3; background: #fff; box-shadow: 0 1px 1px rgba(0, 0, 0, .03); }
-.single-canvas-shell .primary,
-.modal .primary { border-radius: var(--radius-button); padding: 8px 14px; }
-.single-canvas-shell .icon-button { border-radius: 8px; }
+.modal .secondary { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.single-canvas-shell .secondary:hover:not(:disabled),
+.modal .secondary:hover:not(:disabled) { border-color: var(--ink); }
+.single-canvas-shell .icon-button { border-radius: var(--radius-control); }
 
 /* Things that float over the map. */
-.single-canvas-shell .unified-canvas .canvas-tools { border-radius: 10px; border: 1px solid var(--card-line); background: #fff; box-shadow: var(--float-shadow); }
+.single-canvas-shell .unified-canvas .canvas-tools { border-radius: var(--radius-block); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow-float); }
 
 /* Blocks on the map. */
-.single-canvas-shell .research-card.research-block { border-radius: 12px; border-color: #e3e3e3; box-shadow: 0 1px 3px rgba(0, 0, 0, .05); }
-.single-canvas-shell .research-card.organizational-group { border-radius: 18px; background: rgba(255, 255, 255, .45); border-color: #e1e1e1; box-shadow: none; }
+.single-canvas-shell .research-card.research-block { border-radius: var(--radius-block); border-color: var(--line); box-shadow: none; }
+.single-canvas-shell .research-card.organizational-group { border-radius: var(--radius-card); background: rgba(255, 255, 255, .45); border-color: var(--line); box-shadow: none; }
 
 /* Dialogs. */
-.modal-backdrop { background: rgba(244, 244, 242, .72); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-.modal { border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); }
+.modal { border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-view); }
 .note-view .note-main { padding: 32px 48px 40px; }
-.note-view .note-side { border-left: 1px solid var(--card-divider); background: #fcfcfc; }
+.note-view .note-side { border-left: 1px solid var(--line-soft); background: var(--canvas); }
 .note-view .note-side-heading { padding: 16px 20px; }
 .note-view .note-side-scroll { padding: 18px 20px; }
 
 /* A block's file sits under its title as one quiet line, never a grey band. */
-.file-bar { margin: -6px 0 18px; padding: 0 0 16px; gap: 8px; border-radius: 0; background: none; border-bottom: 1px solid var(--card-divider); color: var(--muted); font-size: 13px; }
-.file-bar code { flex: 0 1 auto; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12.5px; }
+.file-bar { margin: -6px 0 18px; padding: 0 0 16px; gap: 8px; border-radius: 0; background: none; border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: var(--text-sm); }
+.file-bar code { flex: 0 1 auto; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--text-sm); }
 .file-bar .open-in { margin-left: auto; }
-.file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: 13px; }
+.file-bar .open-in-trigger { height: 30px; padding: 0 11px; font-size: var(--text-sm); }
 .modal > .modal-heading:has(+ .file-bar) { border-bottom: 0; }
-.code-section h4, .code-results-head h4 { font-size: 11px; letter-spacing: .08em; color: var(--muted); }
+.code-section h4, .code-results-head h4 { font-size: var(--text-sm); letter-spacing: .08em; color: var(--muted); }
 .code-results-head { margin-bottom: 4px; }
 .code-results > p.subtle { margin: 0 0 4px; color: var(--muted); }
-.code-output { padding: 22px 0 24px; border-bottom-color: var(--card-divider); }
+.code-output { padding: 22px 0 24px; border-bottom-color: var(--line-soft); }
 .code-output:last-child { border-bottom: 0; }
 /* The output's kind is a small label above its title, so the title leads. */
 .code-output-head { flex-direction: column-reverse; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
-.code-output-head strong { font-size: 15px; font-weight: 600; letter-spacing: -.01em; line-height: 1.4; }
-.code-output-head small { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #eef1f5; color: #46536a; font-size: 11px; font-weight: 500; letter-spacing: .02em; text-transform: capitalize; }
+.code-output-head strong { font-size: var(--text-lg); font-weight: 500; letter-spacing: -.01em; line-height: 1.4; }
+.code-output-head small { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--rail); color: var(--body); font-size: var(--text-sm); font-weight: 500; letter-spacing: .02em; text-transform: capitalize; }
 .code-results .metric-value { margin: 4px 0 2px; }
 .code-results .result-actions { margin-top: 14px; }
 
 /* Notices sit in a soft panel aligned with the editor, not behind a side bar. */
 /* A limit of the runtime is a quiet grey note; only a failed line gets a tint. */
-.runtime-blocker, .code-error-hint { margin: 0 0 12px; padding: 10px 14px; border: 1px solid #ececec; border-radius: 10px; background: #f7f7f7; color: #4a4a4a; font-size: 13px; line-height: 1.5; }
-.code-error-hint { border-color: #f1d4cd; background: #fdf4f2; color: #7a2a1d; }
+.runtime-blocker, .code-error-hint { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: var(--radius-control); background: var(--sidebar); color: var(--body); font-size: var(--text-sm); line-height: 1.5; }
+.code-error-hint { border-color: var(--line); background: var(--sidebar); color: var(--fail); }
 
 /* Tags read as labels: filled, borderless pills, so they never look like buttons. */
 .artifact-version-line { gap: 8px; margin: 4px 0 18px; color: var(--muted); }
-.artifact-version-line .tag, .artifact-dialog-meta .tag { border: 0; border-radius: 999px; padding: 3px 10px; background: #eef1f5; color: #46536a; font-size: 12px; font-weight: 500; }
+.artifact-version-line .tag, .artifact-dialog-meta .tag { border: 0; border-radius: var(--radius-pill); padding: 3px 10px; background: var(--rail); color: var(--body); font-size: var(--text-sm); font-weight: 500; }
 .artifact-version-line .tag:first-child { text-transform: capitalize; }
 .artifact-version-line > span:not(.tag) { margin-left: 4px; }
-.artifact-version-line code { padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; }
+.artifact-version-line code { padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--text-sm); }
 .artifact-dialog-meta { margin-bottom: 10px; }
-.artifact-dialog-meta .tag { background: #fbf3e0; color: #7a5a14; }
+.artifact-dialog-meta .tag { background: var(--rail); color: var(--body); }
 
 /* The guided demo card. */
-.executable-demo { border: 1px solid var(--card-line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--sheet-shadow); }
+.executable-demo { border: 1px solid var(--line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--shadow-view); }
 
 /* ROS keeps its single green touch. */
-.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: 20px; }
+.single-canvas-shell .assistant-panel.ros-panel.ros-half { border-radius: var(--radius-card); }
 .single-canvas-shell .assistant-composer { border-radius: var(--radius-card); }
 
 /* Agents, Apps and Settings pages. */
 .rail-page-inner { max-width: 760px; padding: 64px 32px 72px; }
-.rail-page .tool-connection { border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; margin-bottom: 12px; background: #fff; box-shadow: 0 10px 32px rgba(0, 0, 0, .06); }
-.rail-page .tool-connection-name strong { font-size: 14px; font-weight: 500; }
-.rail-page .tool-connection-name small { font-size: 13px; color: var(--muted); margin-top: 1px; }
-.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid #eee; }
-.rail-page .connection-state { font-size: 12px; }
-.rail-page .resources-panel { border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; box-shadow: 0 10px 32px rgba(0, 0, 0, .06); }
-/* Buttons on these pages are the canvas's 30 px pills: black for the one action, white hairline for a second, text chips for the rest. */
-.rail-page .primary, .rail-page .secondary, .skill-modal .primary, .skill-modal .secondary { height: 30px; padding: 0 14px; border-radius: 15px; font-size: 13px; font-weight: 500; }
-.rail-page .text-button { font-size: 13px; }
-.rail-page .icon-button { width: 30px; height: 30px; border-radius: 8px; }
-.rail-page .inline-error { background: transparent; padding: 0; font-size: 13px; line-height: 1.5; color: var(--fail); }
+.rail-page .tool-connection-name strong { font-size: var(--text-md); font-weight: 500; }
+.rail-page .tool-connection-name small { font-size: var(--text-sm); color: var(--muted); margin-top: 1px; }
+.rail-page .tool-connection-icon { width: 40px; height: 40px; border-radius: var(--radius-block); background: var(--paper); border: 1px solid var(--line-soft); }
+.rail-page .connection-state { font-size: var(--text-sm); }
+.rail-page .resources-panel { border: 1px solid var(--line); border-radius: var(--radius-card); }
+.rail-page .text-button { font-size: var(--text-sm); }
+.rail-page .icon-button { width: 30px; height: 30px; border-radius: var(--radius-control); }
+.rail-page .inline-error { background: transparent; padding: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--fail); }
 
 /* Scrollbars in sheets: thin, rounded and kept clear of the corners. */
 .modal::-webkit-scrollbar, .modal *::-webkit-scrollbar { width: 12px; height: 12px; }
 .modal::-webkit-scrollbar-track, .modal *::-webkit-scrollbar-track { background: transparent; }
-.modal::-webkit-scrollbar-thumb, .modal *::-webkit-scrollbar-thumb { border: 4px solid transparent; border-radius: 999px; background: rgba(0, 0, 0, .16) padding-box; }
+.modal::-webkit-scrollbar-thumb, .modal *::-webkit-scrollbar-thumb { border: 4px solid transparent; border-radius: var(--radius-pill); background: rgba(0, 0, 0, .16) padding-box; }
 .modal::-webkit-scrollbar-thumb:hover, .modal *::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, .3); }
 .modal::-webkit-scrollbar-corner, .modal *::-webkit-scrollbar-corner { background: transparent; }
 .modal::-webkit-scrollbar-track { margin: 20px 0; }
@@ -133,54 +121,54 @@
 @supports not selector(::-webkit-scrollbar) { .modal, .modal * { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, .2) transparent; } }
 
 /* Tables: values stay on one line, header on a calm grey. */
-.data-viewer .data-table-wrap { border-color: var(--card-line); border-radius: 12px; }
-.data-viewer th { background: #f7f7f7; }
-.data-viewer th button { padding: 10px 14px; font-size: 13px; }
+.data-viewer .data-table-wrap { border-color: var(--line); border-radius: var(--radius-block); }
+.data-viewer th { background: var(--sidebar); }
+.data-viewer th button { padding: 10px 14px; font-size: var(--text-sm); }
 .data-viewer td { padding: 9px 14px; overflow-wrap: break-word; vertical-align: middle; }
-.data-viewer .data-table th, .data-viewer .data-table td { border-color: #ebebeb; }
+.data-viewer .data-table th, .data-viewer .data-table td { border-color: var(--line-soft); }
 
 /* Folded detail sections: one quiet heading style with a chevron, content in soft panels. */
-.artifact-provenance, .artifact-more { margin: 0; padding: 0; border-top: 1px solid var(--card-divider); font-size: 13px; }
+.artifact-provenance, .artifact-more { margin: 0; padding: 0; border-top: 1px solid var(--line-soft); font-size: var(--text-sm); }
 .artifact-provenance + .artifact-more { margin-top: 0; }
 .artifact-provenance:first-of-type { margin-top: 24px; }
 .artifact-provenance > summary, .artifact-more > summary, .run-section > summary {
   display: flex; align-items: center; gap: 8px; padding: 14px 0; list-style: none; cursor: pointer;
-  color: var(--body); font-size: 13px; font-weight: 500;
+  color: var(--body); font-size: var(--text-sm); font-weight: 500;
 }
 .artifact-provenance > summary::-webkit-details-marker, .artifact-more > summary::-webkit-details-marker, .run-section > summary::-webkit-details-marker { display: none; }
 .artifact-provenance > summary::before, .artifact-more > summary::before, .run-section > summary::before {
-  content: ''; width: 6px; height: 6px; margin: 0 3px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .12s; opacity: .7; flex-shrink: 0;
+  content: ''; width: 6px; height: 6px; margin: 0 3px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-out) var(--ease); opacity: .7; flex-shrink: 0;
 }
 .artifact-provenance[open] > summary::before, .artifact-more[open] > summary::before, .run-section[open] > summary::before { transform: rotate(45deg); }
 .artifact-provenance > summary:hover, .artifact-more > summary:hover, .run-section > summary:hover { color: var(--ink); }
 .artifact-provenance[open] > summary, .artifact-more[open] > summary { color: var(--ink); }
 .artifact-provenance[open], .artifact-more[open] { padding-bottom: 18px; }
-.artifact-provenance > p { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
-.artifact-provenance > p:first-of-type { padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafafa; color: var(--body); font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.artifact-provenance > p { margin: 0 0 12px; color: var(--muted); font-size: var(--text-sm); line-height: 1.7; }
+.artifact-provenance > p:first-of-type { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--canvas); color: var(--body); font: var(--text-sm)/1.75 var(--font-mono); }
 .artifact-provenance > button { margin: 0 0 14px; }
-.artifact-provenance pre, .run-section pre { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 10px; background: #fafafa; font-size: 12px; line-height: 1.6; }
+.artifact-provenance pre, .run-section pre { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--canvas); font-size: var(--text-sm); line-height: 1.6; }
 .artifact-more > div:first-of-type { margin-bottom: 12px; }
 
 /* History runs: a status line, the request as the main text, details folded below. */
-.note-view .run-card { margin: 0 0 12px; border: 1px solid var(--card-line); border-radius: 12px; background: #fff; box-shadow: var(--card-shadow); }
+.note-view .run-card { margin: 0 0 12px; border: 1px solid var(--line); border-radius: var(--radius-block); background: var(--paper); }
 .note-view .run-card > summary { gap: 10px; padding: 14px 16px; cursor: pointer; }
-.note-view .run-card > summary strong { font-size: 14px; font-weight: 600; }
-.note-view .run-card > summary small { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.note-view .run-card > summary strong { font-size: var(--text-md); font-weight: 500; }
+.note-view .run-card > summary small { margin-top: 2px; font-size: var(--text-sm); color: var(--muted); }
 .note-view .run-card > summary > svg, .note-view .run-card > summary > .run-mode { color: var(--muted); }
-.note-view .run-card[open] > summary { border-bottom-color: var(--card-divider); }
+.note-view .run-card[open] > summary { border-bottom-color: var(--line-soft); }
 .note-view .run-card .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .note-view .run-card .status-dot.completed { background: var(--ok); }
 .note-view .run-card .status-dot.failed, .note-view .run-card .status-dot.interrupted, .note-view .run-card .status-dot.cancelled { background: var(--fail); }
 .note-view .run-card .status-dot.running, .note-view .run-card .status-dot.queued { background: var(--wait); }
 .note-view .run-body { padding: 14px 16px 4px; }
-.note-view .run-request { margin: 0 0 10px; font-size: 14px; line-height: 1.6; color: var(--ink); }
-.note-view .run-body > .row .tag { max-width: 100%; border: 0; border-radius: 999px; padding: 3px 10px; background: #eef1f5; color: #46536a; font-size: 12px; word-break: normal; }
-.note-view .run-section { margin: 12px 0 0; padding: 0; border-top: 1px solid var(--card-divider); }
+.note-view .run-request { margin: 0 0 10px; font-size: var(--text-md); line-height: 1.6; color: var(--ink); }
+.note-view .run-body > .row .tag { max-width: 100%; border: 0; border-radius: var(--radius-pill); padding: 3px 10px; background: var(--rail); color: var(--body); font-size: var(--text-sm); word-break: normal; }
+.note-view .run-section { margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
 .note-view .run-section + .run-section { margin-top: 0; }
 .note-view .run-section[open] { padding-bottom: 12px; }
-.note-view .run-section h4 { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--body); }
-.note-view .run-section .capture-meta, .note-view .run-section .subtle, .note-view .run-section dl { font-size: 12.5px; color: var(--muted); }
-.note-view .note-history-toggle.active { border-color: #dcdcd8; color: var(--ink); }
+.note-view .run-section h4 { margin: 14px 0 6px; font-size: var(--text-sm); font-weight: 500; color: var(--body); }
+.note-view .run-section .capture-meta, .note-view .run-section .subtle, .note-view .run-section dl { font-size: var(--text-sm); color: var(--muted); }
+.note-view .note-history-toggle.active { border-color: var(--line); color: var(--ink); }
 /* The sticky title covers the sheet's top padding too, so scrolled content never shows above it. */
 .artifact-modal:has(.artifact-viewer) { padding-top: 0; }
 .artifact-modal:has(.artifact-viewer) > .modal-heading { top: 0; margin: 0 -30px 10px; padding: 26px 30px 12px; }
@@ -191,5 +179,5 @@
 .single-canvas-shell .project-blocks { padding: 2px 0 8px 14px; }
 .single-canvas-shell .project-blocks .note-tree { padding-bottom: 0; }
 .single-canvas-shell .project-blocks .sidebar-empty { margin: 6px 8px; font-size: var(--text-sm); color: var(--muted); }
-.single-canvas-shell .note-tree-more { display: block; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; font: inherit; font-size: var(--text-sm); color: var(--muted); }
-.single-canvas-shell .note-tree-more:hover { background: #ececec; color: var(--ink); }
+.single-canvas-shell .note-tree-more { display: block; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--radius-control); background: transparent; text-align: left; font: inherit; font-size: var(--text-sm); color: var(--muted); }
+.single-canvas-shell .note-tree-more:hover { background: var(--line-soft); color: var(--ink); }

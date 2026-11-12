@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Brain, ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
+import { useTabFill } from './tab-fill';
 import { ChipChoice } from './ChipChoice';
 import { approvalModes } from './RosModelMenu';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
@@ -34,19 +35,20 @@ export function SettingsSidebar({ section, onSection }: { section: SettingsSecti
   </div>;
 }
 
-export function Row({ title, detail, children }: { title: string; detail?: ReactNode; children: ReactNode }) {
-  return <div className="settings-row"><div><strong>{title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
+/** One setting. With `field`, the row's name is the label of the field with that id. */
+export function Row({ title, detail, field, children }: { title: string; detail?: ReactNode; field?: string; children: ReactNode }) {
+  return <div className="settings-row"><div><strong>{field ? <label htmlFor={field}>{title}</label> : title}</strong>{detail && <small>{detail}</small>}</div><div className="settings-row-control">{children}</div></div>;
 }
 
 const usd = (value: number) => `US$${value.toFixed(2)}`;
 /** A dollar amount with Save; an empty field clears it. */
-function AmountField({ label, value, onSave }: { label: string; value: number | null; onSave: (value: number | null) => Promise<unknown> }) {
+function AmountField({ id, value, onSave }: { id: string; value: number | null; onSave: (value: number | null) => Promise<unknown> }) {
   const [draft, setDraft] = useState(value === null ? '' : String(value)), [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { setDraft(value === null ? '' : String(value)); }, [value]);
   const parsed = draft.trim() === '' ? null : Number(draft), valid = parsed === null || (Number.isFinite(parsed) && parsed >= 0), changed = parsed !== value;
   const save = async () => { setBusy(true); setError(''); try { await onSave(parsed); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   return <form className="amount-field" onSubmit={event => { event.preventDefault(); if (valid && changed && !busy) void save(); }}>
-    <span className="amount-prefix">US$</span><input aria-label={label} inputMode="decimal" placeholder="None" value={draft} onChange={event => setDraft(event.target.value)}/>
+    <span className="amount-prefix">US$</span><input id={id} inputMode="decimal" placeholder="None" value={draft} onChange={event => setDraft(event.target.value)}/>
     {changed && <button className="secondary small" type="submit" disabled={!valid || busy}>{busy ? <LoaderCircle size={13} className="spin"/> : 'Save'}</button>}
     {error && <span className="inline-error" role="alert">{error}</span>}
   </form>;
@@ -92,8 +94,8 @@ export function GeneralSettings({ projectId, projectTitle, policy, onChanged }: 
     <RosLayerSettings/>
     <SuggestionSettings/>
     {budget && <section><h2>Monthly budget</h2><div className="settings-card">
-      <Row title="All projects" detail={budgetDetail(budget.all)}><AmountField label="Monthly budget for all projects" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
-      {budget.project && <Row title={projectTitle ?? 'This project'} detail={budgetDetail(budget.project)}><AmountField label="Monthly budget for this project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
+      <Row title="All projects" field="budget-all" detail={budgetDetail(budget.all)}><AmountField id="budget-all" value={budget.all.monthlyUsd} onSave={value => saveBudget('all', value)}/></Row>
+      {budget.project && <Row title={projectTitle ?? 'This project'} field="budget-project" detail={budgetDetail(budget.project)}><AmountField id="budget-project" value={budget.project.monthlyUsd} onSave={value => saveBudget('project', value)}/></Row>}
     </div></section>}
     {network && <section><h2>Python network</h2><div className="settings-card">
       <Row title="Sites" detail={network.mode === 'full' ? 'Python in Code and Notebook blocks can reach any website.' : `Python asks before reaching a new website. ${network.preset.join(' and ')} are always allowed for installing packages.`}>
@@ -145,10 +147,10 @@ function FirstRunSettings() {
   ] : [];
   return <section><h2>First run</h2><div className="settings-card">
     <Row title="Show the welcome again" detail="Walk through the welcome, account and tools pages once more. Nothing is reset: the sign-in, the links and the download stay.">
-      <button type="button" className="secondary small" onClick={show}>Show</button>
+      <button type="button" className="secondary small" onClick={show}>Show welcome</button>
     </Row>
     <Row title="Reset all connections" detail="Undo every link and sign-in on this computer, then start again from the welcome page, as on a new computer.">
-      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>{busy && !plan && <LoaderCircle size={13} className="spin"/>}Reset all…</button>
+      <button type="button" className="secondary small" disabled={busy} aria-expanded={Boolean(plan)} onClick={() => plan ? setPlan(null) : void start()}>{busy && !plan && <LoaderCircle size={13} className="spin"/>}Reset connections…</button>
     </Row>
     {plan && <div className="settings-confirm">
       <div className="settings-options">
@@ -156,7 +158,7 @@ function FirstRunSettings() {
         {options.map(option => <label key={option.id} className="settings-option"><input type="checkbox" checked={choice[option.id]} onChange={event => setChoice(current => ({ ...current, [option.id]: event.target.checked }))}/><span><span>{option.label}</span>{option.detail && <small>{option.detail}</small>}</span></label>)}
       </div>
       {!options.length && <p className="settings-confirm-note">Nothing is connected on this computer; only the welcome comes back.</p>}
-      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset all</button></div>
+      <div className="settings-confirm-actions"><button type="button" className="text-button" disabled={busy} onClick={() => setPlan(null)}>Cancel</button><button type="button" className="primary small" disabled={busy} onClick={() => void reset()}>{busy && <LoaderCircle size={13} className="spin"/>}Reset connections</button></div>
     </div>}
     {failed.length > 0 && <div className="settings-confirm">
       <p className="settings-confirm-note">Reset, except for these:</p>
@@ -292,6 +294,8 @@ export function UsageSettings() {
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
   useEffect(() => { void api<BudgetStatus>('/api/settings/budget').then(setBudget).catch(() => {}); }, [data]);
   const [range, setRange] = useState<Range>(7), [group, setGroup] = useState<Group>('model'), [offset, setOffset] = useState(0), [hover, setHover] = useState<number | null>(null);
+  const ranges = useRef<HTMLDivElement>(null);
+  useTabFill(ranges, data ? String(range) : '');
   useEffect(() => {
     let current = true;
     const load = () => api<UsageAnalytics>('/api/usage/analytics').then(value => { if (current) { setData(value); setError(''); } }).catch(cause => { if (current) setError(cause instanceof Error ? cause.message : String(cause)); });
@@ -326,21 +330,25 @@ export function UsageSettings() {
   const max = Math.max(...view.days.map(day => day.usd), 0);
   const earliest = data?.events.length ? startOfDay(Date.parse(data.events[data.events.length - 1].at)) : Date.now();
   const hovered = hover === null ? null : view.days[hover];
+  // Nothing in this window: the card says so in a sentence, and the chart and the table come with the first spend.
+  // recorded: anything was ever recorded, so there is something to page back to and to group.
+  const recorded = !!data?.events.length, quiet = !!data && !view.requests;
   return <div className="settings-page usage-page">
     <h1>Usage</h1>
     <p className="settings-lead">What your agents and models spent, by model and by task. Recorded on this computer; nothing is sent anywhere.</p>
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
     <PlanLimits/>
-    <div className="usage-controls">
-      <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
+    {recorded && <div className="usage-controls">
+      <div ref={ranges} className="usage-segments tab-fill" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
       <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
-    </div>
+    </div>}
     {error && <p className="inline-error" role="alert">{error}</p>}
     <section className="settings-card usage-chart-card" aria-label="Spend over time">
       <header className="usage-chart-head">
         <div><span>{dayLabel(view.start)} – {dayLabel(view.end)}</span><strong>{data ? money(view.total) : '…'}</strong></div>
-        <div className="usage-pager"><button type="button" className="icon-button" aria-label="Earlier" disabled={view.start <= earliest} onClick={() => setOffset(value => value + 1)}><ChevronLeft size={16}/></button><button type="button" className="icon-button" aria-label="Later" disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - 1))}><ChevronRight size={16}/></button></div>
+        {recorded && <div className="usage-pager"><button type="button" className="icon-button" aria-label="Earlier" disabled={view.start <= earliest} onClick={() => setOffset(value => value + 1)}><ChevronLeft size={16}/></button><button type="button" className="icon-button" aria-label="Later" disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - 1))}><ChevronRight size={16}/></button></div>}
       </header>
+      {!data ? <p className="usage-empty"><LoaderCircle size={14} className="spin"/> Reading usage…</p> : quiet ? <p className="usage-quiet">No spend in these {range === 7 ? 'seven' : '30'} days.{!recorded && ' It shows here by model and by task after your first agent turn.'}</p> : <>
       <div className="usage-plot" onMouseLeave={() => setHover(null)}>
         <div className="usage-grid" aria-hidden="true"><i/><i/><i/><i/></div>
         <div className={`usage-bars ${range === 30 ? 'dense' : ''}`}>{view.days.map((day, index) => <div key={day.at} className="usage-day" onMouseEnter={() => setHover(index)} onFocus={() => setHover(index)} tabIndex={0} aria-label={`${dayLabel(day.at)}: ${money(day.usd)}`}>
@@ -350,17 +358,18 @@ export function UsageSettings() {
       </div>
       <div className="usage-axis" aria-hidden="true">{view.days.map((day, index) => <span key={day.at}>{index === 0 || index === range - 1 || (range === 7 ? index === 3 : index % 7 === 0 && index < range - 3) ? dayLabel(day.at) : ''}</span>)}</div>
       {view.series.length ? <ul className="usage-legend">{view.series.map(item => <li key={item.name} style={{ borderColor: item.color }}><span>{item.name}</span><strong>{share(item.usd, view.total)}</strong><small>{money(item.usd)}</small></li>)}</ul>
-        : <p className="usage-empty">{!data ? <><LoaderCircle size={14} className="spin"/> Reading usage…</> : view.requests ? 'No reported cost in this period.' : 'No usage in this period.'}</p>}
+        : <p className="usage-empty">No reported cost in this period.</p>}
       {view.unknown > 0 && <p className="usage-note">{view.unknown} request{view.unknown === 1 ? '' : 's'} without a reported cost {view.unknown === 1 ? 'is' : 'are'} not counted.</p>}
+      </>}
     </section>
-    <section aria-label="Top tasks">
+    {data && !quiet && <section aria-label="Top tasks">
       <h2>Top tasks</h2>
       <div className="settings-card usage-table">
         <div className="usage-table-head"><span>Task</span><span>Model</span><span>Requests</span><span>Spent</span></div>
         {view.top.length ? view.top.map(row => <div key={`${row.place}:${row.title}`} className="usage-table-row"><span><strong>{row.title}</strong><small>{row.place}</small></span><span title={[...row.models].join(', ')}>{row.models.size > 1 ? `${row.model} +${row.models.size - 1}` : row.model}</span><span>{row.requests}</span><span>{money(row.usd)}</span></div>)
           : <p className="usage-empty">Nothing in this period.</p>}
       </div>
-    </section>
+    </section>}
   </div>;
 }
 
@@ -398,7 +407,7 @@ function PlanLimits() {
 }
 
 /** What each connected model, agent or tool says is left, and where the provider keeps it to itself. */
-export function BalanceSettings() {
+export function BalanceSettings({ onAgents }: { onAgents: () => void }) {
   const [balances, setBalances] = useState<ProviderBalance[] | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const load = async () => { setBusy(true); try { setBalances((await api<{ balances: ProviderBalance[] }>('/api/usage/balances')).balances); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } };
   useEffect(() => { void load(); }, []);
@@ -408,12 +417,12 @@ export function BalanceSettings() {
   const saveCredit = async (id: string, amountUsd: number | null) => { await api(`/api/usage/credit/${id}`, { method: 'PUT', body: JSON.stringify({ amountUsd }) }); await load(); };
   const reports = (item: ProviderBalance) => ['ros-cloud', 'codex', 'tavily'].includes(item.id);
   const reported = balances?.filter(reports) ?? [], silent = balances?.filter(item => !reports(item)) ?? [];
-  const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{typed(item) && <AmountField label={`${item.name} credit`} value={item.credit?.amountUsd ?? null} onSave={value => saveCredit(item.id, value)}/>}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
+  const row = (item: ProviderBalance) => <div key={item.id} className="settings-row balance-row"><span className="balance-mark">{mark(item.id)}</span><div className="settings-row-text"><strong>{typed(item) ? <label htmlFor={`credit-${item.id}`}>{item.name}</label> : item.name}</strong><small>{item.detail}</small></div><div className="settings-row-control">{item.left ? <span className="balance-left">{item.left}</span> : null}{typed(item) && <AmountField id={`credit-${item.id}`} value={item.credit?.amountUsd ?? null} onSave={value => saveCredit(item.id, value)}/>}{!item.left && item.link && <a className="text-button" href={item.link} target="_blank" rel="noreferrer">Open <ExternalLink size={12}/></a>}</div></div>;
   return <div className="settings-page">
     <header className="settings-head"><div><h1>Balances</h1><p className="settings-lead">What is left with each connected model, agent and tool, where the provider reports it.</p></div><button className="icon-button" aria-label="Check balances again" disabled={busy} onClick={() => void load()}><RefreshCw size={15} className={busy ? 'spin' : ''}/></button></header>
     {error && <p className="inline-error" role="alert">{error}</p>}
     {!balances && !error && <p className="usage-empty"><LoaderCircle size={14} className="spin"/> Checking…</p>}
-    {balances && !balances.length && <p className="rail-page-note">Nothing is connected yet. Connect agents and tools on the Agents and Plugins pages.</p>}
+    {balances && !balances.length && <div className="settings-card settings-empty"><p>Nothing is connected yet. What is left with each agent and tool shows here once one is.</p><button type="button" className="primary" onClick={onAgents}>Connect an agent</button></div>}
     {reported.length > 0 && <section><h2>Reported by the provider</h2><div className="settings-card">{reported.map(row)}</div></section>}
     {silent.length > 0 && <section><h2>Entered by you</h2><p className="settings-lead balance-note">These providers keep your credit in their own console. Enter it once; ros.ai subtracts what it records from then on.</p><div className="settings-card">{silent.map(row)}</div></section>}
   </div>;

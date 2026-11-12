@@ -20,7 +20,7 @@
   min-height: 66px;
 }
 .direct-canvas .card-outcome p { min-height: 0; }
-.direct-canvas .expanded-group > .group-heading { max-width: 768px; }
+.direct-canvas .expanded-group > .group-heading { max-width: none; }
 
 /* The map's state and its stages sit at the top, to the right of the tools card. */
 .direct-canvas .canvas-header {
@@ -45,11 +45,11 @@
   align-items: center;
   min-height: 28px;
   padding: 0 10px;
-  border: 1px solid #e3e3e3;
-  border-radius: 999px;
-  background: #ffffff;
-  font-size: 12px;
-  color: #6b6b6b;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  font-size: var(--text-sm);
+  color: var(--muted);
 }
 .direct-canvas .canvas-stage-navigation {
   display: flex;
@@ -62,26 +62,44 @@
 }
 .direct-canvas .canvas-stage-navigation button {
   flex: 0 0 auto;
-  max-width: 220px;
-  padding: 8px 11px;
-  min-height: 36px;
-  border: 1px solid #dedede;
-  border-radius: 7px;
-  background: #fffffff5;
-  color: #555;
-  font-size: 13px;
-  line-height: 1.35;
-  white-space: normal;
-  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--body);
+  font-size: var(--text-sm);
+  font-weight: 400;
 }
+.direct-canvas .canvas-stage-navigation button > small { font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.direct-canvas .canvas-stage-navigation button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.direct-canvas .canvas-stage-navigation button:hover { border-color: var(--ink); color: var(--ink); }
 .direct-canvas .canvas-stage-navigation button.active {
-  border-color: #9db66e;
-  background: #f1f7e8;
-  color: #243718;
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 500;
 }
+/* Said once, under the row it is about. It hangs below the header so the map's top inset does not move. */
+.direct-canvas .canvas-stage-hint {
+  position: absolute;
+  top: 100%;
+  left: 2px;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  pointer-events: none;
+  animation: stage-hint var(--dur-menu) var(--ease);
+}
+@keyframes stage-hint { from { opacity: 0; } }
+/* Notices drop below the stage row instead of lying over it. */
+.direct-canvas:has(.canvas-stage-navigation) .canvas-notices { top: 62px; }
 .single-canvas-shell .canvas-stage,
 .single-canvas-shell .canvas-stage > .canvas-area,
-.direct-canvas .react-flow { background: #ffffff; }
+.direct-canvas .react-flow { background: var(--paper); }
 @media (max-width: 850px) {
   .single-canvas-shell .assistant-panel { width: min(365px, 48%); }
   .single-canvas-shell .assistant-open .canvas-header { right: calc(min(365px, 48%) + 18px); }

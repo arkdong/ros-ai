@@ -10,10 +10,10 @@
   align-items: center;
   gap: 1px;
   padding: 4px;
-  border: 1px solid var(--card-line, #e3e3e3);
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: var(--float-shadow, 0 6px 20px #00000014);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-block);
+  background: var(--paper);
+  box-shadow: var(--shadow-float);
 }
 .canvas-dock .canvas-dock-item {
   position: relative;
@@ -23,20 +23,20 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--ink);
 }
-.canvas-dock .canvas-dock-item:hover:not(:disabled), .canvas-dock .canvas-dock-item:focus-visible { background: #f2f2f2; }
+.canvas-dock .canvas-dock-item:hover:not(:disabled), .canvas-dock .canvas-dock-item:focus-visible { background: var(--rail); }
 /* The tool in use, or a mode that is on, is a pressed grey tile. */
-.canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: #e8e8e8; color: var(--ink); }
+.canvas-dock .canvas-dock-item.active, .canvas-dock .canvas-dock-item.active:hover { background: var(--line-soft); color: var(--ink); }
 /* The card's one action: Add block is the black tile, first in the column, and stays black while its menu is open. */
-.canvas-dock .canvas-dock-item.primary, .canvas-dock .canvas-dock-item.primary.active { background: var(--ink); color: #ffffff; }
-.canvas-dock .canvas-dock-item.primary:hover:not(:disabled), .canvas-dock .canvas-dock-item.primary:focus-visible { background: #000000; }
+.canvas-dock .canvas-dock-item.primary, .canvas-dock .canvas-dock-item.primary.active { background: var(--ink); color: var(--paper); }
+.canvas-dock .canvas-dock-item.primary:hover:not(:disabled), .canvas-dock .canvas-dock-item.primary:focus-visible { background: var(--ink); }
 .canvas-dock .canvas-dock-item.primary:disabled { background: var(--line); color: var(--muted); }
 /* An unavailable tool keeps its place and greys its icon, rather than the global see-through fade. */
-.canvas-dock .canvas-dock-item:disabled { opacity: 1; color: #c2c2c2; }
-.canvas-dock-divider { width: 22px; height: 1px; margin: 2px 0; background: #eeeeee; }
+.canvas-dock .canvas-dock-item:disabled { opacity: 1; color: var(--muted); }
+.canvas-dock-divider { width: 22px; height: 1px; margin: 2px 0; background: var(--line-soft); }
 .canvas-dock-tip {
   position: absolute;
   left: calc(100% + 12px);
@@ -47,22 +47,22 @@
   gap: 7px;
   width: max-content;
   padding: 5px 9px;
-  border-radius: 7px;
-  background: #1d1f1e;
-  color: #ffffff;
-  font-size: 12px;
+  border-radius: var(--radius-control);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-sm);
   line-height: 1.4;
   white-space: nowrap;
   text-align: left;
   pointer-events: none;
   opacity: 0;
-  transition: opacity .12s;
+  transition: opacity var(--dur-out) var(--ease);
 }
-.canvas-dock-tip strong { font-weight: 600; }
-.canvas-dock-tip span { color: #b8b8b8; }
+.canvas-dock-tip strong { font-weight: 500; }
+.canvas-dock-tip span { color: var(--muted); }
 .canvas-dock-item:hover .canvas-dock-tip, .canvas-dock-item:focus-visible .canvas-dock-tip { opacity: 1; transition-delay: .15s; }
 /* The dock rises in with the first block; an empty map has its Add a block button in the middle instead. */
-.canvas-dock { animation: canvas-dock-rise .28s cubic-bezier(.2, .8, .2, 1) both; }
+.canvas-dock { animation: canvas-dock-rise var(--dur-menu) var(--ease) both; }
 @keyframes canvas-dock-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .canvas-dock { animation: none; } }
 /* On short windows the column tightens so it stays clear of the minimap below it. */
@@ -94,27 +94,27 @@
   gap: 9px;
   padding: 10px 13px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f7f7f7;
-  box-shadow: 0 4px 14px #00000012;
-  font-size: 14px;
+  border-radius: var(--radius-block);
+  background: var(--sidebar);
+  box-shadow: var(--shadow-float);
+  font-size: var(--text-md);
   color: var(--ink);
 }
-.canvas-notices .canvas-notice .text-button { font-size: 14px; text-decoration: underline; }
-.canvas-notices .canvas-feedback { background: #ffffff; pointer-events: none; }
+.canvas-notices .canvas-notice .text-button { font-size: var(--text-md); text-decoration: underline; background-image: none; }
+.canvas-notices .canvas-feedback { background: var(--paper); pointer-events: none; }
 .canvas-notices .proposal-preview { position: static; translate: none; transform: none; width: min(440px, calc(100vw - 48px)); }
 
 /* The canvas proposal: a short title, the reason in grey, the changes, then the decision. */
-.single-canvas-shell .proposal-preview, .proposal-preview { width:min(380px, calc(100vw - 48px)); padding:12px 14px; border-radius:10px; border-color:#e4e4e4; box-shadow:0 6px 18px #0000000f; }
+.single-canvas-shell .proposal-preview, .proposal-preview { width:min(380px, calc(100vw - 48px)); padding:12px 14px; border-radius:var(--radius-block); border-color:var(--line); box-shadow:var(--shadow-float); }
 .proposal-preview>header { display:flex; align-items:center; justify-content:space-between; }
-.proposal-preview>header .eyebrow { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#6b6b6b; letter-spacing:0; text-transform:none; }
-.single-canvas-shell .proposal-preview h3, .proposal-preview h3 { font-size:14px; font-weight:500; line-height:1.5; margin:6px 0 2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.proposal-preview .proposal-reason { font-size:12px; line-height:1.55; color:#6b6b6b; margin:0 0 8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.proposal-preview>header .eyebrow { display:inline-flex; align-items:center; gap:5px; font-size:var(--text-sm); color:var(--muted); letter-spacing:0; text-transform:none; }
+.single-canvas-shell .proposal-preview h3, .proposal-preview h3 { font-size:var(--text-md); font-weight:500; line-height:1.5; margin:6px 0 2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.proposal-preview .proposal-reason { font-size:var(--text-sm); line-height:1.55; color:var(--muted); margin:0 0 8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .proposal-preview .proposal-operations { margin:6px 0 0; }
-.proposal-preview .proposal-operations .operation-tag { font-size:12px; padding:2px 6px; }
-.proposal-preview .stale-warning { font-size:12px; color:#6b6b6b; margin:8px 0 0; }
+.proposal-preview .proposal-operations .operation-tag { font-size:var(--text-sm); padding:2px 6px; }
+.proposal-preview .stale-warning { font-size:var(--text-sm); color:var(--muted); margin:8px 0 0; }
 .proposal-preview .proposal-actions { display:flex; align-items:center; gap:4px; margin-top:10px; }
-.proposal-preview .proposal-actions .text-button { font-size:12px; color:#6b6b6b; }
+.proposal-preview .proposal-actions .text-button { font-size:var(--text-sm); color:var(--muted); }
 /* A proposal's card sits beside the blocks it changes. */
 .proposal-anchor .proposal-preview { width: 360px; max-width: calc(100vw - 48px); margin: 0; }
 
@@ -125,18 +125,18 @@
   gap: 7px;
   height: 32px;
   padding: 0 12px 0 10px;
-  border: 1px solid #eeeeee;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 6px 18px #0000000f;
-  font-size: 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  box-shadow: var(--shadow-float);
+  font-size: var(--text-sm);
   color: var(--ink);
   white-space: nowrap;
-  animation: canvas-toast-rise 160ms ease-out;
+  animation: canvas-toast-rise var(--dur-in) var(--ease);
 }
 .canvas-toast > span { overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
 .canvas-toast > svg { flex: none; color: var(--ink); }
-.canvas-toast > button { margin-left: 3px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.canvas-toast > button { margin-left: 3px; padding: 0; border: 0; background: none; font: inherit; font-weight: 500; color: var(--ink); cursor: pointer; }
 .canvas-toast > button:hover { text-decoration: underline; }
 @keyframes canvas-toast-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .canvas-toast { animation: none; } }
