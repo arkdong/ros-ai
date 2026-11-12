@@ -39,6 +39,7 @@ Stack: TypeScript everywhere, Express 5 run through tsx, React 19 with @xyflow/r
   - `tool-loop-agent.ts`: ROS, a model in ros.ai's own tool loop (hosted ROS, ROS on this computer, or any API model through `providers.ts` and `inference-connections.ts`).
   - `claude-agent.ts`, `codex-agent.ts` (with `codex-app-server.ts`), `acp-agent.ts` (Gemini CLI, Goose, OpenCode): the person's own agents, started by ros.ai.
 - `agent-tools.ts` is the one set of tools every engine gets: read the canvas, propose blocks and changes, run Python, search, read pages, use plugins. `agent-prompt.ts` and `canvas-grammar.ts` are the instructions that go with them.
+- `agent-turn.ts` is what a turn of Claude Code and of Codex share: its time limit, what the agent is told as that time passes, and the status line that shows what the agent is doing right now, which is shown while the turn runs and never saved. `codex-tool-schema.ts` fits each tool's description to what Codex accepts.
 - `outside-agents.ts` serves the same tools as an MCP server at `/mcp`, for an agent the person runs themselves. `scripts/ros-ai-mcp.mjs` is the bridge those agents start; `setup-detect.ts`, `setup-links.ts` and `setup.ts` find the agents on this computer and link them.
 - `ros-layer.ts` is ROS arranging the map after any agent's turn: grouping and linking what was left loose.
 - `local-ros.ts` downloads and runs ROS on this computer with llama.cpp. `cloud-account.ts` is the sign-in to ros.ai cloud, which lives in a separate private repository.

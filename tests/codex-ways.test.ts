@@ -63,6 +63,18 @@ test('on an OpenAI API key Codex bills only that key, through its own provider a
   }
 });
 
+test('Codex gets its own web search where OpenAI serves it, and none of its tools that lead a turn away from the map', () => {
+  const plan = config(codexProcessArgs('/work/project', { isolation: 'profile' })), key = config(codexProcessArgs('/work/project', { isolation: 'profile', api }));
+  const gateway = config(codexProcessArgs('/work/project', { isolation: 'profile', api: { ...api, baseUrl: 'https://gateway.example/v1' } }));
+  // Newer models search through a tool Codex offers only on a provider said to serve it: OpenAI's own service does.
+  assert.equal(plan.get('model_providers.ros_ai_local.supports_standalone_web_search'), 'true');
+  assert.equal(key.get('model_providers.ros_ai_api.supports_standalone_web_search'), 'true');
+  assert.equal(gateway.has('model_providers.ros_ai_api.supports_standalone_web_search'), false);
+  // No sub-agents, questions to a person who is not at a terminal, goals, sleeping or image viewing, and a note sent
+  // during a turn waits for the step Codex is in rather than cutting it off.
+  for (const settings of [plan, key, gateway]) for (const off of ['agents.enabled', 'tools.experimental_request_user_input.enabled', 'skills.include_instructions', 'features.goals', 'features.sleep_tool', 'features.view_image', 'features.instant_interrupt', 'features.multi_agent', 'features.shell_tool']) assert.equal(settings.get(off), 'false', off);
+});
+
 test('a turn on the key is priced from the token counts Codex reports, with cached input and reasoning', () => {
   const counts = { inputTokens: 1_000_000, cachedInputTokens: 400_000, outputTokens: 10_000, totalTokens: 1_010_000 };
   near(tokenUsd('gpt-5.4', counts), 1.5 + 0.1 + 0.15);

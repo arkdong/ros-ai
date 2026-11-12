@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
-import { AgentWorkspaceTools } from './agent-tools.js';
+import { AgentWorkspaceTools, toolFailure } from './agent-tools.js';
 import { CLAUDE_CODE_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import { projectFolderRoot } from './project-folders.js';
 import { findBinary, pretty } from './setup-detect.js';
@@ -522,7 +522,7 @@ export class AcpAgentService {
         thought(); segment = attempt.reply.length;
         event({ at: now(), type: 'tool', message: `${label} requested ${name}.`, data: { name, arguments: args }, step: agentStep(call, name, args) });
         try { const result = await toolkit.call(name, args); event({ at: now(), type: 'tool', message: `${name} returned a validated result.`, data: result, step: agentStep(call, name, args, { value: result }) }); return reply(JSON.stringify(result)); }
-        catch (error) { const value = error instanceof StoreError ? error.message : error instanceof z.ZodError ? `The arguments did not pass ros.ai's checks; nothing was changed. ${z.prettifyError(error).slice(0, 1500)}` : 'Tool arguments failed ros.ai validation. No effect was applied.'; event({ at: now(), type: 'tool', message: value, step: agentStep(call, name, args, { failed: true }) }); return reply(value, true); }
+        catch (error) { const value = toolFailure(error); event({ at: now(), type: 'tool', message: value, step: agentStep(call, name, args, { failed: true }) }); return reply(value, true); }
       },
     };
     this.turns.set(token, turn);

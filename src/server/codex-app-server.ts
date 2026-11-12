@@ -54,7 +54,13 @@ const API_KEY_ENV = 'OPENAI_API_KEY';
 export const codexProvider = (api: boolean) => api ? 'ros_ai_api' : 'ros_ai_local';
 export type CodexProcessOptions = { disabledMcp?: string[]; isolation?: CodexIsolation | null; api?: CodexApiKey | null };
 const codexBinary = () => process.env.ROS_CODEX_BINARY || 'codex';
+/** What Codex may not do inside ros.ai. Each must read back as off from the running process before a turn starts. */
 const disabledFeatures = ['shell_tool', 'unified_exec', 'shell_snapshot', 'apps', 'plugins', 'browser_use', 'browser_use_external', 'computer_use', 'in_app_browser', 'code_mode', 'code_mode_only', 'multi_agent', 'image_generation', 'hooks', 'workspace_dependencies', 'memories', 'skill_mcp_dependency_install'];
+/** Turned off without being read back, so a Codex that does not know one of them still runs. The first three are tools
+ * of Codex's own that do nothing for a ros.ai turn and lead the model away from the map: goals it sets itself, sleeping,
+ * and viewing images in a session folder that is always empty. The last makes a message sent during a turn cut off the
+ * request Codex is in and throw away its thinking; without it ros.ai's note about the time waits for that step to end. */
+const quietFeatures = ['goals', 'sleep_tool', 'view_image', 'instant_interrupt'];
 // -c values are TOML; a permission profile's folders are an inline table.
 const toml = (value: unknown): string => value && typeof value === 'object' ? `{${Object.entries(value).map(([key, item]) => `${JSON.stringify(key)}=${toml(item)}`).join(',')}}` : JSON.stringify(value);
 const profileFolders = (cwd: string) => ({ ':minimal': 'read', [cwd]: 'read' });
@@ -62,7 +68,7 @@ const profileFolders = (cwd: string) => ({ ':minimal': 'read', [cwd]: 'read' });
 /** Process-only overrides; never edits the user's Codex config or auth store. */
 export function codexProcessArgs(cwd: string, { disabledMcp = [], isolation = 'read-roots', api = null }: CodexProcessOptions = {}) {
   if (disabledMcp.some(key => !/^[A-Za-z0-9_-]+$/.test(key))) throw new StoreError('An inherited MCP server name cannot be safely disabled with this installed CLI. Embedded turns remain unavailable.', 503);
-  const provider = codexProvider(Boolean(api));
+  const provider = codexProvider(Boolean(api)), openai = !api || /^https:\/\/api\.openai\.com(\/|$)/u.test(api.baseUrl);
   const entries: [string, unknown][] = [
     ['model_provider', provider], ['approval_policy', 'never'],
     // Newer Codex confines a thread with ros.ai's permission profile; read-only stays as the fallback either way,
@@ -77,7 +83,15 @@ export function codexProcessArgs(cwd: string, { disabledMcp = [], isolation = 'r
     ...(api ? [[`model_providers.${provider}.base_url`, api.baseUrl], [`model_providers.${provider}.env_key`, API_KEY_ENV], ['model', api.model]] as [string, unknown][] : []),
     [`model_providers.${provider}.request_max_retries`, 0], [`model_providers.${provider}.stream_max_retries`, 0],
     [`model_providers.${provider}.supports_websockets`, false],
-    ...disabledFeatures.map((key): [string, unknown] => [`features.${key}`, false]),
+    // Newer models search the web through a tool of Codex's own, which Codex offers only on a provider said to serve it.
+    // ros.ai's providers reach OpenAI's own service, on the person's ChatGPT sign-in or their API key, so it is served
+    // there as on Codex's built-in provider; without this those models had no web search inside ros.ai. A gateway the
+    // person set up may not serve it, so there the tool stays away.
+    ...(openai ? [[`model_providers.${provider}.supports_standalone_web_search`, true]] as [string, unknown][] : []),
+    // No sub-agents, no questions put to a person who is not at a terminal, and no skills from the person's Codex folder
+    // (ros.ai hands over its own): each gave the model tools and text that led it away from the map.
+    ['agents.enabled', false], ['tools.experimental_request_user_input.enabled', false], ['skills.include_instructions', false],
+    ...[...disabledFeatures, ...quietFeatures].map((key): [string, unknown] => [`features.${key}`, false]),
     ...disabledMcp.map((key): [string, unknown] => [`mcp_servers.${key}.enabled`, false]),
   ];
   return ['app-server', '--listen', 'stdio://', ...entries.flatMap(([key, value]) => ['-c', `${key}=${toml(value)}`])];

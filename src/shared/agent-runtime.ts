@@ -13,7 +13,9 @@ export type AgentConnectionStatus = {
  * or saved versions it made (items), what it turned down (skipped), the proposal it made, and what came of it.
  * detail is the step in words when the tool says it (a browser action: Clicked link "Pricing"). */
 export type AgentStep = { call: number; tool: string; outcome: 'requested' | 'done' | 'waiting' | 'declined' | 'failed'; target?: string; size?: number; items?: string[]; skipped?: number; proposalId?: string; detail?: string };
-export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage' | 'thought'; message: string; data?: unknown; step?: AgentStep };
+/** status: what the agent is doing right now, in a few words ("Thinking: comparing the two halls"). It shows as the
+ * turn's status line until the next step is recorded, and is never kept with the turn's steps. */
+export type AgentEvent = { at: string; type: 'progress' | 'delta' | 'tool' | 'approval' | 'usage' | 'thought' | 'status'; message: string; data?: unknown; step?: AgentStep };
 /** Shared by both agent transports, so Claude Code and Codex timelines read the same. */
 export function agentStep(call: number, tool: string, input: unknown, result?: { value?: unknown; failed?: boolean }): AgentStep {
   if (!result) {
@@ -40,8 +42,11 @@ export type AgentScope = { projectId: string; nodeIds: string[]; artifactIds: st
  * threadId: the ROS thread the turn belongs to; each thread keeps its own agent session, and two threads can run at once.
  * Left out, the project itself is the session.
  * glance: where the person was on the map when they sent the request, as the paragraph the first message carries after the
- * selection (glance.ts); left out when the app sent none. */
-export type AgentExecuteRequest = AgentScope & { turnId: string; threadId?: string; message: string; preferences?: string; glance?: string; billing?: 'plan' | 'api-key'; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
+ * selection (glance.ts); left out when the app sent none.
+ * earlier: the thread's conversation so far, written out. Claude Code and Codex ask for it when they start a session of
+ * their own that does not hold it (the old one was lost, or the thread ran on another agent before); it gives nothing
+ * when there is no earlier conversation or the request already carries it. */
+export type AgentExecuteRequest = AgentScope & { turnId: string; threadId?: string; message: string; preferences?: string; glance?: string; billing?: 'plan' | 'api-key'; earlier?: () => string | undefined; signal: AbortSignal; onEvent: (event: AgentEvent) => void };
 export interface AgentRuntime {
   status(projectId: string): Promise<AgentConnectionStatus>;
   execute(request: AgentExecuteRequest): Promise<AgentResult>;

@@ -49,6 +49,12 @@ A write to an outside app such as Notion always asks, because Undo cannot take i
 
 **Stop** in the bar (or Esc twice) stops ROS and the agent it is running. A Code or Notebook block that runs on its own has its own Stop. Closing the browser leaves the server working; quitting ros.ai stops running work, and reopening never repeats a paid request by itself.
 
+## While an agent works
+
+The ROS bar and the panel show what Claude Code or Codex is doing right now: thinking (with the thinking it shows, in its own words, or a count of what it keeps to itself), searching, writing, or preparing a change. A higher effort level means longer thinking between steps, not a silent screen.
+
+A turn of Claude Code or Codex runs for up to 30 minutes. ros.ai tells the agent when half of that time is gone and when little is left, so its work reaches the map as it goes instead of all at the end, and in the last minutes it starts no new lookup. A turn that reaches the limit, or that you stop, keeps what it did: send "continue" and the agent carries on from there.
+
 ## Python
 
 Code and Notebook blocks run ros.ai's own Python 3.12 with pandas, NumPy, matplotlib and SciPy. On a Mac it runs inside the macOS sandbox: it reads the project, writes its outputs, and reaches a website only after you allow it. On Linux and Windows it runs in Docker. [The Python sandbox](python-sandbox.md) has the exact boundary.
