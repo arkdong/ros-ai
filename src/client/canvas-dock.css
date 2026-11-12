@@ -100,7 +100,7 @@
   font-size: var(--text-md);
   color: var(--ink);
 }
-.canvas-notices .canvas-notice .text-button { font-size: var(--text-md); text-decoration: underline; }
+.canvas-notices .canvas-notice .text-button { font-size: var(--text-md); text-decoration: underline; background-image: none; }
 .canvas-notices .canvas-feedback { background: var(--paper); pointer-events: none; }
 .canvas-notices .proposal-preview { position: static; translate: none; transform: none; width: min(440px, calc(100vw - 48px)); }
 

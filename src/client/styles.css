@@ -97,9 +97,14 @@ blockquote {
   padding: 3px 0;
   color: var(--muted);
   font-size: var(--text-md);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0 1px;
 }
 .text-button:hover:not(:disabled) {
   color: var(--ink);
+  background-size: 100% 1px;
 }
 .danger:hover:not(:disabled) {
   color: var(--ink);
@@ -998,13 +1003,25 @@ button {
   white-space: nowrap;
   color: inherit;
 }
-/* Every button answers: it eases to its hover colours and sinks a little while pressed. A row that fills its
-   list (--press: 1) keeps its size and darkens instead. */
+/* Every button answers: it eases to its hover colours and sinks a little while pressed. A button or chip with a
+   label (--step) also rises 1px under the pointer and sinks 1px as it is pressed. A row that fills its list
+   (--press: 1) keeps its size and darkens instead. With reduced motion the colours change and nothing moves. */
 button {
-  transition: background-color var(--dur-out) var(--ease), border-color var(--dur-out) var(--ease), color var(--dur-out) var(--ease), opacity var(--dur-out) var(--ease), scale var(--dur-press) var(--ease);
+  transition: background-color var(--dur-out) var(--ease), border-color var(--dur-out) var(--ease), color var(--dur-out) var(--ease), opacity var(--dur-out) var(--ease), background-size var(--dur-out) var(--ease), scale var(--dur-press) var(--ease), translate var(--dur-out) var(--ease);
 }
 button:hover { transition-duration: var(--dur-in); }
-button:active:not(:disabled) { scale: var(--press, .97); transition-duration: var(--dur-press); }
+button:active:not(:disabled) { transition-duration: var(--dur-press); }
+:where(.primary, .secondary, .chip-button:not(.still), .feedback-button, .canvas-empty-add, .canvas-stage-navigation > button) { --press: .985; --step: 1px; }
+@media (prefers-reduced-motion: no-preference) {
+  button:active:not(:disabled) { scale: var(--press, .97); translate: 0 var(--step, 0); }
+  @media (hover: hover) and (pointer: fine) {
+    button:hover:not(:disabled, :active) { translate: 0 calc(var(--step, 0px) * -1); }
+  }
+}
+/* A row of tabs has one fill. It sits under the chosen tab and slides to the next one (tab-fill.ts says where). */
+.tab-fill { position: relative; }
+.tab-fill::before { content: ''; position: absolute; top: 2px; bottom: 2px; left: 0; width: var(--fill-w, 0); translate: var(--fill-x, 0); border-radius: var(--radius-control); background: var(--paper); box-shadow: var(--shadow-block); transform-origin: 0 50%; pointer-events: none; }
+.tab-fill > * { position: relative; }
 :where(.new-project-button, .project-item, .project-row, .profile-row, .profile-item, .plugins-nav, .plugin-row, .resource-row,
   .history-entry, .history-evidence-link, .note-tree-row, .ab-row, .add-block-row, .setup-row, .ros-thread-row, .table-query,
   .agent-model-list > button, .ros-question-options > button, .assistant-question-list > button, .dash-pin-menu > button,
@@ -1931,7 +1948,6 @@ a {
   pointer-events: auto;
 }
 .canvas-empty .canvas-empty-add:hover:not(:disabled), .single-canvas-shell .canvas-empty .canvas-empty-add:hover:not(:disabled) { background: var(--ink); }
-.canvas-empty .canvas-empty-add:active:not(:disabled) { transform: scale(.96); }
 .canvas-empty .canvas-empty-add:disabled, .single-canvas-shell .canvas-empty .canvas-empty-add:disabled { background: var(--line); color: var(--muted); box-shadow: none; cursor: default; opacity: 1; }
 .unified-canvas .research-card {
   width: 100%;

@@ -77,7 +77,7 @@
 }
 .direct-canvas .canvas-stage-navigation button > small { font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
 .direct-canvas .canvas-stage-navigation button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.direct-canvas .canvas-stage-navigation button:hover { background: var(--sidebar); color: var(--ink); }
+.direct-canvas .canvas-stage-navigation button:hover { border-color: var(--ink); color: var(--ink); }
 .direct-canvas .canvas-stage-navigation button.active {
   border-color: var(--ink);
   color: var(--ink);

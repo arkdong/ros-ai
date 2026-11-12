@@ -2,8 +2,12 @@
 /* The one switch, 26×16, as in the ROS menu. */
 .switch { position: relative; flex-shrink: 0; width: 26px; height: 16px; margin-top: 0; border: 0; border-radius: var(--radius-pill); background: var(--line); padding: 0; cursor: pointer; }
 .switch.on { background: var(--ink); }
-.switch span { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow-block); transition: left var(--dur-out) var(--ease); }
-.switch.on span { left: 12px; }
+/* The knob slides, and stretches while the switch is held down so the press is felt before it lands. */
+.switch span { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: var(--radius-pill); background: var(--paper); box-shadow: var(--shadow-block); transform-origin: 0 50%; transition: transform var(--dur-in) var(--ease); }
+.switch.on span { transform: translateX(10px); }
+.switch:active:not(:disabled) span { transform: scaleX(1.25); transition-duration: var(--dur-press); }
+.switch.on:active:not(:disabled) span { transform: translateX(7px) scaleX(1.25); }
+@media (prefers-reduced-motion: reduce) { .switch:active:not(:disabled) span { transform: none; } .switch.on:active:not(:disabled) span { transform: translateX(10px); } }
 .switch:hover:not(:disabled) { filter: brightness(.93); }
 .switch.on:hover:not(:disabled) { filter: none; background: var(--body); }
 .memory-page .settings-head .switch { margin-top: 8px; }

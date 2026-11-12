@@ -6,6 +6,7 @@ import { BrandLogo } from './brand-logos';
 import { MarkdownEditor } from './MarkdownEditor';
 import { Modal } from './Modal';
 import { api, post } from './api';
+import { useTabFill } from './tab-fill';
 import { readSaved, readSavedList, saveLocal } from './persistence';
 import './skills.css';
 
@@ -119,9 +120,11 @@ function SkillBrowse({ added, onPick }: { added: Set<string>; onPick: (request: 
   const words = query.trim().toLowerCase();
   const entries = (listing?.entries ?? []).filter(entry => !words || `${entry.name} ${entry.description}`.toLowerCase().includes(words));
   const shown = all || words ? entries : entries.slice(0, 12);
+  const sources = useRef<HTMLDivElement>(null);
+  useTabFill(sources, sourceId);
   return <section className="plugin-group skill-browse"><h2>Browse</h2>
     <div className="skill-browse-bar">
-      <div className="skill-sources" role="tablist" aria-label="Where to browse">{SKILL_SOURCES.map(item => <button key={item.id} type="button" role="tab" aria-selected={item.id === sourceId} className={item.id === sourceId ? 'active' : ''} onClick={() => { setSourceId(item.id); setAll(false); setError(''); }}>{item.label}</button>)}</div>
+      <div ref={sources} className="skill-sources tab-fill" role="tablist" aria-label="Where to browse">{SKILL_SOURCES.map(item => <button key={item.id} type="button" role="tab" aria-selected={item.id === sourceId} className={item.id === sourceId ? 'active' : ''} onClick={() => { setSourceId(item.id); setAll(false); setError(''); }}>{item.label}</button>)}</div>
       <label className="skill-search"><Search size={14}/><input type="search" placeholder="Search skills" aria-label="Search skills" value={query} onChange={event => setQuery(event.target.value)}/></label>
     </div>
     <p className="skills-intro">{source.about} <a href={`https://github.com/${source.repo}`} target="_blank" rel="noreferrer">{source.repo}<ExternalLink size={11}/></a></p>
@@ -177,6 +180,8 @@ function AddSkillDialog({ start, onClose, onAdded }: { start: AddStart; onClose:
   };
   const reviewing = candidates.length > 0, choosing = !reviewing && choices.length > 0, direct = Boolean(start.request);
   const back = () => { setError(''); if (reviewing && list) { setPreview(list); setList(null); } else setPreview(null); };
+  const tabRow = useRef<HTMLDivElement>(null);
+  useTabFill(tabRow, reviewing || choosing || direct ? '' : tab);
   const pasted = text.trim() && !hasFrontmatter(text.trim());
   const ready = tab === 'write' ? name.trim() && description.trim() && body.trim() : tab === 'paste' ? text.trim() && (!pasted || (name.trim() && description.trim())) : tab === 'link' ? link.trim() : false;
   const submit = () => { if (!ready || busy) return; if (tab === 'write') void write(); else if (tab === 'paste') void look({ kind: 'text', text, ...(pasted ? { name, description } : {}) }); else void look({ kind: 'link', url: link.trim() }); };
@@ -190,7 +195,7 @@ function AddSkillDialog({ start, onClose, onAdded }: { start: AddStart; onClose:
   const all = candidates.every(item => item.existing === 'same');
   return <Modal title={reviewing ? candidates.length === 1 ? `Add ${candidates[0]!.title}?` : `Add ${candidates.length} skills?` : choosing ? 'Choose a skill' : 'Add a skill'} className="skill-modal" onClose={onClose}>
     {!reviewing && !choosing && (direct ? busy && <p className="skills-empty"><LoaderCircle size={13} className="spin"/> Reading the skill…</p> : <form id="skill-add" onSubmit={event => { event.preventDefault(); submit(); }}>
-      <div className="skill-tabs" role="tablist" aria-label="How to add it">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setError(''); }}>{item.label}</button>)}</div>
+      <div ref={tabRow} className="skill-tabs tab-fill" role="tablist" aria-label="How to add it">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setError(''); }}>{item.label}</button>)}</div>
       {tab === 'write' && <>{nameFields}<label className="field-label" htmlFor="skill-body">Instructions</label><textarea id="skill-body" rows={9} value={body} placeholder={'Steps, rules and examples, in Markdown.\n\n1. Restate the question in one line.\n2. …'} onChange={event => setBody(event.target.value)}/></>}
       {tab === 'paste' && <><label className="field-label" htmlFor="skill-text">A SKILL.md, or any instructions</label><textarea id="skill-text" className="skill-code" rows={10} value={text} placeholder={'---\nname: literature-review\ndescription: Find and summarise papers on a question…\n---\n\n# Steps'} onChange={event => setText(event.target.value)} autoFocus/>{pasted && nameFields}</>}
       {tab === 'link' && <><label className="field-label" htmlFor="skill-link">Link</label><input id="skill-link" value={link} placeholder="GitHub link, owner/repo, or a site address" onChange={event => setLink(event.target.value)} autoFocus/></>}

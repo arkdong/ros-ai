@@ -43,7 +43,7 @@
 .single-canvas-shell .secondary,
 .modal .secondary { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
 .single-canvas-shell .secondary:hover:not(:disabled),
-.modal .secondary:hover:not(:disabled) { background: var(--sidebar); border-color: var(--line); }
+.modal .secondary:hover:not(:disabled) { border-color: var(--ink); }
 .single-canvas-shell .icon-button { border-radius: var(--radius-control); }
 
 /* Things that float over the map. */

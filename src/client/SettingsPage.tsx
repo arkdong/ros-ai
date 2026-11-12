@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Brain, ChevronLeft, ChevronRight, ChartColumn, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Settings2, Wallet } from 'lucide-react';
 import { api } from './api';
+import { useTabFill } from './tab-fill';
 import { ChipChoice } from './ChipChoice';
 import { approvalModes } from './RosModelMenu';
 import type { ApprovalMode, ResearchPolicy } from '../shared/research';
@@ -292,6 +293,8 @@ export function UsageSettings() {
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
   useEffect(() => { void api<BudgetStatus>('/api/settings/budget').then(setBudget).catch(() => {}); }, [data]);
   const [range, setRange] = useState<Range>(7), [group, setGroup] = useState<Group>('model'), [offset, setOffset] = useState(0), [hover, setHover] = useState<number | null>(null);
+  const ranges = useRef<HTMLDivElement>(null);
+  useTabFill(ranges, data ? String(range) : '');
   useEffect(() => {
     let current = true;
     const load = () => api<UsageAnalytics>('/api/usage/analytics').then(value => { if (current) { setData(value); setError(''); } }).catch(cause => { if (current) setError(cause instanceof Error ? cause.message : String(cause)); });
@@ -335,7 +338,7 @@ export function UsageSettings() {
     {budget?.all.monthlyUsd != null && <div className="settings-card budget-meter"><div><span>This month</span><strong>{usd(budget.all.spentUsd)} <small>of {usd(budget.all.monthlyUsd)} budget</small></strong></div><span className="budget-meter-left">{usd(budget.all.leftUsd ?? 0)} left</span><b className="budget-track"><i style={{ width: `${Math.min(100, budget.all.spentUsd / budget.all.monthlyUsd * 100)}%` }}/></b></div>}
     <PlanLimits/>
     {recorded && <div className="usage-controls">
-      <div className="usage-segments" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
+      <div ref={ranges} className="usage-segments tab-fill" role="group" aria-label="Time range">{([7, 30] as const).map(value => <button key={value} type="button" aria-pressed={range === value} className={range === value ? 'active' : ''} onClick={() => { setRange(value); setOffset(0); }}>{value}d</button>)}</div>
       <ChipChoice label="Group usage" value={group} options={[{ id: 'model', label: 'By model' }, { id: 'task', label: 'By task' }]} onChange={setGroup}/>
     </div>}
     {error && <p className="inline-error" role="alert">{error}</p>}

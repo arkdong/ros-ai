@@ -52,5 +52,5 @@
 .params-guide small{display:block;line-height:1.5}
 .params-guide code{font:var(--text-sm) var(--font-mono);background:var(--rail);border-radius:var(--radius-mark);padding:0 4px;color:var(--ink)}
 .params-guide code.params-missing{background:var(--rail);color:var(--wait)}
-.params-guide .text-button{padding:0;font-size:var(--text-xs);text-decoration:underline}
+.params-guide .text-button{padding:0;font-size:var(--text-sm);text-decoration:underline;background-image:none}
 .params-warning{color:var(--wait)}

@@ -36,7 +36,7 @@
 .feedback .feedback-close { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-control); color: var(--muted); }
 .feedback .feedback-close:hover { background: var(--rail); color: var(--ink); }
 
-.feedback-kinds { margin-top: 12px; padding: 3px; height: 34px; display: flex; gap: 2px; border-radius: var(--radius-control); background: var(--rail); }
+.feedback-kinds { margin-top: 12px; padding: 2px; height: 32px; display: flex; gap: 2px; border-radius: var(--radius-control); background: var(--rail); }
 .feedback-kinds label { position: relative; flex: 1; display: grid; place-items: center; border-radius: var(--radius-control); color: var(--body); font-size: var(--text-sm); cursor: pointer; }
 .feedback-kinds label.on { color: var(--ink); }
 .feedback-kinds label:has(:focus-visible) { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
@@ -72,7 +72,7 @@
 .feedback-sent strong { font-size: var(--text-md); font-weight: 500; }
 .feedback-sent small { font-size: var(--text-sm); line-height: 1.5; color: var(--body); overflow-wrap: anywhere; }
 .feedback-sent + footer { margin-top: 20px; }
-.feedback-card footer .text-button { padding: 0; font-size: var(--text-sm); color: var(--body); text-decoration: underline; text-underline-offset: 3px; }
+.feedback-card footer .text-button { padding: 0; font-size: var(--text-sm); color: var(--body); text-decoration: underline; text-underline-offset: 3px; background-image: none; }
 
 /* Phones: the button keeps only its icon, level with the title row, and the card takes the width under it. */
 @media (max-width: 600px) {

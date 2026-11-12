@@ -63,11 +63,13 @@
   --shadow-float: 0 10px 32px rgba(0, 0, 0, .10);
   --shadow-view: 0 18px 50px rgba(0, 0, 0, .14);
 
-  /* Motion: a press, a hover leaving, a hover arriving, a menu or panel opening. One curve. */
+  /* Motion: a press, a hover leaving, a hover arriving, a menu or panel opening, a tab fill sliding. One curve.
+     Only position, size, opacity and colour move. */
   --dur-press: 90ms;
   --dur-out: 120ms;
   --dur-in: 150ms;
   --dur-menu: 200ms;
+  --dur-slide: 240ms;
   --ease: cubic-bezier(.2, .8, .2, 1);
 
   /* Legacy names some rules still read */
