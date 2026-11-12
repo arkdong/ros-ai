@@ -21,12 +21,12 @@
 .still-members li { padding: 5px 10px; background: #f7f7f7; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .still-members .more { background: none; color: #8a8a8a; }
 .still-note { margin: 0 0 6px; color: #6b6b6b; }
-.still-group-frame { position: absolute; box-sizing: border-box; border: 1px solid #dedede; border-radius: 18px; background: rgba(255, 255, 255, .55); cursor: pointer; }
+.still-group-frame { position: absolute; box-sizing: border-box; border: 1px solid #dedede; border-radius: 20px; background: rgba(255, 255, 255, .55); cursor: pointer; }
 .still-group-frame header { padding: 15px 24px; }
 .still-group-frame h3 { margin: 4px 0 4px; font-size: 18px; font-weight: 500; letter-spacing: -.3px; }
 .still-group-frame p { margin: 0; color: #6b6b6b; font-size: 13.5px; max-width: 720px; }
-.still-picture { padding: 0; border: 0; background: transparent; box-shadow: none; border-radius: 10px; }
-.still-picture img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; display: block; }
+.still-picture { padding: 0; border: 0; background: transparent; box-shadow: none; border-radius: 12px; }
+.still-picture img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; display: block; }
 .still-picture.framed { background: #ffffff; border: 1px solid #e3e3e3; padding: 10px; }
 .still-picture.framed img { object-fit: contain; }
 .still-picture-title { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .92); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .15s; }
@@ -75,7 +75,7 @@ html:has(.still-page), body:has(.still-page) { margin: 0; height: 100%; backgrou
 .still-page { position: fixed; inset: 0; font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif); color: #171717; }
 .still-main { position: absolute; inset: 0; }
 .still-header { position: absolute; z-index: 2; left: 16px; right: 16px; top: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; pointer-events: none; }
-.still-header > div:first-child { pointer-events: auto; background: rgba(255, 255, 255, .94); border: 1px solid #e6e6e6; border-radius: 16px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .06); max-width: min(560px, 100%); }
+.still-header > div:first-child { pointer-events: auto; background: rgba(255, 255, 255, .94); border: 1px solid #e6e6e6; border-radius: 20px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .06); max-width: min(560px, 100%); }
 .still-header h1 { margin: 0; font-size: 20px; letter-spacing: -.3px; line-height: 1.25; }
 .still-header p { margin: 2px 0 0; font-size: 13px; color: #6b6b6b; }
 .still-actions { display: flex; gap: 6px; pointer-events: auto; }
@@ -84,7 +84,7 @@ html:has(.still-page), body:has(.still-page) { margin: 0; height: 100%; backgrou
 .still-actions button:focus-visible, .still-panel button:focus-visible, .still-ghost:focus-visible { outline: 2px solid #171717; outline-offset: 2px; box-shadow: 0 0 0 6px #b7ef32; }
 .still-made { position: absolute; z-index: 2; right: 16px; bottom: 14px; font-size: 13px; color: #8a8a8a; text-decoration: none; background: rgba(250, 250, 250, .9); padding: 3px 8px; border-radius: 999px; }
 .still-made:hover { color: #171717; }
-.still-panel { position: absolute; z-index: 3; top: 16px; right: 16px; bottom: 16px; width: min(520px, calc(100% - 32px)); display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e3e3e3; border-radius: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 40px rgba(0, 0, 0, .1); overflow: hidden; }
+.still-panel { position: absolute; z-index: 3; top: 16px; right: 16px; bottom: 16px; width: min(520px, calc(100% - 32px)); display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e3e3e3; border-radius: 20px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 12px 40px rgba(0, 0, 0, .1); overflow: hidden; }
 .still-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
 .still-panel-head button { width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 1; }
 .still-panel h2 { margin: 6px 16px 4px; font-size: 20px; letter-spacing: -.3px; line-height: 1.25; overflow-wrap: anywhere; }
@@ -93,7 +93,7 @@ html:has(.still-page), body:has(.still-page) { margin: 0; height: 100%; backgrou
 .still-panel-body .still-code { overflow: auto; max-height: none; }
 .still-panel-body .still-table-wrap { overflow: auto; }
 .still-panel-body .still-table td, .still-panel-body .still-table th { max-width: 320px; }
-.still-opened-picture { display: block; max-width: 100%; border-radius: 10px; }
+.still-opened-picture { display: block; max-width: 100%; border-radius: 12px; }
 .still-panel-members { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
 .still-panel-members button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; font: inherit; font-size: 14px; font-weight: 500; border: 1px solid #eeeeee; border-radius: 12px; background: #ffffff; padding: 10px 12px; cursor: pointer; }
 .still-panel-members button:hover { border-color: #c9c9c9; }

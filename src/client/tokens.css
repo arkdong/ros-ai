@@ -46,9 +46,9 @@
 
   /* Radius: a tick box or inline code, a control, a block or menu, a floating card, a pill. */
   --radius-mark: 4px;
-  --radius-control: 6px;
+  --radius-control: 8px;
   --radius-block: 12px;
-  --radius-card: 16px;
+  --radius-card: 20px;
   --radius-pill: 999px;
 
   /* Depth: a block at rest, a floating card or menu, an open view. */
