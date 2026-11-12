@@ -1,5 +1,11 @@
 import { fileMediaType } from '../shared/files';
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> { return (await request<T>(path, init)).value; }
+/** A project read with the stamp of the project's newest write when the read began (0 when the server gave none). */
+export async function stamped<T>(path: string): Promise<{ value: T; stamp: number }> {
+  const { value, response } = await request<T>(path, {});
+  return { value, stamp: Number(response.headers.get('X-Ros-Stamp')) || 0 };
+}
+async function request<T>(path: string, init: RequestInit): Promise<{ value: T; response: Response }> {
   const response = await fetch(path, {
     ...init,
     signal: init.signal ?? AbortSignal.timeout(20000),
@@ -10,7 +16,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const value = await response.json().catch(() => { throw new Error(`The local service returned an unreadable response (${response.status}). Inspect saved activity before sending again.`); });
   // The status travels with the message, so a caller can tell a conflict from other refusals.
   if (!response.ok) throw Object.assign(new Error(value.error || `Request failed (${response.status})`), { status: response.status });
-  return value as T;
+  return { value: value as T, response };
 }
 export function post<T>(path: string, body?: unknown) {
   return api<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });

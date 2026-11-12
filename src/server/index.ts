@@ -6,6 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createServer } from 'node:http';
+import { LiveChannel } from './live.js';
 import { Store } from './store.js';
 import { ExecutionService } from './execution.js';
 import { ExperimentService } from './experiments.js';
@@ -84,6 +85,7 @@ let outside:OutsideAgents|undefined;
 let notebooks:NotebookService|undefined;
 let projectFolders:ProjectFolders|undefined;
 let updates:Updates|undefined;
+let live:LiveChannel|undefined;
 let vite: Awaited<ReturnType<typeof import('vite')['createServer']>> | undefined;
 let stopping = false;
 const server = createServer();
@@ -108,6 +110,8 @@ async function shutdown() {
     await execution?.shutdown();
     await experiments?.shutdown();
     googleDrive?.shutdown();
+    // An open page keeps its live connection for as long as it can, so the server would wait for it to close.
+    live?.shutdown();
     server.close();
     await vite?.close();
     store?.close();
@@ -119,6 +123,9 @@ try {
   let app:express.Express;
   {
     store = new Store(dataDir);
+    // Open pages are told of every write to the project they show. In development Vite's reload socket shares the server.
+    live = new LiveChannel(store);
+    live.attach(server, process.env.ROS_DEV === '1');
     const credentials = new ToolCredentials(dataDir);
     googleDrive = new GoogleDriveConnection({dataDir,port});
     const inference = new InferenceConnections(store,dataDir);

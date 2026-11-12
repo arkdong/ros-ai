@@ -87,6 +87,10 @@ export function createApp(store: Store, execution: AppExecution, experiments?: E
     // ros.ai's page frames only App pages, so an App that navigates its own frame anywhere else sends nothing.
     if (tools?.appFrames) res.setHeader('Content-Security-Policy', tools.appFrames.framePolicy());
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+    // What a page reads about a project comes with the stamp of the project's newest write, taken before anything is
+    // read, so the page can tell whether a change it is told of (live.ts) is already in what it shows.
+    const read = req.method === 'GET' ? /^\/api\/projects\/([\w-]+)/u.exec(req.path) : null;
+    if (read) res.setHeader('X-Ros-Stamp', String(store.stamp(read[1])));
     next();
   });
   // A notebook can carry figures and tables, so its routes read larger requests than the rest of the API.

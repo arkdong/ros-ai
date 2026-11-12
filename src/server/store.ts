@@ -151,6 +151,12 @@ export class Store {
   private transactionDepth=0;
   private readonly commitListeners = new Set<(projectId: string) => void>();
   private readonly pendingCommits = new Set<string>();
+  private readonly changeListeners = new Set<(projectId: string, stamp: number) => void>();
+  private readonly pendingTouches = new Set<string>();
+  // Stamps only ever go up, also after a restart, so a page can tell whether what it shows is older than a write.
+  private readonly started = Date.now();
+  private newestStamp = this.started;
+  private readonly stamps = new Map<string, number>();
 
   constructor(dataDir: string, options: { recoverInterrupted?: boolean } = {}) {
     const directory = resolve(dataDir);
@@ -245,12 +251,15 @@ export class Store {
   recordEntries<T>(namespace:string,projectId:string):{id:string;value:T}[] { this.getProject(projectId); return (this.db.prepare('SELECT id, data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid').all(namespace,projectId) as {id:string;data:string}[]).map(row => ({ id: row.id, value: JSON.parse(row.data) as T })); }
   saveRecord<T>(namespace:string,id:string,projectId:string,value:T):T {
     this.getProject(projectId);
-    this.db.prepare('INSERT INTO workspace_records(namespace,id,project_id,data) VALUES (?,?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,projectId,JSON.stringify(value));
+    const data=JSON.stringify(value),saved=this.db.prepare('SELECT data FROM workspace_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
+    this.db.prepare('INSERT INTO workspace_records(namespace,id,project_id,data) VALUES (?,?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,projectId,data);
+    // Saving a record as it already is changes nothing an open page shows.
+    if(saved?.data!==data)this.touched(projectId);
     return clone(value);
   }
-  removeRecord(namespace:string,id:string,projectId:string) { this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId); }
+  removeRecord(namespace:string,id:string,projectId:string) { if(this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId).changes)this.touched(projectId); }
   /** Development only: forget the project conversation (messages, turns, agent sessions, research memory) for a fresh test. Usage and the canvas stay. */
-  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-thread','assistant-focus','research-memory','claude-session','codex-session','acp-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); }); }
+  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-thread','assistant-focus','research-memory','claude-session','codex-session','acp-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); this.touched(projectId); }); }
   atomic<T>(fn:()=>T):T { return this.transaction(fn); }
 
   /** Called with a project id after a canvas change or a finished run is committed. */
@@ -264,16 +273,36 @@ export class Store {
     for (const listener of this.commitListeners) try { listener(projectId); } catch { /* reported by the listener */ }
   }
 
+  /**
+   * Called after anything a project's page shows has been written (the canvas, a message, a proposal, a run, a saved
+   * version, a record), with the project and its new stamp. Writes inside a transaction are told once, after it commits.
+   */
+  onChange(listener: (projectId: string, stamp: number) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => { this.changeListeners.delete(listener); };
+  }
+  /** The stamp of the newest write to a project. What is read after asking includes every write up to it. */
+  stamp(projectId: string): number { return this.stamps.get(projectId) ?? this.started; }
+  private touched(projectId: string): void {
+    if (this.transactionDepth > 0) { this.pendingTouches.add(projectId); return; }
+    const stamp = ++this.newestStamp;
+    this.stamps.set(projectId, stamp);
+    for (const listener of this.changeListeners) try { listener(projectId, stamp); } catch { /* A listener failure never fails a write that is already saved. */ }
+  }
+
   private transaction<T>(fn: () => T): T {
     const depth=this.transactionDepth++,savepoint=`ros_transaction_${depth}`;
     let committed=false;
     try{
       this.db.exec(depth===0?'BEGIN IMMEDIATE':`SAVEPOINT ${savepoint}`);
       try { const result = fn(); this.db.exec(depth===0?'COMMIT':`RELEASE ${savepoint}`); committed=depth===0; return result; }
-      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); if(depth===0)this.pendingCommits.clear(); throw error; }
+      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); if(depth===0){this.pendingCommits.clear();this.pendingTouches.clear();} throw error; }
     }finally{
       this.transactionDepth--;
-      if(committed){const projects=[...this.pendingCommits];this.pendingCommits.clear();for(const id of projects)this.committed(id);}
+      if(committed){
+        const touched=[...this.pendingTouches];this.pendingTouches.clear();for(const id of touched)this.touched(id);
+        const projects=[...this.pendingCommits];this.pendingCommits.clear();for(const id of projects)this.committed(id);
+      }
     }
   }
 
@@ -427,6 +456,7 @@ export class Store {
     // A turn's own writes (a search's sources, saved findings, a browser log) keep its waiting changes acceptable.
     const turn = currentTurn();
     if (turn) this.keepCurrent(updated, turn, project.revision);
+    this.touched(project.id);
     this.committed(project.id);
     return updated;
   }
@@ -476,6 +506,7 @@ export class Store {
       // Captured evidence and approvals keep their original immutable inputs.
       const updated = { ...project, canvas, updatedAt: now() };
       this.db.prepare('UPDATE projects SET data = ?, history = ? WHERE id = ?').run(JSON.stringify(updated), JSON.stringify(history), id);
+      this.touched(id);
       this.committed(id);
       return updated;
     }
@@ -582,6 +613,7 @@ export class Store {
       const batch = links.batch ?? currentTurn();
       const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now(), ...(after.length ? { after: after.map(p => p.id) } : {}), ...(batch ? { batch } : {}) };
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
+      this.touched(projectId);
       return proposal;
     });
   }
@@ -609,6 +641,7 @@ export class Store {
       // Marked first, so the rest of its batch is checked without it; a failed accept rolls this back with the canvas.
       proposal.status = 'accepted';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      this.touched(projectId);
       // The change is the agent's, made in the turn that proposed it, and the person's to have accepted.
       const proposer = proposal.batch ? this.turnActor(proposal.batch) : undefined;
       const accept = () => this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
@@ -629,6 +662,7 @@ export class Store {
       for (const other of all) if (gone.has(other.id) && other.id !== proposalId) { other.status = 'dismissed'; this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id); }
       proposal.status = 'dismissed';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      this.touched(projectId);
       return proposal;
     });
   }
@@ -658,6 +692,7 @@ export class Store {
     const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
     if (message.role === 'user' && counted) this.countUsage('conversations');
+    this.touched(projectId);
     return message;
   }
 
@@ -669,12 +704,12 @@ export class Store {
   /** Puts project messages into a ROS thread: the conversation from before threads becomes the first thread. */
   assignMessageThread(projectId: string, ids: string[], threadId: string): void {
     this.getProject(projectId);
-    this.atomic(() => { for (const message of this.listMessages(projectId, null)) if (ids.includes(message.id)) this.db.prepare('UPDATE messages SET data = ? WHERE id = ? AND project_id = ?').run(JSON.stringify({ ...message, threadId }), message.id, projectId); });
+    this.atomic(() => { for (const message of this.listMessages(projectId, null)) if (ids.includes(message.id)) this.db.prepare('UPDATE messages SET data = ? WHERE id = ? AND project_id = ?').run(JSON.stringify({ ...message, threadId }), message.id, projectId); this.touched(projectId); });
   }
   /** Deletes project messages by id (a deleted ROS thread); block conversations are never touched. */
   removeMessages(projectId: string, ids: string[]): void {
     this.getProject(projectId);
-    this.atomic(() => { for (const id of ids) this.db.prepare('DELETE FROM messages WHERE id = ? AND project_id = ? AND node_id IS NULL').run(id, projectId); });
+    this.atomic(() => { for (const id of ids) this.db.prepare('DELETE FROM messages WHERE id = ? AND project_id = ? AND node_id IS NULL').run(id, projectId); this.touched(projectId); });
   }
 
   addInput(projectId: string, nodeId: string, artifactId: string, excerpt?: string): SelectedInput {
@@ -687,6 +722,7 @@ export class Store {
     if (existing) return existing;
     const input: SelectedInput = { id: randomUUID(), projectId, nodeId, artifactId, excerpt: selected, createdAt: now() };
     this.db.prepare('INSERT INTO inputs(id, project_id, node_id, artifact_id, data) VALUES (?, ?, ?, ?, ?)').run(input.id, projectId, nodeId, artifactId, JSON.stringify(input));
+    this.touched(projectId);
     return input;
   }
 
@@ -694,6 +730,7 @@ export class Store {
     this.getProject(projectId);
     const result = this.db.prepare('DELETE FROM inputs WHERE id = ? AND project_id = ?').run(inputId, projectId);
     if (result.changes === 0) throw new StoreError('Selected input not found in this project', 404);
+    this.touched(projectId);
   }
 
   createRun(run: Run): Run {
@@ -712,6 +749,7 @@ export class Store {
     }
     this.db.prepare('INSERT INTO runs(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(run.id, run.projectId, run.nodeId, this.serializeRun(run));
     if (run.configuration.kind === 'local-experiment') this.countUsage('python_runs');
+    this.touched(run.projectId);
     return clone(run);
   }
 
@@ -732,6 +770,7 @@ export class Store {
       if (artifact.runId !== id) throw new StoreError('Run output does not belong to this run');
     }
     this.db.prepare('UPDATE runs SET data = ? WHERE id = ?').run(this.serializeRun(updated), id);
+    this.touched(run.projectId);
     if (updated.status !== run.status && !['queued', 'running'].includes(updated.status)) this.committed(run.projectId);
     return updated;
   }
@@ -771,6 +810,7 @@ export class Store {
     const { content: omitted, ...metadata } = artifact;
     void omitted;
     this.db.prepare('INSERT INTO artifacts(id, project_id, node_id, run_id, data) VALUES (?, ?, ?, ?, ?)').run(artifact.id, artifact.projectId, artifact.nodeId, artifact.runId, JSON.stringify(metadata));
+    this.touched(artifact.projectId);
     return artifact;
   }
 
