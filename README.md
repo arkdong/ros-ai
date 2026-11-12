@@ -1,17 +1,23 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/ros-ai-wordmark-dark.png">
-    <img src=".github/readme/ros-ai-wordmark-light.png" alt="ros.ai" width="320">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/readme/ros-ai-wordmark-dark.svg">
+    <img src=".github/readme/ros-ai-wordmark-light.svg" alt="ros.ai" width="300">
   </picture>
 </h1>
 
 <p align="center"><strong>Run your agents in the open.</strong></p>
 
+<p align="center">
+  <a href="https://ros-ai.io">Website</a> · <a href="#install">Install</a> · <a href="docs/guide.md">Guide</a>
+</p>
+
+<p align="center">
+  <img src=".github/readme/canvas-loop.webp" alt="ros.ai in motion: one canvas holds the whole project, an agent is pointed at the work, and the whole picture stays in view" width="830">
+</p>
+
 ros.ai is the open workspace that holds your whole project's context on one canvas. AI agents from any vendor work from it, and you see the whole picture, make the connections and direct them there.
 
 Your notes, code, data, files, papers and Notion pages sit on the canvas as blocks. Claude Code, Codex, Gemini CLI, Goose, OpenCode, local models and ROS, our own agent, work from those blocks with the same tools. Their work lands back on the canvas with its sources, under the permissions you set, and every change can be undone. ros.ai runs on your own computer, and the code is MIT.
-
-[ros-ai.io](https://ros-ai.io) · [Guide](docs/guide.md)
 
 ## Install
 
