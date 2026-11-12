@@ -7,7 +7,7 @@ import { Store, StoreError } from './store.js';
 import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import type { AssistantService } from './assistant.js';
-import { APP_TOOL_DESCRIPTIONS, AgentWorkspaceTools, POST_TOOL_DESCRIPTIONS, agentToolSchemas, appCanvasNote, appToolSchemas } from './agent-tools.js';
+import { APP_TOOL_DESCRIPTIONS, AgentWorkspaceTools, POST_TOOL_DESCRIPTIONS, agentToolSchemas, appCanvasNote, appToolSchemas, toolFailure } from './agent-tools.js';
 import { APP_GUIDE } from './app-guide.js';
 import { appVersion } from '../shared/apps.js';
 import { projectFolderRoot } from './project-folders.js';
@@ -268,8 +268,7 @@ export class OutsideAgents {
             const result = await this.call(String(message.params?.name ?? ''), message.params?.arguments, session);
             answer({ content: [{ type: 'text', text: JSON.stringify(result, null, 1) }] });
           } catch (error) {
-            const text = error instanceof StoreError ? error.message : error instanceof z.ZodError ? `The arguments did not pass ros.ai's checks; nothing was changed. ${z.prettifyError(error).slice(0, 1500)}` : 'ros.ai could not complete this call; nothing was changed.';
-            answer({ content: [{ type: 'text', text }], isError: true });
+            answer({ content: [{ type: 'text', text: toolFailure(error) }], isError: true });
           }
         } else fail(-32601, `ros.ai does not support ${message.method}.`);
       } catch (error) { fail(-32603, error instanceof Error ? error.message.slice(0, 300) : 'Internal error.'); }

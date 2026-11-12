@@ -125,18 +125,27 @@ export class AssistantService {
   private say(turn:SavedTurn,role:'assistant'|'system',content:string){this.store.addMessage(turn.projectId,null,role,content,undefined,turn.threadId);}
   private readonly listeners=new Map<string,Set<(live:AssistantLive)=>void>>();
   private readonly pending=new Map<string,ReturnType<typeof setTimeout>>();
+  /** What each running turn's agent is doing right now, in its own words ("Thinking: comparing the two halls"). Never
+   * saved with the turn: it changes every second, and the turn's next recorded step replaces it. */
+  private readonly doing=new Map<string,string>();
   private save(turn:SavedTurn){const saved=this.store.saveRecord('assistant-turn',turn.id,turn.projectId,{...turn,updatedAt:now()});this.publish(turn);return saved;}
   /** Changes what a turn offers (its plugin card) without touching when its work last changed. */
   private amend(turn:SavedTurn){this.store.saveRecord('assistant-turn',turn.id,turn.projectId,turn);}
   /** Running turns are sent at most every 40 ms (the newest text wins); a turn that ends is sent at once. */
   private publish(turn:SavedTurn){
     if(!this.listeners.get(turn.projectId)?.size)return;
-    const send=()=>{this.pending.delete(turn.id);const current=this.store.record<SavedTurn>('assistant-turn',turn.id);if(!current)return;const live:AssistantLive={turnId:current.id,...(current.threadId?{threadId:current.threadId}:{}),reply:current.reply,status:current.status,step:current.events.at(-1)?.message};for(const listener of this.listeners.get(current.projectId)??[])listener(live);};
+    const send=()=>{this.pending.delete(turn.id);const current=this.store.record<SavedTurn>('assistant-turn',turn.id);if(!current)return;const doing=current.status==='running'?this.doing.get(current.id):undefined;const live:AssistantLive={turnId:current.id,...(current.threadId?{threadId:current.threadId}:{}),reply:current.reply,status:current.status,step:current.events.at(-1)?.message,...(doing?{doing}:{})};for(const listener of this.listeners.get(current.projectId)??[])listener(live);};
     if(turn.status!=='running'){clearTimeout(this.pending.get(turn.id));send();return;}
     if(!this.pending.has(turn.id))this.pending.set(turn.id,setTimeout(send,40));
   }
   subscribe(projectId:string,listener:(live:AssistantLive)=>void){const set=this.listeners.get(projectId)??new Set();set.add(listener);this.listeners.set(projectId,set);return()=>{set.delete(listener);if(!set.size)this.listeners.delete(projectId);};}
-  private event(projectId:string,turnId:string,message:string,kind?:'thought'|'tool',step?:AgentStep){const turn=this.getTurn(projectId,turnId);turn.events.push({at:now(),message,...(kind?{kind}:{}),...(step?{step}:{})});this.save(turn);}
+  private event(projectId:string,turnId:string,message:string,kind?:'thought'|'tool',step?:AgentStep){const turn=this.getTurn(projectId,turnId);this.doing.delete(turnId);turn.events.push({at:now(),message,...(kind?{kind}:{}),...(step?{step}:{})});this.save(turn);}
+  /** The line a running turn shows until its next step is recorded. */
+  private status(projectId:string,turnId:string,message:string){
+    const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
+    if(!turn||turn.projectId!==projectId||turn.status!=='running'||this.doing.get(turnId)===message)return;
+    this.doing.set(turnId,message);this.publish(turn);
+  }
   private memory(projectId:string):ResearchMemory {
     const saved=this.store.record<ResearchMemory>('research-memory',projectId);if(saved)return saved;
     const first=this.store.listMessages(projectId,null).find(m=>m.role==='user');
@@ -219,7 +228,8 @@ export class AssistantService {
       const captured=steps.at(-1)?.response?presentAssistantResponse(steps.at(-1)!.response):undefined;
       const question=turn.question??captured?.question??null;
       const clarifications=readAssistantClarifications({clarifications:turn.clarifications??captured?.clarifications,question});
-      return {...turn,threadId:turn.threadId??threads[0]?.id,question,...(clarifications.length?{clarifications}:{}),actions:turn.actions.map(action=>{
+      const doing=turn.status==='running'?this.doing.get(turn.id):undefined;
+      return {...turn,threadId:turn.threadId??threads[0]?.id,question,...(clarifications.length?{clarifications}:{}),...(doing?{doing}:{}),actions:turn.actions.map(action=>{
       if(action.reportProposalId){const proposal=this.store.record<{status:string;resultArtifactId?:string}>('agent-report-proposal',action.reportProposalId);return {...action,status:proposal?.status==='accepted'?'completed' as const:proposal?.status==='dismissed'?'cancelled' as const:action.status,artifactId:proposal?.resultArtifactId??action.artifactId};}
       if(action.type==='proposal'&&action.proposalId){const proposal=detail.proposals.find(p=>p.id===action.proposalId);return {...action,status:proposal?.status==='accepted'?'completed' as const:proposal?.status==='dismissed'?'cancelled' as const:action.status};}
       if(action.runId){const run=detail.runs.find(r=>r.id===action.runId);if(run)return {...action,status:run.status==='completed'?'completed' as const:run.status==='failed'?'failed' as const:['cancelled','interrupted'].includes(run.status)?'cancelled' as const:run.status==='queued'?'pending' as const:'running' as const,error:run.error};}return action;
@@ -236,7 +246,7 @@ export class AssistantService {
       const own=turns.filter(turn=>turn.threadId===thread.id),running=own.findLast(turn=>turn.status==='running'),last=own.findLast(turn=>turn.status!=='running');
       const waiting=own.flatMap(turn=>turn.actions).filter(action=>action.status==='pending'&&(!action.proposalId||reviewable.has(action.proposalId))).length;
       const updatedAt=own.reduce((latest,turn)=>turn.updatedAt>latest?turn.updatedAt:latest,thread.updatedAt);
-      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.events.at(-1)?{step:running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{}),...(thread.choice?{choice:thread.choice}:{}),...(thread.branchedFrom?{branchedFrom:thread.branchedFrom}:{})};
+      return {id:thread.id,title:thread.title,createdAt:thread.createdAt,updatedAt,running:Boolean(running),...(running?.doing||running?.events.at(-1)?{step:running.doing||running.events.at(-1)!.message}:{}),waiting,...(last?{last:{turnId:last.id,status:last.status,at:last.updatedAt}}:{}),...(thread.outsideSession?{outside:true}:{}),...(thread.choice?{choice:thread.choice}:{}),...(thread.branchedFrom?{branchedFrom:thread.branchedFrom}:{})};
     }).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     return {projectId,backend,memory,outline,turns,threads:summaries,queued:this.queued(projectId),messages:detail.messages.filter(m=>m.nodeId===null),activeTurnId:turns.find(t=>t.status==='running')?.id??null,person:this.personal?.state(),...capabilities};
   }
@@ -290,7 +300,7 @@ export class AssistantService {
   /** After a turn: what it changed in the folder, then the next message waiting for its thread. */
   private async settle(projectId:string,turnId:string){
     try{await this.recordFiles(projectId,turnId);}catch{/* The turn stands without its file card. */}
-    finally{this.active.delete(turnId);}
+    finally{this.active.delete(turnId);this.doing.delete(turnId);}
     const turn=this.store.record<SavedTurn>('assistant-turn',turnId);
     if(turn?.threadId)try{this.drain(projectId,turn.threadId);}catch{/* The project went to Trash meanwhile. */}
   }
@@ -335,8 +345,9 @@ export class AssistantService {
   private interrupt(projectId:string,threadId:string){
     const running=this.turns(projectId).find(turn=>turn.threadId===threadId&&turn.status==='running');
     if(!running){this.drain(projectId,threadId);return;}
-    // Claude Code and the ACP agents start a new session after a stop, so the next turn gets the conversation written out.
-    if(running.source==='claude-agent'||running.source==='acp-agent'){const thread=this.getThread(projectId,threadId);this.store.saveRecord('assistant-thread',thread.id,projectId,{...thread,carry:true});}
+    // The ACP agents start a new session after a stop, so the next turn gets the conversation written out. Claude Code and
+    // Codex pick their own session up again, and ask for the conversation when they cannot (earlier, in drive).
+    if(running.source==='acp-agent'){const thread=this.getThread(projectId,threadId);this.store.saveRecord('assistant-thread',thread.id,projectId,{...thread,carry:true});}
     this.cancel(projectId,running.id,'next');
   }
   /** Send now on a waiting message: it goes next, and a turn still working in its thread is stopped. */
@@ -513,16 +524,19 @@ export class AssistantService {
         if(!runtime)throw new StoreError(`The ${claude?'Claude Code':loop?'agent loop':turn.source==='acp-agent'?acpLabel:'local Codex'} adapter is unavailable in this service. No inference was sent.`,503);
         const detail=this.store.detail(projectId),nodeIds=turn.focus.nodeId?[turn.focus.nodeId]:[],glance=glanceText(this.hint(turn,detail));
         const artifactIds=[...new Set([...(turn.focus.artifactId?[turn.focus.artifactId]:[]),...detail.inputs.filter(input=>nodeIds.includes(input.nodeId)).map(input=>input.artifactId)])];
-        this.event(projectId,turnId,claude?(turn.billing==='plan'?'Starting Claude Code on your Claude subscription.':'Starting Claude Code with your Claude API key.'):loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:'Checking local Codex connection and bounded authorization. No inference is sent before admission.');
+        this.event(projectId,turnId,claude?(turn.billing==='plan'?'Starting Claude Code on your Claude subscription.':'Starting Claude Code with your Claude API key.'):loop?`Starting the agent on ${this.loop!.label(selection)}.`:acp?`Starting ${acpLabel} on this computer with its own sign-in.`:turn.billing==='api-key'?'Starting Codex with your OpenAI API key.':'Starting Codex on your ChatGPT subscription.');
         this.followSkills(projectId,turnId,turn.userMessage);
         const thread=turn.threadId?this.threads(projectId).find(item=>item.id===turn.threadId):undefined,carried=thread?.carry?this.carried(projectId,turn):undefined;
         if(carried)this.event(projectId,turnId,'Gave the agent the earlier conversation of this thread.');
         const preferences=[carried,this.preferences(turn.userMessage,loop)].filter((part):part is string=>Boolean(part)).join('\n\n')||undefined;
+        // Claude Code and Codex ask for the conversation when they start a session that does not hold it; it is written out once.
+        let told=Boolean(carried);
+        const earlier=()=>{if(told)return undefined;told=true;const text=this.carried(projectId,this.getTurn(projectId,turnId));if(text)this.event(projectId,turnId,'Gave the agent the earlier conversation of this thread.');return text;};
         // Streamed text is gathered here and saved with the turn at most every 40 ms, as the page hears it. Saving each
         // piece read the project and rewrote the whole turn for every word.
         const streamed:{text:string;timer?:ReturnType<typeof setTimeout>}={text:''};
         const flush=()=>{clearTimeout(streamed.timer);streamed.timer=undefined;if(!streamed.text)return;const text=streamed.text;streamed.text='';try{const current=this.getTurn(projectId,turnId);if(current.status!=='running')return;current.reply+=text;this.save(current);}catch{/* The turn or its project is gone; how the turn ends reports that. */}};
-        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences,...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),onEvent:event=>{if(event.type==='delta'){streamed.text+=event.message;streamed.timer??=setTimeout(flush,40);return;}flush();let current:SavedTurn;try{current=this.getTurn(projectId,turnId);}catch{return;}if(current.status!=='running')return;const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}).finally(flush);
+        const result=await runtime.execute({projectId,...(turn.threadId?{threadId:turn.threadId}:{}),turnId,message:turn.userMessage,nodeIds,artifactIds,signal,preferences,...(glance?{glance}:{}),...(turn.billing?{billing:turn.billing}:{}),earlier,onEvent:event=>{if(event.type==='delta'){streamed.text+=event.message;streamed.timer??=setTimeout(flush,40);return;}if(event.type==='status'){this.status(projectId,turnId,event.message);return;}flush();let current:SavedTurn;try{current=this.getTurn(projectId,turnId);}catch{return;}if(current.status!=='running')return;const action=(event.data as {action?:AssistantAction}|undefined)?.action;if(action&&!current.actions.some(item=>item.id===action.id)){current.actions.push(action);this.save(current);}this.event(projectId,turnId,event.message,event.type==='thought'||event.type==='tool'?event.type:undefined,event.step);}}).finally(flush);
         turn=this.getTurn(projectId,turnId);if(turn.status!=='running')return;
         this.say(turn,'assistant',result.reply);
         this.save({...turn,reply:result.reply,status:'completed',actions:result.actions,...(claude?{model:`Claude Code · ${result.model||this.claude!.model(turn.billing??'api-key')}`,destination:turn.billing==='plan'?'Anthropic, on your Claude subscription':'Anthropic API',location:'external' as const}:loop?{model:this.loop!.label(selection),...this.loop!.destination(selection)}:acp?{model:'model' in result&&typeof result.model==='string'&&result.model?`${acpLabel} · ${result.model}`:acpLabel,destination:`the provider ${acpLabel} is signed in to`,location:'external' as const}:{model:result.model?`Codex · ${result.model}`:'Codex',destination:turn.billing==='api-key'?'OpenAI API':'OpenAI, on your ChatGPT subscription',location:'external' as const}),references:artifactIds.map(id=>{const artifact=detail.artifacts.find(a=>a.id===id)!;return {kind:'artifact',id,label:artifact.title,nodeId:artifact.nodeId};})});

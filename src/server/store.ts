@@ -112,6 +112,11 @@ export const snapshotProposalMutationSchema = mutations(nodeFields);
 /** What agents may propose while Apps are switched on for them, with and without Google blocks. */
 export const appProposalMutationSchema = mutations(appNodeFields);
 export const snapshotAppProposalMutationSchema = mutations({ ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','app']).optional(), app: appSchema.optional() });
+/** The same as agents are shown them while Google Drive is connected: without claim marks and a Web block's searches,
+ * which only ros.ai's own tools write (a proposal that sets either is refused, see agent-tools.ts). */
+const { check: _check, web: _web, ...shownNodeFields } = liveNodeFields;
+export const shownProposalMutationSchema = mutations(shownNodeFields);
+export const shownAppProposalMutationSchema = mutations({ ...shownNodeFields, blockType: appNodeFields.blockType, app: appNodeFields.app });
 const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 /** Blocks that bring something in, counted as sources in the usage counts. */
