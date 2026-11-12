@@ -8,7 +8,7 @@ import { cardScale } from '../shared/card-size.js';
 import { convertLegacyGroups } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type ProjectModelSettings } from '../shared/model-settings.js';
-import type { Artifact, Canvas, CanvasNode, Change, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, Change, ChangeActor, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 import { currentTurn } from './turn-context.js';
 import { CanvasRuleError, applyOperations, identifier } from '../shared/canvas-ops.js';
 
@@ -187,9 +187,11 @@ export class Store {
     // Each saved change also keeps its label, time and a key for its content beside the canvas, so the project page lists
     // changes without reading every canvas. Changes saved before these columns get them the first time they are listed.
     const changeColumns = new Set((this.db.prepare('PRAGMA table_info(changes)').all() as { name: string }[]).map(column => column.name));
-    for (const column of ['label', 'created_at', 'content']) if (!changeColumns.has(column)) this.db.exec(`ALTER TABLE changes ADD COLUMN ${column} TEXT`);
+    // actor: who made the change (ChangeActor, as JSON); empty on changes saved before it was recorded.
+    for (const column of ['label', 'created_at', 'content', 'actor']) if (!changeColumns.has(column)) this.db.exec(`ALTER TABLE changes ADD COLUMN ${column} TEXT`);
     // The list is read from this index alone: the canvases sit in the same rows, and reading past them is most of the cost.
-    this.db.exec('CREATE INDEX IF NOT EXISTS changes_list ON changes(project_id, revision, id, label, created_at, content)');
+    // changes_list was the same index before it held the actor.
+    this.db.exec('DROP INDEX IF EXISTS changes_list; CREATE INDEX IF NOT EXISTS changes_listed ON changes(project_id, revision, id, label, created_at, content, actor)');
     // Preparation/import clients may join a running service. Only the owning
     // service startup should reconcile interrupted work.
     if (options.recoverInterrupted !== false) this.transaction(() => {
@@ -378,8 +380,28 @@ export class Store {
   }
 
   private recordChange(project: Project, label: string): void {
-    const change: Change = { id: randomUUID(), projectId: project.id, revision: project.revision, label, canvas: clone(project.canvas), createdAt: project.updatedAt };
-    this.db.prepare('INSERT INTO changes(id, project_id, revision, data, label, created_at, content) VALUES (?, ?, ?, ?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change), label, change.createdAt, contentKey(change.canvas));
+    const change: Change = { id: randomUUID(), projectId: project.id, revision: project.revision, label, canvas: clone(project.canvas), createdAt: project.updatedAt, actor: this.changeActor() };
+    this.db.prepare('INSERT INTO changes(id, project_id, revision, data, label, created_at, content, actor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change), label, change.createdAt, contentKey(change.canvas), JSON.stringify(change.actor));
+  }
+
+  private acting: ChangeActor | undefined;
+  /** Runs `work`, which must not wait on anything, with the canvas changes it makes recorded as `actor`'s. */
+  actingAs<T>(actor: ChangeActor, work: () => T): T {
+    const before = this.acting;
+    this.acting = actor;
+    try { return work(); } finally { this.acting = before; }
+  }
+  /** Who is changing the canvas now: whoever actingAs names, else the agent whose turn this code runs for, else the person. */
+  private changeActor(): ChangeActor {
+    const turnId = currentTurn();
+    return this.acting ?? (turnId ? this.turnActor(turnId) : undefined) ?? { kind: 'person' };
+  }
+  /** The agent a turn ran with, named as an Agent block names its runtime. */
+  private turnActor(turnId: string): ChangeActor | undefined {
+    const turn = this.record<{ source?: string; threadId?: string; acp?: string; model?: string }>('assistant-turn', turnId);
+    if (!turn) return undefined;
+    const agent = turn.source === 'claude-agent' ? 'claude' : turn.source === 'codex-agent' ? 'codex' : turn.source === 'acp-agent' ? turn.acp ?? 'acp' : turn.source === 'outside-agent' ? 'outside' : 'model';
+    return { kind: 'agent', agent, ...(agent === 'outside' && turn.model ? { name: turn.model } : {}), turnId, ...(turn.threadId ? { threadId: turn.threadId } : {}) };
   }
 
 
@@ -522,7 +544,7 @@ export class Store {
    * such as moving blocks, is left out. */
   listChanges(id: string): ChangeSummary[] {
     this.getProject(id);
-    const rows = this.db.prepare('SELECT id, revision, label, created_at, content FROM changes WHERE project_id = ? ORDER BY revision').all(id) as { id: string; revision: number; label: string | null; created_at: string | null; content: string | null }[];
+    const rows = this.db.prepare('SELECT id, revision, label, created_at, content, actor FROM changes WHERE project_id = ? ORDER BY revision').all(id) as { id: string; revision: number; label: string | null; created_at: string | null; content: string | null; actor: string | null }[];
     // Changes saved before the label, time and content columns existed get them once. Their saved data stays as it was.
     const missing = rows.filter(row => row.content === null);
     if (missing.length) this.transaction(() => {
@@ -537,7 +559,7 @@ export class Store {
       const meaningful = previous === null || row.content !== previous;
       previous = row.content;
       return meaningful;
-    }).map(row => ({ id: row.id, projectId: id, revision: row.revision, label: row.label ?? '', createdAt: row.created_at ?? '' }));
+    }).map(row => ({ id: row.id, projectId: id, revision: row.revision, label: row.label ?? '', createdAt: row.created_at ?? '', ...(row.actor ? { actor: JSON.parse(row.actor) as ChangeActor } : {}) }));
   }
   /** One saved change with its canvas, for looking at the canvas as it was then. */
   getChange(projectId: string, changeId: string): Change {
@@ -587,7 +609,10 @@ export class Store {
       // Marked first, so the rest of its batch is checked without it; a failed accept rolls this back with the canvas.
       proposal.status = 'accepted';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
-      const project = this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
+      // The change is the agent's, made in the turn that proposed it, and the person's to have accepted.
+      const proposer = proposal.batch ? this.turnActor(proposal.batch) : undefined;
+      const accept = () => this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
+      const project = proposer?.kind === 'agent' && !this.acting && !currentTurn() ? this.actingAs({ ...proposer, accepted: true }, accept) : accept();
       // The rest of its batch still applies to the new canvas, so it stays acceptable; one that no longer does stays stale.
       if (proposal.batch && project.revision !== proposal.baseRevision) this.keepCurrent(project, proposal.batch, proposal.baseRevision);
       return project;

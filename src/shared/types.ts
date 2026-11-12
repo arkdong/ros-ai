@@ -147,7 +147,13 @@ export type Message = {id:string; projectId:string; nodeId:string|null; role:'us
 /** after: proposals this one builds on, accepted before it and dismissed with it. batch: proposals made together (an
  * agent turn); accepting one moves the others still pending onto the new canvas revision. */
 export type Proposal = {id:string; projectId:string; baseRevision:number; summary:string; operations:Mutation[]; status:'pending'|'accepted'|'dismissed'; createdAt:string; after?:string[]; batch?:string};
-export type Change = {id:string; projectId:string; revision:number; label:string; canvas:Canvas; createdAt:string};
+/** Who made a change to the canvas: the person, one of their agents in the turn it worked in (`accepted`: the person
+ * accepted what it proposed), or a file changed in the project folder. `agent` is the runtime as an Agent block names
+ * it (claude, codex, model, an ACP agent), or 'outside' for the person's own agent over MCP, whose `name` is what it
+ * calls itself. A shared project will add which member. */
+export type ChangeActor = {kind:'person'} | {kind:'agent'; agent:string; name?:string; turnId:string; threadId?:string; accepted?:true} | {kind:'folder'};
+/** actor: missing on changes saved before ros.ai recorded who made them. */
+export type Change = {id:string; projectId:string; revision:number; label:string; canvas:Canvas; createdAt:string; actor?:ChangeActor};
 /** A change as the project page lists it: the canvas it saved is fetched only when someone opens it. */
 export type ChangeSummary = Omit<Change,'canvas'>;
 export type Artifact = {id:string; projectId:string; nodeId:string; runId:string; kind:'result'|'source'|'dataset'|'code'|'table'|'metric'|'plot'|'log'|'notebook'; title:string; content:string; hash:string; createdAt:string; url?:string; locator?:string; capture?:'search-snippet'|'full-content'|'generated'|'external'; sourceId?:string; mediaType?:string; metadata?:Record<string,unknown>};
