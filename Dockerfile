@@ -2,7 +2,8 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY index.html vite.config.ts tsconfig.json ./
+# vite.config.ts builds two pages, so both must be in the image.
+COPY index.html app-check.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY public ./public
 RUN npm exec vite build
