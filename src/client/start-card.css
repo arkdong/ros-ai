@@ -10,7 +10,8 @@
 .project-card { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0; padding: 12px 12px 10px 16px; background: var(--paper); border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); text-align: left; }
 .pc-caption { display: flex; align-items: center; height: 22px; margin-bottom: 2px; font-size: var(--text-sm); color: var(--muted); }
 .project-card .pc-name, .single-canvas-shell .project-card .pc-name { width: 100%; height: 30px; padding: 0 4px; border: 0; border-radius: var(--radius-control); background: transparent; box-shadow: none; font: inherit; font-size: var(--text-md); line-height: 30px; color: var(--ink); }
-.project-card .pc-name:focus-visible, .single-canvas-shell .project-card .pc-name:focus-visible { outline: 0; box-shadow: none; }
+/* The name has no border of its own, so its focus line is drawn as a shadow. */
+.project-card .pc-name:focus, .single-canvas-shell .project-card .pc-name:focus { outline: 0; box-shadow: 0 0 0 1px var(--ink), var(--focus-field); }
 .project-card .pc-name::placeholder { color: var(--muted); }
 .project-card .pc-name.mono, .single-canvas-shell .project-card .pc-name.mono { font-family: var(--font-mono); font-size: var(--text-sm); }
 .project-card .pc-name:read-only { color: var(--body); }

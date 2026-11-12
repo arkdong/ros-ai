@@ -2,7 +2,6 @@
 .app-rail-button { position:relative; display:flex; align-items:center; justify-content:center; width:36px; height:36px; border:0; border-radius:var(--radius-block); background:transparent; color:var(--muted); cursor:pointer; }
 .app-rail-button:hover { background:var(--line-soft); color:var(--ink); }
 .app-rail-button.active { background:var(--paper); color:var(--ink); box-shadow:var(--shadow-block), 0 0 0 1px var(--line); }
-.app-rail-button:focus-visible { outline:2px solid var(--accent-line); outline-offset:2px; }
 .app-rail-button:nth-child(1) { margin-bottom:8px; }
 .app-rail-hint { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); padding:5px 9px; border-radius:var(--radius-control); background:var(--ink); color:var(--paper); font-size:var(--text-sm); font-weight:500; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity var(--dur-out) var(--ease); z-index:60; }
 .app-rail-button:hover .app-rail-hint, .app-rail-button:focus-visible .app-rail-hint { opacity:1; transition-delay:.3s; }
@@ -36,4 +35,3 @@
 }
 
 .app-rail-spacer { flex:1; }
-.app-rail-button:focus-visible { outline-color:var(--accent); }

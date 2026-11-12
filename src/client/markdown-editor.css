@@ -2,7 +2,7 @@
    A bordered box shows where the file starts and ends; long text scrolls inside it. */
 .markdown-editor { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-height: 320px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper); overflow: hidden; cursor: text; }
 .markdown-editor-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.markdown-editor:focus-within { border-color: var(--muted); }
+.markdown-editor:focus-within { border-color: var(--ink); box-shadow: var(--focus-field); }
 .markdown-editor.read-only { flex: 0 0 auto; min-height: 0; max-height: 60vh; cursor: default; }
 .markdown-editor .cm-editor { flex: 1; min-height: 0; font-size: var(--text-md); background: transparent; }
 .markdown-editor .cm-editor.cm-focused { outline: none; }

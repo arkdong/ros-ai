@@ -69,8 +69,9 @@
   text-align: right;
 }
 .detail-polish .detail-disclosure > summary:focus-visible {
-  outline: 2px solid var(--accent-line);
-  outline-offset: 3px;
+  outline: var(--focus-line);
+  outline-offset: var(--focus-offset);
+  box-shadow: var(--focus-lime);
   border-radius: var(--radius-control);
 }
 .detail-polish .disclosure-body {

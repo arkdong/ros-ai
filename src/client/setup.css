@@ -16,7 +16,7 @@
 .setup-row.static { cursor: default; }
 /* The one line under the apps found, for those that connect only in Plugins. Plain text in ink, so it is read. */
 .setup-apps-note { margin: 0; padding: 12px 0 2px; font-size: var(--text-sm); font-weight: 500; color: var(--ink); }
-.setup-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-control); }
+.setup-row:focus-visible { outline: var(--focus-line); outline-offset: -2px; box-shadow: none; border-radius: var(--radius-control); }
 .setup-tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-control); border: 1px solid var(--line-soft); background: var(--paper); flex-shrink: 0; color: var(--body); }
 .setup-tile img, .setup-tile svg, .setup-tile .ros-mark, .setup-tile .ros-mark .research-ring { width: 16px; height: 16px; display: block; }
 .setup-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }

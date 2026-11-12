@@ -25,8 +25,9 @@ button:disabled {
   cursor: not-allowed;
 }
 button:focus-visible,a:focus-visible,summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: var(--focus-line);
+  outline-offset: var(--focus-offset);
+  box-shadow: var(--focus-lime);
 }
 textarea {
   resize: vertical;
@@ -1030,8 +1031,8 @@ input::placeholder,textarea::placeholder {
   color: var(--muted);
 }
 input:focus,textarea:focus,select:focus {
-  border-color: var(--muted);
-  box-shadow: none;
+  border-color: var(--ink);
+  box-shadow: var(--focus-field);
 }
 pre {
   font-family: var(--font-mono);
@@ -2090,11 +2091,7 @@ a {
   text-align: center;
   font-size: var(--text-2xl);
 }
-/* Lime marks keyboard focus on buttons; a field shows focus by its darker hairline. */
-.single-canvas-shell button:focus-visible {
-  outline: 2px solid var(--accent-line);
-  outline-offset: 3px;
-}
+/* A field shows focus by its ink border and soft ring, never by the ring buttons take. */
 .single-canvas-shell input:focus-visible,.single-canvas-shell textarea:focus-visible,.single-canvas-shell select:focus-visible {
   outline: 0;
 }
@@ -2235,12 +2232,17 @@ a {
   color: var(--ink);
 }
 .single-canvas-shell button:focus-visible,.single-canvas-shell a:focus-visible,.single-canvas-shell [tabindex]:focus-visible {
-  outline: 2px solid var(--accent-line);
-  outline-offset: 3px;
+  outline: var(--focus-line);
+  outline-offset: var(--focus-offset);
+  box-shadow: var(--focus-lime);
+}
+/* The picked page in the rail and the sidebar wears its hairline as a shadow; under the keyboard it takes the ring. */
+.single-canvas-shell .app-rail-button.active:focus-visible,.single-canvas-shell .sidebar .plugins-nav.active:focus-visible {
+  box-shadow: var(--focus-lime);
 }
 .single-canvas-shell input:focus,.single-canvas-shell textarea:focus,.single-canvas-shell select:focus {
-  border-color: var(--muted);
-  box-shadow: none;
+  border-color: var(--ink);
+  box-shadow: var(--focus-field);
 }
 .single-canvas-shell input::placeholder,.single-canvas-shell textarea::placeholder {
   color: var(--muted);

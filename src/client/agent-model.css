@@ -34,8 +34,8 @@
   width: 16px; height: 16px; box-sizing: border-box; border-radius: 50%;
   border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow-block);
 }
-.effort-track input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--shadow-block), 0 0 0 2px var(--paper), 0 0 0 4px var(--accent); }
-.effort-track input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: var(--shadow-block), 0 0 0 2px var(--paper), 0 0 0 4px var(--accent); }
+.effort-track input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink), 0 0 0 6px var(--accent); }
+.effort-track input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink), 0 0 0 6px var(--accent); }
 /* On the agent's page each level is named under its stop; a name is also a way to pick it. */
 .effort-ticks { position: relative; height: 18px; }
 .effort-ticks > button {

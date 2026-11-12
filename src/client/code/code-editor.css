@@ -1,6 +1,6 @@
 /* Shared by the CodeMirror editor and read-only CodeView; token classes come from @lezer/highlight's classHighlighter. */
 .code-editor { border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); overflow: hidden; }
-.code-editor:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 3px rgba(143, 184, 106, .18); }
+.code-editor:focus-within { border-color: var(--ink); box-shadow: var(--focus-field); }
 .code-editor .cm-editor { height: clamp(320px, 52vh, 640px); font-size: var(--text-md); background: transparent; }
 .code-editor.compact .cm-editor { height: auto; min-height: 72px; max-height: 180px; font-size: var(--text-sm); }
 .code-editor .cm-editor.cm-focused { outline: none; }

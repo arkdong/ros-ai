@@ -109,7 +109,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border: 1px solid var(--ink); border-radius: var(--radius-pill); background: var(--ink); color: var(--paper); font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 .fr-chip.lt { border-color: var(--line); background: var(--paper); color: var(--body); }
 .fr-chip:hover { border-color: var(--ink); }
-.fr-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-chip:focus-visible { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
 @keyframes fr-page { from { opacity: 0; transform: translateY(6px); } }
 @keyframes fr-rise { from { opacity: 0; transform: translateY(8px); } }
 @keyframes fr-fade { from { opacity: 0; } }
@@ -129,7 +129,7 @@ html.mac-app .first-run { height: calc(100dvh - 36px); margin: 0 6px 6px; border
 .fr-acc.main.on { background: linear-gradient(180deg, rgba(183, 239, 50, .2), rgba(183, 239, 50, .04)); }
 .fr-acc:hover:not(.on):not(:disabled) { border-color: var(--line); }
 .fr-acc:disabled { cursor: default; color: inherit; opacity: 1; }
-.fr-acc:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-acc:focus-visible { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
 .fr-acc-head { display: flex; align-items: center; gap: 10px; }
 .fr-acc-head .ros-mark, .fr-acc-head .ros-mark .research-ring { width: 24px; height: 24px; }
 .fr-acc-head b { font-size: var(--text-xl); font-weight: 500; letter-spacing: -.02em; line-height: 1.25; color: var(--ink); }

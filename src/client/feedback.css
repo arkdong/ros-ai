@@ -38,8 +38,8 @@
 
 .feedback-kinds { margin-top: 12px; padding: 3px; height: 34px; display: flex; gap: 2px; border-radius: var(--radius-control); background: var(--rail); }
 .feedback-kinds label { position: relative; flex: 1; display: grid; place-items: center; border-radius: var(--radius-control); color: var(--body); font-size: var(--text-sm); cursor: pointer; }
-.feedback-kinds label.on { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-block), 0 0 0 1px var(--line); }
-.feedback-kinds label:has(:focus-visible) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+.feedback-kinds label.on { color: var(--ink); }
+.feedback-kinds label:has(:focus-visible) { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
 .feedback-kinds input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 
 .feedback .feedback-text { margin-top: 12px; height: 104px; padding: 10px 12px; border-radius: var(--radius-block); font-size: var(--text-md); line-height: 1.5; resize: none; }

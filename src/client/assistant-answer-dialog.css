@@ -13,7 +13,7 @@
 .ros-question-options { display:grid; gap:4px; }
 .ros-question-options>button, .ros-question-other { display:flex; align-items:flex-start; gap:10px; width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid transparent; border-radius:var(--radius-pill); background:transparent; text-align:left; font:inherit; font-size:var(--text-sm); line-height:1.5; color:var(--body); cursor:pointer; }
 .ros-question-options>button:hover, .ros-question-other:hover { background:var(--canvas); }
-.ros-question-options>button:focus-visible { outline:2px solid var(--line); outline-offset:0; }
+.ros-question-options>button:focus-visible { outline:var(--focus-line); outline-offset:-2px; box-shadow:none; }
 .ros-question-options>button.selected, .ros-question-other.selected { border-color:var(--line); background:var(--canvas); color:var(--ink); }
 .ros-question-options>button>span { flex:1; min-width:0; overflow-wrap:anywhere; }
 .ros-question-options>button>svg { flex-shrink:0; margin-top:3px; color:var(--ink); }

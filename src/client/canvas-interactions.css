@@ -259,14 +259,17 @@
   box-shadow: var(--shadow-block);
 }
 /* One ring per block. A picked block carries one lime hairline on its own corners; a block reached with the keyboard
-   and not picked carries the lime outline, also on its own corners, never a square box around the card. */
+   and not picked carries the focus ring, also on its own corners, never a square box around the card. */
 .direct-canvas.unified-canvas .research-card.selected {
   border-color: var(--accent-line);
   outline: 0;
   box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-block);
 }
-.direct-canvas.unified-canvas .react-flow__node:focus-visible { outline: 0; }
-.direct-canvas.unified-canvas .react-flow__node:focus-visible > .research-card:not(.selected) { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+.direct-canvas.unified-canvas .react-flow__node:focus-visible { outline: 0; box-shadow: none; }
+.direct-canvas.unified-canvas .react-flow__node:focus-visible > .card-scale > .research-card:not(.selected) { outline: var(--focus-line); outline-offset: var(--focus-offset); box-shadow: var(--focus-lime); }
+/* A link reached with the keyboard is drawn in ink and thicker; a box round its whole curve would say nothing. */
+.direct-canvas.unified-canvas .react-flow__edge:focus-visible { outline: 0; box-shadow: none; }
+.direct-canvas.unified-canvas .react-flow__edge:focus-visible .react-flow__edge-path { stroke: var(--ink); stroke-width: 2.5; opacity: 1; }
 .direct-canvas .inline-note-editor {
   display: flex;
   flex-direction: column;

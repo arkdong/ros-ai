@@ -51,6 +51,13 @@
   --radius-card: 20px;
   --radius-pill: 999px;
 
+  /* Keyboard focus: a 2px ink line 2px off the control with lime either side of it; on a dark surface the line is paper.
+     A field takes an ink border and a soft ring. The ring is never animated. */
+  --focus-line: 2px solid var(--ink);
+  --focus-offset: 2px;
+  --focus-lime: 0 0 0 6px var(--accent);
+  --focus-field: 0 0 0 3px rgba(23, 23, 23, .12);
+
   /* Depth: a block at rest, a floating card or menu, an open view. */
   --shadow-block: 0 1px 2px rgba(0, 0, 0, .04);
   --shadow-float: 0 10px 32px rgba(0, 0, 0, .10);
