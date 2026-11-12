@@ -1,45 +1,46 @@
 /* The start screen and the New project card: one card in the bar's shape. The name sits on top; the folder and the
    starting point are chips on the footer line beside one black action. The lime stays in the ring. */
-.start-screen { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 44px; padding: 56px 26px 40px; background: var(--page); }
+.start-screen { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 44px; padding: 56px 26px 40px; background: var(--paper); }
 .start-column { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 560px; max-width: 100%; flex-shrink: 0; }
 .start-ring .ros-mark, .start-ring .ros-mark .research-ring { width: 40px; height: 40px; }
-.start-column h1 { margin: 0; font-size: var(--text-2xl); font-weight: 600; letter-spacing: -.025em; line-height: 1.2; text-align: center; color: var(--ink); }
-.start-lead { margin: -6px 0 0; max-width: 420px; text-align: center; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
+.start-column h1 { margin: 0; font-size: var(--text-2xl); font-weight: 500; letter-spacing: -.025em; line-height: 1.2; text-align: center; color: var(--ink); }
+.start-lead { margin: -6px 0 0; max-width: 420px; text-align: center; font-size: var(--text-sm); line-height: 1.5; color: var(--body); }
 .start-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: -4px; }
 
-.project-card { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0; padding: 12px 12px 10px 16px; background: var(--paper); border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; box-shadow: var(--shadow-float); text-align: left; }
-.pc-caption { display: flex; align-items: center; height: 22px; margin-bottom: 2px; font-size: var(--text-xs); color: var(--muted); }
-.project-card .pc-name, .single-canvas-shell .project-card .pc-name { width: 100%; height: 30px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; font: inherit; font-size: var(--text-md); line-height: 30px; color: var(--ink); }
-.project-card .pc-name:focus-visible, .single-canvas-shell .project-card .pc-name:focus-visible { outline: 0; box-shadow: none; }
-.project-card .pc-name::placeholder { color: #9a9a9a; }
-.project-card .pc-name.mono, .single-canvas-shell .project-card .pc-name.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); }
+.project-card { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0; padding: 12px 12px 10px 16px; background: var(--paper); border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-float); text-align: left; }
+.pc-caption { display: flex; align-items: center; height: 22px; margin-bottom: 2px; font-size: var(--text-sm); color: var(--muted); }
+.project-card .pc-name, .single-canvas-shell .project-card .pc-name { width: 100%; height: 30px; padding: 0 4px; border: 0; border-radius: var(--radius-control); background: transparent; box-shadow: none; font: inherit; font-size: var(--text-md); line-height: 30px; color: var(--ink); }
+/* The name has no border of its own, so its focus line is drawn as a shadow. */
+.project-card .pc-name:focus, .single-canvas-shell .project-card .pc-name:focus { outline: 0; box-shadow: 0 0 0 1px var(--ink), var(--focus-field); }
+.project-card .pc-name::placeholder { color: var(--muted); }
+.project-card .pc-name.mono, .single-canvas-shell .project-card .pc-name.mono { font-family: var(--font-mono); font-size: var(--text-sm); }
 .project-card .pc-name:read-only { color: var(--body); }
 /* The chips start where the name's text starts, as in the bar. */
 .pc-foot { position: relative; display: flex; align-items: center; gap: 2px; height: 30px; margin-left: -4px; }
 .pc-sp { flex: 1; }
 /* The footer's chips are quiet text, as in the bar; hover and an open menu give them a ground. */
-.pc-foot .chip-button { border-color: transparent; border-radius: 6px; background: transparent; padding: 0 8px; }
+.pc-foot .chip-button { border-color: transparent; border-radius: var(--radius-control); background: transparent; padding: 0 8px; }
 .pc-foot .chip-button:hover:not(:disabled), .pc-foot .chip-button[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
-.pc-foot .chip-button:disabled { color: #b3b3b3; cursor: default; }
+.pc-foot .chip-button:disabled { color: var(--muted); cursor: default; }
 /* Long labels shrink with an ellipsis, so the action always stays on the line. */
 .pc-foot .chip-slot { min-width: 0; flex: 0 1 auto; }
 .pc-foot .chip-slot > .chip-button { max-width: min(280px, 100%); }
 .pc-foot > .chip-button, .pc-foot .primary { flex-shrink: 0; }
 .pc-foot .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-foot .primary, .single-canvas-shell .pc-foot .primary { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: 15px; font-size: var(--text-sm); white-space: nowrap; }
+.pc-foot .primary, .single-canvas-shell .pc-foot .primary { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pc-foot .chip-menu { width: 300px; max-width: calc(100vw - 48px); }
 .folder-menu { gap: 8px; padding: 10px; }
-.folder-menu p { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--muted); }
-.folder-menu input, .single-canvas-shell .folder-menu input { padding: 6px 8px; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); }
+.folder-menu p { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); }
+.folder-menu input, .single-canvas-shell .folder-menu input { padding: 6px 8px; border-radius: var(--radius-control); font-family: var(--font-mono); font-size: var(--text-sm); }
 .folder-menu input:focus-visible, .single-canvas-shell .folder-menu input:focus-visible { outline-offset: 0; box-shadow: none; }
 .folder-menu-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.project-card .inline-error { margin: 2px 4px 0; font-size: var(--text-xs); }
+.project-card .inline-error { margin: 2px 4px 0; font-size: var(--text-sm); }
 
 /* The gallery under the card: a small map per demo, its blocks drawn as plain frames. The card stays the one primary action. */
 
 /* New project over the current map: a light scrim keeps the map in view, and the card rises in near the top. */
 /* Above the demo guide (z 151) and everything else in the map's frame. */
 .new-project-scrim { position: absolute; inset: 0; z-index: 160; background: rgba(250, 250, 250, .62); }
-.new-project-card { position: absolute; top: 200px; left: 50%; width: 560px; max-width: calc(100% - 32px); animation: rise-centered .22s cubic-bezier(.2, .8, .2, 1) both; }
+.new-project-card { position: absolute; top: 200px; left: 50%; width: 560px; max-width: calc(100% - 32px); animation: rise-centered var(--dur-menu) var(--ease) both; }
 @media (prefers-reduced-motion: reduce) { .new-project-card { animation: none; transform: translateX(-50%); } }
 @media (max-width: 760px) { .start-screen { gap: 32px; padding: 32px 16px 24px; } .new-project-card { top: 24px; } .pc-foot .chip-slot > .chip-button { max-width: 150px; } }

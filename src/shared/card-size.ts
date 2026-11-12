@@ -8,7 +8,12 @@ export const CARD_DEFAULT_WIDTH = 408;
 export const CARD_MIN_WIDTH = 320;
 export const CARD_MAX_WIDTH = 1200;
 export const CARD_DEFAULT_HEIGHT = 264;
-export const CARD_MIN_HEIGHT = 224;
+/** The shortest card: its header line and a one-line title. A card is as tall as what it holds. */
+export const CARD_MIN_HEIGHT = 96;
+/** The least room a card is given before the browser measures it. A guess that is too tall costs nothing: the measure
+ * takes away what the content does not need. A guess that is too short cuts the content and stays, because a card
+ * that is cut reports the cut height. */
+const CARD_START_HEIGHT = 224;
 export const CARD_MAX_HEIGHT = 420;
 /** A card the researcher made taller keeps that height; its content fills it instead of being measured. */
 export const CARD_MAX_SET_HEIGHT = 1200;
@@ -71,7 +76,7 @@ export function initialCardSize(node: { width?: number; title: string }, text: s
   const width = cardWidth(node);
   const titleLines = Math.max(1, Math.ceil(Array.from(node.title).length * 9 / (width - 40)));
   const outcomeLines = Math.max(1, Math.ceil(Array.from(text).length * 7.5 / (width - 66)));
-  return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
+  return { width, height: Math.min(CARD_MAX_HEIGHT, Math.max(CARD_START_HEIGHT, Math.ceil(144 + titleLines * 24.3 + outcomeLines * 22.5))) };
 }
 
 /** Cards that preview code, a figure, a table, a report or a running App can grow to the maximum height. */
@@ -90,7 +95,7 @@ export function estimatedCardHeight(node: { width?: number; height?: number | nu
   const titleLines = Math.max(1, Math.ceil(Array.from(node.title).length * 9 / (width - 40)));
   // Each paragraph, heading or list item starts a new line; blank lines add a paragraph's spacing.
   const textLines = Math.max(1, text.split('\n').reduce((sum, line) => sum + (line.trim() ? Math.ceil(Array.from(line).length * 7.5 / (width - 66)) : 0.3), 0));
-  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, Math.ceil(144 + titleLines * 24.3 + Math.min(TEXT_PREVIEW_HEIGHT, textLines * 22.5))));
+  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_START_HEIGHT, Math.ceil(144 + titleLines * 24.3 + Math.min(TEXT_PREVIEW_HEIGHT, textLines * 22.5))));
 }
 /** A collapsed Group card before the browser measures it: its title, a line of overview and the first few
  * blocks it lists, each up to two lines of 18px, 7px apart, then how many more it holds. */
@@ -98,7 +103,7 @@ function estimatedGroupHeight(node: { width?: number; title: string; description
   const width = cardWidth(node), lines = (text: string, size: number, inset: number) => Math.max(1, Math.ceil(Array.from(text).length * size / (width - inset)));
   const shown = listed.slice(0, GROUP_PREVIEW_MEMBERS), more = members > shown.length ? 25 : 0;
   const rows = shown.reduce((sum, item, index) => sum + Math.min(2, lines(item.title, 6.5, 70)) * 18 + (index ? 7 : 0), more);
-  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_MIN_HEIGHT, 101 + Math.min(2, lines(node.title, 9, 40)) * 24 + (node.description ? 20 : 0) + rows));
+  return Math.min(CARD_MAX_HEIGHT, Math.max(CARD_START_HEIGHT, 101 + Math.min(2, lines(node.title, 9, 40)) * 24 + (node.description ? 20 : 0) + rows));
 }
 /** A block's footprint before the browser measures it, for laying out a tree of new blocks on the server. */
 export function estimatedSize(canvas: Canvas, node: CanvasNode) {

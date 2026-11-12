@@ -4,6 +4,7 @@ import { FEEDBACK_KINDS, FEEDBACK_MAX_CHARS, publicIssueUrl, type FeedbackSetup 
 import { api, post } from './api';
 import { BrandLogo } from './brand-logos';
 import { readSaved, saveLocal, useDraft } from './persistence';
+import { useTabFill } from './tab-fill';
 import './feedback.css';
 
 /** "Chrome 141": the browser's name and major version, never the whole user agent. */
@@ -30,6 +31,8 @@ export function FeedbackButton({ quiet, before }: { quiet: boolean; before?: Rea
   const [sending, setSending] = useState(false), [error, setError] = useState(''), [sent, setSent] = useState<{ email?: string }>();
   const box = useRef<HTMLDivElement>(null), anchor = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), text = useRef<HTMLTextAreaElement>(null);
   const kind = FEEDBACK_KINDS.find(item => item.id === kindId) ?? FEEDBACK_KINDS[0], ready = Boolean(setup);
+  const kinds = useRef<HTMLDivElement>(null);
+  useTabFill(kinds, open && setup && !sent ? kind.id : '');
 
   const close = () => { setOpen(false); setSent(undefined); setError(''); };
   useEffect(() => {
@@ -81,7 +84,7 @@ export function FeedbackButton({ quiet, before }: { quiet: boolean; before?: Rea
         <div className="feedback-sent" role="status"><span className="feedback-sent-mark"><Check size={15}/></span><div><strong>Thanks, it’s with the ros.ai team.</strong>{sent.email && <small>We’ll reply to {sent.email}.</small>}</div></div>
         <footer><button type="button" className="text-button" onClick={() => setSent(undefined)}>Send another</button><button type="button" className="secondary small" autoFocus onClick={close}>Done</button></footer>
       </> : <form onSubmit={event => void send(event)}>
-        <div className="feedback-kinds" role="radiogroup" aria-label="Kind of note">{FEEDBACK_KINDS.map(item => <label key={item.id} className={item.id === kind.id ? 'on' : ''}><input type="radio" name="feedback-kind" value={item.id} checked={item.id === kind.id} onChange={() => setKind(item.id)}/>{item.label}</label>)}</div>
+        <div ref={kinds} className="feedback-kinds tab-fill" role="radiogroup" aria-label="Kind of note">{FEEDBACK_KINDS.map(item => <label key={item.id} className={item.id === kind.id ? 'on' : ''}><input type="radio" name="feedback-kind" value={item.id} checked={item.id === kind.id} onChange={() => setKind(item.id)}/>{item.label}</label>)}</div>
         <textarea ref={text} className="feedback-text" aria-label="Your note" placeholder={kind.hint} value={message} maxLength={FEEDBACK_MAX_CHARS} onChange={event => setMessage(event.target.value)}
           onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}/>
         {setup.cloud && (setup.email ? <p className="feedback-reply"><UserRound size={14}/>Replies go to {setup.email}</p>

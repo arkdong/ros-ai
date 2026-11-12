@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
-import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
+import { Background, BackgroundVariant, BaseEdge, ConnectionMode, EdgeLabelRenderer, Handle, MarkerType, NodeToolbar, Position, ReactFlow, ReactFlowProvider, SelectionMode, applyNodeChanges, useNodesInitialized, useReactFlow, useStoreApi, type Edge, type EdgeProps, type Node, type NodePositionChange, type NodeProps, type ReactFlowProps, type Viewport, type XYPosition } from '@xyflow/react';
 import { Share as ShareIcon, Activity, Minimize2, AppWindow, LayoutDashboard, ArrowUpRight, MapPinned, BookOpen, Bot, Check, Globe, Quote, Search as SearchIcon, BoxSelect, Braces, Database, Text as TextIcon, File as FileIcon, NotebookPen, ArrowLeftRight, ChevronDown, ChevronUp, CornerLeftUp, Focus, GitBranch, Hand, History, LayoutGrid, LoaderCircle, Maximize, Minus, MousePointer2, PanelTopClose, Plus, Redo2, Trash2, Undo2, Ungroup, X } from 'lucide-react';
 import { BrandLogo } from './brand-logos';
 import { NotionBlock, type RowBlocksOutcome } from './NotionView';
@@ -38,7 +38,7 @@ import './agent-view.css';
 import './source-check.css';
 import { GROUP_PREVIEW_MEMBERS, convertLegacyGroups, createGroupOperations, groupKeepsNote, groupMembers, groupPreviewMembers, isGroup, ungroupOperations } from '../shared/groups';
 import { isOutputArtifact, nodeBlockType, primaryArtifact } from '../shared/blocks';
-import { BlockPreview } from './BlockPreview';
+import { BlockPreview, artifactFacts } from './BlockPreview';
 import { PartBoundary } from './ErrorBoundary';
 import { AddBlockMenu } from './AddBlockMenu';
 import type { KindId } from './block-kinds';
@@ -148,14 +148,13 @@ function Provenance({data,appErrors}:{data:CardData;appErrors?:string[]}){
   if(data.app){
     parts.push(<small key="reads">{data.app.inputs?`reads ${data.app.inputs} block${data.app.inputs===1?'':'s'}`:'reads no blocks'}</small>);
     if(appErrors?.length)parts.push(<small key="errors" className="app-error" title={appErrors.join('\n')}>{appErrors.length} error{appErrors.length===1?'':'s'}</small>);
-    parts.push(<small key="version" className="block-version">Version {data.app.version}</small>);
     return <div className="outcome-footer provenance">{parts}</div>;
   }
   const searching=data.blockType==='search'||(data.label==='result'&&data.description===RESULT_PLACEHOLDER);
   if(searching){if(data.sources?.length)parts.push(<small key="found">{data.sources.length} source{data.sources.length===1?'':'s'} found</small>);}
   else if(!data.primary&&data.blockType!=='agent'){const {sources,hosts}=splitSources(data.description);if(sources>0)parts.push(<small key="cited">{data.blockType==='finding'&&hosts.length?`From ${hosts.join(', ')}`:`${sources} source${sources===1?'':'s'} cited`}</small>);}
   if(data.resultCount>0)parts.push(<small key="results">{data.resultCount} result{data.resultCount===1?'':'s'}</small>);
-  if(data.primary)parts.push(<small key="version" className="block-version">{['failed','interrupted','cancelled','queued','running'].includes(data.status??'')?'Earlier saved result · ':'Version · '}{data.primary.hash.slice(0,8)}</small>);
+  if(data.primary&&['failed','interrupted','cancelled','queued','running'].includes(data.status??''))parts.push(<small key="version" className="block-version">Earlier saved result</small>);
   return parts.length?<div className="outcome-footer provenance">{parts}</div>:null;
 }
 type ResearchNode = Node<CardData, 'research'>;
@@ -314,6 +313,11 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   // Only states that need attention get a line; an idle block shows its content.
   const workState=data.awaitingApproval?'Awaiting approval':active?(data.label==='result'?'Searching':data.status):data.status==='failed'?'Latest attempt failed':data.status==='interrupted'?'Latest attempt interrupted':data.status==='cancelled'?'Latest attempt stopped':'';
   const notebook=data.blockType==='notebook'&&!group, code=data.code!==undefined&&!group, lastRun=data.notebook?.lastRun;
+  // Facts about what the block holds sit in its header line and show while the block is picked or under the pointer.
+  const notebookIdle=notebook&&Boolean(data.notebook?.cells)&&!data.notebook!.running&&(!lastRun||lastRun.status==='ok');
+  const primaryId=data.primary?.id, primaryHash=data.primary?.hash;
+  const facts=useMemo(()=>group?'':notebookIdle?`${data.notebook!.cells} cell${data.notebook!.cells===1?'':'s'}${lastRun?` · ran ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}`:data.primary?artifactFacts(data.primary):'',[group,notebookIdle,data.notebook?.cells,lastRun?.at,primaryId,primaryHash]);
+  const factsLine=facts?<span className="card-facts">{facts}</span>:null;
   const [appErrors,setAppErrors]=useState<string[]>([]);
   // The corner that takes keyboard focus and arrow keys.
   const handle:ResizeEdge='se';
@@ -340,8 +344,19 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
   </article>;
   return <article className={`research-card ${group?'organizational-group':'research-block'}${data.blockType==='finding'?' finding-card':''}${data.post?' post-card':''} ${data.expanded?'expanded-group':''} ${selected?'selected':''} ${data.preview?`preview-${data.preview}`:''}${data.heightSet&&!data.expanded?' height-set':''}`}>
     {sides.map(side=><Handle key={side.id} id={side.id} type="source" position={side.position} isConnectable={!data.readonly} className="relationship-handle" role="button" tabIndex={data.readonly?-1:0} aria-label={`Link ${data.title} from its ${side.id} side`} title="Drag onto another block to link them, or click, then click the block" onClick={event=>{event.stopPropagation();data.onHandle(side.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();data.onHandle(side.id);}}}/>)}
-    <div ref={heading} className="group-heading">
-      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
+    {group&&data.expanded?<div ref={heading} className="group-heading group-bar">
+      <KindIcon kind={data.kind} blockType={data.blockType}/>
+      <div className="card-title" title={data.title}>{data.title||'Untitled'}</div>
+      <span className="group-item-count" title={`${data.members} block${data.members===1?'':'s'}`}>{data.members}</span>
+      {data.workLabel&&<span className="group-contained-work">{data.workLabel}</span>}
+      {data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}
+      <span className="card-controls nodrag">
+        {!data.readonly&&<button className="icon-button group-add-control" aria-label={`Add a block inside ${data.title}`} title="Add inside" onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={16}/></button>}
+        {openButton}
+        <button className="icon-button group-expand-control" aria-label={`Collapse ${data.title}`} title="Collapse group" onClick={event=>{event.stopPropagation();data.onExpand();}}><ChevronUp size={17}/></button>
+      </span>
+    </div>:<div ref={heading} className="group-heading">
+      <div className="card-top">{data.onLabel?<button type="button" className="card-type card-type-button nodrag" aria-label={`Change the label of ${data.title}`} title="Change label" onClick={event=>{event.stopPropagation();data.onLabel!(event.currentTarget.getBoundingClientRect());}}><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{data.kindName}{data.textLabel?<span className="card-label">{data.textLabel}</span>:<span className="card-label-add" aria-hidden="true">+ label</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{factsLine}</button>:<span className="card-type"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/>{group?'Group':data.kindName}{!group&&data.kindName==='Text'&&data.textLabel?<span className="card-label">{data.textLabel}</span>:null}{group&&<span className="group-item-count"> · {data.members} items</span>}{data.fileMissing&&<span className="card-file-missing" title="This block's file is missing from the project folder">File missing</span>}{factsLine}{data.preview&&<span className="card-preview-tag">{data.preview==='added'?'New':data.preview==='changed'?'Changed':'Removed'}</span>}</span>}<span className="card-controls nodrag">
         {openButton}
         {group&&<button className="icon-button group-expand-control" aria-label={`${data.expanded?'Collapse':'Expand'} ${data.title}`} title={data.expanded?'Collapse group':'Expand group'} onClick={event=>{event.stopPropagation();data.onExpand();}}>{data.expanded?<ChevronUp size={17}/>:<ChevronDown size={17}/>}</button>}
       </span></div>
@@ -353,7 +368,7 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
           :data.listed?.length?<ul className="group-member-list">{data.listed.slice(0,GROUP_PREVIEW_MEMBERS).map(member=><li key={member.id} title={member.title}><KindIcon kind={member.kind} blockType={member.blockType} google={member.google} metric={member.metric} post={member.post} size={12}/><span>{member.title}</span></li>)}{data.members>Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)&&<li className="more">{data.members-Math.min(data.listed.length,GROUP_PREVIEW_MEMBERS)} more</li>}</ul>
           :<p className="subtle">Choose up to three saved highlights in Group details.</p>}</div>}
       </> : <>
-        {notebook?data.notebook?.cells?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
+        {notebook?data.notebook?.cells&&!notebookIdle?<div className={`block-work-state ${data.notebook.running?'running':lastRun?.status==='error'?'failed':lastRun?.status==='interrupted'?'interrupted':''}`}>{data.notebook.running&&<LoaderCircle size={12} className="spin"/>}{data.notebook.cells} cell{data.notebook.cells===1?'':'s'}{data.notebook.running?' · Running':lastRun?` · ${lastRun.status==='ok'?'Ran':lastRun.status==='error'?'Error in':'Stopped'} [${lastRun.executionCount??' '}] · ${new Date(lastRun.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>:null
         :data.blockType==='agent'?<div className={`block-work-state ${data.agent?.status==='running'?'running':data.agent&&data.agent.status!=='completed'?'failed':''}`}>{data.agent?.status==='running'&&<LoaderCircle size={12} className="spin"/>}{data.agent?`${agentState[data.agent.status]} · ${data.agent.runtime}`:'Agent'}</div>
         :workState&&!data.web&&<div className={`block-work-state ${data.status||''}`}>{active&&<LoaderCircle size={12} className="spin"/>}{workState}</div>}
         <div className="block-primary-preview" onDoubleClick={event=>{event.stopPropagation();data.onInspect();}}>{notebook&&data.notebookFigure?<img className="block-figure-preview" src={data.notebookFigure} alt={`Newest figure in ${data.title}`}/>:notebook&&data.notebook?.value?<strong className="block-metric-preview">{data.notebook.value}</strong>:notebook&&data.notebook?.excerpt?(data.notebook.excerpt.kind==='code'?<pre className="block-code-preview">{data.notebook.excerpt.text.split('\n').slice(0,5).join('\n')}</pre>:<p className="block-text-preview">{textPreview(data.notebook.excerpt.text,220).text}</p>):data.blockType==='agent'?<AgentFace data={data}/>
@@ -363,7 +378,10 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
         {data.check&&data.blockType!=='agent'&&<CheckTally tally={data.check}/>}
       </>}
       {!data.expanded&&!group&&!data.web&&<Provenance data={data} appErrors={appErrors}/>}
-    </div>
+    </div>}
+    {/* Far out, a block is its kind and its name at a size that stays readable (shown by .far-zoom on the map). It lies
+        over the card and takes no room, so the card's measured height never changes with the zoom. */}
+    {!data.expanded&&<div className="card-far" aria-hidden="true"><KindIcon kind={data.kind} blockType={data.blockType} google={data.google?.view.kind} map={data.map?.provider} metric={data.metric?.view.source} post={data.post?.view.platform}/><span>{data.title||'Untitled'}</span></div>}
     {!data.expanded&&!data.readonly&&!group&&RESIZE_EDGES.map(edge=><div key={edge} className={`card-resize card-resize-${edge} nodrag nopan${data.resizePending?' pending':''}`}
       {...edge===handle?{role:'button',tabIndex:0,'aria-label':`Resize ${data.title}, now ${data.width} by ${data.height}. Arrow keys resize; double-click fits the height to the content`,title:'Drag to resize · double-click to fit the content'}:{'aria-hidden':true}}
       onPointerDown={event=>{if(data.resizePending||event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);resizing.current={edge,x:event.clientX,y:event.clientY,width:data.width,height:data.height,zoom:flow.getZoom()*(data.scale??1)};data.onActivate();}}
@@ -375,7 +393,6 @@ function ResearchCardFace({ id, data, selected }: NodeProps<ResearchNode>) {
       onClick={event=>event.stopPropagation()}
       onDoubleClick={event=>{event.stopPropagation();if(data.heightSet&&edge!=='e'&&edge!=='w')data.onAutoHeight();}}
       onKeyDown={edge===handle?event=>{const arrow=arrows[event.key];if(!arrow||data.resizePending)return;event.preventDefault();event.stopPropagation();data.onResize(resizedCard(arrow[0],data,arrow[1],arrow[2],shape),true);}:undefined}/>)}
-    {data.expanded&&<div className="group-actions nodrag"><button className="small secondary" disabled={data.readonly} onClick={event=>{event.stopPropagation();data.onAdd();}}><Plus size={14}/> Add inside</button></div>}
   </article>;
 }
 // While a block moves, React Flow moves its frame; the card inside draws again only when its content, size or
@@ -387,7 +404,7 @@ const nodeTypes = { research: memo(ResearchCard, samePlacedProps) };
  * The chip on the line is the word and, once the line is selected, the place to change it, turn the link around or
  * delete it. Several links between the same two blocks share one line and list themselves in a small card. */
 type LinkRow = { id: string; sourceTitle: string; targetTitle: string; word: string; trail: boolean };
-type LinkEdgeData = { path: string; chip: LinkPoint; word: string; count: number; trail: boolean; trailWord: string; editable: boolean; editingId: string | null; links: LinkRow[]; heading: string; note: string; onSelect: () => void; onEdit: (connectionId: string | null) => void; onRename: (connectionId: string, word: string) => void; onSwap: (connectionId: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void };
+type LinkEdgeData = { path: string; chip: LinkPoint; word: string; quiet: boolean; shared: { text: string; point: LinkPoint } | null; count: number; trail: boolean; trailWord: string; editable: boolean; editingId: string | null; links: LinkRow[]; heading: string; note: string; onSelect: () => void; onEdit: (connectionId: string | null) => void; onRename: (connectionId: string, word: string) => void; onSwap: (connectionId: string) => void; onDelete: (connectionIds: string[]) => void; onClose: () => void };
 type LinkEdge = Edge<LinkEdgeData, 'link'>;
 type Geometry = LinkBox & { id: string; parentId?: string };
 function LinkEdgeView({ id, data, selected, markerStart, markerEnd, interactionWidth }: EdgeProps<LinkEdge>) {
@@ -396,10 +413,12 @@ function LinkEdgeView({ id, data, selected, markerStart, markerEnd, interactionW
   const single = data.count === 1, link = data.links[0], ghost = !data.trail && single && !data.word;
   const text = data.trail ? (selected ? data.trailWord : '') : data.word || (single ? '+ word' : '');
   const editing = single && data.editingId === link.id;
-  const chip = Boolean(text) && !editing && (!ghost || ((hover || selected) && data.editable));
+  // A link that shares its word with others at one end shows its own chip only while it is pointed at or picked.
+  const chip = Boolean(text) && !editing && (!ghost || ((hover || selected) && data.editable)) && (!data.quiet || hover || selected);
   return <g className={`link-edge${hover ? ' hovered' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
     <BaseEdge id={id} path={data.path} markerStart={markerStart} markerEnd={markerEnd} interactionWidth={interactionWidth}/>
     <EdgeLabelRenderer>
+      {data.shared && <div className="link-slot" style={{ transform: `translate(-50%, -50%) translate(${data.shared.point.x}px, ${data.shared.point.y}px)` }}><span className="link-chip still shared">{data.shared.text}</span></div>}
       <div className={`link-slot nodrag nopan${selected ? ' selected' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${data.chip.x}px, ${data.chip.y}px)` }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
         {chip && <button type="button" className={`link-chip${selected ? ' selected' : ''}${ghost ? ' ghost' : ''}${data.trail ? ' trail' : ''}`} aria-label={data.trail ? data.trailWord : single ? `Link: ${link.sourceTitle} → ${link.targetTitle}${data.word ? ` · ${data.word}` : ''}` : data.heading} title={single && !data.trail ? `${link.sourceTitle} → ${link.targetTitle}` : undefined} onClick={event => { event.stopPropagation(); if (selected && single && data.editable && !data.trail) data.onEdit(link.id); else data.onSelect(); }}>{text}</button>}
         {chip && selected && data.editable && <button type="button" className="link-chip-delete" aria-label={single ? 'Delete link' : `Delete ${data.count} links`} onClick={event => { event.stopPropagation(); data.onDelete(data.links.map(item => item.id)); }}><X size={11}/></button>}
@@ -516,7 +535,11 @@ function canvasWheel(event: WheelEvent) {
 }
 /** The last blocks copied in this window, for browsers that hand a paste only its plain text. */
 let lastCopy: { text: string; plain: string } | null = null;
-type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMoveEnd';
+/** Below this zoom a block shows its kind and name instead of its content. */
+const FAR_ZOOM = .4;
+/** The most a far name is enlarged: readable down to 20%, smaller beyond that. */
+const FAR_SCALE_MAX = 5;
+type FlowHandlerName = 'onNodesChange' | 'onNodeClick' | 'onNodeDoubleClick' | 'onPaneClick' | 'onEdgeClick' | 'onEdgeDoubleClick' | 'onSelectionStart' | 'onSelectionEnd' | 'onNodeDragStart' | 'onNodeDrag' | 'onNodeDragStop' | 'onConnect' | 'onConnectEnd' | 'onMoveStart' | 'onMove' | 'onMoveEnd';
 type FlowHandlers = Required<Pick<ReactFlowProps<ResearchNode, LinkEdge>, FlowHandlerName>>;
 /** Handlers that keep their identity across renders and always run the latest code. */
 function useStableHandlers<T extends Record<string, (...args: never[]) => unknown>>(handlers: T): T {
@@ -536,7 +559,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null), [focusRequest, setFocusRequest] = useState<string | null>(null), [frameRequest, setFrameRequest] = useState<string[] | null>(null);
   // The link whose word is being edited, and a link just drawn, whose word opens as soon as the canvas shows it.
   const [editingLink, setEditingLink] = useState<{ connectionId: string } | null>(null); const pendingEdit = useRef<string | null>(null);
-  const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState('');
+  const [pendingConnection, setPendingConnection] = useState<{ nodeId: string; side: Side } | null>(null), [arranging, setArranging] = useState(false), [message, setMessage] = useState(''), [stageHint, setStageHint] = useState(false), [stageInView, setStageInView] = useState<string | null | undefined>(undefined);
   const [animatingLayout, setAnimatingLayout] = useState(false);
   const [reflowRevision, setReflowRevision] = useState(0);
   // Blocks being dragged, or settling after a drop, are drawn from React Flow's own store until they come to rest
@@ -631,10 +654,12 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     if (!overview && zoom < .65) {
       const anchor = visible.find(node => node.id === selectedId) || visible.filter(node => !node.parentId).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)[0];
       if (anchor) {
-        setMessage('Reading view · use the stage buttons to follow the question, or See all to show the whole canvas.');
+        // Said once per computer, under the stage row it is about.
+        if (showStageNavigation && !readSaved('stage-hint-said', false)) { saveLocal('stage-hint-said', true); setStageHint(true); }
         return focusReadable(anchor.id, duration);
       }
     }
+    setStageHint(false);
     return flow.setViewport({ x: inset.left + (width - content.width * zoom) / 2 - content.x * zoom, y: inset.top + (height - content.height * zoom) / 2 - content.y * zoom, zoom }, { duration });
   };
   // Blocks shown together stay readable: when they do not fit at 45% they start at the top left, the rest a scroll away.
@@ -661,6 +686,32 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   const stageOrder = numberedStageOrder(rootStages);
   rootStages.sort((a, b) => stageOrder ? stageOrder.get(a.id)! - stageOrder.get(b.id)! : a.y - b.y || a.x - b.x);
   const showStageNavigation = rootStages.length > 1 && rootStages.length <= 8 && rootStages.some(node => displayed.canvas.nodes.some(child => child.parentId === node.id));
+  // Below 40% a block is drawn as its kind and name, and link words hide. --far is how much to enlarge that name so it
+  // stays about the same size on screen; it is set on the map itself while zooming, without drawing the blocks again.
+  const [farZoom, setFarZoom] = useState(viewport.current.zoom < FAR_ZOOM);
+  const noteZoom = (zoom: number) => {
+    area.current?.style.setProperty('--far', String(Math.min(FAR_SCALE_MAX, 1 / zoom)));
+    setFarZoom(zoom < FAR_ZOOM);
+  };
+  useEffect(() => noteZoom(flow.getZoom()), []);
+  // The stage the window is on: the one nearest the upper middle of the map's free area, where a stage in reading view
+  // starts, unless two or more are in view whole.
+  const noteStageInView = (view: Viewport) => {
+    const bounds = area.current?.getBoundingClientRect();
+    if (!bounds || !showStageNavigation) return;
+    const inset = canvasInsets(), left = -view.x / view.zoom, top = -view.y / view.zoom, right = left + bounds.width / view.zoom, bottom = top + bounds.height / view.zoom;
+    const cx = (inset.left + (bounds.width - inset.left - inset.right) / 2 - view.x) / view.zoom, cy = (inset.top + (bounds.height - inset.top - inset.bottom) / 4 - view.y) / view.zoom;
+    let nearest: string | null = null, distance = Infinity, whole = 0;
+    for (const stage of rootStages) {
+      const node = flow.getInternalNode(stage.id);
+      if (!node) continue;
+      const { x, y } = node.internals.positionAbsolute, width = node.measured.width ?? 0, height = node.measured.height ?? 0;
+      if (x >= left && y >= top && x + width <= right && y + height <= bottom) whole += 1;
+      const away = Math.hypot(Math.max(x - cx, 0, cx - x - width), Math.max(y - cy, 0, cy - y - height));
+      if (away < distance) { distance = away; nearest = stage.id; }
+    }
+    setStageInView(whole > 1 ? null : nearest);
+  };
   const cardOutcomes = useMemo(() => deriveGroupOutcomes(displayed.canvas.nodes, detail.runs, detail.artifacts, { projectId: detail.project.id }), [displayed.canvas.nodes, detail.runs, detail.artifacts, detail.project.id]);
   const descendantIds = useMemo(() => Object.fromEntries(displayed.canvas.nodes.map(node => {
     const ids = new Set<string>();
@@ -728,6 +779,11 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
     else { setPendingConnection(pendingConnection?.nodeId === nodeId && pendingConnection.side === side ? null : { nodeId, side }); onSelect(nodeId); setSelectedEdge(null); setEditingLink(null); }
   };
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(''), 4500); return () => clearTimeout(timer); }, [message]);
+  // The row marks a stage from the first paint on: read once the blocks have their sizes, then after every move.
+  const measured = useNodesInitialized();
+  useEffect(() => { if (measured) noteStageInView(flow.getViewport()); }, [measured, detail.project.id]);
+  const stageNow = stageInView === undefined ? selectedId : stageInView;
+  useEffect(() => { if (!stageHint) return; const timer = setTimeout(() => setStageHint(false), 9000); return () => clearTimeout(timer); }, [stageHint]);
   // Copy and paste answer with a small toast; a paste's toast offers Undo.
   const [toast, setToast] = useState<{ text: string; undo?: boolean; key: number } | null>(null);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), toast.undo ? 5000 : 2200); return () => clearTimeout(timer); }, [toast]);
@@ -1122,25 +1178,43 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
   }))];
   // The lines between the visible blocks. Each leaves the side of its block that faces the other block and arrives at
   // the facing side as a soft curve; links sharing a side spread along it; the word sits at the middle of the curve, or
-  // the nearest spot no other block covers. Original endpoints stay visible in open groups; closed groups gather their links.
+  // the nearest spot no other block covers. Links with the same word that meet on one side of a block end at one point
+  // there and share one chip ("supports · 2"), so words never lie on each other. Original endpoints stay visible in
+  // open groups; closed groups gather their links.
   const linkEdges = (groups: AggregateRelationship[], geometry: Geometry[]): LinkEdge[] => {
     const boxes = new Map(geometry.map(item => [item.id, item]));
     const node = (id: string) => displayed.canvas.nodes.find(item => item.id === id), title = (id: string) => node(id)?.title.trim() || 'Untitled block';
     const sided = groups.flatMap(group => { const a = boxes.get(group.source), b = boxes.get(group.target); return a && b ? [{ group, a, b, ...facingSides(a, b) }] : []; });
+    // Bundles: single links with the same word on the same side of a block, where they arrive or where they leave.
+    const words = new Map(sided.map(({ group }) => [group.id, group.contributions.length === 1 && !isTrail(group.contributions[0].connection, node) ? linkWord(group, node) : '']));
+    const bundles = new Map<string, string[]>(), bundleOf = new Map<string, { key: string; end: 'source' | 'target' }>();
+    for (const end of ['target', 'source'] as const) for (const item of sided) {
+      const word = words.get(item.group.id);
+      if (!word || bundleOf.has(item.group.id)) continue;
+      const key = `${end}:${item.group[end]}:${item[end]}:${word.toLowerCase()}`;
+      bundles.set(key, [...(bundles.get(key) ?? []), item.group.id]);
+    }
+    for (const [key, ids] of bundles) if (ids.length > 1) for (const id of ids) if (!bundleOf.has(id)) bundleOf.set(id, { key, end: key.startsWith('target') ? 'target' : 'source' });
+    const slotId = (id: string, end: 'source' | 'target') => { const bundle = bundleOf.get(id); return bundle?.end === end ? bundle.key : id; };
     const slots = new Map<string, { id: string; order: number }[]>();
-    const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
-    for (const { group, a, b, source, target } of sided) { take(group.source, source, group.id, b); take(group.target, target, group.id, a); }
+    const take = (nodeId: string, side: LinkSide, id: string, other: LinkBox) => { const key = `${nodeId}:${side}`, list = slots.get(key) ?? []; if (list.some(item => item.id === id)) return; list.push({ id, order: side === 'left' || side === 'right' ? other.y + other.height / 2 : other.x + other.width / 2 }); slots.set(key, list); };
+    for (const { group, a, b, source, target } of sided) { take(group.source, source, slotId(group.id, 'source'), b); take(group.target, target, slotId(group.id, 'target'), a); }
     const fraction = (nodeId: string, side: LinkSide, id: string) => { const list = [...(slots.get(`${nodeId}:${side}`) ?? [])].sort((x, y) => x.order - y.order); return sideFraction(list.findIndex(item => item.id === id), list.length); };
     return sided.map(({ group, a, b, source, target }) => {
-      const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, group.id)), source, sideAnchor(b, target, fraction(group.target, target, group.id)), target);
-      const chip = chipPoint(curve.point, geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id)));
+      const curve = linkCurve(sideAnchor(a, source, fraction(group.source, source, slotId(group.id, 'source'))), source, sideAnchor(b, target, fraction(group.target, target, slotId(group.id, 'target'))), target);
+      const obstacles = geometry.filter(item => item.id !== group.source && item.id !== group.target && !expandedIds.includes(item.id));
+      const chip = chipPoint(curve.point, obstacles);
+      // The first link of a bundle carries the shared chip, near the end the links share.
+      const bundle = bundleOf.get(group.id), members = bundle ? bundles.get(bundle.key)! : [], near = bundle?.end === 'target' ? 1 : 0;
+      const shared = bundle && members[0] === group.id ? { text: `${words.get(group.id)} · ${members.length}`, point: chipPoint(t => curve.point(Math.min(.94, Math.max(.06, t + (near ? .3 : -.3)))), obstacles) } : null;
       const links: LinkRow[] = group.contributions.map(({ connection, sourceTitle, targetTitle }) => { const trail = isTrail(connection, node); return { id: connection.id, sourceTitle, targetTitle, word: trail ? trailWording(connection, node) : connection.label.trim(), trail }; });
       const trail = links.every(item => item.trail), selected = group.id === selectedEdge, arrow = group.bidirectional ? '↔' : '→', word = linkWord(group, node);
-      const color = selected ? (trail ? '#6b6b6b' : '#171717') : trail ? '#cfcfcf' : '#b5b5b5';
+      // The arrowhead takes the line's grey; the style sheet draws a resting line and its arrow at half strength.
+      const color = selected && !trail ? '#171717' : '#6b6b6b';
       const marker = { type: MarkerType.ArrowClosed, width: 24, height: 24, markerUnits: 'userSpaceOnUse', strokeWidth: 1, color };
       const closed = [group.source, group.target].map(node).find(item => item && isGroup(item) && !expandedIds.includes(item.id));
       const edge: LinkEdge = { id: group.id, type: 'link', source: group.source, target: group.target, sourceHandle: source, targetHandle: target, selected, className: trail ? 'link trail' : 'link', ariaLabel: `Link: ${title(group.source)} ${arrow} ${title(group.target)}${word ? ` · ${word}` : ''}`, interactionWidth: 24, markerEnd: marker, ...(group.bidirectional ? { markerStart: marker } : {}),
-        data: { path: curve.path, chip, word, count: links.length, trail, trailWord: links.length === 1 ? links[0].word : `${links.length} trails`, editable: !readonly, editingId: editingLink && links.some(item => item.id === editingLink.connectionId) ? editingLink.connectionId : null, links, heading: `${links.length} links · ${title(group.source)} ${arrow} ${title(group.target)}`, note: closed ? `Open ${closed.title.trim() || 'the group'} to see each line on its own block.` : '', onSelect: () => linkActions.current.select(group.id), onEdit: id => linkActions.current.edit(id), onRename: (id, next) => linkActions.current.rename(id, next), onSwap: id => linkActions.current.swap(id), onDelete: ids => linkActions.current.remove(ids), onClose: () => linkActions.current.select(null) } };
+        data: { path: curve.path, chip, word, quiet: Boolean(bundle), shared, count: links.length, trail, trailWord: links.length === 1 ? links[0].word : `${links.length} trails`, editable: !readonly, editingId: editingLink && links.some(item => item.id === editingLink.connectionId) ? editingLink.connectionId : null, links, heading: `${links.length} links · ${title(group.source)} ${arrow} ${title(group.target)}`, note: closed ? `Open ${closed.title.trim() || 'the group'} to see each line on its own block.` : '', onSelect: () => linkActions.current.select(group.id), onEdit: id => linkActions.current.edit(id), onRename: (id, next) => linkActions.current.rename(id, next), onSwap: id => linkActions.current.swap(id), onDelete: ids => linkActions.current.remove(ids), onClose: () => linkActions.current.select(null) } };
       // An unchanged edge keeps its object, so dragging one block redraws only the lines that move with it.
       const key = JSON.stringify(edge), shown = shownEdges.current.get(group.id);
       if (shown?.key === key) return shown.edge;
@@ -1305,7 +1379,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       if (target && target !== state.fromNode.id) connect(state.fromNode.id, target);
     },
     onMoveStart: closeLabelMenu,
-    onMoveEnd: (_, view) => saveLocal(viewKey, view),
+    onMove: (_, view) => noteZoom(view.zoom),
+    onMoveEnd: (_, view) => { saveLocal(viewKey, view); noteZoom(view.zoom); noteStageInView(view); },
   });
   // Add block opens its menu beside whichever control asked for it: the dock's black tile, or the button in the middle
   // of an empty map. The menu goes to the right of the control, or to its left when the window is too narrow for that.
@@ -1368,7 +1443,7 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       onShare({ layout, open: expandedIds });
     } }] : []),
   ];
-  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}`} data-testid="canvas"
+  return <div ref={area} className={`canvas-area unified-canvas direct-canvas ${pendingConnection ? 'is-connecting' : ''} ${arranging || animatingLayout ? 'is-arranging' : ''}${proposal && !historyCanvas ? ' previewing-proposal' : ''}${dropping ? ' canvas-drop-target' : ''} ${hand ? 'canvas-hand-tool' : 'canvas-move-tool'}${canvasTool.spaceHeld ? ' canvas-space-pan' : ''}${farZoom ? ' far-zoom' : ''}`} data-testid="canvas"
     onDragOver={event => { if (dropFiles(event) && !dropping) setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) setDropping(false); }}
     onDrop={event => { setDropping(false); if (!dropFiles(event)) return; onDropFiles!(Array.from(event.dataTransfer.files), flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}
     onDoubleClick={openAddMenuAt}>
@@ -1377,7 +1452,8 @@ function FlowCanvas({ notices, proposalCard, detail, selectedId, onSelect, onIns
       panOnDrag={hand || readonly ? true : [1]} selectionOnDrag={!hand && !readonly} selectionMode={SelectionMode.Partial} panOnScroll panOnScrollSpeed={1} zoomOnPinch deleteKeyCode={null} minZoom={.08} maxZoom={1.8} defaultViewport={viewport.current} zoomOnDoubleClick={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="#b8b8b8" bgColor="#ffffff"/><CanvasMinimap/>{proposalCard && proposalAnchors.length > 0 && <NodeToolbar nodeId={proposalAnchors} isVisible position={Position.Right} align="start" offset={20} className="proposal-anchor nodrag nopan nowheel">{proposalCard}</NodeToolbar>}</ReactFlow>
     <div className="canvas-header">
       {(historyCanvas || proposal) && <div className="canvas-context"><span className="canvas-state">{historyCanvas ? 'Saved canvas · read only' : 'Proposed changes'}</span></div>}
-      {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={selectedId === node.id ? 'active' : ''} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}><span>{/^\s*\d+[.·:—–)\s]/u.test(node.title) ? node.title : `${index + 1} · ${node.title}`}</span></button>)}</nav>}
+      {showStageNavigation && <nav className="canvas-stage-navigation" aria-label="Research stages">{rootStages.map((node, index) => <button key={node.id} className={stageNow === node.id ? 'active' : ''} aria-current={stageNow === node.id ? 'true' : undefined} aria-label={`Focus stage: ${node.title}`} title={node.title} onClick={() => { onSelect(node.id); setFocusRequest(node.id); }}>{!/^\s*\d+[.·:—–)\s]/u.test(node.title) && <small>{index + 1}</small>}<span>{node.title}</span></button>)}</nav>}
+      {showStageNavigation && stageHint && <p className="canvas-stage-hint" role="status">Reading view. Click a stage to follow the question.</p>}
     </div>
     {dockItems.length > 0 && <CanvasDock label="Canvas tools" items={dockItems}/>}
     {addMenu && <AddBlockMenu left={addMenu.left} top={addMenu.top} onPick={kind => { setAddMenu(null); onAdd(addMenu.at ? null : selectedGroup?.id ?? null, kind.id, addMenu.at); }} onBrowse={kind => { setAddMenu(null); onBrowse(addMenu.at ? null : selectedGroup?.id ?? null, kind?.id, addMenu.at); }} onClose={() => setAddMenu(null)}/>}

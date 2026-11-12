@@ -8,7 +8,7 @@
 /* Move tool: the pointer is an arrow on empty canvas, where a drag draws a selection box (the middle button moves the canvas). */
 .canvas-move-tool .react-flow__pane, .canvas-move-tool .react-flow__pane.draggable { cursor: default; }
 .canvas-move-tool .react-flow__pane.dragging { cursor: grabbing; }
-.direct-canvas .react-flow__selection { border: 1px solid #a3d52b; border-radius: 4px; background: #b7ef3214; }
+.direct-canvas .react-flow__selection { border: 1px solid var(--accent-line); border-radius: var(--radius-mark); background: #b7ef3214; }
 /* Blocks picked with the box drag together from any one of them, so React Flow's own frame around them is not drawn. */
 .direct-canvas .react-flow__nodesselection { display: none; }
 /* A block being dragged passes over the others (a Group keeps its order, so its blocks stay above it). */

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createElement, Fragment, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ArrowUpRight, FileText } from 'lucide-react';
 import type { Artifact } from '../shared/types';
 import { artifactTable } from '../shared/data-view';
@@ -151,7 +151,16 @@ function MarkdownBlocks({ blocks, render }: { blocks: MarkdownBlock[]; render: (
     const items = value.items.map((item, index) => <li key={index} value={exact ? item.value : undefined}>{lines(item.text)}{item.children.map((child, childIndex) => list(child, childIndex))}</li>);
     return value.ordered ? <ol key={key} start={numbers[0] > 1 && !exact ? numbers[0] : undefined}>{items}</ol> : <ul key={key} className={references ? 'md-references' : undefined}>{items}</ul>;
   };
-  return <>{blocks.map((block, i) => block.type === 'heading' ? <h4 key={i} className={`md-h${Math.min(block.level, 4)}`}>{render(block.text)}</h4>
+  // A block's headings sit under the page's h1: the shallowest is an h2 and each deeper one steps a single level,
+  // so a screen reader meets no skipped level. The md-hN class carries the look the writer chose.
+  const tags = new Map<number, string>(), open: number[] = [];
+  blocks.forEach((block, i) => {
+    if (block.type !== 'heading') return;
+    while (open.length && open[open.length - 1]! >= block.level) open.pop();
+    open.push(block.level);
+    tags.set(i, `h${Math.min(open.length + 1, 6)}`);
+  });
+  return <>{blocks.map((block, i) => block.type === 'heading' ? createElement(tags.get(i)!, { key: i, className: `md-h${Math.min(block.level, 4)}` }, render(block.text))
     : block.type === 'list' ? list(block, i)
     : block.type === 'table' ? <div key={i} className="data-table-wrap"><table className="data-table"><thead><tr>{block.header.map((cell,j)=><th key={j}>{render(cell)}</th>)}</tr></thead><tbody>{block.rows.map((row,j)=><tr key={j}>{row.map((cell,k)=><td key={k}>{render(cell)}</td>)}</tr>)}</tbody></table></div>
     : block.type === 'quote' ? <blockquote key={i}>{lines(block.text)}</blockquote>

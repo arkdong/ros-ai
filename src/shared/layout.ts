@@ -6,12 +6,14 @@ import { relationshipLabelSize } from './relationship-label';
 import { aggregateTopLevelRelationships, linkWord } from './aggregate-relationships';
 
 export const CARD_SIZE = { width: CARD_DEFAULT_WIDTH, height: CARD_DEFAULT_HEIGHT };
-export const GROUP_INSET = { x: 32, y: 144 };
-export const GROUP_FOOTER = 64;
+/** Where an open Group's blocks start inside its frame: 32 from the side, and 72 from the top, below its 44px header. */
+export const GROUP_INSET = { x: 32, y: 72 };
+/** The room an open Group keeps below its lowest block. */
+export const GROUP_FOOTER = 32;
 export const LAYOUT_GAP = 72;
 export type CanvasSize = { width: number; height: number };
 export type LayoutOptions = { expandedIds?: readonly string[]; extraContent?: Record<string, CanvasSize & { minY?: number }>; nodeSizes?: Record<string, CanvasSize> };
-/** An open Group's frame around content of this size: its heading above, its footer below, never smaller than 768 by 408. */
+/** An open Group's frame around content of this size: its header above, a margin below, never smaller than 768 by 408. */
 export function openGroupSize(content: CanvasSize): CanvasSize {
   return { width: Math.ceil(Math.max(768, content.width + GROUP_INSET.x * 2) / 24) * 24, height: Math.ceil(Math.max(408, content.height + GROUP_INSET.y + GROUP_FOOTER) / 24) * 24 };
 }

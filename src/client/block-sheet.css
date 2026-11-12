@@ -2,11 +2,14 @@
    ROS's side panel (18 px in from the edges, the same radius, hairline and shadow) that the map ends at rather than runs under.
    The header holds the kind, the title and the view switch; the footer one line of chips. */
 .block-scrim { position: absolute; inset: 0; z-index: 18; background: rgba(250, 250, 250, .55); }
-.block-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0; background: #fff; overflow: hidden; }
-.block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--card-line); border-radius: var(--radius-sheet); box-shadow: var(--sheet-shadow); animation: rise-centered .22s cubic-bezier(.2, .8, .2, 1) both; }
-.block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; margin: 18px 18px 18px 0; border: 1px solid rgba(0, 0, 0, .08); border-radius: 20px; box-shadow: var(--shadow-view); animation: rise-beside .22s cubic-bezier(.2, .8, .2, 1) both; }
+.block-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0; background: var(--paper); overflow: hidden; }
+.block-sheet { position: absolute; top: 16px; left: 50%; z-index: 19; width: 920px; max-width: calc(100% - 32px); height: 590px; max-height: calc(100% - 136px); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-view); animation: rise-centered var(--dur-menu) var(--ease) both; }
+.block-panel { position: relative; z-index: 1; width: 480px; max-width: 60%; flex-shrink: 0; margin: 18px 18px 18px 0; border: 1px solid rgba(0, 0, 0, .08); border-radius: var(--radius-card); box-shadow: var(--shadow-view); animation: rise-beside var(--dur-menu) var(--ease) both; }
+/* A text note's sheet is as tall as its text, up to the full 590 px, so a short note leaves no blank band under it. */
+.block-sheet:has(> .bv-body > .note-view.chat-closed > .note-main > .markdown-editor) { height: auto; max-height: min(590px, calc(100% - 136px)); }
+.block-sheet .note-view.chat-closed > .note-main > .markdown-editor { flex: 0 1 auto; min-height: 96px; }
 /* The map ends at the card, so around the card's margins the body shows in the map's own white. */
-.workspace-body:has(> .block-panel) { background: #fff; }
+.workspace-body:has(> .block-panel) { background: var(--paper); }
 /* ROS in full view keeps the right edge; the panel moves in beside it, 12 px apart. */
 .workspace-body:has(.ros-full) > .block-panel { margin-right: min(var(--ros-side) + 30px, 50%); }
 /* With ROS's side panel open the sheet centres on the map left of the panel, narrowing to fit there down to 560 px. On a map too
@@ -26,28 +29,28 @@
 .block-view .picture-view .note-main { display: flex; flex-direction: column; gap: 12px; padding: var(--pad, 20px); overflow: hidden; }
 .block-panel .picture-view .note-main { padding: 18px; }
 .block-view .picture-view .note-main > .file-viewer.picture { flex: 1 1 auto; min-height: 0; }
-.block-view .picture-view .picture-caption-text { flex: none; max-height: 84px; overflow: auto; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.block-view .picture-view .picture-caption-text { flex: none; max-height: 84px; overflow: auto; font-size: var(--text-sm); line-height: 1.5; color: var(--muted); }
 .block-view .picture-view .picture-caption-text p { margin: 0 0 4px; }
 .block-view .picture-view .picture-caption-text p:last-child { margin-bottom: 0; }
 /* Open in and Download as footer chips; the menu opens upward, over the picture. */
-.bv-foot .open-in-trigger { height: 26px; min-height: 0; padding: 0 10px; gap: 5px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--canvas); color: var(--body); font-size: var(--text-xs); line-height: 1; box-shadow: none; }
+.bv-foot .open-in-trigger { height: 26px; min-height: 0; padding: 0 10px; gap: 5px; border: 1px solid var(--line-soft); border-radius: var(--radius-pill); background: var(--canvas); color: var(--body); font-size: var(--text-sm); line-height: 1; box-shadow: none; }
 .bv-foot .open-in-trigger:hover, .bv-foot .open-in-trigger[aria-expanded="true"] { background: var(--line-soft); color: var(--ink); }
 .bv-foot .open-in-menu { top: auto; bottom: calc(100% + 6px); }
 .bv-foot a.chip-button { text-decoration: none; }
 @keyframes rise-beside { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .block-sheet, .block-panel { animation: none; } .block-sheet { transform: translateX(-50%); } .workspace-body:has(.ros-full) .block-sheet { transform: none; } }
 
-.bv-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--card-divider); }
-.bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: 12px; background: var(--canvas); font-size: var(--text-xs); color: var(--body); white-space: nowrap; }
-.bv-title { flex: 1 1 auto; min-width: 0; margin: 0; padding: 2px 6px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bv-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--line-soft); }
+.bv-kind { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); background: var(--canvas); font-size: var(--text-sm); color: var(--body); white-space: nowrap; }
+.bv-title { flex: 1 1 auto; min-width: 0; margin: 0; padding: 2px 6px; border: 0; border-radius: var(--radius-control); background: transparent; font: inherit; font-size: var(--text-lg); font-weight: 500; line-height: 1.3; letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 input.bv-title, .single-canvas-shell input.bv-title { width: auto; box-shadow: none; }
-input.bv-title:hover { background: #f7f7f7; }
-input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; border: 0; background: #f2f2f2; box-shadow: none; }
-.bv-views { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--card-divider); }
-.bv-head .icon-button { width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
-.bv-head .icon-button:hover:not(:disabled) { background: #f2f2f2; color: var(--ink); }
-.bv-head .icon-button.active { background: #ececec; color: var(--ink); }
-.bv-head .primary, .bv-head .secondary { height: 30px; padding: 0 12px; border-radius: 15px; font-size: var(--text-sm); white-space: nowrap; }
+input.bv-title:hover { background: var(--sidebar); }
+input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; border: 0; background: var(--rail); box-shadow: none; }
+.bv-views { display: inline-flex; gap: 2px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--line-soft); }
+.bv-head .icon-button { width: 30px; height: 30px; border-radius: var(--radius-control); color: var(--muted); }
+.bv-head .icon-button:hover:not(:disabled) { background: var(--rail); color: var(--ink); }
+.bv-head .icon-button.active { background: var(--line-soft); color: var(--ink); }
+.bv-head .primary, .bv-head .secondary { white-space: nowrap; }
 .bv-head .primary { display: inline-flex; align-items: center; gap: 6px; }
 .bv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; container-type: inline-size; }
 .bv-body > .file-bar { flex-shrink: 0; margin: 0; padding: 12px 28px 10px; }
@@ -55,7 +58,7 @@ input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; bo
 /* Code's two columns scroll on their own; in a narrow frame they stack and the frame scrolls. */
 .bv-body > .code-block { overflow: hidden; }
 @container (max-width: 700px) { .bv-body > .code-block { overflow-y: auto; } }
-.bv-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 44px; padding: 0 16px 0 14px; border-top: 1px solid var(--card-divider); font-size: var(--text-xs); color: var(--muted); }
+.bv-foot { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 44px; padding: 0 16px 0 14px; border-top: 1px solid var(--line-soft); font-size: var(--text-sm); color: var(--muted); }
 .bv-sp { flex: 1; }
 .bv-status { white-space: nowrap; }
 
@@ -66,14 +69,14 @@ input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; bo
 .block-panel .note-view .note-main { padding: 18px 22px 24px; }
 .block-panel .inspector.note-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(220px, 45%); }
 .block-panel .inspector.note-view.chat-closed { grid-template-rows: minmax(0, 1fr); }
-.block-panel .note-view .note-side { border-left: 0; border-top: 1px solid var(--card-divider); }
+.block-panel .note-view .note-side { border-left: 0; border-top: 1px solid var(--line-soft); }
 
 /* Code: the main editor on white, with no frame of its own inside the sheet; the parameters box keeps its own. */
-.block-view .code-authoring > .code-editor { border: 0; border-radius: 0; background: #fff; }
+.block-view .code-authoring > .code-editor { border: 0; border-radius: 0; background: var(--paper); }
 .block-view .code-authoring > .code-editor:focus-within { border: 0; box-shadow: none; }
 .block-view .code-authoring > .code-editor .cm-editor { height: auto; min-height: 220px; }
-.block-view .code-authoring > .code-editor .cm-gutters { background: #fff; border-right: 0; color: #b3b3b3; }
-.block-view .code-authoring > .code-editor .cm-activeLine { background: #f7f7f7; }
+.block-view .code-authoring > .code-editor .cm-gutters { background: var(--paper); border-right: 0; color: var(--muted); }
+.block-view .code-authoring > .code-editor .cm-activeLine { background: var(--sidebar); }
 .block-view .code-authoring > .code-editor .cm-activeLineGutter { background: transparent; color: var(--ink); }
 .block-view .code-authoring > .code-editor .cm-content { padding: 6px 0 14px; }
 @media (max-width: 760px) { .block-sheet { max-width: calc(100% - 16px); top: 8px; } .block-panel { max-width: 100%; } }

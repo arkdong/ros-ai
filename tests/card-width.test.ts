@@ -88,7 +88,7 @@ test('a card height set by resizing is layout, stays within its limits and is gi
     const project = store.createProject('Height persistence');
     store.mutate(project.id, [{ type: 'addNode', node: node('card') }], 'Original card');
     const original = store.getProject(project.id).canvas.nodes[0];
-    for (const height of [223, 1201, 300.5, Infinity, NaN]) assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height } }], 'Invalid height'));
+    for (const height of [95, 1201, 300.5, Infinity, NaN]) assert.throws(() => store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height } }], 'Invalid height'));
     store.mutate(project.id, [{ type: 'updateNode', id: 'card', patch: { height: 640, width: 560, x: -48, y: -24 } }], 'Resize block');
     assert.deepEqual(store.getProject(project.id).canvas.nodes[0], { ...original, height: 640, width: 560, x: -48, y: -24 });
     assert.equal(estimatedCardHeight(store.getProject(project.id).canvas.nodes[0]), 640);
