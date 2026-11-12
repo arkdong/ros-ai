@@ -22,6 +22,8 @@ Stack: TypeScript everywhere, Express 5 run through tsx, React 19 with @xyflow/r
 
 - **The data folder** (`ROS_DATA_DIR`; see the README for where it is on each system) holds `ros-ai.sqlite` and `artifacts/`. `store.ts` owns both. Everything a project is lives there: the canvas, its revisions, conversations, runs, proposals and usage. Saved outputs are files named by the hash of their content, and are never changed after they are written.
 - **Every change to a canvas is a mutation** (`Store.mutate`): a list of small operations applied in one transaction, which produces a new revision. Undo and Redo walk those revisions. Moves, resizes and other layout changes are saved without becoming history steps.
+- **The canvas rules are one pure function** (`shared/canvas-ops.ts`, `applyOperations`): a canvas and a list of operations give the next canvas, or a refusal. It reads no storage; the store hands it the two things it looks up (ids already used, saved versions).
+- **Each saved change records who made it** (`ChangeActor` in `shared/types.ts`): the person, the agent whose turn it was (also when the person accepted that agent's proposal), or the project folder. The change list shows the name.
 - **A project's folder** (`project-folders.ts`) mirrors the blocks as ordinary files: Markdown, `.py`, `.ipynb`, CSV, and a `.canvas` file other apps can draw. Edits saved by other apps are read back as undoable changes. The folder's own bookkeeping is in its `.ros-ai/` subfolder.
 - **Keys and sign-ins** are saved in owner-only files in the data folder (`tool-credentials.ts`, `plugins.ts`, `inference-connections.ts`, `local-keys.ts`). The API never returns a key, and the page never holds one.
 
@@ -30,6 +32,7 @@ Stack: TypeScript everywhere, Express 5 run through tsx, React 19 with @xyflow/r
 - `shared/types.ts` defines a block (`CanvasNode`), a link and a canvas. `shared/vocabulary.ts` and `client/block-kinds.tsx` name the kinds.
 - Only a Group contains blocks (`shared/groups.ts`). A link is one word between two blocks and never runs anything (`shared/links.ts`).
 - Layout rules are pure functions in `shared/`: `layout.ts` (Arrange and group frames), `canvas-reflow.ts` (making room), `card-size.ts` (widths, heights and the Small/Medium/Full sizes).
+- **The page is told of every write** (`server/live.ts`, `client/live.ts`): each open page keeps one WebSocket to its server at `/api/live`, names the project it shows, and reads the project again when the server says it changed, whoever changed it: another window, an agent, the project folder. The message says that something changed, never what. Every write gives the project a higher stamp (`Store.onChange`, `Store.stamp`), each read of a project carries the stamp in `X-Ros-Stamp`, and a page skips a change it already shows. Reading on a timer remains only as a net under the connection while work runs.
 - `client/Canvas.tsx` draws the map; `client/App.tsx` holds the page's state and saves edits. Each kind of block has its own view: `NotebookView`, `DataViewer`, `FileView`, `NotionView`, `GoogleView`, `PostView`, `MetricView`, `DashboardView`, `MapView`, `AppView`, `TrainingView`, `WebBlock`, `AgentView`.
 - Copy and paste between projects is `shared/canvas-clipboard.ts` and `server/block-paste.ts`. Sharing a canvas as one HTML file is `shared/share.ts` and `server/share-copy.ts`.
 

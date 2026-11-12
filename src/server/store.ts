@@ -1,129 +1,27 @@
 import type { UsageCounts, UsageKey } from '../shared/usage-counts.js';
-import { MAX_DASHBOARD_TILES, MAX_FUNNEL_STEPS } from '../shared/dashboards.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
-import { LAYOUT_GAP, freeSpot, groupContentRight } from '../shared/layout.js';
-import { CARD_MIN_WIDTH, PICTURE_MIN_WIDTH, CARD_MAX_WIDTH, CARD_MIN_HEIGHT, CARD_MAX_HEIGHT, CARD_MAX_SET_HEIGHT, CARD_MIN_SCALE, cardScale, cardWidth, cardFootprintHeight, estimatedCardHeight } from '../shared/card-size.js';
-import { isPictureNode } from '../shared/files.js';
-import { convertLegacyGroups, groupMembers } from '../shared/groups.js';
+import { cardScale } from '../shared/card-size.js';
+import { convertLegacyGroups } from '../shared/groups.js';
 import { convertDecisionLogs } from '../shared/decisions.js';
 import { DEFAULT_NEBIUS_MODEL, resolveModelSetting, type ModelSelection, type ProjectModelSettings } from '../shared/model-settings.js';
-import { DOI, PAPER_ID } from '../shared/papers.js';
-import { ACP_AGENT_IDS } from '../shared/acp-agents.js';
-import { APP_SOURCE_LIMIT, MAX_APP_INPUTS, isHtmlLanguage } from '../shared/apps.js';
-import { MAX_MAP_PINS, pinLink } from '../shared/maps.js';
-import { MAX_POST_COMMENTS, MAX_POST_PHOTOS, POST_COMMENT_TEXT, POST_PLATFORMS, POST_SUBTITLES_KEPT, POST_TEXT } from '../shared/posts.js';
-import type { Artifact, Canvas, CanvasNode, Change, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
+import type { Artifact, Canvas, CanvasNode, Change, ChangeActor, ChangeSummary, Message, Mutation, Project, ProjectDetail, Proposal, Run, SelectedInput, UsageRecord } from '../shared/types.js';
 import { currentTurn } from './turn-context.js';
+import { CanvasRuleError, applyOperations, identifier } from '../shared/canvas-ops.js';
+
+// The canvas rules live in shared/canvas-ops.ts; the modules that took them from here still do.
+export { DESCRIPTION_LIMIT, RESERVED_IDS, appProposalMutationSchema, batchGrid, dashboardViewSchema, mapPinSchema, metricViewSchema, mutationSchema, paperSchema, postViewSchema, proposalMutationSchema, snapshotAppProposalMutationSchema, snapshotProposalMutationSchema, trainingViewSchema } from '../shared/canvas-ops.js';
 
 /** A project that has not chosen for itself runs ROS with the last choice made anywhere. */
 export type RosChoice = { backend?: string; model?: ModelSelection };
 
-const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
-/** Names every plain object already has (`__proto__`, `constructor`, `toString`…). A block with one of them as its id is
- * read as that built-in wherever blocks are looked up by id, such as its approval mode, so new blocks may not use them. */
-export const RESERVED_IDS: ReadonlySet<string> = new Set(Object.getOwnPropertyNames(Object.prototype));
-const blockIdSchema = identifier.refine(id => !RESERVED_IDS.has(id), 'That block id is reserved. Choose another id.');
-const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
-const decisionSchema = z.object({ id: identifier, text: z.string().trim().min(1).max(2000), reason: z.string().trim().min(1).max(4000), at: z.iso.datetime(), basedOn: z.array(z.object({ artifactId: identifier, hash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(20), withdrawnAt: z.iso.datetime().optional() }).strict();
-/** Only a picture card may be narrower than CARD_MIN_WIDTH: it keeps its picture's shape, so a small one is useful. */
-function narrowOnlyPictures(node: { width?: number; kind?: string; blockType?: string; file?: { path: string } | null }) {
-  if (node.width !== undefined && node.width < CARD_MIN_WIDTH && !isPictureNode(node)) throw new StoreError(`A block is at least ${CARD_MIN_WIDTH} wide; only a picture can be narrower`);
-}
-/** The most text a block's description holds. */
-export const DESCRIPTION_LIMIT = 20_000;
-const nodeFields = { title: z.string().trim().min(1).max(200), description: z.string().max(DESCRIPTION_LIMIT), x: coordinate, y: coordinate, width: z.number().int().min(PICTURE_MIN_WIDTH).max(CARD_MAX_WIDTH).optional(), height: z.number().int().min(CARD_MIN_HEIGHT).max(CARD_MAX_SET_HEIGHT).nullable().optional(), scale: z.number().min(CARD_MIN_SCALE).max(1).nullable().optional(), kind: z.enum(['topic', 'activity', 'unspecified', 'group']).optional(), parentId: identifier.nullable().optional(), blockType:z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file']).optional(), label:z.string().trim().max(40).optional(), file:z.object({path:z.string().trim().min(1).max(1000)}).strict().optional(), notion:z.object({url:z.string().trim().url().max(500),filter:z.string().trim().max(1000).optional(),columns:z.array(z.string().trim().min(1).max(100)).max(30).optional(),kind:z.enum(['database','page']).optional()}).strict().optional(), agent:z.object({runtime:z.enum(['claude','codex','model']),turnId:identifier}).strict().optional(), artifactId:identifier.optional(), code:z.object({language:z.string().trim().min(1).max(50),source:z.string().max(100_000),parameters:z.record(z.string().max(100),z.union([z.string().max(1000),z.number().finite(),z.boolean()])).refine(value=>Object.keys(value).length<=50),inputArtifactId:identifier.nullable().optional()}).strict().optional(), notebook:z.object({sessionId:identifier.optional(),path:z.string().max(1000)}).strict().optional(), legacyKind:z.enum(['topic','activity','unspecified']).optional(), groupHighlights:z.array(z.object({nodeId:identifier,artifactId:identifier,hash:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(3).optional() };
-const connectionSchema = z.object({ id: identifier, source: identifier, target: identifier, label: z.string().max(200),sourceHandle:z.enum(['top','right','bottom','left']).optional(),targetHandle:z.enum(['top','right','bottom','left']).optional() }).strict();
-const linkSide = z.enum(['top','right','bottom','left']);
-/** The person's edit of a link on the canvas: its word, or its direction. Not offered to agents, whose canvas tool
- * keeps the shape of the training snapshot; they add and remove links. */
-const updateConnectionSchema = z.object({ type: z.literal('updateConnection'), id: identifier, patch: z.object({ label: z.string().max(200).optional(), source: identifier.optional(), target: identifier.optional(), sourceHandle: linkSide.optional(), targetHandle: linkSide.optional() }).strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict();
-const mutations = <T extends z.ZodRawShape>(fields: T) => z.discriminatedUnion('type', [
-  z.object({ type: z.literal('addNode'), node: z.object({ id: blockIdSchema, ...fields }).strict() }).strict(),
-  z.object({ type: z.literal('updateNode'), id: identifier, patch: z.object(fields).partial().strict().refine(value => Object.keys(value).length > 0, 'An update must contain a change') }).strict(),
-  z.object({ type: z.literal('removeNode'), id: identifier }).strict(),
-  z.object({ type: z.literal('addConnection'), connection: connectionSchema }).strict(),
-  z.object({ type: z.literal('removeConnection'), id: identifier }).strict(),
-]);
-/** A Google Sheet or Doc shown live (see GoogleView), a Web block and a block's claim marks. Kept apart from nodeFields,
- * so the canvas tool agents see reads as the training snapshot has it while Google Drive is not connected; agents
- * cannot write a Web block or claim marks through it in any case (agent-tools.ts). */
-const liveNodeFields = { ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web']).optional(), google: z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,200}$/u), kind: z.enum(['sheet','doc']), sheet: z.string().trim().min(1).max(200).optional() }).strict().optional(), check:z.object({checkedAt:z.string().max(40),agentNodeId:identifier,textHash:z.string().regex(/^[a-f0-9]{64}$/),claims:z.array(z.object({text:z.string().max(400),verdict:z.enum(['backed','contradicted','unsupported','open']),note:z.string().max(240).optional(),quote:z.string().max(400).optional(),source:z.object({title:z.string().max(300),url:z.string().max(2000).optional()}).strict().optional()}).strict()).max(12)}).strict().optional(), web:z.object({question:z.string().trim().min(1).max(300),directions:z.array(z.object({id:identifier,title:z.string().trim().min(1).max(80),why:z.string().max(160),queries:z.array(z.string().trim().min(1).max(400)).max(8),links:z.array(z.string().max(2000)).max(5).optional(),summary:z.string().max(12000).optional(),aside:z.string().max(160).optional()}).strict()).min(1).max(12)}).strict().optional() };
-/** Where a paper came from: set by ros.ai when the person or an agent adds one (papers.ts), so agents never write it. */
-export const paperSchema = z.object({ source: z.enum(['openalex', 'arxiv', 'zotero']), id: z.string().regex(PAPER_ID), doi: z.string().regex(DOI).optional(), link: z.string().url().max(2000) }).strict();
-/** The agent whose turn an Agent block stands for, ACP agents (Gemini CLI, Goose, OpenCode) included. Kept apart from nodeFields, so the
- * canvas tool agents see reads as the training snapshot has it. */
-const agentLinkSchema = z.object({ runtime: z.enum(['claude', 'codex', 'model', ...ACP_AGENT_IDS]), turnId: identifier }).strict();
-/** An App block's page and the blocks it reads (see AppDocument). An update may name only the page or only the inputs;
- * ros.ai keeps the other. Kept apart from nodeFields, so the canvas tool agents see reads as the training snapshot has
- * it until Apps are switched on for agents. */
-const appSchema = z.object({ source: z.string().max(APP_SOURCE_LIMIT).optional(), inputs: z.array(identifier).max(MAX_APP_INPUTS).optional() }).strict().refine(value => value.source !== undefined || value.inputs !== undefined, 'Give the page (source), the inputs, or both');
-const appNodeFields = { ...liveNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app']).optional(), app: appSchema.optional() };
-/** A training run the person adds (see TrainingView). Kept out of what agents may propose, Apps on or off, because it names a
- * folder and an ssh host on this computer, and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
-export const trainingViewSchema = z.object({ folder: z.string().trim().min(1).max(1000), host: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$/u).optional(), remote: z.string().regex(/^[~A-Za-z0-9_./-]{1,500}$/u).optional() }).strict();
-/** A Notion block with the account the person chose to read it with (see NotionView), by its key in ros.ai. Kept out
- * of what agents may propose and out of nodeFields, so the canvas tool agents see reads as the training snapshot has it. */
-/** A Metric block's source (see MetricView). Kept out of what agents may propose and out of nodeFields, like a training run. */
-const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
-export const metricViewSchema = z.discriminatedUnion('source', [
-  z.object({ source: z.literal('github'), repo: z.string().regex(/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/u) }).strict(),
-  z.object({ source: z.literal('cloud'), show: z.enum(['acquisition', 'engagement', 'activation', 'retention', 'usage', 'costs']).optional() }).strict(),
-  z.object({ source: z.literal('umami'), website: uuid }).strict(),
-  z.object({ source: z.literal('railway'), project: uuid }).strict(),
-]);
-/** A Post block's post (see PostView), read by ros.ai from its platform. Kept out of what agents may propose and out of
- * nodeFields: agents add posts with ros_add_posts, which reads them, so a post on the canvas is what the platform showed. */
-const postCount = z.number().int().min(0).max(1e13);
-export const postViewSchema = z.object({
-  platform: z.enum(POST_PLATFORMS), shape: z.enum(['photo', 'video', 'text']), url: z.string().url().max(2000), id: z.string().trim().min(1).max(200),
-  title: z.string().max(500).optional(), text: z.string().max(POST_TEXT), author: z.object({ name: z.string().max(200), url: z.string().url().max(2000).optional() }).strict(),
-  community: z.string().max(200).optional(), postedAt: z.string().max(40).optional(),
-  counts: z.object({ likes: postCount, comments: postCount, views: postCount, points: z.number().int().min(-1e9).max(1e13), stars: postCount, forks: postCount, saves: postCount }).partial().strict(),
-  photos: z.array(z.object({ url: z.string().url().max(4000), path: z.string().max(1000).optional(), width: z.number().int().positive().max(100_000).optional(), height: z.number().int().positive().max(100_000).optional() }).strict()).max(MAX_POST_PHOTOS),
-  tags: z.array(z.string().max(100)).max(30).optional(),
-  comments: z.array(z.object({ author: z.string().max(200), text: z.string().max(POST_COMMENT_TEXT), likes: z.number().int().min(-1e9).max(1e13).optional(), at: z.string().max(40).optional(), depth: z.number().int().min(0).max(10).optional() }).strict()).max(MAX_POST_COMMENTS).optional(),
-  duration: z.number().min(0).max(1e7).optional(),
-  subtitles: z.object({ language: z.string().max(40), automatic: z.boolean(), characters: z.number().int().min(0).max(1e8), path: z.string().max(1000).optional(), text: z.string().max(POST_SUBTITLES_KEPT).optional() }).strict().optional(),
-  readAt: z.string().max(40), notice: z.string().max(500).optional(),
-}).strict();
-const notionViewSchema = nodeFields.notion.unwrap().extend({ account: z.string().regex(/^[a-z0-9-]{1,40}$/u).optional() }).strict();
-/** A Map block's pins (see MapView). Kept out of nodeFields, so the canvas tool agents see reads as the training snapshot
- * has it; agents place pins with ros_place_pins. */
-/** A pin's own link: a web page, never an address that opens something else on this computer (see pinLink). Any other
- * link is left out rather than refused, so a map saved with one earlier can still be edited; the agent tool that places
- * pins refuses such a link with a reason. */
-const pinUrlSchema = z.string().trim().url().max(2000).transform(pinLink);
-export const mapPinSchema = z.object({ id: identifier, name: z.string().trim().min(1).max(200), lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180), note: z.string().max(2000).optional(), url: pinUrlSchema.optional(), place: z.string().trim().max(300).optional() }).strict();
-const mapViewSchema = z.object({ pins: z.array(mapPinSchema).max(MAX_MAP_PINS), provider: z.literal('google').optional() }).strict();
-/** A Dashboard block's tiles (see DashboardView): numbers pinned from other blocks. Kept out of nodeFields, so the canvas
- * tool agents see reads as the training snapshot has it; agents pin numbers with ros_pin_to_dashboard. */
-const dashboardTileSchema = z.object({ id: identifier, block: identifier, keys: z.array(z.string().min(1).max(80)).min(1).max(MAX_FUNNEL_STEPS), show: z.enum(['number', 'line', 'bars', 'funnel']), label: z.string().trim().min(1).max(80).optional(), section: z.string().trim().min(1).max(60).optional() }).strict().refine(tile => tile.show === 'funnel' ? tile.keys.length >= 2 : tile.keys.length === 1, 'A funnel tile names two or more numbers; any other tile names one');
-export const dashboardViewSchema = z.object({ tiles: z.array(dashboardTileSchema).max(MAX_DASHBOARD_TILES) }).strict();
-const canvasMutationSchema = mutations({ ...appNodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','google','web','app','training','map','metric','post','dashboard']).optional(), map: mapViewSchema.optional(), post: postViewSchema.optional(), dashboard: dashboardViewSchema.optional(), notion: notionViewSchema.optional(), training: trainingViewSchema.optional(), metric: metricViewSchema.optional(), agent: agentLinkSchema.optional(), paper: paperSchema.optional(), decisions: z.array(decisionSchema).max(100).optional() });
-export const mutationSchema = z.discriminatedUnion('type', [...canvasMutationSchema.options, updateConnectionSchema]);
-/** What agents may propose: decisions are recorded only by the researcher. */
-export const proposalMutationSchema = mutations(liveNodeFields);
-/** The same without Google blocks: the schema agents are shown while Google Drive is not connected. */
-export const snapshotProposalMutationSchema = mutations(nodeFields);
-/** What agents may propose while Apps are switched on for them, with and without Google blocks. */
-export const appProposalMutationSchema = mutations(appNodeFields);
-export const snapshotAppProposalMutationSchema = mutations({ ...nodeFields, blockType: z.enum(['note','action','dataset','figure','code','notebook','report','agent','search','finding','notion','file','app']).optional(), app: appSchema.optional() });
-const operationsSchema = z.array(mutationSchema).min(1).max(500);
 const now = () => new Date().toISOString();
 /** Blocks that bring something in, counted as sources in the usage counts. */
 const SOURCE_BLOCKS = new Set<string>(['dataset', 'file', 'notion', 'google', 'web', 'post']);
 const clone = <T>(value: T): T => structuredClone(value);
-const GRID = 24;
-// Placement runs before the browser measures outcome content. Existing cards may
-// show results, so reserve the bounded maximum height for them; blocks added in
-// the same edit have no results yet. Explicit Arrange uses measured footprints.
-const MAX_NODES = 500;
-const MAX_CONNECTIONS = 2_000;
-const snap = (value: number) => Math.round(value / GRID) * GRID;
 
 export class StoreError extends Error {
   constructor(message: string, public status = 400) { super(message); this.name = 'StoreError'; }
@@ -253,6 +151,12 @@ export class Store {
   private transactionDepth=0;
   private readonly commitListeners = new Set<(projectId: string) => void>();
   private readonly pendingCommits = new Set<string>();
+  private readonly changeListeners = new Set<(projectId: string, stamp: number) => void>();
+  private readonly pendingTouches = new Set<string>();
+  // Stamps only ever go up, also after a restart, so a page can tell whether what it shows is older than a write.
+  private readonly started = Date.now();
+  private newestStamp = this.started;
+  private readonly stamps = new Map<string, number>();
 
   constructor(dataDir: string, options: { recoverInterrupted?: boolean } = {}) {
     const directory = resolve(dataDir);
@@ -289,9 +193,11 @@ export class Store {
     // Each saved change also keeps its label, time and a key for its content beside the canvas, so the project page lists
     // changes without reading every canvas. Changes saved before these columns get them the first time they are listed.
     const changeColumns = new Set((this.db.prepare('PRAGMA table_info(changes)').all() as { name: string }[]).map(column => column.name));
-    for (const column of ['label', 'created_at', 'content']) if (!changeColumns.has(column)) this.db.exec(`ALTER TABLE changes ADD COLUMN ${column} TEXT`);
+    // actor: who made the change (ChangeActor, as JSON); empty on changes saved before it was recorded.
+    for (const column of ['label', 'created_at', 'content', 'actor']) if (!changeColumns.has(column)) this.db.exec(`ALTER TABLE changes ADD COLUMN ${column} TEXT`);
     // The list is read from this index alone: the canvases sit in the same rows, and reading past them is most of the cost.
-    this.db.exec('CREATE INDEX IF NOT EXISTS changes_list ON changes(project_id, revision, id, label, created_at, content)');
+    // changes_list was the same index before it held the actor.
+    this.db.exec('DROP INDEX IF EXISTS changes_list; CREATE INDEX IF NOT EXISTS changes_listed ON changes(project_id, revision, id, label, created_at, content, actor)');
     // Preparation/import clients may join a running service. Only the owning
     // service startup should reconcile interrupted work.
     if (options.recoverInterrupted !== false) this.transaction(() => {
@@ -345,12 +251,15 @@ export class Store {
   recordEntries<T>(namespace:string,projectId:string):{id:string;value:T}[] { this.getProject(projectId); return (this.db.prepare('SELECT id, data FROM workspace_records WHERE namespace = ? AND project_id = ? ORDER BY rowid').all(namespace,projectId) as {id:string;data:string}[]).map(row => ({ id: row.id, value: JSON.parse(row.data) as T })); }
   saveRecord<T>(namespace:string,id:string,projectId:string,value:T):T {
     this.getProject(projectId);
-    this.db.prepare('INSERT INTO workspace_records(namespace,id,project_id,data) VALUES (?,?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,projectId,JSON.stringify(value));
+    const data=JSON.stringify(value),saved=this.db.prepare('SELECT data FROM workspace_records WHERE namespace = ? AND id = ?').get(namespace,id) as JsonRow|undefined;
+    this.db.prepare('INSERT INTO workspace_records(namespace,id,project_id,data) VALUES (?,?,?,?) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data').run(namespace,id,projectId,data);
+    // Saving a record as it already is changes nothing an open page shows.
+    if(saved?.data!==data)this.touched(projectId);
     return clone(value);
   }
-  removeRecord(namespace:string,id:string,projectId:string) { this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId); }
+  removeRecord(namespace:string,id:string,projectId:string) { if(this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND id=? AND project_id=?').run(namespace,id,projectId).changes)this.touched(projectId); }
   /** Development only: forget the project conversation (messages, turns, agent sessions, research memory) for a fresh test. Usage and the canvas stay. */
-  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-thread','assistant-focus','research-memory','claude-session','codex-session','acp-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); }); }
+  clearConversation(projectId:string) { this.getProject(projectId); this.atomic(()=>{ this.db.prepare('DELETE FROM messages WHERE project_id=? AND node_id IS NULL').run(projectId); for (const namespace of ['assistant-turn','assistant-thread','assistant-focus','research-memory','claude-session','codex-session','acp-session']) this.db.prepare('DELETE FROM workspace_records WHERE namespace=? AND project_id=?').run(namespace,projectId); this.touched(projectId); }); }
   atomic<T>(fn:()=>T):T { return this.transaction(fn); }
 
   /** Called with a project id after a canvas change or a finished run is committed. */
@@ -364,16 +273,36 @@ export class Store {
     for (const listener of this.commitListeners) try { listener(projectId); } catch { /* reported by the listener */ }
   }
 
+  /**
+   * Called after anything a project's page shows has been written (the canvas, a message, a proposal, a run, a saved
+   * version, a record), with the project and its new stamp. Writes inside a transaction are told once, after it commits.
+   */
+  onChange(listener: (projectId: string, stamp: number) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => { this.changeListeners.delete(listener); };
+  }
+  /** The stamp of the newest write to a project. What is read after asking includes every write up to it. */
+  stamp(projectId: string): number { return this.stamps.get(projectId) ?? this.started; }
+  private touched(projectId: string): void {
+    if (this.transactionDepth > 0) { this.pendingTouches.add(projectId); return; }
+    const stamp = ++this.newestStamp;
+    this.stamps.set(projectId, stamp);
+    for (const listener of this.changeListeners) try { listener(projectId, stamp); } catch { /* A listener failure never fails a write that is already saved. */ }
+  }
+
   private transaction<T>(fn: () => T): T {
     const depth=this.transactionDepth++,savepoint=`ros_transaction_${depth}`;
     let committed=false;
     try{
       this.db.exec(depth===0?'BEGIN IMMEDIATE':`SAVEPOINT ${savepoint}`);
       try { const result = fn(); this.db.exec(depth===0?'COMMIT':`RELEASE ${savepoint}`); committed=depth===0; return result; }
-      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); if(depth===0)this.pendingCommits.clear(); throw error; }
+      catch (error) { this.db.exec(depth===0?'ROLLBACK':`ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); if(depth===0){this.pendingCommits.clear();this.pendingTouches.clear();} throw error; }
     }finally{
       this.transactionDepth--;
-      if(committed){const projects=[...this.pendingCommits];this.pendingCommits.clear();for(const id of projects)this.committed(id);}
+      if(committed){
+        const touched=[...this.pendingTouches];this.pendingTouches.clear();for(const id of touched)this.touched(id);
+        const projects=[...this.pendingCommits];this.pendingCommits.clear();for(const id of projects)this.committed(id);
+      }
     }
   }
 
@@ -480,202 +409,43 @@ export class Store {
   }
 
   private recordChange(project: Project, label: string): void {
-    const change: Change = { id: randomUUID(), projectId: project.id, revision: project.revision, label, canvas: clone(project.canvas), createdAt: project.updatedAt };
-    this.db.prepare('INSERT INTO changes(id, project_id, revision, data, label, created_at, content) VALUES (?, ?, ?, ?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change), label, change.createdAt, contentKey(change.canvas));
+    const change: Change = { id: randomUUID(), projectId: project.id, revision: project.revision, label, canvas: clone(project.canvas), createdAt: project.updatedAt, actor: this.changeActor() };
+    this.db.prepare('INSERT INTO changes(id, project_id, revision, data, label, created_at, content, actor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(change.id, project.id, project.revision, JSON.stringify(change), label, change.createdAt, contentKey(change.canvas), JSON.stringify(change.actor));
   }
 
-  private placeNode(node: CanvasNode, others: CanvasNode[], fresh: ReadonlySet<string> = new Set()): CanvasNode {
-    const placed = { ...node, x: snap(node.x), y: snap(node.y) };
-    const height = (item: CanvasNode) => fresh.has(item.id) ? estimatedCardHeight(item) : cardFootprintHeight(item);
-    const overlaps = () => others.some(other => (other.parentId ?? null) === (placed.parentId ?? null)
-      && placed.x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < placed.x + cardWidth(placed) + LAYOUT_GAP
-      && (other.y <= placed.y ? placed.y < other.y + height(other) + LAYOUT_GAP : other.y < placed.y + height(placed) + LAYOUT_GAP));
-    if (placed.parentId && overlaps()) {
-      // Inside a Group, the first free spot beside or below its blocks keeps its frame as tight as it is.
-      const boxes = others.filter(other => other.parentId === placed.parentId).map(other => ({ x: other.x, y: other.y, width: cardWidth(other), height: height(other) }));
-      const spot = freeSpot(boxes, { width: cardWidth(placed), height: height(placed) }, { x: 0, y: 0 }, groupContentRight(boxes));
-      if (spot) { coordinate.parse(spot.x); coordinate.parse(spot.y); return { ...placed, ...spot }; }
-    }
-    const originX = placed.x;
-    const stepX = Math.ceil((cardWidth(placed) + LAYOUT_GAP) / GRID) * GRID;
-    const stepY = Math.ceil((CARD_MAX_HEIGHT + LAYOUT_GAP) / GRID) * GRID;
-    // Deterministic placement makes the proposal preview match the accepted mutation.
-    for (let attempt = 0; overlaps(); attempt++) {
-      if (attempt >= MAX_NODES * 4) throw new StoreError('No free placement found near the requested position');
-      placed.x = originX + ((attempt + 1) % 5) * stepX;
-      placed.y = snap(node.y) + Math.floor((attempt + 1) / 5) * stepY;
-    }
-    coordinate.parse(placed.x); coordinate.parse(placed.y);
-    return placed;
+  private acting: ChangeActor | undefined;
+  /** Runs `work`, which must not wait on anything, with the canvas changes it makes recorded as `actor`'s. */
+  actingAs<T>(actor: ChangeActor, work: () => T): T {
+    const before = this.acting;
+    this.acting = actor;
+    try { return work(); } finally { this.acting = before; }
+  }
+  /** Who is changing the canvas now: whoever actingAs names, else the agent whose turn this code runs for, else the person. */
+  private changeActor(): ChangeActor {
+    const turnId = currentTurn();
+    return this.acting ?? (turnId ? this.turnActor(turnId) : undefined) ?? { kind: 'person' };
+  }
+  /** The agent a turn ran with, named as an Agent block names its runtime. */
+  private turnActor(turnId: string): ChangeActor | undefined {
+    const turn = this.record<{ source?: string; threadId?: string; acp?: string; model?: string }>('assistant-turn', turnId);
+    if (!turn) return undefined;
+    const agent = turn.source === 'claude-agent' ? 'claude' : turn.source === 'codex-agent' ? 'codex' : turn.source === 'acp-agent' ? turn.acp ?? 'acp' : turn.source === 'outside-agent' ? 'outside' : 'model';
+    return { kind: 'agent', agent, ...(agent === 'outside' && turn.model ? { name: turn.model } : {}), turnId, ...(turn.threadId ? { threadId: turn.threadId } : {}) };
   }
 
-  /** A Code block whose language is html is saved as an App: the alias the frozen agent tools of 24 October write.
-   * An App keeps its page and inputs in `app`, never in `code`; a Code input artifact becomes the block holding it. */
-  private asApp(projectId: string, node: CanvasNode): CanvasNode {
-    const alias = isHtmlLanguage(node.code?.language) && (node.blockType === 'code' || node.blockType === undefined);
-    if (node.blockType !== 'app' && !alias) return node;
-    if (node.kind === 'group') throw new StoreError('A Group cannot be an App.');
-    if (node.code && !isHtmlLanguage(node.code.language)) throw new StoreError('An App block holds one HTML page. Send app {source, inputs}, or code with language "html".');
-    const { code, ...rest } = node;
-    return { ...rest, blockType: 'app', app: { source: node.app?.source ?? code?.source ?? '', inputs: node.app?.inputs ?? this.codeInput(projectId, code?.inputArtifactId) } };
-  }
-  /** The patch an update makes, with an App's page always whole in `app`. Edits that leave the page alone stay as sent. */
-  private appPatch(projectId: string, node: CanvasNode, patch: Partial<CanvasNode>): Partial<CanvasNode> {
-    const merged = { ...node, ...patch }, wasApp = node.blockType === 'app';
-    const alias = isHtmlLanguage(merged.code?.language) && (merged.blockType === 'code' || merged.blockType === 'app');
-    if (!wasApp && merged.blockType !== 'app' && !alias) return patch;
-    if (wasApp && merged.blockType !== 'app' && !alias) throw new StoreError(`${node.title} is an App and stays one. Change its page with app {source}.`);
-    if (!('app' in patch) && !('code' in patch) && !('blockType' in patch)) return patch;
-    if (patch.code && !isHtmlLanguage(patch.code.language)) throw new StoreError('An App block holds one HTML page. Send app {source, inputs}, or code with language "html".');
-    const { code, ...rest } = patch;
-    const source = patch.app?.source ?? code?.source ?? node.app?.source ?? node.code?.source ?? '';
-    const inputs = patch.app?.inputs ?? node.app?.inputs ?? this.codeInput(projectId, (code ?? node.code)?.inputArtifactId);
-    return { ...rest, blockType: 'app', app: { source, inputs } };
-  }
-  private codeInput(projectId: string, artifactId: string | null | undefined): string[] {
-    if (!artifactId) return [];
-    const artifact = this.getArtifact(artifactId);
-    if (artifact.projectId !== projectId) throw new StoreError('The Code input must belong to this project.');
-    return [artifact.nodeId];
-  }
 
+  /** The canvas rules (shared/canvas-ops.ts) with what they look up in this store: ids already used, and saved versions. */
   private applyOperations(project: Project, supplied: Mutation[], proposal: boolean, arranged = false): { canvas: Canvas; operations: Mutation[] } {
-    const parsed = operationsSchema.parse(supplied) as Mutation[];
-    const operations = proposal && !arranged ? batchGrid(parsed, project.canvas.nodes) : parsed;
-    const canvas = clone(project.canvas);
-    const activeNode = (id: string) => {
-      const node = canvas.nodes.find(item => item.id === id);
-      if (!node) throw new StoreError(`Node ${id} is not active in this project`);
-      return node;
-    };
-    const normalized: Mutation[] = [];
-    const recordedDecisions = new Set<string>();
-    const added = new Set<string>();
-    for (const operation of operations) {
-      const decided = operation.type === 'addNode' ? operation.node.decisions && operation.node.id : operation.type === 'updateNode' && 'decisions' in operation.patch ? operation.id : undefined;
-      if (decided) {
-        if (proposal) throw new StoreError('Decisions are recorded by the researcher. A proposal cannot add or change them.');
-        recordedDecisions.add(decided);
-      }
-      if (operation.type === 'addNode') {
-        if (canvas.nodes.some(item => item.id === operation.node.id) || this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, operation.node.id)) throw new StoreError(`Node id ${operation.node.id} already exists or belongs to a removed node`);
-        if (canvas.nodes.length >= MAX_NODES) throw new StoreError(`A project supports at most ${MAX_NODES} nodes`);
-        added.add(operation.node.id);
-        const node = operation.node.kind === 'group' ? { ...operation.node, x:snap(operation.node.x), y:snap(operation.node.y) } : this.placeNode(this.asApp(project.id, operation.node), canvas.nodes, added);
-        narrowOnlyPictures(node);
-        canvas.nodes.push(node); normalized.push({ type: 'addNode', node });
-      } else if (operation.type === 'updateNode') {
-        const node = activeNode(operation.id);
-        let patch = this.appPatch(project.id, node, operation.patch);
-        // An agent that changes a Notion block's filter or columns keeps the account the person chose for it.
-        if (proposal && patch.notion && node.notion?.account && !patch.notion.account && patch.notion.url === node.notion.url) patch = { ...patch, notion: { ...patch.notion, account: node.notion.account } };
-        let updated = { ...node, ...patch };
-        if (updated.blockType === 'app') delete updated.code;
-        // A null height gives the card back to its content.
-        if (operation.patch.height === null) delete updated.height;
-        // A null or full scale shows the block at its own size again.
-        if (operation.patch.scale === null || operation.patch.scale === 1) delete updated.scale;
-        if ('x' in operation.patch || 'y' in operation.patch) {
-          updated.x = snap(updated.x); updated.y = snap(updated.y);
-          if (proposal && !arranged) updated = this.placeNode(updated, canvas.nodes.filter(item => item.id !== node.id));
-        }
-        coordinate.parse(updated.x); coordinate.parse(updated.y);
-        narrowOnlyPictures(updated);
-        canvas.nodes = canvas.nodes.map(item => item.id === node.id ? updated : item);
-        normalized.push({ type: 'updateNode', id: node.id, patch: { ...patch, ...('x' in operation.patch || 'y' in operation.patch ? { x: updated.x, y: updated.y } : {}) } });
-      } else if (operation.type === 'removeNode') {
-        activeNode(operation.id);
-        // Removing a workspace removes its children in the same undoable edit;
-        // durable identities, runs, messages and artifacts remain untouched.
-        const removed = new Set([operation.id, ...canvas.nodes.filter(item => item.parentId === operation.id).map(item => item.id)]);
-        for(let previous=-1; previous!==removed.size;) { previous=removed.size; for(const item of canvas.nodes) if(item.parentId && removed.has(item.parentId)) removed.add(item.id); }
-        canvas.nodes = canvas.nodes.filter(item => !removed.has(item.id));
-        canvas.connections = canvas.connections.filter(item => !removed.has(item.source) && !removed.has(item.target));
-        // An App stops reading a removed block, as a link to it goes; Undo brings both back.
-        canvas.nodes = canvas.nodes.map(item => item.app?.inputs.some(input => removed.has(input)) ? { ...item, app: { ...item.app, inputs: item.app.inputs.filter(input => !removed.has(input)) } } : item);
-        normalized.push(operation);
-      } else if (operation.type === 'addConnection') {
-        const connection = operation.connection;
-        activeNode(connection.source); activeNode(connection.target);
-        if (connection.source === connection.target) throw new StoreError('Connect two different nodes');
-        if (canvas.connections.some(item => item.id === connection.id)) throw new StoreError('Connection id already exists');
-        if (canvas.connections.some(item => item.source === connection.source && item.target === connection.target)) throw new StoreError('These nodes are already connected');
-        if (canvas.connections.length >= MAX_CONNECTIONS) throw new StoreError(`A project supports at most ${MAX_CONNECTIONS} connections`);
-        canvas.connections.push(connection); normalized.push(operation);
-      } else if (operation.type === 'removeConnection') {
-        if (!canvas.connections.some(item => item.id === operation.id)) throw new StoreError('Connection is not active in this project');
-        canvas.connections = canvas.connections.filter(item => item.id !== operation.id); normalized.push(operation);
-      } else {
-        const current = canvas.connections.find(item => item.id === operation.id);
-        if (!current) throw new StoreError('Connection is not active in this project');
-        const updated = { ...current, ...operation.patch };
-        activeNode(updated.source); activeNode(updated.target);
-        if (updated.source === updated.target) throw new StoreError('Connect two different nodes');
-        if (canvas.connections.some(item => item.id !== current.id && item.source === updated.source && item.target === updated.target)) throw new StoreError('These nodes are already connected');
-        canvas.connections = canvas.connections.map(item => item.id === current.id ? updated : item); normalized.push(operation);
-      }
+    try {
+      return applyOperations(project, supplied, {
+        retired: nodeId => Boolean(this.db.prepare('SELECT 1 FROM node_identities WHERE project_id = ? AND node_id = ?').get(project.id, nodeId)),
+        artifact: id => this.getArtifact(id),
+        savedArtifact: id => { const row = this.db.prepare('SELECT data FROM artifacts WHERE id = ?').get(id) as JsonRow | undefined; return row ? JSON.parse(row.data) as Omit<Artifact, 'content'> : undefined; },
+      }, proposal, arranged);
+    } catch (error) {
+      if (error instanceof CanvasRuleError) throw new StoreError(error.message);
+      throw error;
     }
-    // Validate the final transaction, allowing a proposal to add parent and
-    // child together. Deeper nesting is allowed; missing parents and cycles are not.
-    for (const node of canvas.nodes) {
-      if (!node.parentId) continue;
-      const seen=new Set([node.id]); let parentId:string|null|undefined=node.parentId;
-      while(parentId) {
-        if(seen.has(parentId)) throw new StoreError('A workspace cannot contain itself or a parent cycle');
-        seen.add(parentId); const parent=activeNode(parentId);
-        if(parent.kind!=='group')throw new StoreError('Only an explicit Group can contain blocks. Create a Group or move this block to the canvas root.');
-        parentId=parent.parentId;
-      }
-    }
-    for (const node of canvas.nodes) {
-      if (recordedDecisions.has(node.id) && node.decisions) {
-        // Unknown citations are refused, never dropped. Unchanged entries were checked when recorded.
-        const previous = new Map((project.canvas.nodes.find(item => item.id === node.id)?.decisions ?? []).map(decision => [decision.id, JSON.stringify(decision)]));
-        if (new Set(node.decisions.map(decision => decision.id)).size !== node.decisions.length) throw new StoreError('Each decision needs its own id.');
-        for (const decision of node.decisions) {
-          if (previous.get(decision.id) === JSON.stringify(decision)) continue;
-          for (const basis of decision.basedOn) {
-            const row = this.db.prepare('SELECT data FROM artifacts WHERE id = ?').get(basis.artifactId) as JsonRow | undefined;
-            const saved = row ? JSON.parse(row.data) as Omit<Artifact, 'content'> : undefined;
-            if (saved?.projectId !== project.id || saved.hash !== basis.hash) throw new StoreError(`A decision can only cite saved versions in this project. ${basis.artifactId} is not one.`);
-          }
-        }
-      }
-      if (node.code?.inputArtifactId && this.getArtifact(node.code.inputArtifactId).projectId!==project.id) throw new StoreError('The Code input must belong to this project.');
-      if (node.app) {
-        if (node.blockType !== 'app') throw new StoreError('Only an App block has a page. Give it blockType "app".');
-        if (new Set(node.app.inputs).size !== node.app.inputs.length) throw new StoreError(`Name each input of ${node.title} once.`);
-        for (const input of node.app.inputs) {
-          if (input === node.id) throw new StoreError(`${node.title} cannot read itself.`);
-          if (!canvas.nodes.some(item => item.id === input)) throw new StoreError(`${node.title} reads ${input}, which is not a block on this canvas.`);
-        }
-      }
-      if (node.artifactId) {
-        const artifact = this.getArtifact(node.artifactId);
-        if (artifact.projectId !== project.id) throw new StoreError('The block artifact must belong to this project.');
-      }
-      if (node.groupHighlights?.length) {
-        if (node.kind !== 'group') throw new StoreError('Only a Group can own group highlights.');
-        const descendants = groupMembers(canvas,node.id);
-        const members = new Set([node.id,...descendants.map(member=>member.id)]);
-        const represented = new Set([node.artifactId,...descendants.map(member=>member.artifactId)].filter(Boolean));
-        // Moving an originating block out also removes its visual pin. The
-        // immutable evidence/version is retained in its original block.
-        if (!operations.some(operation => operation.type==='updateNode' && operation.id===node.id && 'groupHighlights' in operation.patch)) {
-          const retained=node.groupHighlights.filter(highlight=>members.has(highlight.nodeId)||represented.has(highlight.artifactId));
-          if (retained.length!==node.groupHighlights.length) { node.groupHighlights=retained; normalized.push({type:'updateNode',id:node.id,patch:{groupHighlights:retained}}); }
-        }
-        const versions = new Set<string>();
-        for (const highlight of node.groupHighlights) {
-          const artifact = this.getArtifact(highlight.artifactId);
-          if (artifact.projectId !== project.id || artifact.nodeId !== highlight.nodeId || artifact.hash !== highlight.hash || !members.has(highlight.nodeId) && !represented.has(highlight.artifactId)) throw new StoreError('Choose an exact saved artifact version from this Group.');
-          if (versions.has(artifact.id)) throw new StoreError('Choose each highlighted version once.');
-          versions.add(artifact.id);
-        }
-      }
-    }
-    // Relationships can span branches; they never move notes or import artifacts.
-    return { canvas, operations: normalized };
   }
 
   private commitCanvas(project: Project, canvas: Canvas, label: string, history: HistoryState): Project {
@@ -686,6 +456,7 @@ export class Store {
     // A turn's own writes (a search's sources, saved findings, a browser log) keep its waiting changes acceptable.
     const turn = currentTurn();
     if (turn) this.keepCurrent(updated, turn, project.revision);
+    this.touched(project.id);
     this.committed(project.id);
     return updated;
   }
@@ -735,6 +506,7 @@ export class Store {
       // Captured evidence and approvals keep their original immutable inputs.
       const updated = { ...project, canvas, updatedAt: now() };
       this.db.prepare('UPDATE projects SET data = ?, history = ? WHERE id = ?').run(JSON.stringify(updated), JSON.stringify(history), id);
+      this.touched(id);
       this.committed(id);
       return updated;
     }
@@ -803,7 +575,7 @@ export class Store {
    * such as moving blocks, is left out. */
   listChanges(id: string): ChangeSummary[] {
     this.getProject(id);
-    const rows = this.db.prepare('SELECT id, revision, label, created_at, content FROM changes WHERE project_id = ? ORDER BY revision').all(id) as { id: string; revision: number; label: string | null; created_at: string | null; content: string | null }[];
+    const rows = this.db.prepare('SELECT id, revision, label, created_at, content, actor FROM changes WHERE project_id = ? ORDER BY revision').all(id) as { id: string; revision: number; label: string | null; created_at: string | null; content: string | null; actor: string | null }[];
     // Changes saved before the label, time and content columns existed get them once. Their saved data stays as it was.
     const missing = rows.filter(row => row.content === null);
     if (missing.length) this.transaction(() => {
@@ -818,7 +590,7 @@ export class Store {
       const meaningful = previous === null || row.content !== previous;
       previous = row.content;
       return meaningful;
-    }).map(row => ({ id: row.id, projectId: id, revision: row.revision, label: row.label ?? '', createdAt: row.created_at ?? '' }));
+    }).map(row => ({ id: row.id, projectId: id, revision: row.revision, label: row.label ?? '', createdAt: row.created_at ?? '', ...(row.actor ? { actor: JSON.parse(row.actor) as ChangeActor } : {}) }));
   }
   /** One saved change with its canvas, for looking at the canvas as it was then. */
   getChange(projectId: string, changeId: string): Change {
@@ -841,6 +613,7 @@ export class Store {
       const batch = links.batch ?? currentTurn();
       const proposal: Proposal = { id: randomUUID(), projectId, baseRevision, summary: z.string().trim().min(1).max(5_000).parse(summary), operations, status: 'pending', createdAt: now(), ...(after.length ? { after: after.map(p => p.id) } : {}), ...(batch ? { batch } : {}) };
       this.db.prepare('INSERT INTO proposals(id, project_id, data) VALUES (?, ?, ?)').run(proposal.id, projectId, JSON.stringify(proposal));
+      this.touched(projectId);
       return proposal;
     });
   }
@@ -868,7 +641,11 @@ export class Store {
       // Marked first, so the rest of its batch is checked without it; a failed accept rolls this back with the canvas.
       proposal.status = 'accepted';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
-      const project = this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
+      this.touched(projectId);
+      // The change is the agent's, made in the turn that proposed it, and the person's to have accepted.
+      const proposer = proposal.batch ? this.turnActor(proposal.batch) : undefined;
+      const accept = () => this.mutateWithinTransaction(projectId, proposal.operations, `Accepted proposal: ${proposal.summary}`.slice(0, 500), proposal.baseRevision);
+      const project = proposer?.kind === 'agent' && !this.acting && !currentTurn() ? this.actingAs({ ...proposer, accepted: true }, accept) : accept();
       // The rest of its batch still applies to the new canvas, so it stays acceptable; one that no longer does stays stale.
       if (proposal.batch && project.revision !== proposal.baseRevision) this.keepCurrent(project, proposal.batch, proposal.baseRevision);
       return project;
@@ -885,6 +662,7 @@ export class Store {
       for (const other of all) if (gone.has(other.id) && other.id !== proposalId) { other.status = 'dismissed'; this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(other), other.id); }
       proposal.status = 'dismissed';
       this.db.prepare('UPDATE proposals SET data = ? WHERE id = ?').run(JSON.stringify(proposal), proposalId);
+      this.touched(projectId);
       return proposal;
     });
   }
@@ -914,6 +692,7 @@ export class Store {
     const message: Message = { id: randomUUID(), projectId, nodeId, role: z.enum(['user', 'assistant', 'system']).parse(role), content: z.string().min(1).max(1_000_000).parse(content), createdAt: now(), ...(runId ? { runId } : {}), ...(threadId ? { threadId } : {}) };
     this.db.prepare('INSERT INTO messages(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(message.id, projectId, nodeId, JSON.stringify(message));
     if (message.role === 'user' && counted) this.countUsage('conversations');
+    this.touched(projectId);
     return message;
   }
 
@@ -925,12 +704,12 @@ export class Store {
   /** Puts project messages into a ROS thread: the conversation from before threads becomes the first thread. */
   assignMessageThread(projectId: string, ids: string[], threadId: string): void {
     this.getProject(projectId);
-    this.atomic(() => { for (const message of this.listMessages(projectId, null)) if (ids.includes(message.id)) this.db.prepare('UPDATE messages SET data = ? WHERE id = ? AND project_id = ?').run(JSON.stringify({ ...message, threadId }), message.id, projectId); });
+    this.atomic(() => { for (const message of this.listMessages(projectId, null)) if (ids.includes(message.id)) this.db.prepare('UPDATE messages SET data = ? WHERE id = ? AND project_id = ?').run(JSON.stringify({ ...message, threadId }), message.id, projectId); this.touched(projectId); });
   }
   /** Deletes project messages by id (a deleted ROS thread); block conversations are never touched. */
   removeMessages(projectId: string, ids: string[]): void {
     this.getProject(projectId);
-    this.atomic(() => { for (const id of ids) this.db.prepare('DELETE FROM messages WHERE id = ? AND project_id = ? AND node_id IS NULL').run(id, projectId); });
+    this.atomic(() => { for (const id of ids) this.db.prepare('DELETE FROM messages WHERE id = ? AND project_id = ? AND node_id IS NULL').run(id, projectId); this.touched(projectId); });
   }
 
   addInput(projectId: string, nodeId: string, artifactId: string, excerpt?: string): SelectedInput {
@@ -943,6 +722,7 @@ export class Store {
     if (existing) return existing;
     const input: SelectedInput = { id: randomUUID(), projectId, nodeId, artifactId, excerpt: selected, createdAt: now() };
     this.db.prepare('INSERT INTO inputs(id, project_id, node_id, artifact_id, data) VALUES (?, ?, ?, ?, ?)').run(input.id, projectId, nodeId, artifactId, JSON.stringify(input));
+    this.touched(projectId);
     return input;
   }
 
@@ -950,6 +730,7 @@ export class Store {
     this.getProject(projectId);
     const result = this.db.prepare('DELETE FROM inputs WHERE id = ? AND project_id = ?').run(inputId, projectId);
     if (result.changes === 0) throw new StoreError('Selected input not found in this project', 404);
+    this.touched(projectId);
   }
 
   createRun(run: Run): Run {
@@ -968,6 +749,7 @@ export class Store {
     }
     this.db.prepare('INSERT INTO runs(id, project_id, node_id, data) VALUES (?, ?, ?, ?)').run(run.id, run.projectId, run.nodeId, this.serializeRun(run));
     if (run.configuration.kind === 'local-experiment') this.countUsage('python_runs');
+    this.touched(run.projectId);
     return clone(run);
   }
 
@@ -988,6 +770,7 @@ export class Store {
       if (artifact.runId !== id) throw new StoreError('Run output does not belong to this run');
     }
     this.db.prepare('UPDATE runs SET data = ? WHERE id = ?').run(this.serializeRun(updated), id);
+    this.touched(run.projectId);
     if (updated.status !== run.status && !['queued', 'running'].includes(updated.status)) this.committed(run.projectId);
     return updated;
   }
@@ -1027,6 +810,7 @@ export class Store {
     const { content: omitted, ...metadata } = artifact;
     void omitted;
     this.db.prepare('INSERT INTO artifacts(id, project_id, node_id, run_id, data) VALUES (?, ?, ?, ?, ?)').run(artifact.id, artifact.projectId, artifact.nodeId, artifact.runId, JSON.stringify(metadata));
+    this.touched(artifact.projectId);
     return artifact;
   }
 
@@ -1092,36 +876,4 @@ export class Store {
   runProjectId(runId: string): string | undefined {
     return (this.db.prepare('SELECT project_id FROM runs WHERE id = ?').get(runId) as { project_id: string } | undefined)?.project_id;
   }
-}
-
-/** A proposal that adds several blocks to one scope is laid out by ros.ai as a
- * compact grid, so the whole batch can be read at once. It starts where the
- * proposal put its first block and moves down past existing blocks it would cover. */
-export function batchGrid(operations: Mutation[], existing: readonly CanvasNode[], columns = 4): Mutation[] {
-  const scopes = new Map<string | null, number[]>();
-  operations.forEach((op, index) => {
-    if (op.type !== 'addNode' || op.node.kind === 'group') return;
-    const scope = op.node.parentId ?? null;
-    scopes.set(scope, [...(scopes.get(scope) ?? []), index]);
-  });
-  const result = [...operations];
-  for (const [scope, indexes] of scopes) {
-    if (indexes.length < 3) continue;
-    const nodes = indexes.map(index => (result[index] as Extract<Mutation, { type: 'addNode' }>).node);
-    const count = Math.min(columns, nodes.length), stepX = Math.ceil((Math.max(...nodes.map(cardWidth)) + LAYOUT_GAP) / GRID) * GRID;
-    const rows: number[] = [];
-    nodes.forEach((node, index) => { const row = Math.floor(index / count); rows[row] = Math.max(rows[row] ?? 0, estimatedCardHeight(node)); });
-    const width = (count - 1) * stepX + Math.max(...nodes.map(cardWidth)), height = rows.reduce((sum, row) => sum + row + LAYOUT_GAP, -LAYOUT_GAP);
-    const x = snap(Math.min(...nodes.map(node => node.x))); let y = snap(Math.min(...nodes.map(node => node.y)));
-    // Existing blocks in this scope the grid would cover push it down below them.
-    const covered = existing.filter(other => (other.parentId ?? null) === scope && x < other.x + cardWidth(other) + LAYOUT_GAP && other.x < x + width + LAYOUT_GAP);
-    if (covered.some(other => y < other.y + cardFootprintHeight(other) + LAYOUT_GAP && other.y < y + height + LAYOUT_GAP)) y = snap(Math.max(...covered.map(other => other.y + cardFootprintHeight(other) + LAYOUT_GAP)));
-    let top = y;
-    nodes.forEach((node, index) => {
-      const column = index % count, row = Math.floor(index / count);
-      if (column === 0 && row > 0) top += Math.ceil((rows[row - 1] + LAYOUT_GAP) / GRID) * GRID;
-      result[indexes[index]] = { type: 'addNode', node: { ...node, x: x + column * stepX, y: top } };
-    });
-  }
-  return result;
 }

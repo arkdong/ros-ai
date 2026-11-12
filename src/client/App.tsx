@@ -3,7 +3,7 @@ import { ArrowRight, Check, ChevronDown, ChevronRight, Download, Clock3, FolderO
 import type { Artifact, Canvas, CanvasNode, Change, GoogleRead, GoogleView, MetricInput, MetricRead, MetricView, PostView, TrainingRead, TrainingView, Mutation, NodeKind, NotionRead, NotionView, Project, ProjectDetail, Proposal } from '../shared/types';
 import { checkSourcesRequest } from '../shared/source-check';
 import { approvalModeFor, type ResearchPolicy } from '../shared/research';
-import { api, post, upload } from './api';
+import { api, post, stamped, upload } from './api';
 import { emptyPosition, previewCanvas, ResearchCanvas, shownFile, type CanvasView } from './Canvas';
 import { fileMediaType, fileSize, fileTypeName, isPictureNode, videoLength } from '../shared/files';
 import { kindName, labelFixed, labelPatch } from '../shared/vocabulary';
@@ -23,6 +23,7 @@ import { RosBar, type RosMode } from './RosDock';
 import { shownThread, type ShownThread } from './RosThreads';
 import { reloadProjectModels } from './RosModelMenu';
 import { reloadAgentModels } from './AgentModelPicker';
+import { useLive } from './live';
 import { useLiveTurns, withLive } from './live-reply';
 import { NoteTree } from './NoteTree';
 import { Resources } from './Resources';
@@ -107,6 +108,9 @@ export function App(){
   const selectedProjectTitle=detail?.project.id===projectId?detail.project.title:projects.find(project=>project.id===projectId)?.title;
   useEffect(()=>{document.title=selectedProjectTitle?`${selectedProjectTitle} · ros.ai`:'ros.ai';},[selectedProjectTitle]);
   const refreshSequence=useRef(0),appliedRefresh=useRef(0);
+  // For changes made elsewhere (live.ts): the newest write what is on screen is known to include, the newest write the
+  // server has told of, and the reload now on its way.
+  const covered=useRef(0),wanted=useRef(0),reloading=useRef<Promise<unknown>|null>(null),catching=useRef(false);
   // Where the person has been on the map, for the glance each message to ROS carries: blocks clicked or opened (newest last),
   // when the selection was made, and a reader of what the canvas shows.
   const trail=useRef<{nodeId:string;at:string}[]>([]),clickedAt=useRef(new Date().toISOString()),canvasView=useRef<CanvasView|null>(null);
@@ -115,19 +119,24 @@ export function App(){
   const refresh=useCallback(async(id=projectRef.current)=>{
     if(!id)return null;
     const request=++refreshSequence.current;
-    const [detailResult,policyResult,assistantResult]=await Promise.allSettled([api<ProjectDetail>(`/api/projects/${id}`),api<ResearchPolicy>(`/api/projects/${id}/policy`),api<AssistantState>(`/api/projects/${id}/assistant`)]);
+    const reads=Promise.allSettled([stamped<ProjectDetail>(`/api/projects/${id}`),stamped<ResearchPolicy>(`/api/projects/${id}/policy`),stamped<AssistantState>(`/api/projects/${id}/assistant`)]);
+    reloading.current=reads;
+    const [detailResult,policyResult,assistantResult]=await reads;
+    if(reloading.current===reads)reloading.current=null;
     if(detailResult.status==='rejected')throw detailResult.reason;
-    const next=detailResult.value;
-    const nextAssistant=assistantResult.status==='fulfilled'?assistantResult.value:null;
+    const next=detailResult.value.value;
+    const nextAssistant=assistantResult.status==='fulfilled'?assistantResult.value.value:null;
     if(projectRef.current===id&&request>appliedRefresh.current){
-      appliedRefresh.current=request;setDetail(next);noteRevision(id,next.project.revision);if(policyResult.status==='fulfilled')setPolicy(policyResult.value);if(nextAssistant){setAssistant(nextAssistant);setAssistantLoadError('');}else setAssistantLoadError(assistantResult.status==='rejected'?(assistantResult.reason instanceof Error?assistantResult.reason.message:String(assistantResult.reason)):'The saved conversation could not be loaded.');
+      // Each read says which write it is as new as; the page is as new as the oldest of the three.
+      covered.current=Math.min(detailResult.value.stamp,policyResult.status==='fulfilled'?policyResult.value.stamp:0,assistantResult.status==='fulfilled'?assistantResult.value.stamp:0);
+      appliedRefresh.current=request;setDetail(next);noteRevision(id,next.project.revision);if(policyResult.status==='fulfilled')setPolicy(policyResult.value.value);if(nextAssistant){setAssistant(nextAssistant);setAssistantLoadError('');}else setAssistantLoadError(assistantResult.status==='rejected'?(assistantResult.reason instanceof Error?assistantResult.reason.message:String(assistantResult.reason)):'The saved conversation could not be loaded.');
       setProjects(current=>current.map(project=>project.id===id?next.project:project));
     }
     return next;
   },[]);
   useEffect(()=>{const changed=()=>{void refresh().catch(report);};window.addEventListener('ros-ai-model-settings',changed);return()=>window.removeEventListener('ros-ai-model-settings',changed);},[refresh,report]);
   useEffect(()=>{void api<Project[]>('/api/projects').then(list=>{setProjects(list);let last:string|null=null;try{last=localStorage.getItem('ros-ai-project');}catch{/* Storage can be blocked; fall back to the first project. */}setProjectId(list.some(p=>p.id===last)?last:list[0]?.id||null);}).catch(report).finally(()=>setLoading(false));return()=>{if(errorTimer.current)clearTimeout(errorTimer.current);};},[report]);
-  useEffect(()=>{if(!projectId){setDetail(null);setAssistant(null);return;}try{localStorage.setItem('ros-ai-project',projectId);}catch{/* The service keeps the project; only the last-opened choice is lost. */}setDetail(null);setPolicy(null);setAssistant(null);trail.current=[];clickedAt.current=new Date().toISOString();setProjectMenu(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);const saved=readSaved<{selectedId:string|null}>(`navigation:${projectId}`,{selectedId:null});setSelectedId(saved.selectedId);setExpandedIds(readSaved(`expanded-groups:${projectId}`,[]));setInspectorId(null);setDialog(null);setFolderDialog(false);setHistorical(null);setPreviewId(null);setHistoryOpen(false);void refresh(projectId).catch(report);},[projectId,refresh,report]);
+  useEffect(()=>{if(!projectId){setDetail(null);setAssistant(null);return;}try{localStorage.setItem('ros-ai-project',projectId);}catch{/* The service keeps the project; only the last-opened choice is lost. */}setDetail(null);setPolicy(null);setAssistant(null);covered.current=0;wanted.current=0;trail.current=[];clickedAt.current=new Date().toISOString();setProjectMenu(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);const saved=readSaved<{selectedId:string|null}>(`navigation:${projectId}`,{selectedId:null});setSelectedId(saved.selectedId);setExpandedIds(readSaved(`expanded-groups:${projectId}`,[]));setInspectorId(null);setDialog(null);setFolderDialog(false);setHistorical(null);setPreviewId(null);setHistoryOpen(false);void refresh(projectId).catch(report);},[projectId,refresh,report]);
   useEffect(()=>{if(projectId&&detail?.project.id===projectId){saveLocal(`navigation:${projectId}`,{selectedId,workNodeId:selectedId});saveLocal(`expanded-groups:${projectId}`,expandedIds);}},[projectId,detail?.project.id,selectedId,expandedIds]);
   // A group opens the first time it appears while the project is open (an agent's, a paste, an accepted proposal), so the
   // blocks put in it show; a group the person has already seen keeps the state they left it in.
@@ -156,7 +165,28 @@ export function App(){
   const chooseThread=useCallback((thread:ShownThread|undefined)=>{const id=projectRef.current;if(!id)return;setThreadChoices(current=>({...current,[id]:thread}));saveLocal(`ros-thread:${id}`,thread===undefined?null:thread??'new');},[]);
   // A Web block's pages arrive a search at a time, so its card is read more often while it searches.
   const sweeping=Boolean(detail?.runs.some(run=>run.configuration.purpose==='web-sweep'&&['running','queued'].includes(run.status)));
-  useEffect(()=>{if(!hasActive&&!chatBusy&&!notebookRunning)return;let polling=false;const interval=setInterval(()=>{if(polling)return;polling=true;void refresh().catch(report).finally(()=>{polling=false;});},sweeping?700:1500);return()=>clearInterval(interval);},[hasActive,chatBusy,notebookRunning,sweeping,refresh,report]);
+  // The server tells this page when anything in the project is written, by this window, another one, an agent or the
+  // project folder. The page then reads the project again, unless what it shows, or is reading now, already has the write.
+  const catchUp=useCallback(async(stamp:number)=>{
+    wanted.current=Math.max(wanted.current,stamp);
+    if(catching.current)return;
+    catching.current=true;
+    try{
+      for(;;){
+        await reloading.current;
+        const target=wanted.current;
+        if(covered.current>=target)break;
+        await refresh();
+        // That read began after the server told of `target`, so it has it. Only a newer write is a reason to read again.
+        if(wanted.current===target)break;
+      }
+    }catch(cause){report(cause);}
+    finally{catching.current=false;}
+  },[refresh,report]);
+  const liveOn=useLive(projectId,stamp=>void catchUp(stamp));
+  // Asking on a timer while work runs stays as a net under the live connection, and is all there is while it is down.
+  // Whether a notebook's Python is still working is not saved anywhere, so that is always asked for.
+  useEffect(()=>{if(!hasActive&&!chatBusy&&!notebookRunning)return;let polling=false;const interval=setInterval(()=>{if(polling)return;polling=true;void refresh().catch(report).finally(()=>{polling=false;});},liveOn&&!notebookRunning?5000:sweeping?700:1500);return()=>clearInterval(interval);},[hasActive,chatBusy,notebookRunning,sweeping,liveOn,refresh,report]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!event.defaultPrevented&&!(event.target instanceof Element&&event.target.closest('.cm-editor'))){setNewProject(false);setDialog(null);setFolderDialog(false);setAttachment(null);setAddWindow(null);setInspectorId(null);setArtifact(null);setReportEditor(null);setAgentReportId(null);setDeleteCandidate(null);setProjectMenu(null);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const action=useCallback(async(fn:()=>Promise<unknown>,shouldRefresh=true)=>{setSaving(n=>n+1);try{await fn();if(shouldRefresh)await refresh();return true;}catch(cause){report(cause);if(shouldRefresh)await refresh().catch(()=>undefined);return false;}finally{setSaving(n=>n-1);}},[refresh,report]);
   // Run canvas edits one at a time against the newest revision this browser has seen,

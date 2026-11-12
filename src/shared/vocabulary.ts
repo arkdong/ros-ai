@@ -1,4 +1,4 @@
-import type { Canvas, CanvasNode, MetricSource, PostPlatform } from './types.js';
+import type { Canvas, CanvasNode, ChangeActor, MetricSource, PostPlatform } from './types.js';
 import { ACP_AGENTS, isAcpAgent } from './acp-agents.js';
 import { METRIC_TOOLS, type MetricTool } from './metrics.js';
 import { POST_PLATFORM_NAMES } from './posts.js';
@@ -50,6 +50,13 @@ export function textLabel(node: Pick<CanvasNode, 'kind' | 'blockType' | 'label' 
 /** The name of the agent runtime that made a block, for its provenance line. */
 export function agentName(runtime: 'claude' | 'codex' | 'model' | string | undefined): string {
   return runtime === 'claude' ? 'Claude Code' : runtime === 'codex' ? 'Codex' : runtime === 'model' ? 'ROS' : isAcpAgent(runtime) ? ACP_AGENTS[runtime].label : 'Agent';
+}
+
+/** Who made a change, for the change list: nothing for the person's own edits and for changes saved before this was recorded. */
+export function actorName(actor: ChangeActor | undefined): string | undefined {
+  if (!actor || actor.kind === 'person') return undefined;
+  if (actor.kind === 'folder') return 'Project folder';
+  return actor.agent === 'outside' ? actor.name || 'Your own agent' : agentName(actor.agent);
 }
 
 /** The caption of the link from a decision block to the block it rests on. */

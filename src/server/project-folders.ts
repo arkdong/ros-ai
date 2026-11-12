@@ -952,7 +952,8 @@ export class ProjectFolders implements NotebookFolders {
   }
   /** A failed pass is shown with the folder and tried again on the next change. */
   private syncNow(projectId: string, write: boolean): void {
-    try { this.sync(projectId, write); void this.readPendingText(projectId); }
+    // What a pass reads back from the folder's files is recorded as the folder's change, not the person's or an agent's.
+    try { this.store.actingAs({ kind: 'folder' }, () => this.sync(projectId, write)); void this.readPendingText(projectId); }
     catch (error) {
       if (write) this.exportDue.add(projectId);
       this.checked.set(projectId, { available: true, unplaced: this.checked.get(projectId)?.unplaced ?? [], problems: [{ path: '.', message: `Folder sync stopped: ${message(error)}` }], checkedAt: now() });
