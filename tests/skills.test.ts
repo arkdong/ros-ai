@@ -342,7 +342,7 @@ test('Every assistant turn carries the skills: agents get the list and /name cal
   };
   const runtime: ExecutionBackend = { capabilities: () => ({ available: false, backend: 'docker-python', policy: 'offline', runtime: null, workerHash: 'offline', imageId: null, libraries: {}, enforcement: [], limitations: [], timeoutMs: 1, maxMemoryMb: 1, maxOutputBytes: 1 }), start() { throw new Error('No execution in this fixture.'); } };
   const agent: AgentRuntime = { status: async () => { throw new Error('unused'); }, async execute(request) { agentRequests.push(request); return { reply: 'Agent done.', sessionId: 's', actions: [], requestId: 'r' }; }, async shutdown() {} };
-  const execution = new ExecutionService(f.store, { model, limits: { nebius: 5, tavily: 10 }, includeSetupUsage: false });
+  const execution = new ExecutionService(f.store, { model, includeSetupUsage: false });
   const experiments = new ExperimentService(f.store, { sandbox: runtime });
   const assistant = new AssistantService(f.store, execution, experiments, agent, undefined, undefined, undefined, f.skills);
   const project = f.store.createProject('Skills in turns');

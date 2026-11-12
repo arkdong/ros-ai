@@ -41,7 +41,7 @@ import { OutsideAgents } from './outside-agents.js';
 import { Setup } from './setup.js';
 import { NotionApi } from './notion.js';
 import { AgentWorkspaceTools } from './agent-tools.js';
-import { applyStartingAllowances, loadLocalKeys } from './local-keys.js';
+import { loadLocalKeys } from './local-keys.js';
 import { PersonalMemory } from './personal-memory.js';
 import { SkillLibrary } from './skills.js';
 import { Updates } from './updates.js';
@@ -124,7 +124,6 @@ try {
     const inference = new InferenceConnections(store,dataDir);
     // Web search works with no key: Tavily and Exa answer within the allowance each gives anyone. ROS_FREE_SEARCH=off stops it.
     execution = new ExecutionService(store,{inference,freeSearch:process.env.ROS_FREE_SEARCH?.trim().toLowerCase()!=='off'});
-    const started = applyStartingAllowances(execution.connectionBudgets, provider => Boolean(store!.globalRecord('connection-allowance', provider)));
     // ros.ai cloud is on by default; ROS_CLOUD_URL points at another one, and ROS_CLOUD_URL=off hides it.
     const cloudUrl=process.env.ROS_CLOUD_URL ?? 'https://cloud.ros-ai.io';
     cloud = new CloudAccount(cloudUrl==='off' ? undefined : cloudUrl.replace(/\/+$/u,'') || undefined,dataDir,inference,port);
@@ -182,7 +181,7 @@ try {
     // Plugins ros.ai suggests in a conversation: the switch and what the person put off, in the data folder.
     const suggestions = new PluginSuggestions(dataDir);
     app = createApp(store, execution, experiments,assistant,{projectFolders:{reserved:[dataDir,root]},notebooks:{owner:createHash('sha256').update(dataDir).digest('hex').slice(0,16),...(python?{python}:{})},localPaths:{dataDir,keysFile}},agent,{credentials,googleDrive,google,papers,browser,claude,acp,plugins,apps,outside,cloud,localRos,rosLayer,setup,memory:personal,skills,updates,suggestions,appFrames,usageCounts});
-    if (keysFile) console.log(`  Keys: ${keysFile}${started.length ? ` (starting allowance: ${started.join(', ')})` : ''}`);
+    if (keysFile) console.log(`  Keys: ${keysFile}`);
   }
   notebooks=app.locals.notebooks;
   projectFolders=app.locals.projectFolders;

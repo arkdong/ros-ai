@@ -7,7 +7,7 @@ import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { TAVILY_CREDIT_USD, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter, type SearchResponse } from '../src/server/providers.js';
-import { spendingLimitsOn } from './spending-limits.js';
+import { SpendingBudget } from '../src/server/spending-budget.js';
 
 // All provider calls below are deferred in-memory fixtures. Late responses ignore
 // abort deliberately; these tests do not contact Tavily, Nebius or a runtime.
@@ -28,13 +28,13 @@ class DeferredModel implements ModelAdapter {
 const delay = (ms = 5) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate: () => boolean) { for (let i = 0; i < 200; i++) { if (predicate()) return; await delay(); } throw new Error('Offline fixture did not settle'); }
 const observed = <T>(promise: Promise<T>) => promise.then(value => ({ value, error: undefined }), error => ({ value: undefined, error: error as Error }));
-function fixture(t: TestContext, options: { timeoutMs?: number; maxConcurrent?: number; tavilyLimit?: number } = {}) {
+function fixture(t: TestContext, options: { timeoutMs?: number; maxConcurrent?: number } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'ros-assistant-search-')), store = new Store(directory), project = store.createProject('Offline search lifecycle');
   store.mutate(project.id, ['a', 'b', 'c'].map(id => ({ type: 'addNode' as const, node: { id, title: id, description: 'Independent fixture note', x: 0, y: 0 } })), 'Fixture notes');
   const authority = new Authority(store);
   authority.configure(project.id, { mode: 'ask' });
   const search = new DeferredSearch(), model = new DeferredModel();
-  const service = new ExecutionService(store, { search, model, limits: { nebius: 10, tavily: options.tavilyLimit ?? 10 }, timeoutMs: options.timeoutMs ?? 30000, maxConcurrent: options.maxConcurrent ?? 2, includeSetupUsage: false });
+  const service = new ExecutionService(store, { search, model, timeoutMs: options.timeoutMs ?? 30000, maxConcurrent: options.maxConcurrent ?? 2, includeSetupUsage: false });
   t.after(async () => { await service.shutdown(); store.close(); rmSync(directory, { recursive: true, force: true }); });
   const run = () => store.listRuns(project.id).find(r => r.configuration.purpose === 'assistant-search')!;
   return { store, project, authority, search, model, service, run };
@@ -138,13 +138,15 @@ test('a cancelled parent prevents undispatched search admission and an in-flight
   assert.equal(f.search.requests.length, 1); assert.equal(f.store.listArtifacts(f.project.id).length, 0);
 });
 
-test('with spending limits on, failed search budget admission rolls back the project reservation before dispatch', async t => {
-  spendingLimitsOn(t);
-  const f = fixture(t, { tavilyLimit: 0 });
+test('a search the monthly budget has no room for is refused, and the project reservation rolls back before dispatch', async t => {
+  const f = fixture(t);
+  // The month's budget is already spent, so the search's own cost does not fit.
+  new SpendingBudget(f.store).set('all', undefined, 0.01);
+  f.store.addUsage({ id: 'spent', provider: 'nebius', purpose: 'Earlier this month', reservedUsd: 0.01, estimatedUsd: 0.01, reportedUsage: null, status: 'settled', basis: 'Fixture', createdAt: new Date().toISOString() });
   const result = await observed(f.service.assistantSearch(f.project.id, 'a', 'No search budget', new AbortController().signal, 'turn-no-budget'));
-  assert.match(result.error!.message, /budget admission/);
+  assert.match(result.error!.message, /budget for all projects .* has no room/);
   assert.equal(f.run().status, 'failed'); assert.equal(f.search.requests.length, 0);
-  assert.equal(f.store.listUsage().length, 0); assert.equal(f.authority.policy(f.project.id).used.modelCalls, 0);
+  assert.equal(f.store.listUsage().length, 1); assert.equal(f.authority.policy(f.project.id).used.modelCalls, 0);
   assert.equal(f.authority.policy(f.project.id).used.spendUsd, 0);
 });
 

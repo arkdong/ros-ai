@@ -8,7 +8,6 @@ import { modelMaker } from '../shared/model-settings.js';
 import type { UsageRecord } from '../shared/types.js';
 import { wireMessages, wireTools, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse } from './providers.js';
 import { Store, StoreError } from './store.js';
-import{spendingLimitsOn,UNLIMITED_REQUESTS}from'./spending-limits.js';
 import{SpendingBudget}from'./spending-budget.js';
 import { captureChatCompletion } from './response-normalization.js';
 import { openToOthers } from './private-file.js';
@@ -17,8 +16,6 @@ const namespace='inference-connection';
 const indexNamespace='inference-registry';
 const UNITS_PER_USD=1_000_000_000;
 const units=(usd:number)=>Number.isFinite(usd)&&usd>=0?Math.min(Number.MAX_SAFE_INTEGER,Math.ceil(usd*UNITS_PER_USD)):Number.MAX_SAFE_INTEGER;
-// A ceiling saved in dollars is read back to the unit it was saved from, so one equal to the usage is not a unit below it.
-const ceilingUnits=(usd:number)=>Math.round(usd*UNITS_PER_USD);
 const idSchema=z.string().regex(/^custom-[a-f0-9-]{36}$/);
 const keySchema=z.string().trim().min(1).max(4096).refine(value=>!/[\s\x00-\x1f\x7f]/.test(value),'Enter one API key without spaces.');
 const makerSchema=z.object({id:z.enum(['nvidia','moonshot','openai','unknown']),label:z.string().trim().min(1).max(60),monogram:z.string().trim().min(1).max(4)}).strict();
@@ -31,7 +28,8 @@ const privateSchema=connectionSchema.extend({id:idSchema,createdAt:z.string(),up
 const fileSchema=z.object({version:z.literal(1),connections:z.array(privateSchema).max(32)}).strict();
 type PrivateConnection=z.infer<typeof privateSchema>;
 type Admission={usageId:string;reservedUnits:number;createdAt:string};
-type State={revision:number;updatedAt:string;allowanceEnabled:boolean;requestCeiling:number;usdCeiling:number;admissions:Admission[];endpointFingerprints:string[];summary:InferenceConnectionStatus};
+// Older records also carry a retired allowance (allowanceEnabled, requestCeiling, usdCeiling); only these fields remain.
+type State={revision:number;updatedAt:string;admissions:Admission[];endpointFingerprints:string[];summary:InferenceConnectionStatus};
 type Reservation={provider:string;amountUsd:number;purpose:string;basis:string;runId?:string;trace?:Record<string,unknown>};
 
 function endpoint(value:string){
@@ -82,20 +80,15 @@ export class InferenceConnections{
     idSchema.parse(id);const config=this.connections.find(item=>item.id===id),state=this.state(id);
     if(!config&&!state)throw new StoreError('Inference connection not found.',404);
     const parsed=config?endpoint(config.endpoint):undefined,destination=parsed?.destination??state!.summary.destination;
-    const accounted=state?this.accounted(state):0,usdCeiling=state?.usdCeiling??0,remaining=Math.max(0,ceilingUnits(usdCeiling)-accounted),usedRequests=state?.admissions.length??0,requestCeiling=state?.requestCeiling??0;
-    // Without spending limits a connection needs no allowance; its use is still recorded.
-    const limited=spendingLimitsOn(this.store),enabled=Boolean(config?.enabled),allowanceEnabled=limited?state?.allowanceEnabled??false:true,remainingRequests=limited?Math.max(0,requestCeiling-usedRequests):UNLIMITED_REQUESTS;
+    const accounted=state?this.accounted(state):0,usedRequests=state?.admissions.length??0,enabled=Boolean(config?.enabled);
     const available=Boolean(config)&&(this.active.get(id)??0)<config!.caps.maxConcurrent;
-    let reason=destination==='local-unverified'?'Configured loopback endpoint; processing location and runtime behavior are unverified. Requests use a retained request limit, deadline and byte/output caps.':'Configured remote endpoint; selected research is transferred there. Pricing and model context caps are user-declared conservative values, not verified account prices.';
+    let reason=destination==='local-unverified'?'Configured loopback endpoint; processing location and runtime behavior are unverified. Requests use a deadline and byte/output caps.':'Configured remote endpoint; selected research is transferred there. Pricing and model context caps are user-declared conservative values, not verified account prices.';
     if(!config)reason='Connection removed. Its stable identity and previous usage remain retained.';
     else if(!enabled)reason='Connection disabled. Re-enable it deliberately; previous usage remains retained.';
-    else if(!allowanceEnabled)reason='Enable a separate bounded connection allowance before inference. Setup and keys do not grant usage.';
     else if(!available)reason='This connection concurrency cap is reached. Wait for an active request to finish or stop it before requesting more usage.';
-    else if(!remainingRequests)reason='Connection request ceiling exhausted. Failed and uncertain requests remain counted.';
-    else if(limited&&destination==='remote'&&(remaining===0||requiredUsd!==undefined&&units(requiredUsd)>remaining))reason='The conservative reservation exceeds this remote connection allowance. Previous reservations remain retained.';
     const amountValid=requiredUsd===undefined||Number.isFinite(requiredUsd)&&requiredUsd>=0&&(destination==='local-unverified'||requiredUsd>0);
-    const ready=enabled&&available&&allowanceEnabled&&remainingRequests>0&&amountValid&&(!limited||destination==='local-unverified'||remaining>0&&(requiredUsd===undefined||units(requiredUsd)<=remaining));
-    return {id,name:config?.name??state!.summary.name,enabled,deleted:!config,ready,reason,revision:state?.revision??0,endpointOrigin:parsed?.url.origin??state!.summary.endpointOrigin,keyConfigured:Boolean(config?.apiKey),destination,models:config?.models.map(model=>({...model,maker:model.maker??modelMaker(model.id)}))??state!.summary.models,caps:config?.caps??state!.summary.caps,allowanceEnabled,requestCeiling,usdCeiling,usedRequests,accountedUsd:accounted/UNITS_PER_USD,remainingRequests,remainingUsd:remaining/UNITS_PER_USD,pricingBasis:destination==='local-unverified'?'No provider USD debit; loopback processing location is unverified.':'Operator-declared input/output upper rates; both full input and full output model context are reserved because hidden/billed reasoning limits are unverified. Account prices and tokenizer are unverified.',updatedAt:state?.updatedAt??config!.updatedAt};
+    const ready=enabled&&available&&amountValid;
+    return {id,name:config?.name??state!.summary.name,enabled,deleted:!config,ready,reason,revision:state?.revision??0,endpointOrigin:parsed?.url.origin??state!.summary.endpointOrigin,keyConfigured:Boolean(config?.apiKey),destination,models:config?.models.map(model=>({...model,maker:model.maker??modelMaker(model.id)}))??state!.summary.models,caps:config?.caps??state!.summary.caps,usedRequests,accountedUsd:accounted/UNITS_PER_USD,pricingBasis:destination==='local-unverified'?'No provider USD debit; loopback processing location is unverified.':'Operator-declared input/output upper rates; both full input and full output model context are reserved because hidden/billed reasoning limits are unverified. Account prices and tokenizer are unverified.',updatedAt:state?.updatedAt??config!.updatedAt};
   }
   statuses(){return this.ids().map(id=>this.status(id));}
   /** Whether a request on this connection is under way: Local ROS switches models only when none is. */
@@ -107,7 +100,7 @@ export class InferenceConnections{
     if(this.connections.length>=32)throw new StoreError('Configure at most 32 inference connections.');
     const id=existing??`custom-${randomUUID()}`,config=validateConnection({...input,id,createdAt:at,updatedAt:at});
     this.persist([...this.connections,config]);
-    this.writeState(id,{allowanceEnabled:false,endpointFingerprint:parsed.fingerprint});return this.status(id);
+    this.writeState(id,{endpointFingerprint:parsed.fingerprint});return this.status(id);
   }
   update(id:string,supplied:unknown){
     idSchema.parse(id);const prior=this.connections.find(item=>item.id===id);if(!prior)throw new StoreError('Inference connection not found.',404);
@@ -116,37 +109,18 @@ export class InferenceConnections{
     if(this.ids().some(other=>other!==id&&this.state(other)?.endpointFingerprints.includes(fingerprint)))throw new StoreError('This endpoint belongs to another retained connection identity.',409);
     this.persist(this.connections.map(item=>item.id===id?config:item));this.writeState(id,{endpointFingerprint:fingerprint});return this.status(id);
   }
-  remove(id:string){idSchema.parse(id);const prior=this.connections.find(item=>item.id===id);if(!prior)throw new StoreError('Inference connection not found.',404);const summary=this.status(id);this.persist(this.connections.filter(item=>item.id!==id));this.writeState(id,{allowanceEnabled:false,summary});return this.status(id);}
-  private writeState(id:string,changes:{allowanceEnabled?:boolean;requestCeiling?:number;usdCeiling?:number;endpointFingerprint?:string;summary?:InferenceConnectionStatus}){
+  remove(id:string){idSchema.parse(id);const prior=this.connections.find(item=>item.id===id);if(!prior)throw new StoreError('Inference connection not found.',404);const summary=this.status(id);this.persist(this.connections.filter(item=>item.id!==id));this.writeState(id,{summary});return this.status(id);}
+  private writeState(id:string,changes:{endpointFingerprint?:string;summary?:InferenceConnectionStatus}){
     const prior=this.state(id),at=new Date().toISOString(),summary=changes.summary??this.status(id);
-    const state:State={revision:(prior?.revision??0)+1,updatedAt:at,allowanceEnabled:changes.allowanceEnabled??prior?.allowanceEnabled??false,requestCeiling:changes.requestCeiling??prior?.requestCeiling??0,usdCeiling:changes.usdCeiling??prior?.usdCeiling??0,admissions:prior?.admissions??[],endpointFingerprints:[...new Set([...(prior?.endpointFingerprints??[]),...(changes.endpointFingerprint?[changes.endpointFingerprint]:[])])],summary};
+    const state:State={revision:(prior?.revision??0)+1,updatedAt:at,admissions:prior?.admissions??[],endpointFingerprints:[...new Set([...(prior?.endpointFingerprints??[]),...(changes.endpointFingerprint?[changes.endpointFingerprint]:[])])],summary};
     this.store.saveGlobalRecord(namespace,id,state);this.syncIndex();
-  }
-  saveAllowance(id:string,supplied:unknown){
-    const config=this.connections.find(item=>item.id===id);if(!config)throw new StoreError('Inference connection not found.',404);
-    const input=z.object({requestCeiling:z.number().int().min(1).max(10000),usdCeiling:z.number().finite().min(0).max(1000),enabled:z.literal(true),acknowledged:z.literal(true)}).strict().parse(supplied),status=this.status(id);
-    if(status.destination==='remote'&&input.usdCeiling<=0)throw new StoreError('Remote inference needs a positive conservative USD ceiling.');
-    // Migrating a retained remote identity to loopback never erases historical
-    // charges. Its ceiling can retain those charges, but new local use debits $0.
-    if(status.destination==='local-unverified'&&input.usdCeiling>Math.max(status.usdCeiling,status.accountedUsd))throw new StoreError('Loopback inference uses request/resource caps and no new provider USD debit. Retain only an existing historical USD ceiling, or use zero for a new connection.');
-    if(input.requestCeiling<status.usedRequests||ceilingUnits(input.usdCeiling)<ceilingUnits(status.accountedUsd))throw new StoreError('New ceilings cannot be below already retained connection usage.',409);
-    this.writeState(id,{allowanceEnabled:true,requestCeiling:input.requestCeiling,usdCeiling:input.usdCeiling});return this.status(id);
-  }
-  /** The allowance of a connection ros.ai keeps itself (ros.ai cloud, Local ROS): the size the service allows, and never
-   * below what was already used, so a sign-in or a start does not fail however much the connection has served. */
-  keepAllowance(id:string,ceilings:{requestCeiling:number;usdCeiling:number}){
-    if(!this.connections.some(item=>item.id===id))throw new StoreError('Inference connection not found.',404);
-    const status=this.status(id);
-    this.writeState(id,{allowanceEnabled:true,requestCeiling:Math.max(ceilings.requestCeiling,status.usedRequests),usdCeiling:Math.max(ceilings.usdCeiling,status.accountedUsd)});
-    return this.status(id);
   }
   /** The configured connection to this endpoint, if there is one. */
   connectionTo(address:string):string|undefined{
     const fingerprint=endpoint(address).fingerprint;
     return this.connections.find(item=>endpoint(item.endpoint).fingerprint===fingerprint)?.id;
   }
-  pause(id:string,supplied:unknown){z.object({}).strict().parse(supplied);this.status(id);this.writeState(id,{allowanceEnabled:false});return this.status(id);}
-  assertRevision(id:string,expectedRevision:number){if(this.status(id).revision!==expectedRevision)throw new StoreError('Inference connection or allowance changed during preparation. No new dispatch occurred; review its current terms.',409);}
+  assertRevision(id:string,expectedRevision:number){if(this.status(id).revision!==expectedRevision)throw new StoreError('This inference connection changed during preparation. No new dispatch occurred; review its current terms.',409);}
   reserve(input:Reservation,expectedRevision:number):UsageRecord{
     return this.store.atomic(()=>{
       this.assertRevision(input.provider,expectedRevision);const status=this.status(input.provider,input.amountUsd),state=this.state(input.provider);
@@ -232,6 +206,4 @@ export function attachInferenceConnectionRoutes(app:Express,connections:Inferenc
   app.post('/api/connections/inference',(req,res)=>{json(req);res.status(201).json(connections.create(req.body));});
   app.patch('/api/connections/inference/:id',(req,res)=>{json(req);res.json(connections.update(idSchema.parse(req.params.id),req.body));});
   app.delete('/api/connections/inference/:id',(req,res)=>res.json(connections.remove(idSchema.parse(req.params.id))));
-  app.put('/api/connections/inference/:id/allowance',(req,res)=>{json(req);res.json(connections.saveAllowance(idSchema.parse(req.params.id),req.body));});
-  app.post('/api/connections/inference/:id/pause',(req,res)=>{json(req);res.json(connections.pause(idSchema.parse(req.params.id),req.body));});
 }

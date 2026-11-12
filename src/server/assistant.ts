@@ -485,7 +485,7 @@ export class AssistantService {
   private groundedLocal(turn:SavedTurn){
     const state=this.state(turn.projectId),focus=turn.focus.nodeId?this.store.getProject(turn.projectId).canvas.nodes.find(n=>n.id===turn.focus.nodeId):undefined;
     const entries=state.outline.filter(e=>e.id!=='original-question'&&(focus?e.nodeId===focus.id||e.references.some(r=>r.nodeId===focus.id):e.kind!=='direction')).slice(-8);
-    const reply=`[Saved-record view — no model inference]\n\n${state.memory.originalQuestion?`Original question: ${state.memory.originalQuestion}`:'What would you like to understand or test?'}${focus?`\n\nFocus: ${focus.title}\n${focus.description}`:''}\n\n${entries.map(e=>`${e.title}: ${e.summary}`).join('\n\n')||'There are no saved findings yet. You can add a note, upload a CSV, or clarify the question here.'}\n\n${state.modelBlocker || "Model research is unavailable under the configured allowance."} Existing notes, evidence, local experiments and this conversation remain saved.`;
+    const reply=`[Saved-record view — no model inference]\n\n${state.memory.originalQuestion?`Original question: ${state.memory.originalQuestion}`:'What would you like to understand or test?'}${focus?`\n\nFocus: ${focus.title}\n${focus.description}`:''}\n\n${entries.map(e=>`${e.title}: ${e.summary}`).join('\n\n')||'There are no saved findings yet. You can add a note, upload a CSV, or clarify the question here.'}\n\n${state.modelBlocker || "Model research is unavailable."} Existing notes, evidence, local experiments and this conversation remain saved.`;
     return {reply,references:entries.flatMap(e=>e.references).slice(0,20)};
   }
   /** Where the person was on the map when they sent the turn, as ROS reads it: blocks named from the map as it is now. */

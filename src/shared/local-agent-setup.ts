@@ -8,7 +8,7 @@ export type LocalAgentSetup = {
   /** The person's own Codex is signed in with ChatGPT, whichever way ros.ai runs it. */
   chatgptSignedIn: boolean;
   protocolConfigured: boolean; isolationReady: boolean;
-  authorized: boolean; available: boolean; noInference: true;
+  available: boolean; noInference: true;
   detail: string; blockers: string[]; steps: string[];
   commands: { label: string; command: string }[];
   links: { label: string; url: string }[];

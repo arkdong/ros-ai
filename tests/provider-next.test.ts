@@ -7,10 +7,9 @@ import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
 import { ExperimentService } from '../src/server/experiments.js';
 import { createApp, apiErrorHandler } from '../src/server/app.js';
-import { BudgetLedger, ExecutionService } from '../src/server/execution.js';
+import { ExecutionService } from '../src/server/execution.js';
 import { DEFAULT_MODEL, NebiusAdapter, type ModelAdapter, type ModelInfo, type ModelRequest } from '../src/server/providers.js';
 import { assertModelResponseUsable, parseWholeJsonObject } from '../src/server/response-normalization.js';
-import { spendingLimitsOn } from './spending-limits.js';
 
 function fixture() {
   const path=mkdtempSync(join(tmpdir(),'ros-next-provider-')),store=new Store(path),project=store.createProject('Isolated provider fixture');
@@ -124,13 +123,12 @@ test('Ultra native function contract avoids unsupported structured output and re
   } finally {globalThis.fetch=previousFetch;if(oldModel===undefined)delete process.env.NEBIUS_MODEL;else process.env.NEBIUS_MODEL=oldModel;}
 });
 
-test('with spending limits on, new cloud work fails closed without an allowance, and local chat proposes only one independent accepted step',async t=>{
-  spendingLimitsOn(t);
+test('with no model key, new cloud work is refused, and local chat proposes only one independent accepted step',async()=>{
   const f=fixture(),previousFetch=globalThis.fetch;let calls=0;
   globalThis.fetch=async()=>{calls++;throw Error('Must not fetch');};
-  const service=new ExecutionService(f.store,{model:new NebiusAdapter('fixture-key'),includeSetupUsage:false});
+  const service=new ExecutionService(f.store,{model:new NebiusAdapter(''),includeSetupUsage:false});
   try {
-    assert.throws(()=>service.startRun(f.project.id,'a',{request:'Cloud research',useSearch:false}),/Paid inference is blocked\. Save an explicit connection allowance/);
+    assert.throws(()=>service.startRun(f.project.id,'a',{request:'Cloud research',useSearch:false}),/Nebius credential is missing/);
     const first=await service.chat(f.project.id,'Finance');assert.equal(first.proposal,undefined);assert.match(first.message.content,/What would you like/);
     await service.chat(f.project.id,'I want to compare approaches using a small dataset and produce a tested result.');
     const second=await service.chat(f.project.id,'Add an Activity for comparing the measurements');
@@ -140,20 +138,6 @@ test('with spending limits on, new cloud work fails closed without an allowance,
     assert.equal(f.store.getProject(f.project.id).canvas.nodes.length,2);assert.equal(f.store.getProject(f.project.id).canvas.connections.length,0);
     assert.equal(f.store.listRuns(f.project.id).length,0);assert.equal(f.store.listUsage().length,0);assert.equal(calls,0);
   } finally {await service.shutdown();globalThis.fetch=previousFetch;f.close();}
-});
-
-test('fresh authorization has separate durable accounting and request cap; historical records remain intact',()=>{
-  const f=fixture();
-  try {
-    const historical=new BudgetLedger(f.store,{nebius:5,tavily:10});const prior=historical.reserve('nebius',0.3,'Historical fixture','Historical authorization');
-    const fresh=new BudgetLedger(f.store,{nebius:5,tavily:0},'explicit-next-build-fixture',2);
-    fresh.reserve('nebius',2.105552,'Plan','Full-context reserve');fresh.reserve('nebius',2.105552,'Interpret','Full-context reserve');
-    assert.throws(()=>fresh.reserve('nebius',0.01,'Third','No'),/request limit/);
-    assert.throws(()=>fresh.reserve('tavily',0.008,'Search','No'),/request limit|budget/);
-    assert.equal(fresh.accounted('nebius'),4.211104);assert.equal(f.store.listUsage().find(u=>u.id===prior.id)?.reservedUsd,0.3);
-    f.store.close();const reopened=new Store(f.path);
-    try {const resumed=new BudgetLedger(reopened,{nebius:5,tavily:0},'explicit-next-build-fixture',2);assert.throws(()=>resumed.reserve('nebius',0.001,'Restart','No reset'),/request limit/);assert.equal(reopened.listUsage().length,3);}finally{reopened.close();}
-  } finally {f.close();}
 });
 
 test('model experiment proposal captures exact selected dataset and node context without executing or changing graph',async()=>{

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
 import { Authority } from '../src/server/authority.js';
-import { BudgetLedger, ExecutionService, evidenceSpans } from '../src/server/execution.js';
-import { spendingLimitsOn } from './spending-limits.js';
+import { ExecutionService, evidenceSpans } from '../src/server/execution.js';
+import { SpendingBudget } from '../src/server/spending-budget.js';
 import { DeferredAgentRuntime, NebiusAdapter, type ModelAdapter, type ModelInfo, type ModelRequest, type ModelResponse, type SearchAdapter } from '../src/server/providers.js';
 
 const info:ModelInfo = {id:'fake-contract-model',contextTokens:100000,inputUsdPerToken:0.0000001,outputUsdPerToken:0.0000003,capabilities:{structuredOutput:true,cancellation:'abort-request',toolCalling:false,modelVersion:false},metadata:{testFixture:true}};
@@ -146,27 +146,16 @@ test('failure and explicit retry retain separate records; restarting does not re
   }finally{await service.shutdown();reopened?.close();rmSync(f.path,{recursive:true,force:true});}
 });
 
-test('persistent budgets account in-flight, settled and unknown calls separately per provider',()=>{
-  const f=setup();
-  try{
-    const ledger=new BudgetLedger(f.store,{nebius:0.03,tavily:0.016});
-    const n=ledger.reserve('nebius',0.02,'test','test');
-    f.store.updateUsage(n.id,{status:'settled',estimatedUsd:0.00001});
-    assert.throws(()=>ledger.reserve('nebius',0.02,'test','test'),/budget/);
-    ledger.reserve('tavily',0.008,'test','test');ledger.reserve('tavily',0.008,'test','test');
-    assert.throws(()=>ledger.reserve('tavily',0.008,'test','test'),/budget/);
-    assert.equal(ledger.accounted('nebius'),0.02);assert.equal(ledger.accounted('tavily'),0.016);
-  }finally{f.cleanup();}
-});
-
-test('with spending limits on, an insufficient budget rejects before inference; a timeout retains its reservation and no artifacts',async t=>{
-  spendingLimitsOn(t);
+test('a monthly budget with no room rejects before inference; a timeout retains its reservation and no artifacts',async()=>{
   const f=setup();const model=new FakeModel(async()=>new Promise(()=>{}));
-  const service=new ExecutionService(f.store,{model,limits:{nebius:0.001},includeSetupUsage:false});
+  const service=new ExecutionService(f.store,{model,includeSetupUsage:false}),budget=new SpendingBudget(f.store);
   try{
+    // One cent a month, far below what one request reserves.
+    budget.set('all',undefined,0.01);
     const run=service.startRun(f.project.id,'a',{request:'No budget',useSearch:false});
-    await until(()=>f.store.getRun(run.id).status==='failed');assert.equal(model.requests.length,0);
+    await until(()=>f.store.getRun(run.id).status==='failed');assert.equal(model.requests.length,0);assert.equal(f.store.listUsage().length,0);
     await service.shutdown();
+    budget.set('all',undefined,null);
     const timeoutService=new ExecutionService(f.store,{model,timeoutMs:20,includeSetupUsage:false});
     const timed=timeoutService.startRun(f.project.id,'b',{request:'Time out',useSearch:false});
     await until(()=>f.store.getRun(timed.id).status==='failed');

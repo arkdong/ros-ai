@@ -360,8 +360,6 @@ export class LocalRos {
     };
     const connection = existing ? this.connections.update(existing.id, fields) : this.connections.create(fields);
     if (connection.id !== installed.connectionId) this.save({ ...installed, connectionId: connection.id });
-    // However many requests ROS has served, the allowance grows with them, so a start never fails on usage.
-    this.connections.keepAllowance(connection.id, { requestCeiling: 10000, usdCeiling: this.connections.status(connection.id).usdCeiling });
   }
 
   remove(): LocalRosStatus {

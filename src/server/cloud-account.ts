@@ -141,9 +141,6 @@ export class CloudAccount {
     const connection = existing ? this.connections.update(existing, fields) : this.connections.create(fields);
     // Saved with the connection, so Sign out can always revoke the token the connection holds.
     this.save({ token, email: String(me.body?.user?.email ?? ''), connectionId: connection.id });
-    // ros.ai cloud enforces the real free allowance; this local ceiling only mirrors its size.
-    const status = this.connections.status(connection.id);
-    this.connections.keepAllowance(connection.id, { requestCeiling: 10000, usdCeiling: loopback ? status.usdCeiling : 100 });
   }
 
   /** Whether this copy of ros.ai has a ros.ai cloud at all (ROS_CLOUD_URL is not off). */

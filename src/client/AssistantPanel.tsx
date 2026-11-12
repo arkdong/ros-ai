@@ -185,7 +185,6 @@ function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:stri
   if(/stopped|stop flag/i.test(reason))return {summary:'Work in this project is paused.',action:'permissions'};
   if(agent==='claude'&&/api key/i.test(reason))return {summary:'Connect a Claude API key for Claude Code.',action:'connections'};
   if(agent==='claude'&&/claude subscription/i.test(reason))return {summary:reason,action:'connections'};
-  if(/allowance|authorization|authorized|spending|grant/i.test(reason))return {summary:agent==='codex'?'Codex needs a usage allowance.':agent==='claude'?'Claude Code needs a usage allowance.':'Enable usage for this model connection.',action:'connections'};
   if(/credential|api key|configured/i.test(reason))return {summary:'No model is connected yet.',action:'connections'};
   return {summary:agent==='codex'?'Codex cannot start. Check connection details.':agent==='claude'?'Claude Code cannot start. Check connection details.':'The model cannot start. Check connection details.',action:'connections'};
 }
@@ -201,7 +200,7 @@ function Turn({ turn, detail, onReference, onDecision, onProposal, onProposals, 
   // Admission failures retain one persistent alert. The stored reply/error
   // remain intact; an identical failure should not appear as two responses.
   const reply = useSmoothText(turn.reply.trim() === turn.error?.trim() ? '' : turn.reply, turn.status === 'running');
-  const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable/i.test(reply);
+  const blockedRecord = turn.source==='local-records' && reply.includes('[Saved-record view') && /allowance|authorization|spending ceiling|model unavailable|model research is unavailable/i.test(reply);
   const agentNode = detail.project.canvas.nodes.find(node => node.agent?.turnId === turn.id);
   // The summary below says what an agent's search plan did; its approval card stays only while it waits.
   const searchPlan = (action: AssistantAction) => Boolean(agentNode && detail.proposals.find(item => item.id === action.proposalId)?.operations.some(operation => operation.type === 'addNode' && (operation.node.blockType === 'search' || operation.node.label === 'result')));
