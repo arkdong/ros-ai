@@ -100,7 +100,7 @@ Code and Notebook blocks run ros.ai's own Python 3.12, set up with uv on first u
 
 ## Keys, data and updates
 
-Keys pasted on the Agents and Plugins pages are saved in the data folder: `~/Library/Application Support/ros.ai` on a Mac, `%APPDATA%\ros.ai` on Windows, `~/.local/share/ros.ai` on Linux, or `.ros-ai/` when the checkout has one. To paste them only once, put them in `~/.config/ros.ai/keys.env` (`chmod 600`), which ros.ai reads at every start: any `*_API_KEY`, `NOTION_TOKEN`, and a starting allowance as `ROS_START_ALLOWANCE_<CLAUDE|TAVILY|NEBIUS|OPENAI>_USD`.
+Keys pasted on the Agents and Plugins pages are saved in the data folder: `~/Library/Application Support/ros.ai` on a Mac, `%APPDATA%\ros.ai` on Windows, `~/.local/share/ros.ai` on Linux, or `.ros-ai/` when the checkout has one. To paste them only once, put them in `~/.config/ros.ai/keys.env` (`chmod 600`), which ros.ai reads at every start: any `*_API_KEY` and `NOTION_TOKEN`.
 
 ros.ai checks GitHub for a newer release at start and every six hours, sending nothing about you. An **Update** button appears when one is ready. Settings › General › Updates turns the check off.
 

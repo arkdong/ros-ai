@@ -5,7 +5,6 @@ import type { ConnectionStatus } from '../shared/types';
 import type { CredentialProvider, CredentialStatus } from '../shared/tool-connections';
 import type { LocalAgentSetup, CodexLoginStatus } from '../shared/local-agent-setup';
 import type { GoogleDriveStatus, GoogleDriveFiles } from '../shared/google-drive';
-import type { ConnectionBudgetStatus } from '../shared/connection-budgets';
 import type { ClaudeAgentSettings, ClaudePlanLogin, ClaudeWebSearch } from '../shared/claude-agent';
 import { IN_APP_AGENTS, type InAppAgent } from '../shared/assistant';
 import { AgentModelSettings } from './AgentModelPicker';
@@ -72,7 +71,7 @@ const billingLine: Record<AgentId, string> = {
 
 type Props = { projectId:string|null; connections:ConnectionStatus[]; selected:AgentId|null; onSelect:(id:AgentId|null)=>void; onInstalled:(ids:AgentId[])=>void; onChanged:()=>Promise<unknown> };
 /** What the page read last in this session: it opens with that at once while it reads again. */
-type AgentReads = { credentials?: CredentialStatus[]; codex?: LocalAgentSetup; codexKey?: LocalAgentSetup; claude?: ClaudeAgentSettings; budgets?: ConnectionBudgetStatus[]; cloud?: CloudAccountStatus; setup?: SetupStatus; local?: LocalRosStatus; acp?: AcpAgentStatus[] };
+type AgentReads = { credentials?: CredentialStatus[]; codex?: LocalAgentSetup; codexKey?: LocalAgentSetup; claude?: ClaudeAgentSettings; cloud?: CloudAccountStatus; setup?: SetupStatus; local?: LocalRosStatus; acp?: AcpAgentStatus[] };
 let lastReads: AgentReads = {};
 /** What was connected when the page last finished reading, saved on this computer, so the page and its sidebar open with it. */
 type Installed = { id: AgentId; label: string };
@@ -82,8 +81,8 @@ export const lastInstalledAgents = () => savedAgents().map(item => item.id);
 export function ModelPage({projectId,connections,selected,onSelect,onInstalled,onChanged}:Props) {
   const [credentials,setCredentials]=useState<CredentialStatus[]>(lastReads.credentials??[]),[codex,setCodex]=useState(lastReads.codex),[codexKey,setCodexKey]=useState(lastReads.codexKey),[claude,setClaude]=useState(lastReads.claude);
   const [loading,setLoading]=useState(false),[errors,setErrors]=useState<Record<string,string>>({}),[notice,setNotice]=useState(''),[read,setRead]=useState(false),[remembered]=useState(savedAgents);
-  const [budgets,setBudgets]=useState<ConnectionBudgetStatus[]>(lastReads.budgets??[]),[cloud,setCloud]=useState(lastReads.cloud),[setup,setSetup]=useState(lastReads.setup),[local,setLocal]=useState(lastReads.local),[acp,setAcp]=useState<AcpAgentStatus[]>(lastReads.acp??[]);
-  useEffect(()=>{lastReads={credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp};},[credentials,codex,codexKey,claude,budgets,cloud,setup,local,acp]);
+  const [cloud,setCloud]=useState(lastReads.cloud),[setup,setSetup]=useState(lastReads.setup),[local,setLocal]=useState(lastReads.local),[acp,setAcp]=useState<AcpAgentStatus[]>(lastReads.acp??[]);
+  useEffect(()=>{lastReads={credentials,codex,codexKey,claude,cloud,setup,local,acp};},[credentials,codex,codexKey,claude,cloud,setup,local,acp]);
   const refresh=useCallback(async(recheck=false)=>{
     setLoading(true);
     // Each answer shows as it comes, so a slow check (Codex, Claude Code's sign-in, ros.ai cloud) holds up nothing else.
@@ -91,7 +90,7 @@ export function ModelPage({projectId,connections,selected,onSelect,onInstalled,o
     const show=async<T,>(id:string,request:Promise<T>|null,apply:(value:T)=>void)=>{try{if(request)apply(await request);}catch(cause){failures[id]=message(cause);}};
     // Codex's two agents are checked apart: on the subscription, and on the key. A check serves for a minute; Refresh checks again.
     const codexSetup=(billing:'plan'|'api-key')=>projectId?post<LocalAgentSetup>(`/api/projects/${projectId}/agents/setup/codex?billing=${billing}${recheck?'&refresh=1':''}`):null;
-    await Promise.all([show('credentials',api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),value=>setCredentials(value.credentials)),show('codex',codexSetup('plan'),setCodex),show('claude',api<ClaudeAgentSettings>('/api/agents/claude'),setClaude),show('budgets',api<{budgets:ConnectionBudgetStatus[]}>('/api/connections/budgets'),value=>setBudgets(value.budgets)),
+    await Promise.all([show('credentials',api<{credentials:CredentialStatus[]}>('/api/connections/credentials'),value=>setCredentials(value.credentials)),show('codex',codexSetup('plan'),setCodex),show('claude',api<ClaudeAgentSettings>('/api/agents/claude'),setClaude),
       show('cloud',api<CloudAccountStatus>('/api/cloud'),setCloud),show('setup',api<SetupStatus>('/api/setup'),setSetup),show('local',api<LocalRosStatus>('/api/local-ros'),setLocal),show('acp',api<{agents:AcpAgentStatus[]}>('/api/agents/acp'),value=>setAcp(value.agents)),show('codexKey',codexSetup('api-key'),setCodexKey)]);
     setErrors(failures);setLoading(false);setRead(true);
   },[projectId]);
@@ -114,12 +113,12 @@ export function ModelPage({projectId,connections,selected,onSelect,onInstalled,o
   useEffect(()=>{const installed=JSON.parse(installedKey) as Installed[];onInstalled(installed.map(item=>item.id));if(read)saveLocal('agents-installed',installed);},[installedKey,read,onInstalled]);
   const cards:Record<AgentId,()=>ReactNode>={
     ros:()=><><CloudAccount onChanged={changed}/><LocalRos onChanged={changed}/></>,
-    nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} usage={connections.find(item=>item.provider==='nebius')} budget={budgets.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,
+    nebius:()=><KeyConnection forceOpen provider="nebius" label="Nebius Token Factory" icon={<BrandLogo id="nebius"/>} credential={credentials.find(item=>item.provider==='nebius')} description="Open models through your Token Factory API key." keyLink="https://tokenfactory.nebius.com/" onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/nebius/check');await refresh();}}/>,
     'claude-plan':()=>claude?<ClaudePlanConnection settings={claude} loadError={errors.claude} onChanged={setClaude}/>:errors.claude?<p className="inline-error" role="alert">{errors.claude}</p>:<p className="subtle">Checking…</p>,
-    claude:()=><KeyConnection forceOpen provider="claude" label="Claude API key" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} budget={budgets.find(item=>item.provider==='claude')} description="Claude Code answers in the ROS bar, billed to your Claude API key. Pick Claude Code (API key) from the model name in the ROS bar." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{credentials.find(item=>item.provider==='claude')?.configured&&<AgentModelChoice agent="claude"/>}{claude&&<ClaudeWebSearchChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
+    claude:()=><KeyConnection forceOpen provider="claude" label="Claude API key" icon={<BrandLogo id="claude"/>} credential={credentials.find(item=>item.provider==='claude')} description="Claude Code answers in the ROS bar, billed to your Claude API key. Pick Claude Code (API key) from the model name in the ROS bar." keyLink="https://platform.claude.com/settings/keys" loadError={errors.claude} onSave={saved} onDisconnect={disconnected} onCheck={async()=>{await post('/api/connections/claude/check');await refresh();}}>{credentials.find(item=>item.provider==='claude')?.configured&&<AgentModelChoice agent="claude"/>}{claude&&<ClaudeWebSearchChoice settings={claude} onChanged={setClaude}/>}</KeyConnection>,
     codex:()=><CodexConnection projectId={projectId} setup={codex} error={errors.codex} onChanged={changed}/>,
-    'codex-key':()=><KeyConnection forceOpen provider="openai" label="OpenAI API key" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="Codex answers in the ROS bar, billed to your OpenAI API key, the same key ROS uses for GPT models. Pick Codex (API key) from the model name in the ROS bar." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}>{credentials.find(item=>item.provider==='openai')?.configured&&<AgentModelChoice agent="codex-key"/>}{codexKey&&(!codexKey.installed||!codexKey.isolationReady)&&<p className="connection-limit">{!codexKey.installed?'Install the Codex CLI on this computer first. ros.ai runs it with your key.':'This Codex version can’t keep Codex to the project. Update the Codex CLI.'}</p>}</KeyConnection>,
-    openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} usage={connections.find(item=>item.provider==='openai')} budget={budgets.find(item=>item.provider==='openai')} description="GPT models for ROS through your OpenAI API key. Codex (API key) runs on the same key." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
+    'codex-key':()=><KeyConnection forceOpen provider="openai" label="OpenAI API key" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} description="Codex answers in the ROS bar, billed to your OpenAI API key, the same key ROS uses for GPT models. Pick Codex (API key) from the model name in the ROS bar." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}>{credentials.find(item=>item.provider==='openai')?.configured&&<AgentModelChoice agent="codex-key"/>}{codexKey&&(!codexKey.installed||!codexKey.isolationReady)&&<p className="connection-limit">{!codexKey.installed?'Install the Codex CLI on this computer first. ros.ai runs it with your key.':'This Codex version can’t keep Codex to the project. Update the Codex CLI.'}</p>}</KeyConnection>,
+    openai:()=><KeyConnection forceOpen provider="openai" label="OpenAI API" icon={<BrandLogo id="openai"/>} credential={credentials.find(item=>item.provider==='openai')} description="GPT models for ROS through your OpenAI API key. Codex (API key) runs on the same key." keyLink="https://platform.openai.com/api-keys" onSave={saved} onDisconnect={disconnected}/>,
     ...Object.fromEntries((['gemini','goose','opencode'] as const).map(id=>[id,()=><AcpAgentCard status={acp.find(item=>item.id===id)} onChanged={value=>setAcp(list=>list.map(item=>item.id===value.id?value:item))}/>])) as Record<'gemini'|'goose'|'opencode',()=>ReactNode>,
     'own-claude':()=><OutsideAgents only="claude-code" known={setup} onChanged={changed}/>,
     'own-claude-app':()=><OutsideAgents only="claude-app" known={setup} onChanged={changed}/>,
@@ -136,7 +135,7 @@ export function ModelPage({projectId,connections,selected,onSelect,onInstalled,o
   if(current)return <div className="plugins-page plugin-detail">
     <CatalogueHero crumb="Agents" onBack={()=>onSelect(null)} mark={current.mark} name={current.name} summary={<>{current.title??current.summary}<span className="plugin-billing">{billingLine[current.id]}</span></>} state={current.id==='local'&&!shown('local').label?undefined:shown(current.id)} uses={current.uses}/>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
-    {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
+    {errors.credentials&&<p className="inline-error" role="alert">{errors.credentials}</p>}
     <h2 className="plugin-section">Connection</h2>
     {cards[current.id]()}
     {footnote&&<p className="plugins-footnote">{footnote}</p>}
@@ -144,7 +143,7 @@ export function ModelPage({projectId,connections,selected,onSelect,onInstalled,o
   return <div className="plugins-page">
     <header className="plugins-head"><div><h1>Agents</h1><p>Agents from any vendor and the models they run on, connected the same way</p></div><button className="icon-button" disabled={loading} aria-label="Refresh agent status" title="Refresh status; no model turn" onClick={()=>void refresh(true)}><RefreshCw size={15} className={loading?'spin':''}/></button></header>
     {notice&&<p className="connection-notice" role="status"><Check size={14}/>{notice}</p>}
-    {(errors.credentials||errors.budgets)&&<p className="inline-error" role="alert">{errors.credentials||errors.budgets}</p>}
+    {errors.credentials&&<p className="inline-error" role="alert">{errors.credentials}</p>}
     {agentGroups.map(group=><section key={group.billing} className="plugin-group"><h2>{group.title}</h2>{group.why&&<p className="plugin-group-why">{group.why}</p>}<div className="plugin-grid">{group.ids.map(id=>{const item=agentItems.find(entry=>entry.id===id)!;return <CatalogueRow key={id} mark={item.mark} name={item.name} summary={item.summary} state={shown(id)} onClick={()=>onSelect(id)}/>;})}</div></section>)}
     <p className="plugins-footnote"><button type="button" className="text-button" onClick={()=>void showAgain()}>Show the setup screen again</button></p>
   </div>;
@@ -207,17 +206,15 @@ export function ConnectionCard({label,icon,status,subtitle,connected,more,action
 }
 /** The first sentence of a description, and the rest for More. */
 const firstSentence=(text:string):[string,string]=>{const match=/^(.*?[.!?])\s+(\S.*)$/s.exec(text);return match?[match[1]!,match[2]!]:[text,''];};
-export function KeyConnection({provider,label,icon,credential,budget,budgetless,description,keyLink,loadError,forceOpen,onSave,onDisconnect,onCheck,primary,children}:{provider:CredentialProvider;label:string;icon:ReactNode;credential?:CredentialStatus;usage?:ConnectionStatus;budget?:ConnectionBudgetStatus;/** A key that spends nothing through ros.ai, so the card shows no budget line. */budgetless?:boolean;description:string;keyLink:string;loadError?:string;forceOpen?:boolean;children?:ReactNode;onSave:(provider:CredentialProvider,key:string)=>Promise<void>;onDisconnect:(provider:CredentialProvider)=>Promise<void>;onCheck?:()=>Promise<void>;/** The one action the card leads with, beside its key button. */primary?:{label:string;onClick:()=>Promise<void>}}) {
+export function KeyConnection({provider,label,icon,credential,description,keyLink,loadError,forceOpen,onSave,onDisconnect,onCheck,primary,children}:{provider:CredentialProvider;label:string;icon:ReactNode;credential?:CredentialStatus;description:string;keyLink:string;loadError?:string;forceOpen?:boolean;children?:ReactNode;onSave:(provider:CredentialProvider,key:string)=>Promise<void>;onDisconnect:(provider:CredentialProvider)=>Promise<void>;onCheck?:()=>Promise<void>;/** The one action the card leads with, beside its key button. */primary?:{label:string;onClick:()=>Promise<void>}}) {
   const [open,setOpen]=useState(false),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const configured=credential?.configured??false;
-  const ready=budget?.ready??false;
-  const subtitle=budgetless?undefined:!budget?'Checking…':budget.limited===false?(ready?undefined:budget.reason):budget.source==='app'?`US$${budget.limitUsd.toFixed(2)} budget · ${!budget.enabled?'paused':ready?'enabled':'limit reached'}`:ready?'Usage enabled':'Usage not enabled';
   // With no key saved the field is there at once; with one, Manage key opens it to replace the key.
   const editing=open||(credential!==undefined&&!configured),formId=`connection-key-form-${provider}`;
   const [first,rest]=firstSentence(description);
   const close=()=>{setOpen(false);setKey('');setError('');};
-  return <ConnectionCard label={label} icon={icon} subtitle={subtitle} forceOpen={forceOpen} connected={configured&&credential?.verified!==false} status={!credential?'Checking…':credential.verified===false?'Check failed':configured?'Key saved':'Not connected'} more={rest?<p>{rest}</p>:undefined} actions={<>
+  return <ConnectionCard label={label} icon={icon} forceOpen={forceOpen} connected={configured&&credential?.verified!==false} status={!credential?'Checking…':credential.verified===false?'Check failed':configured?'Key saved':'Not connected'} more={rest?<p>{rest}</p>:undefined} actions={<>
       {editing&&<a className="text-button" href={keyLink} target="_blank" rel="noreferrer">Paste a key from {label}<ExternalLink size={11}/></a>}
       {onCheck&&configured&&!editing&&<button className="text-button" disabled={busy} onClick={()=>void run(onCheck)}>{busy?'Checking…':'Check key'}</button>}
       {editing&&credential?.canDisconnect&&<button className="text-button danger" disabled={busy} onClick={()=>void run(()=>onDisconnect(provider))}>Remove saved key</button>}
@@ -231,7 +228,6 @@ export function KeyConnection({provider,label,icon,credential,budget,budgetless,
     {credential?.checkMessage&&<p className={credential.verified?'connection-check':'inline-error'} role="status">{credential.checkMessage}</p>}
     {editing&&<form id={formId} className="connection-key" onSubmit={event=>{event.preventDefault();if(busy)return;void run(async()=>{await onSave(provider,key);setKey('');setOpen(false);});}}><label className="sr-only" htmlFor={`connection-key-${provider}`}>API key</label><input id={`connection-key-${provider}`} type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)} placeholder="Paste your API key" required minLength={12} maxLength={4096}/></form>}
     {editing&&credential?.source==='environment'&&<p className="subtle">A key is already set in the server environment. A saved key will override it; removing the saved key restores that setting.</p>}
-    {configured&&budget&&!ready&&<p className="connection-limit">{budget.reason||'Usage is not enabled yet.'}</p>}
     {(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
 }
@@ -248,15 +244,15 @@ function CodexConnection({projectId,setup,error:loadError,onChanged}:{projectId:
   },[login?.id,login?.state,projectId]);
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(message(cause));}finally{setBusy(false);}};
   const start=(method:'browser'|'device')=>run(async()=>setLogin(await post<CodexLoginStatus>(`/api/projects/${projectId}/agents/codex/login`,{method})));
-  const limitation=!projectId?'Open a project to check Codex sign-in and its research permissions.':!setup?'Checking Codex on this computer…':setup.available?'Codex answers in the ROS bar on your ChatGPT subscription. Pick Codex from the model name in the ROS bar.':setup.signedIn?`Signed in. Research turns ${!setup.isolationReady&&!setup.authorized?'need workspace isolation and a bounded usage grant.':!setup.isolationReady?'need workspace isolation.':!setup.authorized?'need a bounded usage grant.':'are currently unavailable; see setup details.'}`:!setup.installed?'Install the Codex CLI on this computer, then refresh.':'Sign in with the ChatGPT account that has your Plus or Pro subscription. Codex keeps the sign-in itself; ros.ai never sees it.';
+  const limitation=!projectId?'Open a project to check Codex sign-in and its research permissions.':!setup?'Checking Codex on this computer…':setup.available?'Codex answers in the ROS bar on your ChatGPT subscription. Pick Codex from the model name in the ROS bar.':setup.signedIn?`Signed in. Research turns ${!setup.isolationReady?'need workspace isolation.':'are currently unavailable; see setup details.'}`:!setup.installed?'Install the Codex CLI on this computer, then refresh.':'Sign in with the ChatGPT account that has your Plus or Pro subscription. Codex keeps the sign-in itself; ros.ai never sees it.';
   return <ConnectionCard label="ChatGPT subscription" icon={<BrandLogo id="openai"/>} forceOpen connected={setup?.chatgptSignedIn} status={!projectId?'Open a project':!setup?'Checking…':setup.chatgptSignedIn?'Signed in':'Not signed in'}>
     <p>{limitation}</p>
     {setup?.chatgptSignedIn&&<AgentModelChoice agent="codex"/>}
     {login&&<div className="connection-login" role="status"><p>{login.message}</p>{login.state==='waiting'&&<>{login.authUrl&&<a className="primary small" href={login.authUrl} target="_blank" rel="noreferrer">Open Codex sign-in <ExternalLink size={12}/></a>}{login.userCode&&<p>Enter code <strong>{login.userCode}</strong> in the Codex sign-in page.</p>}<button className="text-button" onClick={async()=>{try{setLogin(await post<CodexLoginStatus>(`/api/projects/${projectId}/agents/codex/login/${login.id}/cancel`,{}));}catch(cause){setError(message(cause));}}}>Cancel sign-in</button></>}</div>}
     {projectId&&<div className="connection-actions"><button className="text-button" aria-expanded={open} onClick={()=>setOpen(!open)}>{open?'Hide details':'Connection details'}</button>{setup?.installed&&!setup.signedIn&&login?.state!=='waiting'&&<><button className="secondary small" disabled={busy} onClick={()=>void start('device')}>Use device code</button><button className="primary small" disabled={busy} onClick={()=>void start('browser')}>Sign in with ChatGPT</button></>}</div>}
     {open&&<div className="connection-setup"><p>{setup?.installed?`Installed: ${setup.version}.`:'Install Codex CLI, then refresh connection status.'} Sign-in is handled by Codex. ros.ai never copies its account credentials.</p>
-      {setup&&<><dl className="connection-facts"><dt>Sign-in</dt><dd>{setup.signedIn?'Detected':'Required'}</dd><dt>Workspace isolation</dt><dd>{setup.isolationReady?'Supported':'Unavailable in installed CLI'}</dd><dt>Usage permission</dt><dd>{setup.authorized?'Bounded grant configured':'No fresh grant'}</dd><dt>Research turns</dt><dd>{setup.available?'Available':'Blocked'}</dd></dl><details><summary>Setup and enforcement details</summary>{setup.blockers.map((blocker,index)=><p key={index}>{blocker}</p>)}{setup.commands.map(item=><div key={item.command}><span>{item.label}</span><pre>{item.command}</pre></div>)}</details>{setup.links.map(link=><a className="connection-doc" key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label}<ExternalLink size={11}/></a>)}</>}
-    </div>}{setup?.signedIn&&!setup.authorized&&<p className="connection-limit">Codex cannot start a turn in this project right now.</p>}{(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
+      {setup&&<><dl className="connection-facts"><dt>Sign-in</dt><dd>{setup.signedIn?'Detected':'Required'}</dd><dt>Workspace isolation</dt><dd>{setup.isolationReady?'Supported':'Unavailable in installed CLI'}</dd><dt>Research turns</dt><dd>{setup.available?'Available':'Blocked'}</dd></dl><details><summary>Setup and enforcement details</summary>{setup.blockers.map((blocker,index)=><p key={index}>{blocker}</p>)}{setup.commands.map(item=><div key={item.command}><span>{item.label}</span><pre>{item.command}</pre></div>)}</details>{setup.links.map(link=><a className="connection-doc" key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label}<ExternalLink size={11}/></a>)}</>}
+    </div>}{(error||loadError)&&<p className="inline-error" role="alert">{error||loadError}</p>}
   </ConnectionCard>;
 }
 

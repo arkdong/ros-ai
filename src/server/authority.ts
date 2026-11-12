@@ -15,7 +15,7 @@ type Action={kind:ReviewDecision['kind'];nodeId:string;fingerprint:string;change
 
 /** Deterministic permission reviewer. Model output is never authority.
  * The approval mode decides whether work waits for the user; usage is tallied, never capped here.
- * Paid calls stay bounded by each connection's own allowance.
+ * Paid calls are recorded in Usage; the optional monthly budget is their only cap.
  */
 export class Authority {
   constructor(private store:Store){}

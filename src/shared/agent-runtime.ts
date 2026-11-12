@@ -4,11 +4,10 @@ import type { AssistantAction } from './assistant.js';
 export type AgentConnectionStatus = {
   id: 'codex'; label: string; checkedAt: string; installed: boolean; version: string | null;
   signedIn: boolean; authMethod: 'chatgpt' | 'api-key' | 'unknown' | null;
-  configured: boolean; authorized: boolean; available: boolean;
+  configured: boolean; available: boolean;
   detail: string; blockers: string[];
   features: { appServer: boolean; dynamicTools: boolean; interrupt: boolean; restrictedReadAccess: boolean; permissionProfiles: boolean };
   enforcement: string[]; limitations: string[];
-  grant: { id: string; remainingTurns: number; remainingSeconds: number; remainingToolCalls: number; expiresAt: string | null } | null;
 };
 /** One ros.ai tool call as the timeline shows it: its target block, how many things it covered, the blocks
  * or saved versions it made (items), what it turned down (skipped), the proposal it made, and what came of it.

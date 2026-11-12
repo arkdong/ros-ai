@@ -59,7 +59,7 @@ Stack: TypeScript everywhere, Express 5 run through tsx, React 19 with @xyflow/r
 
 ## Usage and spending
 
-Paid calls are recorded, not capped: `spending-limits.ts` is off unless `ROS_SPENDING_LIMITS=on`. `budget-report.ts` and `provider-balances.ts` feed Settings › Usage and Balances; `spending-budget.ts` is the optional monthly budget. The allowance code (`connection-budgets.ts`, `agent-budget.ts`) acts only when limits are on.
+Paid calls are recorded, not capped: `paid-usage.ts` writes each request to Usage before it is sent and settles it at the cost the provider reports. `budget-report.ts` and `provider-balances.ts` feed Settings › Usage and Balances. `spending-budget.ts` is the optional monthly budget, the one cap: a request it has no room for is refused before it is sent.
 
 ## The apps and releases
 

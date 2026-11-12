@@ -70,10 +70,6 @@
 .drive-files small { display:block; color:var(--muted); font-size:11px; margin-top:4px; }
 .drive-files button { flex-shrink:0; }
 .drive-files { margin-bottom:16px; }
-.connection-allowance { margin-top:18px; padding-top:14px; border-top:1px solid #eee; }
-.connection-allowance form { display:flex; flex-direction:column; gap:12px; margin:12px 0; }
-.connection-allowance .connection-consent { display:flex; align-items:flex-start; gap:8px; font-size:11px; line-height:1.6; color:var(--body); }
-.connection-allowance .connection-consent input { margin-top:3px; flex-shrink:0; }
 @media(max-width:1400px) { .single-canvas-shell .workspace-heading h1 { min-width:110px; } }
 .claude-model-choice { display:grid; gap:6px; margin:4px 0 10px; }
 .claude-model-choice .subtle { margin:0; font-size:12px; }

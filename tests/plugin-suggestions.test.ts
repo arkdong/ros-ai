@@ -22,7 +22,7 @@ function fixture(clock: () => number = Date.now) {
   const dir = mkdtempSync(join(tmpdir(), 'ros-suggestions-')), store = new Store(dir), project = store.createProject('Plugin suggestions fixture');
   const model: ModelAdapter = { provider: 'nebius', model: 'offline-fixture', configured: false, async prepare() { throw new Error('No model in this fixture.'); }, async complete() { throw new Error('No model in this fixture.'); } };
   const runtime: ExecutionBackend = { capabilities: () => ({ available: false, backend: 'docker-python', policy: 'offline-fixture', runtime: 'offline fixture', workerHash: 'offline-fixture', imageId: null, libraries: {}, enforcement: [], limitations: ['No execution in this fixture'], timeoutMs: 30000, maxMemoryMb: 512, maxOutputBytes: 1000000 }), start() { throw new Error('No execution in this fixture.'); } };
-  const execution = new ExecutionService(store, { model, limits: { nebius: 1, tavily: 1 }, includeSetupUsage: false });
+  const execution = new ExecutionService(store, { model, includeSetupUsage: false });
   const experiments = new ExperimentService(store, { sandbox: runtime });
   const assistant = new AssistantService(store, execution, experiments);
   experiments.authority.configure(project.id, { mode: 'ask' });
