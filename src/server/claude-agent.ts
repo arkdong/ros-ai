@@ -12,7 +12,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import { AgentWorkspaceTools, toolFailure } from './agent-tools.js';
 import { CLAUDE_CODE_INSTRUCTIONS, REPLY_INSTRUCTIONS, selectionText } from './agent-prompt.js';
-import { TURN_BRIEF, TURN_LIMIT, TURN_SECONDS, statusLine, thinkingLine, turnClock } from './agent-turn.js';
+import { SAME_PREFERENCES, TURN_BRIEF, TURN_LIMIT, TURN_SECONDS, freshSessionStep, preferencesKey, staleSession, statusLine, thinkingLine, turnClock } from './agent-turn.js';
 import { projectFolderRoot } from './project-folders.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type ClaudeModel, type ClaudeWebSearch } from '../shared/claude-agent.js';
@@ -41,23 +41,8 @@ const TURN_USD = Math.min(20, Math.max(0.05, Number(process.env.ROS_CLAUDE_TURN_
 const sdkVersion = (() => { try { return String(JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')), 'package.json'), 'utf8')).version); } catch { return 'unknown'; } })();
 
 
-/** tokens: how long the conversation was at its last request. ended: its last turn finished, rather than stopping part way. */
-type Session = { sessionId: string; scopeHash: string; cwd: string; costUsd: number; state: 'ready' | 'uncertain'; at: string; tokens?: number; ended?: boolean };
-/** Every step of a turn sends the whole conversation again. Claude keeps it cached, so a step pays a tenth for the part
- * it has seen, but only for an hour (Claude Code asks for an hour on a plan), and writing it into the cache costs double.
- * A thread's session used to be picked up for every message, for days: one grew to 138,000 tokens over ten turns, each
- * of its 42 steps read it all, and after each break it was written again in full. Past an hour, or once it is long, a
- * thread starts a new session that is told the conversation so far in writing; the canvas holds the work itself. */
-export const RESUME_MAX_IDLE_MS = 55 * 60_000;
-/** A finished turn's session is carried on up to this length; "continue" after a stopped turn, which needs what the
- * stopped turn had read, up to the larger one. */
-export const RESUME_MAX_TOKENS = 60_000, CONTINUE_MAX_TOKENS = 150_000;
-/** Why a thread's saved session is not picked up again, or null when it is. */
-export function staleSession(session: Pick<Session, 'at' | 'tokens' | 'ended'>, at = Date.now()): 'idle' | 'long' | null {
-  if (at - Date.parse(session.at) > RESUME_MAX_IDLE_MS) return 'idle';
-  if ((session.tokens ?? 0) > (session.ended === false ? CONTINUE_MAX_TOKENS : RESUME_MAX_TOKENS)) return 'long';
-  return null;
-}
+/** tokens, ended: see SessionUse (agent-turn.ts). preferences: which saved preferences and skills the session holds. */
+type Session = { sessionId: string; scopeHash: string; cwd: string; costUsd: number; state: 'ready' | 'uncertain'; at: string; tokens?: number; ended?: boolean; preferences?: string };
 /** Claude Code could not resume the session a thread keeps (it deletes old sessions): nothing ran, so the turn starts a new one. */
 class StaleSession extends StoreError { constructor() { super('Claude Code no longer had this thread’s earlier session, so nothing ran; the turn starts a new one.', 409); } }
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; model: string; billing?: ClaudeBilling; usageId: string | null; reservedUsd: number; costUsd?: number; sessionId?: string; request: unknown; events: AgentEvent[]; reply: string; error?: string };
@@ -277,10 +262,12 @@ export class ClaudeAgentService {
     const prior = this.store.record<Session>('claude-session', key);
     const usable = !fresh && prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null, stale = usable ? staleSession(usable) : null;
     const resume = usable && !stale ? usable : null;
-    if (stale) request.onEvent({ at: now(), type: 'progress', message: stale === 'idle' ? 'More than an hour has passed, so Claude Code starts a new session with the conversation so far in writing, rather than reloading the old one in full.' : `This thread’s Claude Code session reached about ${Math.round((usable!.tokens ?? 0) / 1000)}k tokens, so it starts a new one with the conversation so far in writing; every step would read the whole session again.` });
+    if (stale) request.onEvent({ at: now(), type: 'progress', message: freshSessionStep('Claude Code', stale, usable!.tokens) });
     // A new session in a thread that already has turns is told the conversation so far.
     const earlier = resume ? undefined : request.earlier?.();
-    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
+    // A session that holds the same preferences and skills already is not given them again.
+    const preferences = preferencesKey(request.preferences), kept = resume && preferences && resume.preferences === preferences ? SAME_PREFERENCES : request.preferences;
+    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${kept ? `${kept}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
     const allowedTools = [...builtIn, ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, billing, usageId: usage?.id ?? null, reservedUsd, request: { prompt, model, effort, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, webSearch: ownSearch ? 'own' : 'ros', maxBudgetUsd: onPlan ? null : reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: onPlan ? 'Claude plan (Claude Code’s own sign-in)' : 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
@@ -414,7 +401,7 @@ export class ClaudeAgentService {
         attempt.request = { ...(attempt.request as object), requests, tokens, usage: result.usage };
         event({ at: now(), type: 'usage', message: `${onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`}${size}`, data: { costUsd: turnCost, subtype: result.subtype, billing, requests, tokens, usage: result.usage } });
         // Kept also after an error (the step limit, the turn's budget), so "continue" picks up the work done so far.
-        if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now(), tokens, ended: result.subtype === 'success' && !stopped && !refused } satisfies Session);
+        if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now(), tokens, ended: result.subtype === 'success' && !stopped && !refused, ...(preferences ? { preferences } : {}) } satisfies Session);
       }
       if (refused) throw new StoreError(refused, 503);
       if (timedOut) throw new StoreError(`Claude Code reached this turn’s limit of ${TURN_LIMIT} and was stopped. What it did so far is kept: send "continue" to carry on.`, 503);

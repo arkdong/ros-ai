@@ -10,7 +10,8 @@ import { Store } from '../src/server/store.js';
 import { ExecutionService } from '../src/server/execution.js';
 import { Authority } from '../src/server/authority.js';
 import type { ExperimentService } from '../src/server/experiments.js';
-import { ClaudeAgentService, CONTINUE_MAX_TOKENS, RESUME_MAX_IDLE_MS, RESUME_MAX_TOKENS, staleSession } from '../src/server/claude-agent.js';
+import { ClaudeAgentService } from '../src/server/claude-agent.js';
+import { CONTINUE_MAX_TOKENS, RESUME_MAX_IDLE_MS, RESUME_MAX_TOKENS, SAME_PREFERENCES, staleSession } from '../src/server/agent-turn.js';
 import type { AgentEvent } from '../src/shared/agent-runtime.js';
 
 test('a thread’s Claude Code session is picked up only while its cache is warm and it is short', () => {
@@ -64,7 +65,7 @@ test('after an hour, or once long, a thread starts a new Claude Code session tha
   let told = 0;
   const turn = async (message: string) => {
     const events: AgentEvent[] = [], before = told;
-    await claude.execute({ projectId: project.id, threadId: 'thread-1', turnId: randomUUID(), message, nodeIds: [], artifactIds: [], signal: new AbortController().signal, billing: 'api-key', earlier: () => { told++; return 'Earlier in this conversation: the researcher asked about the notes.'; }, onEvent: event => events.push(event) });
+    await claude.execute({ projectId: project.id, threadId: 'thread-1', turnId: randomUUID(), message, nodeIds: [], artifactIds: [], signal: new AbortController().signal, billing: 'api-key', preferences: 'The researcher’s saved preferences:\n- Keep notes short.', earlier: () => { told++; return 'Earlier in this conversation: the researcher asked about the notes.'; }, onEvent: event => events.push(event) });
     return { events, said: sent.at(-1)!, told: told > before };
   };
 
@@ -78,6 +79,8 @@ test('after an hour, or once long, a thread starts a new Claude Code session tha
   const id = session().sessionId, soon = await turn('And the figures?');
   assert.ok(soon.said.includes('Do the notes agree?'));
   assert.equal(soon.told, false);
+  // It already holds the person's preferences, so it is told they still apply rather than given them again.
+  assert.ok(soon.said.includes(SAME_PREFERENCES));
   assert.equal(session().sessionId, id);
 
   // More than an hour later the cache is gone: a new session, told the conversation in writing.
@@ -85,6 +88,7 @@ test('after an hour, or once long, a thread starts a new Claude Code session tha
   const later = await turn('What changed?');
   assert.ok(!later.said.includes('Do the notes agree?'));
   assert.ok(later.told && later.said.includes('Earlier in this conversation'));
+  assert.ok(later.said.includes('- Keep notes short.') && !later.said.includes(SAME_PREFERENCES), 'a new session is given them whole');
   assert.ok(later.events.some(event => /More than an hour has passed/u.test(event.message)));
   assert.notEqual(session().sessionId, id);
 

@@ -16,6 +16,7 @@ import { runnable } from './command-line.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { ACP_AGENTS, ACP_AGENT_IDS, isAcpAgent, type AcpAgentId, type AcpAgentStatus } from '../shared/acp-agents.js';
 import { CANVAS_GRAMMAR } from './canvas-grammar.js';
+import { freshSessionStep, staleSession } from './agent-turn.js';
 
 /** Gemini CLI, Goose and OpenCode as ROS, through the Agent Client Protocol: ros.ai starts the agent for
  * one turn, gives it ros.ai's tools over a per-turn MCP endpoint, and refuses everything else it asks
@@ -242,7 +243,8 @@ class AcpConnection {
   }
 }
 
-type Session = { agent: AcpAgentId; sessionId: string; cwd: string; folder?: string | null; state: 'ready' | 'uncertain'; at: string };
+/** tokens: how much of its context the session used at the end of its last turn, when the agent says (see staleSession). */
+type Session = { agent: AcpAgentId; sessionId: string; cwd: string; folder?: string | null; state: 'ready' | 'uncertain'; at: string; tokens?: number };
 type Attempt = { id: string; projectId: string; assistantTurnId: string; agent: AcpAgentId; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; version: string | null; sessionId?: string; mcp?: 'http' | 'stdio'; request: unknown; events: AgentEvent[]; reply: string; stopReason?: string; usage?: unknown; error?: string };
 type Check = { at: string; ok: boolean; detail: string; version: string | null };
 type Found = { binary: string | null; version: string | null; blocker: string | null };
@@ -505,7 +507,7 @@ export class AcpAgentService {
     const event = (value: AgentEvent) => { if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
 
-    let toolCalls = 0, stopped = false, timedOut = false, refused = '', thoughtMark = 0, segment = 0;
+    let toolCalls = 0, stopped = false, timedOut = false, refused = '', thoughtMark = 0, segment = 0, used: number | undefined;
     const stopTools = new AbortController();
     toolkit.signal = AbortSignal.any([request.signal, stopTools.signal]);
     // What the agent wrote since its last tool call is shown as the reason for the next one.
@@ -546,7 +548,7 @@ export class AcpAgentService {
         const meta = text(object(object(object(update._meta).goose).toolCall).toolName) || (id === 'gemini' ? callId.split('__')[0]! : '');
         if (callId) started.set(callId, meta || title);
         if (!rosTool(id, meta, title, names)) event({ at: now(), type: 'progress', message: ownTool(label, update, root), data: { title, kind: update.kind } });
-      } else if (kind === 'usage_update') attempt.usage = { used: update.used, size: update.size, cost: update.cost };
+      } else if (kind === 'usage_update') { attempt.usage = { used: update.used, size: update.size, cost: update.cost }; if (typeof update.used === 'number' && Number.isFinite(update.used)) used = update.used; }
     };
     const onRequest = async (method: string, params: Record<string, unknown>) => {
       if (method === 'session/request_permission') {
@@ -576,7 +578,9 @@ export class AcpAgentService {
     let finish: () => void = () => {};
     this.active.set(key, { stop, done: new Promise<void>(resolve => { finish = resolve; }) });
     try {
-      const prior = this.store.record<Session>('acp-session', key);
+      // A session left for more than an hour, or grown long, is not reopened: the agent would read all of it at every step.
+      const saved = this.store.record<Session>('acp-session', key), stale = saved?.state === 'ready' ? staleSession(saved) : null, prior = stale ? null : saved;
+      if (stale) event({ at: now(), type: 'progress', message: freshSessionStep(label, stale, saved!.tokens) });
       opened = await this.open(id, binary, cwd, { tools: names, folder: root, token, prior, onUpdate, onRequest });
       const connection = opened.connection;
       attempt = { ...attempt, sessionId: opened.sessionId, mcp: opened.mcp ?? undefined, request: { ...object(attempt.request), resumed: opened.resumed, mode: opened.mode, model: opened.model, agentInfo: opened.agentInfo } }; save();
@@ -586,7 +590,9 @@ export class AcpAgentService {
       this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'uncertain', at: now() } satisfies Session);
       if (stopped) throw new StoreError(`${label} was stopped before the prompt was sent.`, 409);
       const place = !root ? 'This project has no folder on disk, so no files are available; use the selected material and the ros.ai tools.' : id === 'gemini' ? `The project folder is in your workspace: ${root}\nUse full paths to read its files.` : `The project folder is your working directory: ${root}`;
-      const prompt = `${opened.resumed ? 'ros.ai’s instructions from the start of this conversation still apply.' : acpInstructions(id)}\n\n${place}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
+      // A new session in a thread that already has turns is told the conversation so far.
+      const earlier = opened.resumed ? undefined : request.earlier?.();
+      const prompt = `${opened.resumed ? 'ros.ai’s instructions from the start of this conversation still apply.' : acpInstructions(id)}\n\n${place}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
       attempt.request = { ...object(attempt.request), prompt }; save();
       const exited = new Promise<never>((_, reject) => { connection.onExit = reject; });
       sent = true;
@@ -603,7 +609,7 @@ export class AcpAgentService {
       const answer = (attempt.reply.slice(segment).trim() || attempt.reply.trim());
       if (!answer) throw new StoreError(`${label} finished without a readable answer.`, 503);
       attempt = { ...attempt, status: 'completed', reply: attempt.reply }; save(); settle = 'completed';
-      this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'ready', at: now() } satisfies Session);
+      this.store.saveRecord('acp-session', key, request.projectId, { agent: id, sessionId: opened.sessionId, cwd, folder: root, state: 'ready', at: now(), ...(used !== undefined ? { tokens: used } : {}) } satisfies Session);
       return { reply: answer, sessionId: opened.sessionId, actions: toolkit.actions, requestId: attemptId, model: opened.model };
     } catch (error) {
       // Until the prompt is sent the agent has done nothing; after, it may have.
