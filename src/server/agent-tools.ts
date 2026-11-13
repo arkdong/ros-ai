@@ -880,13 +880,13 @@ export class AgentWorkspaceTools {
         ...(nodes.length > listed.length ? { note: `Only the first ${listed.length} of ${nodes.length} blocks are listed.` } : {}),
       };
     }
-    return { blocks: await Promise.all(value.nodeIds.map(async nodeId => {
+    return fitRead({ blocks: await Promise.all(value.nodeIds.map(async nodeId => {
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return { id: nodeId, missing: true };
       const artifacts = artifactsOf(node.id);
       for (const a of artifacts) if (!this.capture.artifacts.some(c => c.id === a.id)) this.opened.set(a.id, { id: a.id, nodeId: a.nodeId, runId: a.runId, kind: a.kind, title: a.title, hash: a.hash, content: a.content, createdAt: a.createdAt, capture: a.capture, mediaType: a.mediaType });
       return { id: node.id, title: node.title, kind: node.kind ?? 'topic', blockType: node.blockType, ...(node.notion ? await this.notionBlock(node) : {}), ...(node.google ? await this.googleBlock(node) : {}), ...(node.training ? await this.trainingBlock(node.training) : {}), ...(node.metric ? await this.metricBlock(node.metric) : {}), ...(node.post ? this.postBlock(node.post) : {}), ...(node.file ? { file: node.file, note: 'A PDF or image from the project folder. A PDF\'s text is the "Text of" artifact below, readable with ros_read_selected.' } : {}), ...(node.paper ? { paper: node.paper } : {}), ...(node.map ? { map: { on: node.map.provider === 'google' ? 'Google Maps' : 'OpenStreetMap', pins: node.map.pins.map(({ id: _id, ...pin }) => pin), note: 'A Map block. Add, move or replace pins with ros_place_pins and this nodeId.' } } : {}), ...(node.dashboard ? { dashboard: { tiles: node.dashboard.tiles, note: 'A Dashboard block: numbers pinned from Metrics blocks (block is the Metrics block\'s nodeId, keys its numbers). Add tiles with ros_pin_to_dashboard and this nodeId.' } } : {}), ...(node.app ? this.appBlock(node) : {}), parentId: node.parentId ?? null, text: node.description, artifacts: artifacts.map(a => ({ id: a.id, kind: a.kind, title: a.title, characters: a.content.length })) };
-    })) };
+    })) }, READ_CHARACTERS);
   }
   /** A Post block as the agent reads it: the post as it was read, its top comments and a video's subtitles. */
   private postBlock(post: PostView) {
@@ -1725,6 +1725,31 @@ export function decideAgentReport(store: Store, projectId: string, proposalId: s
 
 /** Post blocks are as wide as a card can be narrow, so three sit side by side like a feed; rows are spaced for the tallest card. */
 const POST_WIDTH = 320, POST_HEIGHT = 420;
+/** How much text one ros_read_canvas call of named blocks returns in all. Ten long blocks can come to some 300,000 characters,
+ * more than Claude Code takes from one tool (about 25,000 tokens; the rest of the read was lost), and every
+ * later step of the turn would read all of it again. */
+export const READ_CHARACTERS = 60_000;
+/** A read cut to about `budget` characters: its longest texts are halved, each saying so, until it fits. One block read
+ * alone is never cut (a block's text is at most 20,000 characters, and what is read live with it at most 12,000 more). */
+export function fitRead<T>(value: T, budget: number): T {
+  const marker = (total: number) => ` … [shortened from ${total.toLocaleString('en-US')} characters to fit one read; name fewer blocks to read it whole]`;
+  type Leaf = { holder: Record<string, unknown> | unknown[]; key: string | number; total: number };
+  const size = () => JSON.stringify(value).length;
+  for (let round = 0; round < 200 && size() > budget; round++) {
+    const leaves: Leaf[] = [];
+    const walk = (item: unknown) => {
+      if (Array.isArray(item)) item.forEach((child, index) => typeof child === 'string' ? child.length > 2_000 && leaves.push({ holder: item, key: index, total: child.length }) : walk(child));
+      else if (item && typeof item === 'object') for (const [key, child] of Object.entries(item)) typeof child === 'string' ? child.length > 2_000 && leaves.push({ holder: item as Record<string, unknown>, key, total: child.length }) : walk(child);
+    };
+    walk(value);
+    if (!leaves.length) break;
+    const longest = leaves.reduce((a, b) => (a.total >= b.total ? a : b)), text = (longest.holder as Record<string | number, string>)[longest.key];
+    const original = Number(/shortened from ([\d,]+) characters to fit one read/u.exec(text)?.[1]?.replace(/,/gu, '')) || text.length;
+    const kept = text.replace(/ … \[shortened from [\d,]+ characters to fit one read; name fewer blocks to read it whole\]$/u, '');
+    (longest.holder as Record<string | number, string>)[longest.key] = `${kept.slice(0, Math.floor(kept.length / 2))}${marker(original)}`;
+  }
+  return value;
+}
 /** How much of a post's text and a video's subtitles ros_read_canvas returns. */
 const POST_TEXT_READ = 12_000, POST_SUBTITLES_READ = 30_000;
 /** A post as an agent reads it: who, where, when, counts, and the text up to `limit` characters. */

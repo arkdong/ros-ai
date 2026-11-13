@@ -12,7 +12,7 @@ import type { ExecutionService } from './execution.js';
 import type { ExperimentService } from './experiments.js';
 import { AgentWorkspaceTools, toolFailure } from './agent-tools.js';
 import { CLAUDE_CODE_INSTRUCTIONS, REPLY_INSTRUCTIONS, selectionText } from './agent-prompt.js';
-import { TURN_BRIEF, TURN_LIMIT, TURN_SECONDS, statusLine, thinkingLine, turnClock } from './agent-turn.js';
+import { SAME_PREFERENCES, TURN_BRIEF, TURN_LIMIT, TURN_SECONDS, freshSessionStep, preferencesKey, staleSession, statusLine, thinkingLine, turnClock } from './agent-turn.js';
 import { projectFolderRoot } from './project-folders.js';
 import { agentStep, type AgentEvent, type AgentExecuteRequest, type AgentResult } from '../shared/agent-runtime.js';
 import { CLAUDE_MODELS, type ClaudeAgentSettings, type ClaudeBilling, type ClaudeModel, type ClaudeWebSearch } from '../shared/claude-agent.js';
@@ -41,7 +41,8 @@ const TURN_USD = Math.min(20, Math.max(0.05, Number(process.env.ROS_CLAUDE_TURN_
 const sdkVersion = (() => { try { return String(JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')), 'package.json'), 'utf8')).version); } catch { return 'unknown'; } })();
 
 
-type Session = { sessionId: string; scopeHash: string; cwd: string; costUsd: number; state: 'ready' | 'uncertain'; at: string };
+/** tokens, ended: see SessionUse (agent-turn.ts). preferences: which saved preferences and skills the session holds. */
+type Session = { sessionId: string; scopeHash: string; cwd: string; costUsd: number; state: 'ready' | 'uncertain'; at: string; tokens?: number; ended?: boolean; preferences?: string };
 /** Claude Code could not resume the session a thread keeps (it deletes old sessions): nothing ran, so the turn starts a new one. */
 class StaleSession extends StoreError { constructor() { super('Claude Code no longer had this thread’s earlier session, so nothing ran; the turn starts a new one.', 409); } }
 type Attempt = { id: string; projectId: string; assistantTurnId: string; at: string; status: 'running' | 'completed' | 'failed' | 'interrupted' | 'uncertain'; model: string; billing?: ClaudeBilling; usageId: string | null; reservedUsd: number; costUsd?: number; sessionId?: string; request: unknown; events: AgentEvent[]; reply: string; error?: string };
@@ -259,10 +260,14 @@ export class ClaudeAgentService {
     // The plan and the key keep their sessions in different places, so switching starts a new one.
     const scopeHash = createHash('sha256').update(JSON.stringify(onPlan ? { cwd, billing } : { cwd })).digest('hex');
     const prior = this.store.record<Session>('claude-session', key);
-    const resume = !fresh && prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null;
+    const usable = !fresh && prior && prior.scopeHash === scopeHash && prior.state === 'ready' ? prior : null, stale = usable ? staleSession(usable) : null;
+    const resume = usable && !stale ? usable : null;
+    if (stale) request.onEvent({ at: now(), type: 'progress', message: freshSessionStep('Claude Code', stale, usable!.tokens) });
     // A new session in a thread that already has turns is told the conversation so far.
     const earlier = resume ? undefined : request.earlier?.();
-    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}`;
+    // A session that holds the same preferences and skills already is not given them again.
+    const preferences = preferencesKey(request.preferences), kept = resume && preferences && resume.preferences === preferences ? SAME_PREFERENCES : request.preferences;
+    const prompt = `${root ? `The project folder is your working directory: ${root}` : 'This project has no folder on disk, so no files are available; use the selected material and mcp__ros__ tools.'}\n\n${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${kept ? `${kept}\n\n` : ''}Researcher's message:\n${message}`;
     const builtIn = [...(root ? FILE_TOOLS : []), ...(ownSearch ? WEB_TOOLS : [])];
     const allowedTools = [...builtIn, ...toolkit.definitions.map(item => `mcp__${SERVER}__${item.name}`)];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', model, billing, usageId: usage?.id ?? null, reservedUsd, request: { prompt, model, effort, cwd, resume: resume?.sessionId ?? null, tools: allowedTools, webSearch: ownSearch ? 'own' : 'ros', maxBudgetUsd: onPlan ? null : reservedUsd, maxTurns: MAX_MODEL_TURNS, sdkVersion, authentication: onPlan ? 'Claude plan (Claude Code’s own sign-in)' : 'ANTHROPIC_API_KEY', automaticRetry: false }, events: [], reply: '' };
@@ -272,6 +277,8 @@ export class ClaudeAgentService {
     const event = (value: AgentEvent) => { if (value.type !== 'delta') line.clear(); if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
 
+    // The conversation's length at its latest request, and the turn's own token use (all its requests, cache included).
+    let tokens = 0, requests = 0;
     let toolCalls = 0, stopped = false, timedOut = false, refused = '', thoughtMark = 0, apiError = '', thinking = '';
     // ros.ai's own tools stop at once (halt). Claude Code is asked to wind down, or its process is stopped (controller).
     const controller = new AbortController(), halt = new AbortController();
@@ -317,12 +324,14 @@ export class ClaudeAgentService {
       try { const result = await toolkit.call(definition.name, args); event({ at: now(), type: 'tool', message: `${definition.name} returned a validated result.`, data: result, step: agentStep(call, definition.name, args, { value: result }) }); return reply(JSON.stringify(result)); }
       catch (error) { return refuse(toolFailure(error)); }
     }));
-    let finished: { cost: number; subtype: string; text: string; sessionId: string; error?: string } | null = null;
+    let finished: { cost: number; subtype: string; text: string; sessionId: string; error?: string; usage?: unknown } | null = null;
     const done = (async () => {
       const stream = live = query({ prompt: single(prompt), options: {
         abortController: controller, cwd, model, ...(effort ? { effort } : {}), env: onPlan ? planEnvironment() : childEnvironment(apiKey, this.configDir),
         tools: builtIn, allowedTools, disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent', ...(ownSearch ? [] : WEB_TOOLS)],
         permissionMode: 'dontAsk', settingSources: [], skills: [], strictMcpConfig: true,
+        // Claude Code's own memory notes need a Write tool it does not have here; their instructions came with every request.
+        settings: { autoMemoryEnabled: false },
         mcpServers: { [SERVER]: createSdkMcpServer({ name: SERVER, version: '0.1.0', tools, alwaysLoad: true }) },
         hooks: { PreToolUse: [{ hooks: [toolGuard(root, ownSearch, late)] }], PostToolBatch: [{ hooks: [timeNote] }] },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: `${CLAUDE_CODE_INSTRUCTIONS}\n${ownSearch ? `${OWN_SEARCH_INSTRUCTIONS}\n` : ''}${REPLY_INSTRUCTIONS}\n${CANVAS_GRAMMAR}\n- ${TURN_BRIEF}` },
@@ -330,7 +339,7 @@ export class ClaudeAgentService {
         ...(resume ? { resume: resume.sessionId } : {}),
         stderr: () => {},
       } });
-      let textBlocks = 0;
+      let textBlocks = 0, lastRequest = '';
       for await (const item of stream as AsyncIterable<SDKMessage>) {
         if (item.type === 'system' && item.subtype === 'init') {
           attempt.sessionId = item.session_id; attempt.request = { ...(attempt.request as object), claudeCodeVersion: item.claude_code_version, reportedModel: item.model, reportedTools: item.tools, apiKeySource: item.apiKeySource }; save();
@@ -362,13 +371,16 @@ export class ClaudeAgentService {
           }
         } else if (item.type === 'assistant' && item.parent_tool_use_id === null) {
           if (item.error) apiError = item.error;
+          // One request can come as several messages with the same usage; a new request starts a new message id.
+          const used = item.message.usage;
+          if (used && item.message.id !== lastRequest) { lastRequest = item.message.id; requests++; tokens = (used.input_tokens ?? 0) + (used.cache_read_input_tokens ?? 0) + (used.cache_creation_input_tokens ?? 0) + (used.output_tokens ?? 0); }
           for (const block of item.message.content) if (block.type === 'tool_use' && !block.name.startsWith(`mcp__${SERVER}__`)) event({ at: now(), type: 'progress', message: webStep(block.name, block.input) ?? `Claude Code asked to use ${block.name}.`, data: { name: block.name, input: block.input } });
         } else if (item.type === 'rate_limit_event' && onPlan) {
           this.plan.noteRateLimit(item.rate_limit_info);
         } else if (item.type === 'result') {
           // An API error (a low credit balance, a sign-in that stopped working) comes as a "success" marked is_error.
           const failed = item.subtype !== 'success' || item.is_error, error = item.subtype === 'success' ? item.is_error ? item.result : undefined : item.errors.find(Boolean);
-          finished = { cost: item.total_cost_usd, subtype: item.subtype === 'success' && failed ? 'error' : item.subtype, text: failed ? '' : item.result, sessionId: item.session_id, ...(error ? { error: error.slice(0, 300) } : {}) };
+          finished = { cost: item.total_cost_usd, subtype: item.subtype === 'success' && failed ? 'error' : item.subtype, text: failed ? '' : item.result, sessionId: item.session_id, ...(error ? { error: error.slice(0, 300) } : {}), usage: item.usage };
         }
       }
     })();
@@ -376,7 +388,7 @@ export class ClaudeAgentService {
     try {
       // After an error result the SDK throws as well; the result says what happened, and is handled below.
       try { await done; } catch (error) { if (!stopped && !finished) throw error; }
-      const result = finished as { cost: number; subtype: string; text: string; sessionId: string; error?: string } | null;
+      const result = finished as { cost: number; subtype: string; text: string; sessionId: string; error?: string; usage?: unknown } | null;
       // A session that ended before it started (no init) was not resumed: Claude Code no longer has it.
       if (resume && !attempt.sessionId && result && result.subtype !== 'success' && !stopped) throw new StaleSession();
       if (result) {
@@ -384,9 +396,12 @@ export class ClaudeAgentService {
         const turnCost = Math.round(Math.max(0, result.cost - (resume && result.sessionId === resume.sessionId && result.cost >= resume.costUsd ? resume.costUsd : 0)) * 1e9) / 1e9;
         attempt.costUsd = turnCost;
         if (usage) settlePaidUsage(this.store, usage.id, turnCost, { requestId, model, reportedTotalUsd: result.cost, subtype: result.subtype });
-        event({ at: now(), type: 'usage', message: onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`, data: { costUsd: turnCost, subtype: result.subtype, billing } });
+        // How big the turn was, so a turn that used a lot says why: how many requests, and how long the conversation got.
+        const size = requests ? ` ${requests} request${requests === 1 ? '' : 's'} to Claude, the conversation at about ${Math.max(1, Math.round(tokens / 1000))}k tokens.` : '';
+        attempt.request = { ...(attempt.request as object), requests, tokens, usage: result.usage };
+        event({ at: now(), type: 'usage', message: `${onPlan ? `Ran on your Claude subscription; at API prices it would be about US$${turnCost.toFixed(4)}.` : `Claude Code reported about US$${turnCost.toFixed(4)} for this turn.`}${size}`, data: { costUsd: turnCost, subtype: result.subtype, billing, requests, tokens, usage: result.usage } });
         // Kept also after an error (the step limit, the turn's budget), so "continue" picks up the work done so far.
-        if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now() } satisfies Session);
+        if (attempt.sessionId) this.store.saveRecord('claude-session', key, request.projectId, { sessionId: result.sessionId, scopeHash, cwd, costUsd: result.cost, state: 'ready', at: now(), tokens, ended: result.subtype === 'success' && !stopped && !refused, ...(preferences ? { preferences } : {}) } satisfies Session);
       }
       if (refused) throw new StoreError(refused, 503);
       if (timedOut) throw new StoreError(`Claude Code reached this turn’s limit of ${TURN_LIMIT} and was stopped. What it did so far is kept: send "continue" to carry on.`, 503);

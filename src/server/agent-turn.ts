@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { AgentEvent } from '../shared/agent-runtime.js';
 
 /** What Claude Code and Codex share about one turn: how long it may run, what the agent hears about that time while it
@@ -78,3 +79,32 @@ export function thinkingLine(text: string, tokens = 0): string {
   const sentences = plain.split(/(?<=[.!?…])\s+/u), last = sentences.at(-1)!;
   return `Thinking: ${cut(/[.!?…]$/u.test(last) ? last : sentences.at(-2) ?? last, 140)}`;
 }
+
+/** Every step of a turn sends the agent's whole conversation again. The model's provider keeps it cached, so a step pays
+ * a fraction for the part it has seen, but only for a while (an hour for Claude Code on a plan, less at OpenAI), and
+ * writing it into Claude's cache costs more than reading it fresh. A thread's session used to be picked up for every
+ * message, for days: one Claude Code session grew to 138,000 tokens over ten turns, each of its 42 steps read it all, and
+ * after each break it was written again in full. Past an hour, or once it is long, a thread starts a new session that is
+ * told the conversation so far in writing (AgentExecuteRequest.earlier); the canvas holds the work itself. */
+export const RESUME_MAX_IDLE_MS = 55 * 60_000;
+/** A finished turn's session is carried on up to this length in tokens; "continue" after a stopped turn, which needs what
+ * the stopped turn had read, up to the larger one. */
+export const RESUME_MAX_TOKENS = 60_000, CONTINUE_MAX_TOKENS = 150_000;
+/** What a thread keeps of its agent session to decide this. at: when its last turn ended. tokens: the conversation's
+ * length at its last request, when the agent reports it. ended: whether that turn finished rather than stopping part way. */
+export type SessionUse = { at: string; tokens?: number; ended?: boolean };
+/** Why a thread's saved session is not picked up again, or null when it is. */
+export function staleSession(session: SessionUse, at = Date.now()): 'idle' | 'long' | null {
+  if (at - Date.parse(session.at) > RESUME_MAX_IDLE_MS) return 'idle';
+  if ((session.tokens ?? 0) > (session.ended === false ? CONTINUE_MAX_TOKENS : RESUME_MAX_TOKENS)) return 'long';
+  return null;
+}
+/** The step that says why the agent starts a new session. */
+export function freshSessionStep(agent: string, why: 'idle' | 'long', tokens = 0) {
+  return why === 'idle' ? `More than an hour has passed, so ${agent} starts a new session with the conversation so far in writing, rather than reloading the old one in full.`
+    : `This thread’s ${agent} session reached about ${Math.round(tokens / 1000)}k tokens, so it starts a new one with the conversation so far in writing; every step would read the whole session again.`;
+}
+/** The person's saved preferences and skill list go with every message. A session that already holds them, unchanged,
+ * is told so in one line rather than given them again, turn after turn. */
+export const preferencesKey = (preferences: string | undefined) => preferences ? createHash('sha256').update(preferences).digest('hex').slice(0, 16) : undefined;
+export const SAME_PREFERENCES = 'The researcher’s saved preferences and skills, given earlier in this conversation, still apply unchanged.';

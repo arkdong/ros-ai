@@ -29,6 +29,16 @@ function modelTools(toolkit: AgentWorkspaceTools): ModelTool[] {
 const bytes = (messages: ChatMessage[]) => Buffer.byteLength(JSON.stringify(messages), 'utf8');
 /** A tool result cut to its head and its tail, so the instruction a tool puts last (what to do next) survives the cut. */
 const shorten = (content: string, head: number) => content.length <= head + RESULT_TAIL_CHARACTERS ? content : `${content.slice(0, head)}… [result shortened; call the tool again to see it whole] …${content.slice(-RESULT_TAIL_CHARACTERS)}`;
+/** The thread's conversation written out (its first line says what it is), within a number of bytes: its first line and
+ * as much of the end as fits, since the latest turns matter most to a follow-up. */
+export function latest(conversation: string, room: number) {
+  if (Buffer.byteLength(conversation, 'utf8') <= room) return conversation;
+  const cut = conversation.indexOf('\n'), head = cut < 0 ? '' : conversation.slice(0, cut), body = cut < 0 ? conversation : conversation.slice(cut + 1);
+  const marker = '[…earlier turns left out]\n';
+  let tail = body.slice(-Math.max(0, room - Buffer.byteLength(head + marker, 'utf8') - 2));
+  while (tail && Buffer.byteLength(`${head}\n${marker}${tail}`, 'utf8') > room) tail = tail.slice(Math.ceil(tail.length / 10));
+  return tail ? `${head}\n${marker}${tail}` : undefined;
+}
 /** Keep the system prompt and the question whole; clip older tool results first, then the newest ones if the request
  * would still overflow (several page reads in one step, for example), rather than let the provider request fail. */
 export function fit(messages: ChatMessage[], budget: number) {
@@ -121,9 +131,12 @@ export class ToolLoopAgentService {
     const found = this.registered(request.selection), toolBytes = Buffer.byteLength(JSON.stringify(tools), 'utf8');
     const remote = Math.min(MESSAGE_BUDGET_BYTES, Math.max(8_000, REQUEST_BYTES - toolBytes));
     const budget = found?.local ? Math.min(remote, Math.max(8_000, (found.model.contextTokens - 2_048) * 3 - toolBytes)) : remote;
+    // The loop keeps no session between turns, so each turn is told the thread's conversation so far, its latest part
+    // when it would take more than a quarter of the room: without it a follow-up ("make it shorter") had nothing to go on.
+    const earlier = request.earlier?.() ?? undefined, carried = earlier ? latest(earlier, Math.floor(budget / 4)) : undefined;
     const messages: ChatMessage[] = [
       { role: 'system', content: AGENT_LOOP_INSTRUCTIONS },
-      { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}${ANSWER_IN_CHAT}\n\nResearcher's message:\n${message}` },
+      { role: 'user', content: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${carried ? `${carried}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}${ANSWER_IN_CHAT}\n\nResearcher's message:\n${message}` },
     ];
     const id = randomUUID();
     let attempt: Attempt = { id, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', selection: request.selection, label, requests: 0, toolCalls: 0, estimatedUsd: 0, usageIds: [], events: [], reply: '' };
