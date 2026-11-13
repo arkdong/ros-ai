@@ -5,6 +5,7 @@ import type { ImageSize } from '../shared/files';
 import { TEXT_LABELS, kindName, sentence, textLabel } from '../shared/vocabulary';
 import { readSaved, saveLocal } from './persistence';
 import { KindIcon } from './Canvas';
+import { useDragMove } from './drag-move';
 import './chip-menu.css';
 import './block-sheet.css';
 
@@ -39,6 +40,8 @@ export function BlockSheet({ node, mode, onMode, onClose, onRename, head, foot, 
     if (inside && !inside.contains(document.activeElement)) (inside.querySelector<HTMLElement>('[data-autofocus]') ?? inside.querySelector<HTMLElement>('.cm-content') ?? inside.querySelector<HTMLElement>('textarea, input:not([type="file"]):not(.bv-title), button'))?.focus();
     return () => previous?.focus();
   }, [node.id, mode]);
+  // As a sheet it can be dragged by its header anywhere over the map, and opens where it was left.
+  useDragMove(box, 'float:block-sheet', mode === 'sheet');
   const shape = picture ? { '--picture-ratio': String(picture.width / Math.max(1, picture.height)), '--picture-w': String(picture.width), '--picture-h': String(picture.height) } as CSSProperties : undefined;
   const view = <div ref={box} className={`block-view ${mode === 'sheet' ? 'block-sheet' : 'block-panel'}${picture ? ' picture-block' : picture === null ? ' picture-large' : ''}${picture !== undefined && pictureCaption ? ' has-caption' : ''}`} style={shape} role={mode === 'sheet' ? 'dialog' : 'complementary'} aria-label={`${kindName(node)} · ${node.title}`} data-testid="block-view">
     <header className="bv-head">
@@ -62,7 +65,7 @@ function TitleField({ title, onRename }: { title: string; onRename: (title: stri
   const [value, setValue] = useState(title);
   useEffect(() => setValue(title), [title]);
   const commit = () => { const next = value.trim().slice(0, 200); if (next && next !== title) onRename(next); else setValue(title); };
-  return <input className="bv-title" aria-label="Block title" value={value} maxLength={200} onChange={event => setValue(event.target.value)} onBlur={commit} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } }}/>;
+  return <input className="bv-title drag-title" aria-label="Block title" value={value} maxLength={200} onChange={event => setValue(event.target.value)} onBlur={commit} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } }}/>;
 }
 
 /** The label of a Text block as a footer chip with its menu, as the ROS bar does for its choices. */
