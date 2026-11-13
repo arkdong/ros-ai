@@ -349,17 +349,23 @@ function locateFolder(record: FolderRecord): { root: string; same: boolean; info
     if (code === 'EPERM' || code === 'EACCES') return { reason: 'This computer is not letting ros.ai open the project folder. On a Mac, allow ros.ai in System Settings, Privacy & Security, Files and Folders. ros.ai reconnects on its own once it can.' };
     return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' };
   }
-  if (info.isDirectory() && real === record.path && info.dev === record.device && info.ino === record.inode) return { root: real, same: true, info };
-  if (info.isDirectory() && folderProjectId(real) === record.projectId) return { root: real, same: false, info };
+  if (!info.isDirectory()) return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
+  const owner = folderOwner(real), same = real === record.path && info.dev === record.device && info.ino === record.inode;
+  // Another ros.ai (the installed app and a copy run from code each keep their own projects) has made this folder its
+  // project's own. Writing on would have the two overwrite each other's files, so this project stops using it.
+  if (owner && owner.projectId !== record.projectId)
+    return { reason: `This folder now belongs to the project “${owner.title}” in another copy of ros.ai, so this project stopped writing to it. Reconnect this project to a folder of its own.` };
+  if (same) return { root: real, same: true, info };
+  if (owner) return { root: real, same: false, info };
   return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
 }
 /** The project a folder's .ros-ai/project.json names, read without checking the rest of it. */
-function folderProjectId(root: string): string | undefined {
+function folderOwner(root: string): { projectId: string; title: string } | undefined {
   try {
     const files = new FolderFiles(root);
     if (!files.exists(MANIFEST)) return undefined;
-    const parsed = z.object({ app: z.literal('ros.ai'), projectId: z.string().min(1).max(200) }).safeParse(JSON.parse(decodeText(files.read(MANIFEST, 2_000_000).bytes)));
-    return parsed.success ? parsed.data.projectId : undefined;
+    const parsed = z.object({ app: z.literal('ros.ai'), projectId: z.string().min(1).max(200), title: z.string().max(200).catch('') }).safeParse(JSON.parse(decodeText(files.read(MANIFEST, 2_000_000).bytes)));
+    return parsed.success ? { projectId: parsed.data.projectId, title: parsed.data.title || 'Untitled' } : undefined;
   } catch { return undefined; }
 }
 
@@ -603,6 +609,10 @@ export class ProjectFolders implements NotebookFolders {
         if (rendered) record.files[node.id] = { path: block.file, kind, hash: sha(rendered.bytes), ...(rendered.artifactId ? { artifactId: rendered.artifactId } : {}) };
       }
     }
+    // The person chose this folder for this project, so its project.json names this project from now on; a copy of
+    // ros.ai that named another project there stops writing to it instead of the two overwriting each other.
+    if (manifest && manifest.projectId !== projectId)
+      this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify({ ...manifest, projectId, title: this.store.getProject(projectId).title }, null, 2)}\n`, 'utf8'));
     this.save(record);
     this.activate(projectId);
     this.syncNow(projectId, true);

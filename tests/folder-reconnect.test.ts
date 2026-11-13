@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/server/store.js';
@@ -64,5 +64,22 @@ test('a different folder put in the project folder’s place still asks to recon
     const status = f.folders.status(f.project.id);
     assert.equal(status.available, false);
     assert.match(status.reason ?? '', /moved or replaced/u);
+  } finally { f.close(); }
+});
+
+test('a folder another copy of ros.ai took over is left alone instead of the two overwriting each other', async () => {
+  const f = fixture();
+  try {
+    // The installed app and a copy run from code keep separate projects, and both were pointed at this folder.
+    const manifest = join(f.folder, '.ros-ai', 'project.json'), theirs = { ...JSON.parse(readFileSync(manifest, 'utf8')), projectId: 'other-copy-project', title: 'Rec' };
+    writeFileSync(manifest, `${JSON.stringify(theirs, null, 2)}\n`);
+    f.restart();
+    assert.equal(projectFolderRoot(f.store, f.project.id), null);
+    f.store.mutate(f.project.id, [{ type: 'addNode', node: { id: 'note-1', title: 'New note', description: 'Written here', kind: 'topic', x: 0, y: 0 } }], 'Add a note', f.store.getProject(f.project.id).revision);
+    for (let tries = 0; tries < 100 && f.folders.status(f.project.id).available !== false; tries++) await new Promise(done => setTimeout(done, 20));
+    const status = f.folders.status(f.project.id);
+    assert.equal(status.available, false);
+    assert.match(status.reason ?? '', /“Rec” in another copy of ros\.ai/u);
+    assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).projectId, 'other-copy-project', 'the other copy’s project.json is not overwritten');
   } finally { f.close(); }
 });
