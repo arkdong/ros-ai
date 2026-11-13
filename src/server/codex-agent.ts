@@ -19,11 +19,14 @@ import { LocalAgentOnboarding } from './local-agent-onboarding.js';
 import { windowLabel, type PlanUsage } from '../shared/budget-report.js';
 import { CODEX_INSTRUCTIONS, selectionText } from './agent-prompt.js';
 import { codexToolSchema } from './codex-tool-schema.js';
-import { TURN_LIMIT, TURN_SECONDS, statusLine, thinkingLine, turnClock } from './agent-turn.js';
+import { SAME_PREFERENCES, TURN_LIMIT, TURN_SECONDS, freshSessionStep, preferencesKey, staleSession, statusLine, thinkingLine, turnClock } from './agent-turn.js';
 
 /** A thread's running token totals, as Codex reports them. */
 type Tokens = { inputTokens: number; cachedInputTokens: number; outputTokens: number; totalTokens: number };
-type Session = { projectId: string; threadId: string; scopeHash: string; cwd: string; state: 'ready' | 'interrupted' | 'uncertain'; at: string; tokens?: Tokens };
+/** tokens: the thread's running totals, for pricing. context: the conversation's length at its last request. at: when it
+ * was last used. preferences: which saved preferences and skills the thread holds. A thread is picked up again by the
+ * rules of staleSession (agent-turn.ts); its state is 'ready' while its last turn finished. */
+type Session = { projectId: string; threadId: string; scopeHash: string; cwd: string; state: 'ready' | 'interrupted' | 'uncertain'; at: string; tokens?: Tokens; context?: number; preferences?: string };
 /** Codex works in a folder of its own in the temp folder, ros-ai-agent-session-*. The check goes by the platform's own
  * separator: a "/" never matches a Windows path, which refused every Codex turn there. */
 type Paths = Pick<PlatformPath, 'join' | 'resolve'>;
@@ -271,9 +274,12 @@ export class CodexAgentService implements AgentRuntime {
     // new thread, as it does on the other way of paying: the plan and the key keep their threads in different places.
     const scopeHash = createHash('sha256').update(JSON.stringify({ tools: dynamicTools, instructions: CODEX_INSTRUCTIONS, ...(onKey ? { billing, model } : {}) })).digest('hex');
     const prior = this.store.record<Session>('codex-session', key);
-    const reuse = prior && prior.scopeHash === scopeHash && prior.state !== 'uncertain';
+    // A thread left for more than an hour, or grown long, is not picked up again: Codex would send all of it with every step.
+    const usable = prior && prior.scopeHash === scopeHash && prior.state !== 'uncertain' ? prior : null;
+    const stale = usable ? staleSession({ at: usable.at, tokens: usable.context, ended: usable.state === 'ready' }) : null;
+    const reuse = usable && !stale ? usable : null;
     // Codex's folder is set up and checked before anything is reserved, so a refusal records no spend.
-    const cwd = reuse ? prior.cwd : mkdtempSync(codexSessionPrefix());
+    const cwd = reuse ? reuse.cwd : mkdtempSync(codexSessionPrefix());
     if (!inCodexSessionScope(cwd)) throw new StoreError('Codex session directory is outside its isolated local scope.', 503);
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
     const usage = (() => {
@@ -293,13 +299,16 @@ export class CodexAgentService implements AgentRuntime {
     // The thread carries the instructions (developerInstructions). Each message carries what changes: the selection, where
     // the person was and, for a new thread in a conversation that already has turns, that conversation written out.
     const earlier = reuse ? undefined : request.earlier?.();
-    const input = [{ type: 'text', text: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${request.preferences ? `${request.preferences}\n\n` : ''}Researcher's message:\n${message}` }];
+    // A thread that holds the same preferences and skills already is not given them again.
+    const preferences = preferencesKey(request.preferences), kept = reuse && preferences && reuse.preferences === preferences ? SAME_PREFERENCES : request.preferences;
+    const input = [{ type: 'text', text: `${selectionText(toolkit.preview())}\n\n${request.glance ? `${request.glance}\n\n` : ''}${earlier ? `${earlier}\n\n` : ''}${kept ? `${kept}\n\n` : ''}Researcher's message:\n${message}` }];
     let attempt: Attempt = { id: requestId, projectId: request.projectId, assistantTurnId: request.turnId, at: now(), status: 'running', billing, ...(onKey ? { model, usageId: usage?.id ?? null, reservedUsd } : {}), capture: toolkit.capture, request: { input, instructions: CODEX_INSTRUCTIONS, tools: dynamicTools, provider: 'codex-app-server', authentication: onKey ? `OpenAI API key (${model})` : 'ChatGPT plan (Codex’s own sign-in)', model: choice.model, effort: choice.effort, isolation, automaticRetry: false }, events: [], reply: '' };
     const save = () => this.store.saveRecord('agent-attempt', requestId, request.projectId, attempt);
     // What Codex is doing right now, shown until its next step is recorded.
     const line = statusLine(request.onEvent), clock = turnClock();
     const event = (value: AgentEvent) => { if (value.type !== 'delta') line.clear(); if (attempt.events.length < 300) { attempt.events.push(value); save(); } request.onEvent(value); };
     save();
+    if (stale) event({ at: now(), type: 'progress', message: freshSessionStep('Codex', stale, usable!.context) });
     let reasoning = '', thoughtMark = 0, messageId = '', answerFrom = 0, resumeFailed = false, threadId = '', turnId = '', toolCalls = 0, stopped = false, timedOut = false, interruptSent = false, inferenceSubmitted = false, toolsSpent = false, settlement: 'completed' | 'failed' | 'interrupted' | null = null;
     // What Codex said went wrong upstream, such as a model the ChatGPT plan no longer serves; shown when the turn fails.
     let upstreamError = '';
@@ -311,7 +320,7 @@ export class CodexAgentService implements AgentRuntime {
       return (typeof inner === 'string' && inner ? inner : message).trim().slice(0, 600);
     };
     // On an API key: the thread's token totals before this turn and now, the searches it ran, and whether it hit its cap.
-    const base = reuse ? prior.tokens ?? null : null;
+    const base = reuse ? reuse.tokens ?? null : null;
     let latest: Tokens | null = base, searches = 0, capped = false, settled = !usage;
     const spentUsd = () => (latest ? Math.max(0, tokenUsd(model, latest) - (base ? tokenUsd(model, base) : 0)) : 0) + searches * WEB_SEARCH_USD;
     let finish!: () => void, fail!: (error: Error) => void;
@@ -379,12 +388,13 @@ export class CodexAgentService implements AgentRuntime {
         if (item.type === 'webSearch') { searches++; event({ at: now(), type: 'progress', message: codexWebStep(item), data: { itemId: item.id, type: item.type, query: item.query, action: item.action } }); checkCap(); line.say('Thinking…'); return; }
         if (codexOutside(item)) { stop(); fail(new StoreError('Codex attempted an unavailable host/external tool. The turn was stopped; application effects still require validated tools.', 503)); return; }
       } else if (method === 'thread/tokenUsage/updated') {
-        const total = tokens(object(params.tokenUsage).total);
+        const total = tokens(object(params.tokenUsage).total), last = tokens(object(params.tokenUsage).last);
         if (total) {
           latest = total; attempt.tokens = total; save();
-          // Kept with the thread, so the next turn on it is priced from here.
+          // Kept with the thread, so the next turn on it is priced from here, and is told how long the thread has grown
+          // (its last request: what it read, which includes the cached part, and wrote).
           const session = this.store.record<Session>('codex-session', key);
-          if (session?.threadId === threadId) this.store.saveRecord('codex-session', key, request.projectId, { ...session, tokens: total });
+          if (session?.threadId === threadId) this.store.saveRecord('codex-session', key, request.projectId, { ...session, tokens: total, at: now(), ...(last ? { context: last.inputTokens + last.outputTokens } : {}) });
         }
         checkCap();
       } else if (method === 'turn/completed') {
@@ -429,7 +439,7 @@ export class CodexAgentService implements AgentRuntime {
       // A resume asks only for the thread, not its whole history, which on a long thread is more than ros.ai reads in
       // one message. One that fails anyway (the thread archived in Codex, say) lets the thread go, so the next turn
       // starts a new one instead of failing the same way every time.
-      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: prior.threadId, excludeTurns: true } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools })
+      const result = await rpc.request<{ thread?: { id?: string }; cwd?: string; sandbox?: { type?: string; networkAccess?: boolean }; approvalPolicy?: string; activePermissionProfile?: { id?: string } | null; model?: string; modelProvider?: string; reasoningEffort?: string | null }>(reuse ? 'thread/resume' : 'thread/start', reuse ? { ...settings, threadId: reuse.threadId, excludeTurns: true } : { ...settings, ...(profile ? {} : { sandbox: 'readOnly' }), dynamicTools })
         .catch((error: unknown) => { resumeFailed = Boolean(reuse); throw error; });
       threadId = String(result.thread?.id ?? '');
       const confined = result.sandbox?.type === 'readOnly' && (!profile || (result.activePermissionProfile?.id === PERMISSION_PROFILE && result.sandbox.networkAccess === false));
@@ -437,7 +447,7 @@ export class CodexAgentService implements AgentRuntime {
       // The thread must bill what the person chose: the OpenAI API key, on the model ros.ai prices.
       if (onKey && (result.modelProvider !== codexProvider(true) || result.model !== model)) throw new StoreError('Codex did not confirm it is using the OpenAI API key from the Agents page, so ros.ai stopped before sending anything.', 503);
       attempt.threadId = threadId; attempt.request = { ...object(attempt.request), reportedModel: result.model ?? null, reportedEffort: result.reasoningEffort ?? null }; save();
-      this.store.saveRecord('codex-session', key, request.projectId, { projectId: request.projectId, threadId, scopeHash, cwd, state: 'ready', at: now(), ...(latest ? { tokens: latest } : {}) } satisfies Session);
+      this.store.saveRecord('codex-session', key, request.projectId, { projectId: request.projectId, threadId, scopeHash, cwd, state: 'ready', at: now(), ...(latest ? { tokens: latest } : {}), ...(reuse?.context ? { context: reuse.context } : {}), ...(preferences ? { preferences } : {}) } satisfies Session);
       if (stopped || request.signal.aborted) throw new StoreError('Agent turn stopped before inference submission.', 409);
       const sandboxPolicy = profile ? null : { type: 'readOnly', networkAccess: false, access: { type: 'restricted', readableRoots: [cwd], includePlatformDefaults: true } };
       const confinement = profile ?? { sandboxPolicy };

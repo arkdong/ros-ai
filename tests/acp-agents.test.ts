@@ -128,6 +128,36 @@ test('A Gemini CLI turn runs locked down from ros.ai\'s own folder, with only ro
   } finally { await f.close(); }
 });
 
+test('A thread reopens its agent session only within the hour and while short; a new session is told the conversation so far', async () => {
+  const f = await workspace();
+  try {
+    f.fake({ LOAD: '1' });
+    const turn = async () => {
+      const events: AgentEvent[] = [];
+      await f.service.execute({ agent: 'gemini', projectId: f.project.id, nodeIds: ['question'], artifactIds: [], turnId: `turn-${Math.random()}`, message: 'And now?', signal: new AbortController().signal, earlier: () => 'Earlier in this conversation: the first question.', onEvent: event => events.push(event) });
+      const report = f.report() as Report & { session: { method: string } };
+      return { events, method: report.session.method, prompt: report.prompts.at(-1)! };
+    };
+    const session = () => f.store.record<{ at: string; tokens?: number }>('acp-session', f.project.id)!;
+    const first = await turn();
+    assert.equal(first.method, 'session/new');
+    assert.ok(first.prompt.includes('Earlier in this conversation: the first question.'), 'a new session in a thread with turns is told them');
+    assert.equal(session().tokens, 1234, 'how much of its context the session used');
+    const soon = await turn();
+    assert.equal(soon.method, 'session/load');
+    assert.ok(!soon.prompt.includes('Earlier in this conversation'), 'a reopened session holds the conversation itself');
+    f.store.saveRecord('acp-session', f.project.id, f.project.id, { ...session(), at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+    const later = await turn();
+    assert.equal(later.method, 'session/new');
+    assert.ok(later.prompt.includes('Earlier in this conversation: the first question.'));
+    assert.ok(later.events.some(event => /^More than an hour has passed, so Gemini CLI starts a new session/u.test(event.message)));
+    f.store.saveRecord('acp-session', f.project.id, f.project.id, { ...session(), tokens: 90_000 });
+    const long = await turn();
+    assert.equal(long.method, 'session/new');
+    assert.ok(long.events.some(event => /Gemini CLI session reached about 90k tokens/u.test(event.message)));
+  } finally { await f.close(); }
+});
+
 test('An agent that answers again after a turn ended reaches nothing: the turn\'s endpoint is gone', async () => {
   const f = await workspace();
   try {

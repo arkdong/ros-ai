@@ -140,8 +140,10 @@ test('ROS\'s agent works step by step on a local model that calls tools, and say
     assert.match(loop.readiness(f.project.id, { provider: id, model: 'tiny' }).reason!, /8,192-token context in Ollama; working step by step needs at least 16k/u);
     execution.models.update(f.project.id, { selection: { provider: id, model: 'agent' } });
     assert.deepEqual(loop.readiness(f.project.id, { provider: id, model: 'agent' }), { available: true, reason: null });
-    const result = await loop.execute({ projectId: f.project.id, nodeIds: [], artifactIds: [], turnId: 'turn-1', message: 'What is on the map?', signal: new AbortController().signal, onEvent: () => {}, selection: { provider: id, model: 'agent' } });
+    const result = await loop.execute({ projectId: f.project.id, nodeIds: [], artifactIds: [], turnId: 'turn-1', message: 'What is on the map?', signal: new AbortController().signal, onEvent: () => {}, selection: { provider: id, model: 'agent' }, earlier: () => 'Earlier in this conversation:\n\nResearcher: Which halls are near?\nAnswer: Two halls.' });
     assert.equal(result.reply, 'The map has two blocks.');
+    // The loop keeps no session, so each turn is told the thread's conversation so far.
+    assert.match(JSON.stringify(ollama.chats[0]!.messages[1]), /Researcher: Which halls are near\?\\nAnswer: Two halls\./u);
     assert.equal(ollama.chats.length, 2);
     assert(ollama.chats[0]!.tools!.some(tool => tool.function.name === 'ros_read_canvas'));
     assert.match(JSON.stringify(ollama.chats[1]!.messages.at(-1)), /Block a/u, 'the canvas read went back to the model');
