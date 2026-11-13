@@ -332,10 +332,35 @@ const shareable = ({ account: _account, ...view }: NotionView) => view;
 export function projectFolderRoot(store: Store, projectId: string): string | null {
   const record = store.record<FolderRecord>(RECORD, projectId);
   if (!record) return null;
+  const found = locateFolder(record);
+  return 'root' in found ? found.root : null;
+}
+
+/**
+ * Finds a project's folder where it was saved. The same device and inode prove it at once; failing that, the folder's
+ * own .ros-ai/project.json naming this project does. macOS can number a disk differently after a restart, and a sync
+ * app (iCloud Drive, Dropbox) or a restore from a backup gives a folder a new inode, and neither may disconnect it.
+ */
+function locateFolder(record: FolderRecord): { root: string; same: boolean; info: Stats } | { reason: string } {
+  let real: string, info: Stats;
+  try { real = realpathSync(record.path); info = statSync(real); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EPERM' || code === 'EACCES') return { reason: 'This computer is not letting ros.ai open the project folder. On a Mac, allow ros.ai in System Settings, Privacy & Security, Files and Folders. ros.ai reconnects on its own once it can.' };
+    return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' };
+  }
+  if (info.isDirectory() && real === record.path && info.dev === record.device && info.ino === record.inode) return { root: real, same: true, info };
+  if (info.isDirectory() && folderProjectId(real) === record.projectId) return { root: real, same: false, info };
+  return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
+}
+/** The project a folder's .ros-ai/project.json names, read without checking the rest of it. */
+function folderProjectId(root: string): string | undefined {
   try {
-    const real = realpathSync(record.path), info = statSync(real);
-    return real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode ? real : null;
-  } catch { return null; }
+    const files = new FolderFiles(root);
+    if (!files.exists(MANIFEST)) return undefined;
+    const parsed = z.object({ app: z.literal('ros.ai'), projectId: z.string().min(1).max(200) }).safeParse(JSON.parse(decodeText(files.read(MANIFEST, 2_000_000).bytes)));
+    return parsed.success ? parsed.data.projectId : undefined;
+  } catch { return undefined; }
 }
 
 export class ProjectFolders implements NotebookFolders {
@@ -390,12 +415,15 @@ export class ProjectFolders implements NotebookFolders {
     if (typeof root !== 'string') throw new StoreError(root.reason, 409);
     return { record, files: new FolderFiles(root) };
   }
+  /** The folder's real path, or why it cannot be used. A folder found by its project.json is remembered as it is now. */
   private verify(record: FolderRecord): string | { reason: string } {
-    try {
-      const real = realpathSync(record.path), info = statSync(real);
-      if (real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode) return real;
-      return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
-    } catch { return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' }; }
+    const found = locateFolder(record);
+    if (!('root' in found)) return found;
+    if (!found.same) {
+      record.path = found.root; record.device = found.info.dev; record.inode = found.info.ino;
+      this.save(record);
+    }
+    return found.root;
   }
   private mapped(record: FolderRecord): Set<string> {
     return new Set([...Object.values(record.files).filter(entry => !entry.removed).map(entry => entry.path.toLowerCase()),
