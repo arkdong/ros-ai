@@ -50,6 +50,13 @@ mac:
   extendInfo:
     NSHumanReadableCopyright: MIT licence
     LSMinimumSystemVersion: "12.0"
+    # macOS asks once before ros.ai may read a project folder kept in Documents, Desktop, Downloads or on another disk.
+    # These lines are the reason it shows; ros.ai's server runs as this app, so the answer covers it too.
+    NSDocumentsFolderUsageDescription: ros.ai keeps your project's blocks as files in the project folder you chose.
+    NSDesktopFolderUsageDescription: ros.ai keeps your project's blocks as files in the project folder you chose.
+    NSDownloadsFolderUsageDescription: ros.ai keeps your project's blocks as files in the project folder you chose.
+    NSRemovableVolumesUsageDescription: ros.ai keeps your project's blocks as files in the project folder you chose.
+    NSNetworkVolumesUsageDescription: ros.ai keeps your project's blocks as files in the project folder you chose.
 # Windows: one installer that needs no administrator, installs for this person only and opens ros.ai when done.
 # Not code signed yet, so Windows SmartScreen asks once: More info, then Run anyway.
 win:

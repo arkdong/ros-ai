@@ -332,10 +332,41 @@ const shareable = ({ account: _account, ...view }: NotionView) => view;
 export function projectFolderRoot(store: Store, projectId: string): string | null {
   const record = store.record<FolderRecord>(RECORD, projectId);
   if (!record) return null;
+  const found = locateFolder(record);
+  return 'root' in found ? found.root : null;
+}
+
+/**
+ * Finds a project's folder where it was saved. The same device and inode prove it at once; failing that, the folder's
+ * own .ros-ai/project.json naming this project does. macOS can number a disk differently after a restart, and a sync
+ * app (iCloud Drive, Dropbox) or a restore from a backup gives a folder a new inode, and neither may disconnect it.
+ */
+function locateFolder(record: FolderRecord): { root: string; same: boolean; info: Stats } | { reason: string } {
+  let real: string, info: Stats;
+  try { real = realpathSync(record.path); info = statSync(real); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EPERM' || code === 'EACCES') return { reason: 'This computer is not letting ros.ai open the project folder. On a Mac, allow ros.ai in System Settings, Privacy & Security, Files and Folders. ros.ai reconnects on its own once it can.' };
+    return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' };
+  }
+  if (!info.isDirectory()) return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
+  const owner = folderOwner(real), same = real === record.path && info.dev === record.device && info.ino === record.inode;
+  // Another ros.ai (the installed app and a copy run from code each keep their own projects) has made this folder its
+  // project's own. Writing on would have the two overwrite each other's files, so this project stops using it.
+  if (owner && owner.projectId !== record.projectId)
+    return { reason: `This folder now belongs to the project “${owner.title}” in another copy of ros.ai, so this project stopped writing to it. Reconnect this project to a folder of its own.` };
+  if (same) return { root: real, same: true, info };
+  if (owner) return { root: real, same: false, info };
+  return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
+}
+/** The project a folder's .ros-ai/project.json names, read without checking the rest of it. */
+function folderOwner(root: string): { projectId: string; title: string } | undefined {
   try {
-    const real = realpathSync(record.path), info = statSync(real);
-    return real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode ? real : null;
-  } catch { return null; }
+    const files = new FolderFiles(root);
+    if (!files.exists(MANIFEST)) return undefined;
+    const parsed = z.object({ app: z.literal('ros.ai'), projectId: z.string().min(1).max(200), title: z.string().max(200).catch('') }).safeParse(JSON.parse(decodeText(files.read(MANIFEST, 2_000_000).bytes)));
+    return parsed.success ? { projectId: parsed.data.projectId, title: parsed.data.title || 'Untitled' } : undefined;
+  } catch { return undefined; }
 }
 
 export class ProjectFolders implements NotebookFolders {
@@ -390,12 +421,15 @@ export class ProjectFolders implements NotebookFolders {
     if (typeof root !== 'string') throw new StoreError(root.reason, 409);
     return { record, files: new FolderFiles(root) };
   }
+  /** The folder's real path, or why it cannot be used. A folder found by its project.json is remembered as it is now. */
   private verify(record: FolderRecord): string | { reason: string } {
-    try {
-      const real = realpathSync(record.path), info = statSync(real);
-      if (real === record.path && info.isDirectory() && info.dev === record.device && info.ino === record.inode) return real;
-      return { reason: 'The project folder was moved or replaced. Reconnect it from its new place.' };
-    } catch { return { reason: 'The project folder is missing. Put it back, or reconnect it from its new place.' }; }
+    const found = locateFolder(record);
+    if (!('root' in found)) return found;
+    if (!found.same) {
+      record.path = found.root; record.device = found.info.dev; record.inode = found.info.ino;
+      this.save(record);
+    }
+    return found.root;
   }
   private mapped(record: FolderRecord): Set<string> {
     return new Set([...Object.values(record.files).filter(entry => !entry.removed).map(entry => entry.path.toLowerCase()),
@@ -575,6 +609,10 @@ export class ProjectFolders implements NotebookFolders {
         if (rendered) record.files[node.id] = { path: block.file, kind, hash: sha(rendered.bytes), ...(rendered.artifactId ? { artifactId: rendered.artifactId } : {}) };
       }
     }
+    // The person chose this folder for this project, so its project.json names this project from now on; a copy of
+    // ros.ai that named another project there stops writing to it instead of the two overwriting each other.
+    if (manifest && manifest.projectId !== projectId)
+      this.writeIfChanged(files, MANIFEST, Buffer.from(`${JSON.stringify({ ...manifest, projectId, title: this.store.getProject(projectId).title }, null, 2)}\n`, 'utf8'));
     this.save(record);
     this.activate(projectId);
     this.syncNow(projectId, true);
