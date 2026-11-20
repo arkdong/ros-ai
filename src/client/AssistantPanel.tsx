@@ -148,7 +148,7 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
       {submission&&submission.status!=='pending'&&<section className="assistant-submission-failure" role="alert"><div className="message-meta">Your submission · {submission.status==='uncertain'?'Admission unconfirmed':'Not admitted'}</div><RichText text={submission.message}/><p>{submission.error}</p><button type="button" className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button><button type="button" className="text-button" onClick={onConnections}>Inspect connection</button><p className="subtle">No automatic retry. A new message is a deliberate continuation.</p></section>}
       {busy && !active && <div className="assistant-working" role="status"><LoaderCircle size={14} className="spin"/> Saving your question…</div>}
     </div>
-    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='model'||blocker.action==='steps')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='model'?'Choose API model':blocker.action==='steps'?'Answer without tools':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
+    {blocker&&!running&&<div className="assistant-admission" role="status"><div><CircleHelp size={14}/><span>{blocker.summary}</span><button type="button" onClick={()=>{if(blocker.action==='download')window.open('https://ros-ai.io','_blank','noopener');else if(blocker.action==='model'||blocker.action==='steps')void changeBackend('provider');else if(blocker.action==='permissions')onPermissions();else onConnections();}}>{blocker.action==='download'?'Download ros.ai':blocker.action==='model'?'Choose API model':blocker.action==='steps'?'Answer without tools':blocker.action==='permissions'?'Review permissions':'Open Model'}<ArrowRight size={12}/></button></div></div>}
     {preparedNotice&&<p className="assistant-prepared-notice" role="status">{preparedNotice}</p>}
     {asking&&<AssistantAnswerDialog key={`${answerTarget.turnId}:${answerQuestionFingerprint(answerTarget.questions)}`} projectId={answerTarget.projectId} turnId={answerTarget.turnId} questions={answerTarget.questions} composerText={message} onPrepare={prepareAnswers} onClose={()=>{setAnswerTarget(null);setTimeout(()=>textarea.current?.focus(),0);}}/>}
     {plugins.chip&&<div className="plugin-chip-row">{plugins.chip}</div>}
@@ -171,7 +171,9 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
 
 function HistoryLabel() { return <BookOpen size={13}/>; }
 
-function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'|'steps'} {
+function assistantBlocker(reason:string,backend?:AssistantBackend):{summary:string;action:'model'|'connections'|'permissions'|'steps'|'download'} {
+  // The hosted demo replays saved work only: say so plainly and point to the download, where ROS runs live.
+  if(/public demo/i.test(reason))return {summary:'Live ROS is off in this demo, which replays saved work. Download ros.ai to ask it anything.',action:'download'};
   // An agent on this computer says itself what is missing (installed, signed in, locked down) and where to fix it.
   if(isAcpAgent(backend))return {summary:reason,action:/stopped|stop flag/i.test(reason)?'permissions':'connections'};
   const agent=inAppAgent(backend)?.agent;
