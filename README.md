@@ -8,7 +8,7 @@
 <p align="center"><strong>Run your agents in the open.</strong></p>
 
 <p align="center">
-  <a href="https://ros-ai.io">Website</a> · <a href="#install">Install</a> · <a href="docs/guide.md">Guide</a>
+  <a href="https://ros-ai.up.railway.app/app"><strong>Try the live demo</strong></a> · <a href="https://ros-ai.io">Website</a> · <a href="#install">Install</a> · <a href="docs/guide.md">Guide</a>
 </p>
 
 <p align="center">
@@ -18,6 +18,8 @@
 ros.ai is the open workspace that holds your whole project's context on one canvas. AI agents from any vendor work from it, and you see the whole picture, make the connections and direct them there.
 
 Your notes, code, data, files, papers and Notion pages sit on the canvas as blocks. Claude Code, Codex, Gemini CLI, Goose, OpenCode, local models and ROS, our own agent, work from those blocks with the same tools. Their work lands back on the canvas with its sources, under the permissions you set, and every change can be undone. ros.ai runs on your own computer, and the code is MIT.
+
+> **Try it in your browser, no install or sign-in:** [ros-ai.up.railway.app/app](https://ros-ai.up.railway.app/app). Pick **Dutch AI adoption** under *Or start from a demo*, press **Start from demo** and step through the four stages. The hosted demo replays a saved research run with its real evidence and results; live models (Nemotron on Nebius Token Factory) and agents run in the app you install below.
 
 ## Install
 
