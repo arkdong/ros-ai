@@ -80,3 +80,11 @@ input.bv-title:focus, .single-canvas-shell input.bv-title:focus { outline: 0; bo
 .block-view .code-authoring > .code-editor .cm-activeLineGutter { background: transparent; color: var(--ink); }
 .block-view .code-authoring > .code-editor .cm-content { padding: 6px 0 14px; }
 @media (max-width: 760px) { .block-sheet { max-width: calc(100% - 16px); top: 8px; } .block-panel { max-width: 100%; } }
+
+/* A floating window (an open block's sheet, ROS's half sheet or side panel) moves when its header is dragged
+   (drag-move.ts). The header's blank space shows a grab hand; a title field keeps its text cursor until it is dragged. */
+.drag-handle { cursor: grab; touch-action: none; }
+.drag-handle :is(button, a, input, select, textarea, [role="menu"]) { cursor: auto; }
+.drag-handle button, .drag-handle a { cursor: pointer; }
+.dragging, .dragging * { user-select: none; }
+.dragging .drag-handle, .dragging .drag-handle * { cursor: grabbing; }

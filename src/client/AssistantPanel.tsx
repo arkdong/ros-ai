@@ -1,4 +1,5 @@
 import { ResearchRing } from './Brand';
+import { useDragMove } from './drag-move';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUp, BookOpen, Check, Search, ChevronRight, CircleHelp, FileText, GitBranch, LoaderCircle, Quote, RotateCcw, Split, X } from 'lucide-react';
 import { inAppAgent, type AssistantAction, type AssistantBackend, type AssistantReference, type AssistantState, type AssistantTurn } from '../shared/assistant';
@@ -118,6 +119,9 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
   // Stop, by button or Esc twice, leaves the cursor in the box for the next question.
   const stop = () => { if (active) void onCancel(active.id); textarea.current?.focus(); };
   const stopArmed = useEscToStop(active ? stop : null);
+  // The panel can be dragged by its header anywhere over the map; each size keeps its own place.
+  const panelBox = useRef<HTMLElement>(null);
+  useDragMove(panelBox, `float:ros-${mode}`);
   const usePrompt = (value: string) => { setMessage(value); textarea.current?.focus(); };
   const openAnswers = (turnId: string, questions: AssistantClarificationQuestion[]) => {
     if (!questions.length || busy || submission?.status === 'pending') return;
@@ -135,7 +139,7 @@ export function AssistantPanel({ state, detail, policy, busy, loadError, onSend,
     setTimeout(() => textarea.current?.focus(), 0);
     return null;
   };
-  return <aside id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="ROS" data-testid="assistant-panel">
+  return <aside ref={panelBox} id="research-assistant-panel" className={`assistant-panel assistant-compact ros-panel ros-${mode}`} aria-label="ROS" data-testid="assistant-panel">
     <header className="assistant-heading"><span className={`assistant-signal ${running ? 'working' : ''}`} aria-hidden="true"><ResearchRing/></span><h2>ROS</h2><RosThreadChip state={state} projectId={detail.project.id} current={threadId} onChoose={onThread} onRename={onRenameThread} onDelete={onDeleteThread}/><span className="assistant-heading-spacer"/>{devBuild&&<button className="text-button small assistant-dev-clear" title="Development only: forget this project's conversation, questions and agent session" disabled={running} onClick={()=>void post(`/api/projects/${detail.project.id}/assistant/dev-clear`, {}).then(()=>onRefresh())}><RotateCcw size={13}/> Clear · dev</button>}{onMode&&<button className="icon-button" aria-label={mode==='half'?rosSizeLabel.full:rosSizeLabel.half} title={mode==='half'?'Side panel':'Half sheet'} onClick={()=>onMode(mode==='half'?'full':'half')}><RosSizeIcon size={mode==='half'?'full':'half'}/></button>}<button className="icon-button" aria-label="Close ROS" title="Close (Esc)" onClick={onClose}><X size={16}/></button></header>
     <div className="assistant-scroll" id="assistant-conversation" ref={scroller} data-testid="project-conversation" onScroll={event=>{const element=event.currentTarget;followConversation.current=element.scrollHeight-element.scrollTop-element.clientHeight<24;}}>
       {loadError&&<section className="assistant-submission-failure" role="alert"><strong>Saved conversation unavailable</strong><p>{loadError}</p><button className="secondary small" onClick={()=>void onRefresh()}>Refresh saved activity</button></section>}
