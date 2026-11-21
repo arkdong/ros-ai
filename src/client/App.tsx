@@ -283,7 +283,7 @@ export function App(){
   };
   /** focus: the block a request is about on purpose (Check sources); a message typed in the bar has none. No thread named starts a new one. */
   const queueAssistantMessage=(id:string,message:string,focus:AssistantFocus|null,suggest?:PluginId[],thread?:string)=>post<AssistantState>(`/api/projects/${id}/assistant/messages`,{message,...(focus?{focus}:{}),glance:glance(),...(suggest?.length?{suggest}:{}),...(thread?{threadId:thread}:{})});
-  const createProject=async(title:string,folder?:string)=>{if(await action(async()=>{const project=await post<Project>('/api/projects',{title,start:'blank',...(folder?{folder}:{})});setProjects(current=>[project,...current]);setProjectId(project.id);setAssistantOpen(false);},false))setNewProject(false);};
+  const createProject=async(title:string,folder?:string)=>{if(await action(async()=>{const project=await post<Project>('/api/projects',{title,...(folder?{folder}:{})});setProjects(current=>[project,...current]);setProjectId(project.id);setAssistantOpen(false);},false))setNewProject(false);};
   // A folder ros.ai made reconnects to its project; any other folder becomes a new project.
   const openFolder=async(path:string)=>{const success=await action(async()=>{const project=await post<Project>('/api/folders/open',{path});setProjects(current=>[project,...current.filter(item=>item.id!==project.id)]);if(projectRef.current===project.id){await refresh(project.id);folder.reload();}else setProjectId(project.id);},false);if(success){setNewProject(false);setFolderDialog(false);}return success;};
   /** Sends in the thread shown; a new thread is adopted as soon as the service names it. */
