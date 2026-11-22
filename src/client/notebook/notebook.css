@@ -97,8 +97,10 @@
 .nb-markdown .nb-table-wrap table { width: auto; border-collapse: collapse; font-size: var(--text-md); }
 .nb-markdown .nb-table-wrap th, .nb-markdown .nb-table-wrap td { border: 1px solid var(--line); padding: 4px 10px; text-align: left; }
 .nb-image-link { font-size: .9em; color: var(--muted); }
-.nb-math { background: var(--rail); color: var(--ink); }
-.nb-math-block { display: block; white-space: pre-wrap; padding: 6px 8px; font: var(--text-sm)/1.5 var(--font-mono); border-radius: var(--radius-mark); }
+.nb-math { color: var(--ink); }
+.nb-math .katex-error, .nb-math-source { color: var(--fail); font: var(--text-sm)/1.5 var(--font-mono); }
+.nb-math-block { display: block; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.nb-math-block .katex-display { margin: .5em 0; }
 
 .nb-add { display: flex; justify-content: center; gap: 8px; padding: 14px 0 8px; }
 .nb-footer { margin: 16px 0 0 72px; font-size: var(--text-sm); color: var(--muted); line-height: 1.6; }
