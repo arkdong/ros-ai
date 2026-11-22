@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import type { NotebookOutput } from '../../shared/notebooks';
 import { parseCsv } from '../../shared/data-view';
 import { Markdown } from './markdown';
+import { Formula, unwrapLatex } from './math';
 
 const ROWS = 200;
 const text = (value: unknown) => typeof value === 'string' ? value : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join('') : undefined;
@@ -58,7 +59,7 @@ function Rich({ data, metadata }: { data: Record<string, unknown>; metadata: Rec
   const markdown = text(data['text/markdown']);
   if (markdown !== undefined) return <Markdown text={markdown}/>;
   const latex = text(data['text/latex']);
-  if (latex !== undefined) return <code className="nb-math nb-math-block" title="Formula, shown as written">{latex}</code>;
+  if (latex !== undefined) return <Formula tex={unwrapLatex(latex)} block/>;
   const plain = text(data['text/plain']), csv = text(data['text/csv']);
   if (plain !== undefined && !(html && /^<[\w.]+ object(?: at 0x[0-9a-f]+)?>$/u.test(plain.trim()))) return <pre className="nb-text">{plainOutput(plain)}</pre>;
   if (csv !== undefined) return <CsvTable csv={csv}/>;

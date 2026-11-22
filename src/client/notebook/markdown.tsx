@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { CodeView } from '../code';
 import { safeUrl } from '../Content';
+import { Formula } from './math';
 
 type Attachments = Record<string, unknown> | undefined;
 
@@ -9,11 +10,13 @@ const heading = /^ {0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/u;
 const rule = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/u;
 const quote = /^ {0,3}>\s?/u;
 const item = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/u;
+const mathOpen = /^\s*(\$\$|\\\[)/u;
 const tableRule = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/u;
 const images = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 /** Markdown cells and Markdown outputs, drawn as React elements. Nothing is inserted as HTML,
- * images from the web show as links instead of loading, and formulas stay as written. */
+ * images from the web show as links instead of loading, and formulas are drawn by KaTeX:
+ * $inline$, \(inline\), $$display$$ and \[display\]. */
 export function Markdown({ text, attachments }: { text: string; attachments?: Attachments }) {
   return <div className="nb-markdown">{blocks(text.replace(/\r\n?/gu, '\n').split('\n'), attachments)}</div>;
 }
@@ -31,6 +34,8 @@ function blocks(lines: string[], attachments: Attachments): ReactNode[] {
       out.push(<CodeView key={key} className="nb-md-code" code={body.join('\n')} language={open[2] || 'text'}/>);
       continue;
     }
+    const formula = displayMath(lines, at);
+    if (formula) { out.push(<p key={key} className="nb-math-para"><Formula tex={formula.tex} block/></p>); at = formula.next; continue; }
     const title = heading.exec(line);
     if (title) {
       const Tag = `h${title[1].length}` as 'h1';
@@ -57,10 +62,29 @@ function blocks(lines: string[], attachments: Attachments): ReactNode[] {
       continue;
     }
     const body = [line];
-    for (at++; at < lines.length && lines[at].trim() && ![fence, heading, rule, quote, item].some(pattern => pattern.test(lines[at])); at++) body.push(lines[at]);
+    for (at++; at < lines.length && lines[at].trim() && ![fence, heading, rule, quote, item, mathOpen].some(pattern => pattern.test(lines[at])); at++) body.push(lines[at]);
     out.push(<p key={key}>{inline(body.join('\n'), attachments)}</p>);
   }
   return out;
+}
+
+/** A $$ … $$ or \[ … \] formula that starts a line and ends one, over one or more lines. */
+function displayMath(lines: string[], at: number): { tex: string; next: number } | null {
+  const open = mathOpen.exec(lines[at]);
+  if (!open) return null;
+  const close = open[1] === '$$' ? '$$' : '\\]';
+  const body: string[] = [];
+  let rest = lines[at].slice(open[0].length);
+  for (let line = at; line < lines.length; rest = lines[++line] ?? '') {
+    const end = rest.indexOf(close);
+    if (end < 0) { body.push(rest); continue; }
+    // Text after the closing mark makes this a paragraph with a formula in it.
+    if (rest.slice(end + close.length).trim()) return null;
+    body.push(rest.slice(0, end));
+    const tex = body.join('\n').trim();
+    return tex ? { tex, next: line + 1 } : null;
+  }
+  return null;
 }
 
 function list(lines: string[], attachments: Attachments): ReactNode {
@@ -93,7 +117,7 @@ function table(rows: string[], key: number, attachments: Attachments): ReactNode
 }
 
 // Code, images, links, web addresses, bold, struck, italic, formulas, line breaks and escaped characters, in that order.
-const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^"']*["'])?\s*\)|\[([^\]]+)\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^"']*["'])?\s*\)|<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|~~([\s\S]+?)~~|\*([^\s*](?:[\s\S]*?[^\s*])?)\*|(?<!\w)_([^\s_](?:[\s\S]*?[^\s_])?)_(?!\w)|\$\$([\s\S]+?)\$\$|\$([^\s$](?:[^$\n]*?[^\s$])?)\$|<br\s*\/?>|( {2,}|\\)\n|\\([\\`*_{}[\]()#+\-.!|$<>~])/gu;
+const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|!\[([^\]]*)\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^"']*["'])?\s*\)|\[([^\]]+)\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^"']*["'])?\s*\)|<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|~~([\s\S]+?)~~|\*([^\s*](?:[\s\S]*?[^\s*])?)\*|(?<!\w)_([^\s_](?:[\s\S]*?[^\s_])?)_(?!\w)|\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|(?<![\\$])\$([^\s$](?:[^$\n]*?[^\s$])?)\$(?![$\d])|\\\(([\s\S]+?)\\\)|<br\s*\/?>|( {2,}|\\)\n|\\([\\`*_{}[\]()#+\-.!|$<>~])/gu;
 
 function inline(text: string, attachments: Attachments): ReactNode[] {
   const out: ReactNode[] = [];
@@ -102,7 +126,7 @@ function inline(text: string, attachments: Attachments): ReactNode[] {
     if (match.index > at) out.push(text.slice(at, match.index));
     at = match.index + match[0].length;
     const key = `${match.index}`;
-    const [, , code, alt, src, label, href, angle, bare, strong, strongToo, struck, emphasis, emphasisToo, display, formula, , escaped] = match;
+    const [, , code, alt, src, label, href, angle, bare, strong, strongToo, struck, emphasis, emphasisToo, display, displayToo, formula, formulaToo, , escaped] = match;
     if (code !== undefined) out.push(<code key={key}>{code.replace(/^ (.+) $/su, '$1')}</code>);
     else if (src !== undefined) out.push(<Fragment key={key}>{image(alt ?? '', src, attachments)}</Fragment>);
     else if (href !== undefined) { const url = safeUrl(href); out.push(url ? <a key={key} href={url} target="_blank" rel="noreferrer noopener">{inline(label ?? '', attachments)}</a> : <Fragment key={key}>{inline(label ?? '', attachments)}</Fragment>); }
@@ -110,7 +134,8 @@ function inline(text: string, attachments: Attachments): ReactNode[] {
     else if (strong !== undefined || strongToo !== undefined) out.push(<strong key={key}>{inline(strong ?? strongToo ?? '', attachments)}</strong>);
     else if (struck !== undefined) out.push(<s key={key}>{inline(struck, attachments)}</s>);
     else if (emphasis !== undefined || emphasisToo !== undefined) out.push(<em key={key}>{inline(emphasis ?? emphasisToo ?? '', attachments)}</em>);
-    else if (display !== undefined || formula !== undefined) out.push(<code key={key} className="nb-math" title="Formula, shown as written">{display ?? formula}</code>);
+    else if (display !== undefined || displayToo !== undefined) out.push(<Formula key={key} tex={(display ?? displayToo ?? '').trim()} block/>);
+    else if (formula !== undefined || formulaToo !== undefined) out.push(<Formula key={key} tex={(formula ?? formulaToo ?? '').trim()}/>);
     else if (escaped !== undefined) out.push(escaped);
     else out.push(<br key={key}/>);
   }
